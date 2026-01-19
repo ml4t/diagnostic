@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Diagnostics</title>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            border-bottom: 2px solid #95a5a6;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        .dataframe {
+            border-collapse: collapse;
+            margin: 20px 0;
+            width: 100%;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .dataframe th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        .dataframe td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .dataframe tr:hover {
+            background-color: #f1f1f1;
+        }
+        ul, ol {
+            line-height: 1.8;
+        }
+        p {
+            line-height: 1.6;
+        }
+        hr {
+            border: none;
+            border-top: 2px solid #95a5a6;
+            margin: 40px 0;
+        }
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Portfolio Diagnostics</h1>
+
+<h2>Overview</h2>
+<p><strong>Features analyzed:</strong> 3</p>
+<p><strong>Generated:</strong> 2025-11-03 21:57:25</p>
+<h2>Comparison Table</h2>
+<table border="1" class="dataframe dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Feature</th>
+      <th>N</th>
+      <th>Health Score</th>
+      <th>Flags</th>
+      <th>Stationarity</th>
+      <th>Significant ACF Lags</th>
+      <th>Vol Clustering</th>
+      <th>Distribution</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>white_noise</td>
+      <td>500</td>
+      <td>1.00</td>
+      <td>0</td>
+      <td>strong_stationary</td>
+      <td>0</td>
+      <td>No</td>
+      <td>normal</td>
+    </tr>
+    <tr>
+      <td>trending</td>
+      <td>500</td>
+      <td>0.45</td>
+      <td>4</td>
+      <td>strong_nonstationary</td>
+      <td>26</td>
+      <td>Yes</td>
+      <td>normal</td>
+    </tr>
+    <tr>
+      <td>heavy_tails</td>
+      <td>500</td>
+      <td>0.85</td>
+      <td>2</td>
+      <td>strong_stationary</td>
+      <td>1</td>
+      <td>No</td>
+      <td>t</td>
+    </tr>
+  </tbody>
+</table>
+<hr>
+<h2>Feature: white_noise</h2>
+<h3>Stationarity Analysis</h3>
+<p><strong>Consensus:</strong> strong_stationary</p>
+<p><strong>ADF:</strong> statistic=-22.3438, p-value=0.0000</p>
+<p><strong>KPSS:</strong> statistic=0.1020, p-value=0.1000</p>
+<p><strong>PP:</strong> statistic=-22.3723, p-value=0.0000</p>
+<h3>Autocorrelation Analysis</h3>
+<p><strong>Significant ACF lags:</strong> 0</p>
+<p><strong>Significant PACF lags:</strong> 1</p>
+<p><strong>Suggested ARIMA order:</strong> (0, 0, 0)</p>
+<p><strong>White noise:</strong> No</p>
+<h3>Volatility Analysis</h3>
+<p><strong>Volatility clustering:</strong> No</p>
+<p><strong>ARCH-LM:</strong> statistic=5.5861, p-value=0.9355</p>
+<h3>Distribution Analysis</h3>
+<p><strong>Recommended distribution:</strong> normal</p>
+<p><strong>Is normal:</strong> Yes</p>
+<p><strong>Mean:</strong> 0.006838</p>
+<p><strong>Std Dev:</strong> 0.981253</p>
+<p><strong>Skewness:</strong> 0.1802 (not significant)</p>
+<p><strong>Kurtosis:</strong> 0.2711 (not significant)</p>
+<p><strong>Jarque-Bera:</strong> statistic=4.0581, p-value=0.1315</p>
+<h3>Visualizations</h3>
+<p><em>Interactive Plotly charts would be embedded here.</em></p>
+<p><em>Implementation note: Requires creating plots from result data</em></p>
+<hr>
+<h2>Feature: trending</h2>
+<h3>Stationarity Analysis</h3>
+<p><strong>Consensus:</strong> strong_nonstationary</p>
+<p><strong>ADF:</strong> statistic=-0.2820, p-value=0.9280</p>
+<p><strong>KPSS:</strong> statistic=2.3271, p-value=0.0100</p>
+<p><strong>PP:</strong> statistic=-0.3874, p-value=0.9122</p>
+<h3>Autocorrelation Analysis</h3>
+<p><strong>Significant ACF lags:</strong> 26</p>
+<p><strong>Significant PACF lags:</strong> 5</p>
+<p><strong>Suggested ARIMA order:</strong> (1, 0, 26)</p>
+<p><strong>White noise:</strong> No</p>
+<h3>Volatility Analysis</h3>
+<p><strong>Volatility clustering:</strong> Yes</p>
+<p><strong>ARCH-LM:</strong> statistic=479.2724, p-value=0.0000</p>
+<h3>Distribution Analysis</h3>
+<p><strong>Recommended distribution:</strong> normal</p>
+<p><strong>Is normal:</strong> No</p>
+<p><strong>Mean:</strong> -0.027460</p>
+<p><strong>Std Dev:</strong> 0.114717</p>
+<p><strong>Skewness:</strong> 0.9849 (significant)</p>
+<p><strong>Kurtosis:</strong> -0.4436 (significant)</p>
+<p><strong>Jarque-Bera:</strong> statistic=84.5848, p-value=0.0000</p>
+<h3>Visualizations</h3>
+<p><em>Interactive Plotly charts would be embedded here.</em></p>
+<p><em>Implementation note: Requires creating plots from result data</em></p>
+<hr>
+<h2>Feature: heavy_tails</h2>
+<h3>Stationarity Analysis</h3>
+<p><strong>Consensus:</strong> strong_stationary</p>
+<p><strong>ADF:</strong> statistic=-24.3053, p-value=0.0000</p>
+<p><strong>KPSS:</strong> statistic=0.0766, p-value=0.1000</p>
+<p><strong>PP:</strong> statistic=-24.3518, p-value=0.0000</p>
+<h3>Autocorrelation Analysis</h3>
+<p><strong>Significant ACF lags:</strong> 1</p>
+<p><strong>Significant PACF lags:</strong> 1</p>
+<p><strong>Suggested ARIMA order:</strong> (0, 0, 0)</p>
+<p><strong>White noise:</strong> No</p>
+<h3>Volatility Analysis</h3>
+<p><strong>Volatility clustering:</strong> No</p>
+<p><strong>ARCH-LM:</strong> statistic=14.8095, p-value=0.2520</p>
+<h3>Distribution Analysis</h3>
+<p><strong>Recommended distribution:</strong> t</p>
+<p><strong>Is normal:</strong> No</p>
+<p><strong>Mean:</strong> -0.000223</p>
+<p><strong>Std Dev:</strong> 0.033471</p>
+<p><strong>Skewness:</strong> -0.4253 (significant)</p>
+<p><strong>Kurtosis:</strong> 7.9127 (significant)</p>
+<p><strong>Jarque-Bera:</strong> statistic=1289.5942, p-value=0.0000</p>
+<h3>Visualizations</h3>
+<p><em>Interactive Plotly charts would be embedded here.</em></p>
+<p><em>Implementation note: Requires creating plots from result data</em></p>
+
+    <div class="footer">
+        <p>Generated by QEval 2025-11-03 21:57:25</p>
+        <p>Interactive diagnostic reports for quantitative trading features</p>
+    </div>
+</body>
+</html>

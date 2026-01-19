@@ -1,0 +1,263 @@
+{
+  "feature_name": "test_signal",
+  "n_obs": 500,
+  "health_score": 1.0,
+  "flags": [],
+  "recommendations": [
+    "Feature has significant autocorrelation up to lag 8. Consider AR/MA modeling or including lagged values as features."
+  ],
+  "summary": [
+    {
+      "Module": "Stationarity",
+      "Test": "ADF",
+      "Statistic": -22.343814515377062,
+      "P-Value": 0.0,
+      "Result": "Stationary"
+    },
+    {
+      "Module": "Stationarity",
+      "Test": "KPSS",
+      "Statistic": 0.10196261724172426,
+      "P-Value": 0.1,
+      "Result": "Stationary"
+    },
+    {
+      "Module": "Stationarity",
+      "Test": "PP",
+      "Statistic": -22.372258874893568,
+      "P-Value": 0.0,
+      "Result": "Stationary"
+    },
+    {
+      "Module": "Stationarity",
+      "Test": "Consensus",
+      "Statistic": NaN,
+      "P-Value": NaN,
+      "Result": "strong_stationary"
+    },
+    {
+      "Module": "Autocorrelation",
+      "Test": "ACF",
+      "Statistic": NaN,
+      "P-Value": NaN,
+      "Result": "0 significant lags"
+    },
+    {
+      "Module": "Autocorrelation",
+      "Test": "PACF",
+      "Statistic": NaN,
+      "P-Value": NaN,
+      "Result": "1 significant lags"
+    },
+    {
+      "Module": "Autocorrelation",
+      "Test": "Consensus",
+      "Statistic": NaN,
+      "P-Value": NaN,
+      "Result": "Has autocorrelation"
+    },
+    {
+      "Module": "Volatility",
+      "Test": "ARCH-LM",
+      "Statistic": 5.586083349496142,
+      "P-Value": 0.9354948884106219,
+      "Result": "No ARCH effects"
+    },
+    {
+      "Module": "Volatility",
+      "Test": "Consensus",
+      "Statistic": NaN,
+      "P-Value": NaN,
+      "Result": "No clustering"
+    },
+    {
+      "Module": "Distribution",
+      "Test": "Skewness",
+      "Statistic": 0.18016389341824726,
+      "P-Value": NaN,
+      "Result": "Not significant"
+    },
+    {
+      "Module": "Distribution",
+      "Test": "Kurtosis",
+      "Statistic": 0.2710598684233556,
+      "P-Value": NaN,
+      "Result": "Normal kurtosis"
+    },
+    {
+      "Module": "Distribution",
+      "Test": "Jarque-Bera",
+      "Statistic": 4.058098596563737,
+      "P-Value": 0.13146044142565277,
+      "Result": "Normal"
+    },
+    {
+      "Module": "Distribution",
+      "Test": "Shapiro-Wilk",
+      "Statistic": 0.9967013775391391,
+      "P-Value": 0.4012690539931476,
+      "Result": "Normal"
+    },
+    {
+      "Module": "Distribution",
+      "Test": "Hill Estimator",
+      "Statistic": 4.125685487737266,
+      "P-Value": NaN,
+      "Result": "Thin"
+    },
+    {
+      "Module": "Distribution",
+      "Test": "Recommended",
+      "Statistic": NaN,
+      "P-Value": NaN,
+      "Result": "normal"
+    }
+  ],
+  "stationarity": {
+    "consensus": "strong_stationary",
+    "adf": {
+      "test_statistic": -22.343814515377062,
+      "p_value": 0.0,
+      "critical_values": {
+        "1%": -3.4435228622952065,
+        "5%": -2.867349510566146,
+        "10%": -2.569864247011056
+      },
+      "is_stationary": true
+    },
+    "kpss": {
+      "test_statistic": 0.10196261724172426,
+      "p_value": 0.1,
+      "critical_values": {
+        "10%": 0.347,
+        "5%": 0.463,
+        "2.5%": 0.574,
+        "1%": 0.739
+      },
+      "is_stationary": true
+    },
+    "pp": {
+      "test_statistic": -22.372258874893568,
+      "p_value": 0.0,
+      "critical_values": {
+        "1%": -3.4435228622952065,
+        "5%": -2.867349510566146,
+        "10%": -2.569864247011056
+      },
+      "is_stationary": true
+    }
+  },
+  "autocorrelation": {
+    "acf_values": [
+      1.0,
+      -0.004008561455225539,
+      -0.008549347483441038,
+      0.01340417956250497,
+      -0.07575156740505667,
+      0.03200972091268923,
+      0.03257249453960028,
+      -0.020929307281595262,
+      -0.0813923703891795,
+      -0.019723916475930282,
+      -0.01570933919507856,
+      0.04929097742467959,
+      0.029145357810656077,
+      -0.01958890623759142,
+      0.024238083665765943,
+      0.013508728417959174,
+      0.03432360624340179,
+      -0.0002474115237599314,
+      0.01621641988820578,
+      -0.060544743840924106,
+      -0.07827560114313294,
+      -0.05967698146240546,
+      -0.03259421528428517,
+      0.06150472821236596,
+      -0.002729552098447787,
+      -0.028016034695414853,
+      0.0036204827895690416
+    ],
+    "pacf_values": [
+      1.0,
+      -0.004016594644514572,
+      -0.008599953988166065,
+      0.013416982649922063,
+      -0.0763494765584756,
+      0.03223726637390754,
+      0.03176857444904284,
+      -0.018676680714394968,
+      -0.08966824448764844,
+      -0.016872444414484898,
+      -0.012857740976540289,
+      0.04807590419738649,
+      0.017605104883164868,
+      -0.015445647517868585,
+      0.027879407912117165,
+      0.020137433257305014,
+      0.030522722441065606,
+      -0.012060546070571635,
+      0.01964690576475898,
+      -0.05431949533277244,
+      -0.07570819210625569,
+      -0.07043689849456641,
+      -0.031364176681142795,
+      0.06003692304956866,
+      -0.0012262670945010538,
+      -0.030603364487730867,
+      0.003664706934498996
+    ],
+    "significant_acf_lags": [],
+    "significant_pacf_lags": [
+      8
+    ],
+    "suggested_arima_order": [
+      0,
+      0,
+      0
+    ],
+    "is_white_noise": false
+  },
+  "volatility": {
+    "has_volatility_clustering": false,
+    "persistence": null,
+    "arch_lm": {
+      "test_statistic": 5.586083349496142,
+      "p_value": 0.9354948884106219,
+      "lags": 12
+    }
+  },
+  "distribution": {
+    "is_normal": "True",
+    "recommended_distribution": "normal",
+    "recommended_df": null,
+    "moments": {
+      "mean": 0.006837994588647575,
+      "std": 0.9812532473618532,
+      "skewness": 0.18016389341824726,
+      "skewness_significant": "False",
+      "kurtosis": 0.2710598684233556,
+      "kurtosis_significant": "False"
+    },
+    "jarque_bera": {
+      "statistic": 4.058098596563737,
+      "p_value": 0.13146044142565277,
+      "is_normal": "True"
+    },
+    "shapiro_wilk": {
+      "statistic": 0.9967013775391391,
+      "p_value": 0.4012690539931476,
+      "is_normal": "True"
+    },
+    "tail_analysis": {
+      "classification": "thin",
+      "tail_index": 4.125685487737266,
+      "has_heavy_tails": false,
+      "best_fit": "normal"
+    }
+  },
+  "_metadata": {
+    "generated_at": "2025-11-03T21:57:25.683533",
+    "qeval_version": "1.0.0",
+    "format_version": "1.0"
+  }
+}

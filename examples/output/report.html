@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feature Diagnostics: test_signal</title>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            border-bottom: 2px solid #95a5a6;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        .dataframe {
+            border-collapse: collapse;
+            margin: 20px 0;
+            width: 100%;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .dataframe th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        .dataframe td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .dataframe tr:hover {
+            background-color: #f1f1f1;
+        }
+        ul, ol {
+            line-height: 1.8;
+        }
+        p {
+            line-height: 1.6;
+        }
+        hr {
+            border: none;
+            border-top: 2px solid #95a5a6;
+            margin: 40px 0;
+        }
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Feature Diagnostics: test_signal</h1>
+
+<h2>Summary</h2>
+<p><strong>Feature:</strong> test_signal</p>
+<p><strong>Observations:</strong> 500</p>
+<p><strong>Health Score:</strong> 1.00/1.00</p>
+<h3>Test Summary</h3>
+<table border="1" class="dataframe dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Module</th>
+      <th>Test</th>
+      <th>Statistic</th>
+      <th>P-Value</th>
+      <th>Result</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Stationarity</td>
+      <td>ADF</td>
+      <td>-22.343815</td>
+      <td>0.000000</td>
+      <td>Stationary</td>
+    </tr>
+    <tr>
+      <td>Stationarity</td>
+      <td>KPSS</td>
+      <td>0.101963</td>
+      <td>0.100000</td>
+      <td>Stationary</td>
+    </tr>
+    <tr>
+      <td>Stationarity</td>
+      <td>PP</td>
+      <td>-22.372259</td>
+      <td>0.000000</td>
+      <td>Stationary</td>
+    </tr>
+    <tr>
+      <td>Stationarity</td>
+      <td>Consensus</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>strong_stationary</td>
+    </tr>
+    <tr>
+      <td>Autocorrelation</td>
+      <td>ACF</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>0 significant lags</td>
+    </tr>
+    <tr>
+      <td>Autocorrelation</td>
+      <td>PACF</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>1 significant lags</td>
+    </tr>
+    <tr>
+      <td>Autocorrelation</td>
+      <td>Consensus</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>Has autocorrelation</td>
+    </tr>
+    <tr>
+      <td>Volatility</td>
+      <td>ARCH-LM</td>
+      <td>5.586083</td>
+      <td>0.935495</td>
+      <td>No ARCH effects</td>
+    </tr>
+    <tr>
+      <td>Volatility</td>
+      <td>Consensus</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>No clustering</td>
+    </tr>
+    <tr>
+      <td>Distribution</td>
+      <td>Skewness</td>
+      <td>0.180164</td>
+      <td>NaN</td>
+      <td>Not significant</td>
+    </tr>
+    <tr>
+      <td>Distribution</td>
+      <td>Kurtosis</td>
+      <td>0.271060</td>
+      <td>NaN</td>
+      <td>Normal kurtosis</td>
+    </tr>
+    <tr>
+      <td>Distribution</td>
+      <td>Jarque-Bera</td>
+      <td>4.058099</td>
+      <td>0.131460</td>
+      <td>Normal</td>
+    </tr>
+    <tr>
+      <td>Distribution</td>
+      <td>Shapiro-Wilk</td>
+      <td>0.996701</td>
+      <td>0.401269</td>
+      <td>Normal</td>
+    </tr>
+    <tr>
+      <td>Distribution</td>
+      <td>Hill Estimator</td>
+      <td>4.125685</td>
+      <td>NaN</td>
+      <td>Thin</td>
+    </tr>
+    <tr>
+      <td>Distribution</td>
+      <td>Recommended</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>normal</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Stationarity Analysis</h3>
+<p><strong>Consensus:</strong> strong_stationary</p>
+<p><strong>ADF:</strong> statistic=-22.3438, p-value=0.0000</p>
+<p><strong>KPSS:</strong> statistic=0.1020, p-value=0.1000</p>
+<p><strong>PP:</strong> statistic=-22.3723, p-value=0.0000</p>
+<h3>Autocorrelation Analysis</h3>
+<p><strong>Significant ACF lags:</strong> 0</p>
+<p><strong>Significant PACF lags:</strong> 1</p>
+<p><strong>Suggested ARIMA order:</strong> (0, 0, 0)</p>
+<p><strong>White noise:</strong> No</p>
+<h3>Volatility Analysis</h3>
+<p><strong>Volatility clustering:</strong> No</p>
+<p><strong>ARCH-LM:</strong> statistic=5.5861, p-value=0.9355</p>
+<h3>Distribution Analysis</h3>
+<p><strong>Recommended distribution:</strong> normal</p>
+<p><strong>Is normal:</strong> Yes</p>
+<p><strong>Mean:</strong> 0.006838</p>
+<p><strong>Std Dev:</strong> 0.981253</p>
+<p><strong>Skewness:</strong> 0.1802 (not significant)</p>
+<p><strong>Kurtosis:</strong> 0.2711 (not significant)</p>
+<p><strong>Jarque-Bera:</strong> statistic=4.0581, p-value=0.1315</p>
+<h3>Visualizations</h3>
+<p><em>Interactive Plotly charts would be embedded here.</em></p>
+<p><em>Implementation note: Requires creating plots from result data</em></p>
+<h2>Recommendations</h2>
+<ol>
+<li>Feature has significant autocorrelation up to lag 8. Consider AR/MA modeling or including lagged values as features.</li>
+</ol>
+
+    <div class="footer">
+        <p>Generated by QEval 2025-11-03 21:57:25</p>
+        <p>Interactive diagnostic reports for quantitative trading features</p>
+    </div>
+</body>
+</html>
