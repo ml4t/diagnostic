@@ -204,6 +204,7 @@ class SignalTearSheet(BaseResult):
         """Display tear sheet in Jupyter notebook.
 
         Renders all figures inline using IPython display.
+        Falls back to printing summary if not in a Jupyter environment.
         """
         try:
             from IPython.display import HTML, display
@@ -217,8 +218,10 @@ class SignalTearSheet(BaseResult):
                 fig = _figure_from_data(fig_json)
                 fig.show()
 
-        except ImportError:
-            print("IPython not available. Use save_html() instead.")
+        except (ImportError, ValueError):
+            # ImportError: IPython not installed
+            # ValueError: nbformat not installed (required for Plotly mime rendering)
+            print("Interactive display not available. Use save_html() instead.")
             print(self.summary())
 
     def save_html(
