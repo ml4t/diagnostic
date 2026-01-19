@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.10
+    hooks:
+      - id: ruff-format
+        exclude: ^examples/
+      - id: ruff
+        args: [--fix]
+        exclude: ^examples/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^examples/
+      - id: end-of-file-fixer
+        exclude: ^examples/
+      - id: check-yaml
+        args: [--unsafe]  # Allow Python tags in mkdocs.yml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: debug-statements
+        exclude: ^examples/
+      - id: mixed-line-ending
+
+  # Type checking with ty (Astral) - 25x faster than mypy
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty type check
+        entry: uv run ty check src/
+        language: system
+        files: ^src/
+        types: [python]
+        pass_filenames: false
