@@ -133,3 +133,5 @@ test_output.txt
 # Claude Code internals (not for distribution)
 .claude/
 CLAUDE.md
+repomix.config.json
+repomix-output.xml
