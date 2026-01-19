@@ -1,0 +1,467 @@
+# Trade SHAP Hypothesis Templates
+#
+# Templates for generating hypotheses about why trading patterns cause losses.
+# Each template matches feature patterns and generates actionable suggestions.
+#
+# Template structure:
+#   name: Unique identifier
+#   description: Human-readable description
+#   feature_patterns: Glob patterns to match feature names (fnmatch syntax)
+#   conditions:
+#     direction: high | low | positive | negative | extreme | moderate | any
+#     significance: required | optional
+#   hypothesis_template: String template with {feature} placeholder
+#   actions: List of remediation suggestions
+#   confidence_base: Base confidence score (0-1)
+
+# =============================================================================
+# COMPREHENSIVE TEMPLATES (21 templates)
+# =============================================================================
+
+comprehensive:
+  # ---------------------------------------------------------------------------
+  # Momentum patterns
+  # ---------------------------------------------------------------------------
+  - name: momentum_high
+    description: High momentum causing losses
+    feature_patterns:
+      - "*momentum*"
+      - "*mom*"
+      - "*roc*"
+    conditions:
+      direction: high
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} shows high values, suggesting momentum
+      reversal or false breakouts after strong momentum runs
+    actions:
+      - "Add momentum confirmation: require volume increase with momentum"
+      - "Implement momentum decay filters: avoid entries after extended moves"
+      - "Consider shorter momentum windows to catch reversals earlier"
+      - "Add trend strength indicator to distinguish continuation vs reversal"
+    confidence_base: 0.75
+
+  - name: momentum_low
+    description: Low momentum causing losses
+    feature_patterns:
+      - "*momentum*"
+      - "*mom*"
+      - "*roc*"
+    conditions:
+      direction: low
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} shows low values, suggesting late entries
+      after momentum exhaustion or premature counter-trend trades
+    actions:
+      - "Tighten momentum entry thresholds: require minimum momentum"
+      - "Add trend confirmation before counter-trend entries"
+      - "Consider leading indicators (e.g., volume, breadth) before momentum"
+      - "Implement regime filters: avoid low momentum in trending regimes"
+    confidence_base: 0.70
+
+  - name: momentum_negative
+    description: Negative momentum causing losses
+    feature_patterns:
+      - "*momentum*"
+      - "*mom*"
+      - "*roc*"
+    conditions:
+      direction: negative
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is negative, indicating counter-trend
+      entries or failed trend following in downtrends
+    actions:
+      - "Add directional filters: only trade with positive momentum"
+      - "Implement regime awareness: avoid counter-trend in strong trends"
+      - "Consider dual momentum: combine absolute + relative momentum"
+      - "Add volatility filters: avoid high vol during negative momentum"
+    confidence_base: 0.72
+
+  # ---------------------------------------------------------------------------
+  # Volatility patterns
+  # ---------------------------------------------------------------------------
+  - name: volatility_high
+    description: High volatility causing losses
+    feature_patterns:
+      - "*vol*"
+      - "*volatility*"
+      - "*atr*"
+    conditions:
+      direction: high
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is high, indicating entries during
+      volatility spikes with wider spreads and adverse execution
+    actions:
+      - "Add volatility ceiling: skip entries when volatility exceeds threshold"
+      - "Implement adaptive position sizing: reduce size in high volatility"
+      - "Consider volatility-adjusted stops: wider stops in high vol periods"
+      - "Add regime filters: identify vol spike regimes using rolling percentiles"
+    confidence_base: 0.78
+
+  - name: volatility_low
+    description: Low volatility causing losses
+    feature_patterns:
+      - "*vol*"
+      - "*volatility*"
+      - "*atr*"
+    conditions:
+      direction: low
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is low, suggesting false breakouts from
+      consolidation or insufficient price movement
+    actions:
+      - "Add volatility floor: require minimum volatility for breakout trades"
+      - "Implement breakout confirmation: volume + price action confirmation"
+      - "Consider volatility expansion filters: wait for vol to increase"
+      - "Add range filters: measure consolidation tightness before breakouts"
+    confidence_base: 0.73
+
+  - name: volatility_regime
+    description: Volatility regime shifts causing losses
+    feature_patterns:
+      - "*vol*regime*"
+      - "*vol_state*"
+      - "*volatility*state*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing during {feature} regime shifts, suggesting strategy
+      is regime-dependent and fails during transitions
+    actions:
+      - "Add regime detection: identify and label vol regimes (low/medium/high)"
+      - "Implement regime-specific strategies: different parameters per regime"
+      - "Consider vol targeting: dynamically adjust exposure to target constant vol"
+      - "Add transition filters: skip trades during regime changes"
+    confidence_base: 0.76
+
+  # ---------------------------------------------------------------------------
+  # Trend patterns
+  # ---------------------------------------------------------------------------
+  - name: trend_high
+    description: Strong trend causing losses
+    feature_patterns:
+      - "*trend*"
+      - "*adx*"
+      - "*dmi*"
+    conditions:
+      direction: high
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} indicates strong trend, suggesting
+      whipsaws in ranging markets or late entries in exhausted trends
+    actions:
+      - "Add trend strength confirmation: require multiple trend indicators to align"
+      - "Implement market regime filters: identify ranging vs trending markets"
+      - "Consider trend maturity: avoid entries in late-stage trends"
+      - "Add mean reversion filters: detect ranging conditions early"
+    confidence_base: 0.71
+
+  - name: trend_low
+    description: Weak trend causing losses
+    feature_patterns:
+      - "*trend*"
+      - "*adx*"
+      - "*dmi*"
+    conditions:
+      direction: low
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is low (weak trend), indicating
+      premature mean reversion entries in trending markets
+    actions:
+      - "Strengthen trend filters: require clearer trend exhaustion signals"
+      - "Add reversal confirmation: wait for actual trend reversal, not just weakness"
+      - "Implement regime awareness: avoid counter-trend in persistent trends"
+      - "Consider divergence indicators: look for momentum/price divergence"
+    confidence_base: 0.74
+
+  # ---------------------------------------------------------------------------
+  # Mean reversion / oscillator patterns
+  # ---------------------------------------------------------------------------
+  - name: oscillator_extreme
+    description: Extreme oscillator values causing losses
+    feature_patterns:
+      - "*rsi*"
+      - "*stoch*"
+      - "*williams*"
+      - "*cci*"
+    conditions:
+      direction: extreme
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} shows extreme values, suggesting mean
+      reversion signals are triggering in trending markets or regime shifts
+    actions:
+      - "Add trend filters: only take mean reversion in range-bound markets"
+      - "Implement confirmation delays: wait for initial reversal before entry"
+      - "Consider multi-timeframe: confirm reversion on multiple timeframes"
+      - "Add volume confirmation: require volume to support reversal"
+    confidence_base: 0.72
+
+  - name: oscillator_moderate
+    description: Moderate oscillator values causing losses
+    feature_patterns:
+      - "*rsi*"
+      - "*stoch*"
+      - "*williams*"
+      - "*cci*"
+    conditions:
+      direction: moderate
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is moderately extended, indicating
+      premature entries before true extremes are reached
+    actions:
+      - "Tighten entry thresholds: wait for more extreme readings"
+      - "Add confirmation indicators: combine multiple oscillators"
+      - "Implement patience filters: require sustained extreme readings"
+      - "Consider adaptive thresholds: adjust based on recent volatility"
+    confidence_base: 0.68
+
+  # ---------------------------------------------------------------------------
+  # Volume patterns
+  # ---------------------------------------------------------------------------
+  - name: volume_low
+    description: Low volume causing losses
+    feature_patterns:
+      - "*volume*"
+      - "*vol_*"
+      - "*obv*"
+    conditions:
+      direction: low
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is low, indicating price moves without
+      volume support (weak/false signals)
+    actions:
+      - "Add volume confirmation: require minimum volume for entry signals"
+      - "Implement volume thresholds: compare to recent average volume"
+      - "Consider volume profile: analyze volume distribution at price levels"
+      - "Add breadth indicators: confirm with market-wide participation"
+    confidence_base: 0.77
+
+  - name: volume_high
+    description: High volume causing losses
+    feature_patterns:
+      - "*volume*"
+      - "*vol_*"
+      - "*obv*"
+    conditions:
+      direction: high
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is high, suggesting volume climax or
+      panic selling indicating trend exhaustion
+    actions:
+      - "Add volume spike filters: avoid entries during extreme volume"
+      - "Implement exhaustion detection: identify climactic volume patterns"
+      - "Consider volume rate of change: track acceleration patterns"
+      - "Add wait periods: delay entries after volume spikes"
+    confidence_base: 0.74
+
+  # ---------------------------------------------------------------------------
+  # Correlation / relationship patterns
+  # ---------------------------------------------------------------------------
+  - name: correlation_low
+    description: Low correlation causing losses
+    feature_patterns:
+      - "*corr*"
+      - "*correlation*"
+      - "*beta*"
+    conditions:
+      direction: low
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is low, indicating breakdown of expected
+      correlations or relationships (regime shift or structural change)
+    actions:
+      - "Add correlation monitoring: track rolling correlations for stability"
+      - "Implement regime filters: identify correlation regimes"
+      - "Consider multi-asset confirmation: require consistent signals across assets"
+      - "Add relationship validation: verify fundamental relationship holds"
+    confidence_base: 0.79
+
+  - name: spread_high
+    description: High spread causing losses
+    feature_patterns:
+      - "*spread*"
+      - "*basis*"
+      - "*premium*"
+    conditions:
+      direction: high
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} widens, suggesting liquidity stress,
+      market dislocation, or fundamental relationship breakdown
+    actions:
+      - "Add spread thresholds: avoid trades when spread exceeds limits"
+      - "Implement liquidity filters: monitor bid-ask spreads and depth"
+      - "Consider funding cost tracking: monitor cost of carry"
+      - "Add market stress indicators: detect risk-off environments"
+    confidence_base: 0.80
+
+  # ---------------------------------------------------------------------------
+  # Regime patterns
+  # ---------------------------------------------------------------------------
+  - name: regime_transition
+    description: Regime transitions causing losses
+    feature_patterns:
+      - "*regime*"
+      - "*state*"
+      - "*hmm*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} indicates regime transition, suggesting
+      strategy parameters are regime-dependent
+    actions:
+      - "Add regime detection: implement HMM or regime-switching models"
+      - "Implement regime-aware strategies: different parameters per regime"
+      - "Consider regime transition filters: pause trading during transitions"
+      - "Add ensemble approach: combine regime-specific sub-strategies"
+    confidence_base: 0.81
+
+  - name: market_state
+    description: Market state causing losses
+    feature_patterns:
+      - "*market_state*"
+      - "*mkt_regime*"
+      - "*environment*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing in specific {feature} states, indicating strategy
+      works only in certain market regimes
+    actions:
+      - "Implement regime filtering: only trade in favorable regimes"
+      - "Add regime detection: classify markets (trending/ranging/volatile)"
+      - "Consider adaptive parameters: adjust strategy based on regime"
+      - "Add regime-specific backtesting: validate strategy per regime"
+    confidence_base: 0.78
+
+  # ---------------------------------------------------------------------------
+  # Moving average patterns
+  # ---------------------------------------------------------------------------
+  - name: ma_crossover
+    description: MA crossover related losses
+    feature_patterns:
+      - "*ma*"
+      - "*ema*"
+      - "*sma*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} conditions are present, suggesting
+      whipsaws in ranging markets or delayed signals in trending markets
+    actions:
+      - "Add confirmation filters: require price action confirmation"
+      - "Implement ADX filter: only trade crossovers in trending conditions"
+      - "Consider adaptive MAs: use ATR-based or volatility-adjusted periods"
+      - "Add time-based filters: avoid recent crossover reversals"
+    confidence_base: 0.69
+
+
+# =============================================================================
+# MINIMAL TEMPLATES (5 templates) - fallback patterns
+# =============================================================================
+
+minimal:
+  - name: momentum_generic
+    description: Momentum-related losses
+    feature_patterns:
+      - "*momentum*"
+      - "*mom*"
+      - "*roc*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} shows extreme values, suggesting
+      momentum timing issues
+    actions:
+      - "Add momentum confirmation with volume"
+      - "Implement momentum decay filters"
+      - "Consider shorter momentum windows"
+    confidence_base: 0.70
+
+  - name: volatility_generic
+    description: Volatility-related losses
+    feature_patterns:
+      - "*vol*"
+      - "*volatility*"
+      - "*atr*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is extreme, indicating volatility
+      regime issues
+    actions:
+      - "Add volatility filters (ceiling and floor)"
+      - "Implement adaptive position sizing"
+      - "Add regime detection for volatility"
+    confidence_base: 0.72
+
+  - name: trend_generic
+    description: Trend-related losses
+    feature_patterns:
+      - "*trend*"
+      - "*ma*"
+      - "*ema*"
+      - "*adx*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} indicates trend conditions, suggesting
+      trend/range regime issues
+    actions:
+      - "Add trend strength confirmation"
+      - "Implement market regime filters"
+      - "Consider trend maturity indicators"
+    confidence_base: 0.68
+
+  - name: oscillator_generic
+    description: Mean reversion failures
+    feature_patterns:
+      - "*rsi*"
+      - "*stoch*"
+      - "*williams*"
+      - "*cci*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is extreme, indicating mean reversion
+      signals failing in trends
+    actions:
+      - "Add trend filters for mean reversion"
+      - "Implement confirmation delays"
+      - "Consider multi-timeframe confirmation"
+    confidence_base: 0.69
+
+  - name: volume_generic
+    description: Volume-related losses
+    feature_patterns:
+      - "*volume*"
+      - "*vol_*"
+      - "*obv*"
+    conditions:
+      direction: any
+      significance: required
+    hypothesis_template: >-
+      Trades are losing when {feature} is extreme, indicating volume
+      confirmation issues
+    actions:
+      - "Add volume confirmation requirements"
+      - "Implement volume thresholds"
+      - "Consider volume profile analysis"
+    confidence_base: 0.71
