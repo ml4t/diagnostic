@@ -1,0 +1,377 @@
+# ML4T Evaluation - Mathematical rigor in quantitative finance validation
+# Independent package configuration for standalone distribution
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/ml4t/diagnostic/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ml4t"]
+namespaces = true
+# Include AGENT.md files for AI agent navigation
+artifacts = ["src/ml4t/**/*.md"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+]
+
+[project]
+name = "ml4t-diagnostic"
+dynamic = ["version"]
+description = "Comprehensive diagnostic and evaluation framework for quantitative finance ML workflows"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "QuantLab Team", email = "info@quantlab.io" },
+]
+maintainers = [
+    { name = "QuantLab Contributors", email = "dev@quantlab.io" },
+]
+keywords = [
+    "finance",
+    "validation",
+    "backtesting",
+    "cross-validation",
+    "machine-learning",
+    "trading",
+    "quantitative-finance",
+    "purging",
+    "embargo",
+    "statistical-tests",
+    "polars",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
+]
+requires-python = ">=3.11"
+
+# Core dependencies
+dependencies = [
+    # Data processing
+    "polars>=0.20.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "pyarrow>=14.0.0",
+    # Scientific computing
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
+    "statsmodels>=0.14.0",
+    # Performance optimization
+    "numba>=0.57.0",
+    # Configuration management
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    # Utilities
+    "structlog>=23.0.0",
+    # Trading calendars (for calendar-aware CV)
+    "pandas_market_calendars>=4.0.0",
+    # Visualization (needed for viz module)
+    "plotly>=5.15.0",
+    # Templating (needed for dashboard module)
+    "jinja2>=3.1.0",
+    "arch>=7.2.0",
+    "lightgbm>=4.6.0",
+    "xgboost>=2.1.4",
+    "vectorbt>=0.28.2",
+    "sympy>=1.14.0",
+    "tabulate>=0.9.0",
+    "anywidget>=0.9.21",
+    "pandas-datareader>=0.10.0",
+    "setuptools>=80.9.0",
+    "riskfolio-lib>=7.1.0",
+]
+
+[project.optional-dependencies]
+# ============================================================================
+# Optional Dependencies - Modular Installation
+# ============================================================================
+# Install only what you need:
+#   pip install ml4t-diagnostic              # Core only
+#   pip install ml4t-diagnostic[viz]         # + Visualization
+#   pip install ml4t-diagnostic[ml]          # + ML models
+#   pip install ml4t-diagnostic[viz,ml]      # + Viz + ML
+#   pip install ml4t-diagnostic[all]         # Everything
+# ============================================================================
+
+# Visualization and reporting (plotly, matplotlib, PDF export)
+viz = [
+    "plotly>=5.15.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "kaleido>=0.2.0",  # For plotly PDF export
+    "pypdf>=5.0.0",     # For PDF merging
+]
+
+# Advanced statistical tests (ARCH/GARCH, volatility models)
+advanced = [
+    "arch>=6.0.0",  # ARCH/GARCH models
+    # "pyfolio>=0.9.0",  # Portfolio analytics (incompatible with Python 3.13+)
+]
+
+# Machine learning models (feature importance, SHAP)
+ml = [
+    "lightgbm>=4.0.0",
+    "xgboost>=2.0.0",
+    "shap>=0.41.0,<0.50.0",  # v1.1: Pin version range for stability
+]
+
+# Deep learning models (neural networks with SHAP DeepExplainer)
+# v1.1: Optional support for TensorFlow/PyTorch models
+deep = [
+    "tensorflow>=2.0.0",  # For TensorFlow models
+    "shap>=0.41.0,<0.50.0",  # Required for DeepExplainer
+]
+
+# GPU acceleration (SHAP TreeExplainer GPU mode)
+# v1.1: Optional cupy for 10-100x speedup on large datasets
+gpu = [
+    "cupy-cuda11x>=11.0.0",  # CUDA 11.x (adjust version for your CUDA)
+    # Alternative: cupy-cuda12x>=12.0.0 for CUDA 12.x
+]
+
+# Complete ML installation (all model types + GPU support)
+# v1.1: Convenience group for full ML capabilities
+all-ml = [
+    "lightgbm>=4.0.0",
+    "xgboost>=2.0.0",
+    "shap>=0.41.0,<0.50.0",
+    "tensorflow>=2.0.0",
+    "cupy-cuda11x>=11.0.0",
+]
+
+# Dashboard and interactive visualization (Streamlit)
+dashboard = [
+    "streamlit>=1.28.0",
+]
+
+# Development tools (testing, linting, debugging)
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.3.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-benchmark>=4.0.0",
+    "hypothesis>=6.80.0",
+    "ruff>=0.1.0",
+    "ty",  # High-performance type checker (Astral)
+    "ipython>=8.14.0",
+    "ipdb>=0.13.0",
+    "pre-commit>=3.3.0",
+]
+
+# Integration testing (requires local install of sibling packages)
+# Install with: pip install -e ../engineer/ -e ../backtest/
+integration = [
+    # ml4t-engineer and ml4t-backtest must be installed from local paths
+    # until they're published to PyPI
+]
+
+# Documentation generation (MkDocs Material)
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.0",
+]
+
+# Complete installation (all features, excluding GPU/deep learning)
+all = [
+    "plotly>=5.15.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "kaleido>=0.2.0",
+    "pypdf>=5.0.0",
+    "arch>=6.0.0",
+    "lightgbm>=4.0.0",
+    "xgboost>=2.0.0",
+    "shap>=0.41.0,<0.50.0",  # v1.1: Updated version pin
+    "streamlit>=1.28.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.3.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-benchmark>=4.0.0",
+    "hypothesis>=6.80.0",
+    "ruff>=0.1.0",
+    "ty",  # High-performance type checker (Astral)
+    "ipython>=8.14.0",
+    "ipdb>=0.13.0",
+    "pre-commit>=3.3.0",
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "sphinx-autodoc-typehints>=1.24.0",
+    "myst-parser>=2.0.0",
+    "nbsphinx>=0.9.0",
+    # Note: Use 'all-ml' for complete ML features including deep learning + GPU
+]
+
+[project.urls]
+Homepage = "https://github.com/ml4t/ml4t-evaluation"
+Documentation = "https://ml4t-evaluation.readthedocs.io"
+Repository = "https://github.com/ml4t/ml4t-evaluation"
+Issues = "https://github.com/ml4t/ml4t-evaluation/issues"
+Changelog = "https://github.com/ml4t/ml4t-evaluation/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "-n", "auto",
+    "--strict-markers",
+    "--hypothesis-show-statistics",
+]
+# Coverage: run with --cov=ml4t.diagnostic --cov-report=term-missing --cov-report=html
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "property: marks property-based tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+fix = true
+exclude = ["examples", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "ARG",  # flake8-unused-arguments
+    "SIM",  # flake8-simplify
+    "N",    # pep8-naming
+]
+ignore = [
+    "E501",  # line too long (120 char limit enforced by formatter, some docstrings/templates exceed)
+    "B008",  # do not perform function calls in argument defaults
+    "B905",  # zip without explicit strict parameter
+    "ARG",   # unused arguments (common in interfaces and abstract methods)
+    "SIM",   # code simplification suggestions (prefer readability over brevity)
+]
+
+[tool.ruff.lint.pep8-naming]
+# Allow standard ML/scientific variable names
+extend-ignore-names = [
+    "X",  # Features matrix (standard ML convention)
+    "y",  # Target vector (standard ML convention)
+    "X[0-9]*",  # Numbered X variations (X1, X2, X3 for multiple datasets)
+    "X_*",  # Feature matrix variations (X_train, X_test, X_ref, etc.)
+    "y_*",  # Target vector variations (y_train, y_test, y_pred, etc.)
+    "_X",  # Unused X parameter
+    "_y",  # Unused y parameter
+    "_X_*",  # Unused X variations
+    "_y_*",  # Unused y variations
+    "T",  # Time periods (standard time series notation)
+    "N",  # Number of variables/samples (standard statistical notation)
+    "R_*",  # Rademacher complexity (R_hat, R_low, R_high)
+    "R",  # Rademacher complexity
+    "R[0-9]*",  # Numbered R variations (R1, R2)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: allow pytestmark before imports, and CamelCase import aliases for tests
+"tests/*" = [
+    "E402",  # pytestmark before imports is common pytest pattern
+    "N817",  # Allow CamelCase imported as acronym in tests
+    "N814",  # Allow CamelCase imported as constant in tests
+    "B018",  # Allow useless expressions (kaleido availability checks)
+]
+
+# ty - High-performance type checker (Astral)
+# Run: uv run ty check src/
+[tool.ty.environment]
+python-version = "3.11"
+root = ["src"]
+
+[tool.ty.src]
+include = ["src"]
+exclude = ["tests", "examples"]
+
+[tool.ty.rules]
+# Start with default rules, adjust as needed
+# See: https://docs.astral.sh/ty/reference/rules/
+# Ignore rules that are too strict for our codebase
+invalid-assignment = "ignore"       # Optional import fallbacks to None
+unresolved-import = "ignore"        # Fallback imports (PyPDF2, etc.)
+deprecated = "ignore"               # datetime.utcnow deprecation
+unknown-argument = "ignore"         # Dynamic config patterns
+non-subscriptable = "ignore"        # Union return types
+invalid-argument-type = "ignore"    # Complex union types in function calls
+possibly-missing-attribute = "ignore"  # Optional library attributes (lgb.LGBMClassifier)
+
+[tool.coverage.run]
+source = ["src/ml4t/diagnostic"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    # Visualization modules - low-value testing (Plotly chart generation)
+    "*/visualization/*",
+    "*_plots.py",
+    "*_dashboard.py",
+    "*/dashboard.py",
+    "*/dashboards.py",
+    # Report rendering - template-heavy, low logic
+    "*/reporting/*",
+    "*/report_generation.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "pass",
+    "except ImportError:",
+    "@abstractmethod",
+]
+
+[tool.hypothesis]
+max_examples = 100  # Default; was 1000 (caused 50+ min test times!)
+deadline = 5000  # ms
+suppress_health_check = ["too_slow", "data_too_large"]
+
+# CI profile uses fewer examples for speed
+[tool.hypothesis.profiles.ci]
+max_examples = 50
+deadline = 10000

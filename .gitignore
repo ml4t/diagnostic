@@ -1,0 +1,135 @@
+
+*~
+*$py.class
+*.bak
+benchmark_results/
+.benchmarks/
+# Benchmarks
+build/
+# Byte-compiled / optimized / DLL files
+.cache
+# C extensions
+*.cover
+cover/
+.coverage
+.coverage.*
+coverage.xml
+*.csv
+cython_debug/
+# Cython debug symbols
+develop-eggs/
+dist/
+# Distribution / packaging
+.dmypy.json
+dmypy.json
+docs/api/generated/
+docs/_build/
+# Documentation
+downloads/
+.DS_Store
+*.egg
+*.egg-info/
+.eggs/
+eggs/
+.env
+env/
+ENV/
+env.bak/
+# Environments
+htmlcov/
+.hypothesis/
+# IDE
+.idea/
+.installed.cfg
+# Installer logs
+.ipynb_checkpoints
+# IPython
+ipython_config.py
+# Jupyter Notebook
+lib/
+lib64/
+*.manifest
+MANIFEST
+# mypy
+.mypy_cache/
+nosetests.xml
+.nox/
+# OS
+*.parquet
+parts/
+pip-delete-this-directory.txt
+pip-log.txt
+profile_default/
+# Project specific
+*.pyc
+__pycache__/
+*.py[cod]
+*.py,cover
+*.pyd
+# pyenv
+# PyInstaller
+*.pyo
+.pyre/
+# Pyre type checker
+.pytest_cache/
+.Python
+.python-version
+.pytype/
+# pytype static type analyzer
+reports/
+sdist/
+share/python-wheels/
+*.so
+*.spec
+*.swo
+*.swp
+# Temporary files
+!tests/data/*.csv
+!tests/data/*.parquet
+Thumbs.db
+*.tmp
+.tox/
+# Unit test / coverage reports
+var/
+.venv
+venv/
+venv.bak/
+.vscode/
+.wandb/
+wheels/
+*.xml
+
+# Generated example outputs
+examples/*.html
+examples/*.pdf
+example_reports/
+*.png
+
+# Generated data files (not tests/data which has exceptions)
+/data/
+
+# Temporary study directories
+.temp/
+.alphalens-study/
+
+# Reference PDFs and extracted text
+references/
+
+# Log files
+logs/
+
+# Generated reports
+qeval_reports/
+
+# Serena memories (auto-generated)
+.serena/
+
+# Archived files (backup copies)
+*.archived
+
+# Test output
+test_output.txt
+
+# Claude Code internals (not for distribution)
+.claude/
+CLAUDE.md
