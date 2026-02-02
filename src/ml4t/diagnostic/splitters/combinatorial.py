@@ -1,6 +1,6 @@
-"""Combinatorial Purged Cross-Validation for backtest overfitting detection.
+"""Combinatorial Cross-Validation for backtest overfitting detection.
 
-This module implements Combinatorial Purged Cross-Validation (CPCV), which generates
+This module implements Combinatorial Cross-Validation (CPCV), which generates
 multiple backtest paths by combining different groups of time-series data. This approach
 provides a distribution of performance metrics instead of a single path, enabling robust
 assessment of strategy viability and detection of backtest overfitting.
@@ -13,17 +13,24 @@ Key Concepts
     and generates all C(N,k) combinations of choosing k groups for testing. This creates
     a distribution of backtest results rather than a single path.
 
-**Purging**:
-    Removes training samples that temporally overlap with test samples within the label
-    horizon. Essential for preventing information leakage when labels are forward-looking
-    (e.g., future returns). Without purging, the model could train on samples that contain
-    information about test set labels.
+**Label Horizon (label_horizon)**:
+    How far ahead labels look into the future. Removes training samples whose prediction
+    targets overlap with test data.
 
-**Embargo**:
-    Creates a buffer period after each test group where training samples are removed.
-    Accounts for serial correlation in financial data and prevents training on samples
-    that are too close in time to the test set. Can be specified as absolute time
-    (embargo_size) or as a percentage of total samples (embargo_pct).
+    Example: If predicting 5-day forward returns, a training sample at day 45 has a label
+    computed from prices on days 45-50. If the test group spans days 48-60, this training
+    sample's label "sees" test data, creating leakage. Setting label_horizon=5 removes
+    training samples whose labels extend into any test group.
+
+**Embargo Buffer (embargo_size)**:
+    Buffer zone after test groups where training samples are also excluded. Unlike walk-forward
+    CV where training always precedes test, CPCV can have training groups that follow test
+    groups chronologically.
+
+    Example: When predicting volatility with test groups in the middle of the timeline,
+    training may include data from after the test period. If the test period has a volatility
+    spike, samples immediately after likely share similar volatility due to clustering.
+    An embargo of 5 bars excludes those autocorrelated samples from training.
 
 **Session Alignment**:
     Optionally aligns group boundaries to trading session boundaries rather than arbitrary
@@ -31,7 +38,7 @@ Key Concepts
     for intraday strategies.
 
 **Multi-Asset Isolation**:
-    When groups parameter is provided, CPCV applies purging per asset independently.
+    When groups parameter is provided, CPCV handles each asset independently.
     This prevents cross-asset information leakage and enables proper validation of
     multi-asset strategies.
 
@@ -40,7 +47,7 @@ Usage Example
 Basic usage with purging and embargo::
 
     import polars as pl
-    from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+    from ml4t.diagnostic.splitters import CombinatorialCV
 
     # Load your time-series data
     df = pl.read_parquet("features.parquet")
@@ -49,7 +56,7 @@ Basic usage with purging and embargo::
 
     # Configure CPCV with purging for 5-day forward labels
     # and 2-day embargo to account for autocorrelation
-    cv = CombinatorialPurgedCV(
+    cv = CombinatorialCV(
         n_groups=8,           # Split into 8 time groups
         n_test_groups=2,      # Use 2 groups for testing in each combination
         label_horizon=5,      # Labels look forward 5 samples
@@ -72,7 +79,7 @@ Multi-asset usage with per-asset purging::
     # For multi-asset strategies, provide asset IDs as groups
     assets = df["symbol"]  # e.g., ["AAPL", "MSFT", "GOOGL", ...]
 
-    cv = CombinatorialPurgedCV(
+    cv = CombinatorialCV(
         n_groups=6,
         n_test_groups=2,
         label_horizon=5,
@@ -93,7 +100,7 @@ Session-aligned usage for intraday strategies::
     df = pd.read_parquet("intraday_features.parquet")
     # df has columns: timestamp, session_date, feature1, feature2, ...
 
-    cv = CombinatorialPurgedCV(
+    cv = CombinatorialCV(
         n_groups=10,
         n_test_groups=2,
         label_horizon=pd.Timedelta(minutes=30),  # 30-minute forward labels
@@ -127,7 +134,7 @@ import polars as pl
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.splitters.base import BaseSplitter
-from ml4t.diagnostic.splitters.config import CombinatorialPurgedConfig
+from ml4t.diagnostic.splitters.config import CombinatorialConfig
 from ml4t.diagnostic.splitters.cpcv import (
     apply_multi_asset_purging,
     apply_single_asset_purging,
@@ -143,8 +150,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-class CombinatorialPurgedCV(BaseSplitter):
-    """Combinatorial Purged Cross-Validation for backtest overfitting detection.
+class CombinatorialCV(BaseSplitter):
+    """Combinatorial Cross-Validation for backtest overfitting detection.
 
     CPCV partitions the time series into N contiguous groups and forms all combinations
     C(N,k) of choosing k groups for testing. This generates multiple backtest paths
@@ -156,19 +163,19 @@ class CombinatorialPurgedCV(BaseSplitter):
 
     1. **Partitioning**: Divide time-series data into N contiguous groups of equal size
     2. **Combination Generation**: Generate all C(N,k) combinations of choosing k groups for testing
-    3. **Purging**: For each combination, remove training samples that overlap with test labels
-    4. **Embargo**: Optionally add buffer periods after test groups to account for autocorrelation
-    5. **Multi-Asset Handling**: When groups are provided, apply purging independently per asset
+    3. **Label Overlap Removal**: For each combination, remove training samples whose labels overlap test data
+    4. **Embargo Buffer**: Optionally add buffer periods after test groups to exclude autocorrelated samples
+    5. **Multi-Asset Handling**: When groups are provided, handle each asset independently
 
-    Purging Mechanics
-    -----------------
+    Label Horizon (label_horizon)
+    -----------------------------
 
-    **Why Purge?**
+    **Why needed?**
         When labels are forward-looking (e.g., 5-day returns), training samples near the test
-        set temporally overlap with test labels. Without purging, the model trains on information
-        about test outcomes, leading to inflated performance estimates.
+        set have labels that "see into" the test period. Without removing these, the model
+        trains on information about test outcomes, leading to inflated performance estimates.
 
-    **How Purging Works**:
+    **How it works**:
         For each test group with range [t_start, t_end]:
 
         1. Remove train samples where: ``t_train > t_start - label_horizon``
@@ -177,20 +184,20 @@ class CombinatorialPurgedCV(BaseSplitter):
     **Example**::
 
         Test group: samples 100-119 (20 samples)
-        Label horizon: 5 samples
-        Purging removes: training samples 95-99
-        Reason: Sample 95's label looks forward to sample 100 (first test sample)
+        label_horizon: 5 samples
+        Removes: training samples 95-99
+        Reason: Sample 95's label (computed from samples 95-100) overlaps test data
 
-    Embargo Mechanics
-    -----------------
+    Embargo Buffer (embargo_size)
+    -----------------------------
 
-    **Why Embargo?**
-        Financial data exhibits serial correlation - adjacent samples are not independent.
-        Even with purging, training on samples immediately before the test set can leak
-        information through autocorrelation.
+    **Why needed?**
+        Unlike walk-forward CV where training always precedes test, CPCV can have
+        training groups that follow test groups chronologically. Samples immediately
+        after test data may be autocorrelated with it.
 
-    **How Embargo Works**:
-        After purging, additionally remove a buffer of samples immediately after each test group:
+    **How it works**:
+        Remove training samples in a buffer zone after each test group:
 
         - **embargo_size**: Absolute number of samples (e.g., 10 samples)
         - **embargo_pct**: Percentage of total samples (e.g., 0.01 = 1%)
@@ -198,23 +205,24 @@ class CombinatorialPurgedCV(BaseSplitter):
     **Example**::
 
         Test group: samples 100-119
-        Embargo: 5 samples
+        embargo_size: 5 samples
         Additional removal: training samples 120-124
-        Result: Creates 5-sample buffer after test group
+        When this matters: If predicting volatility and the test period has a volatility
+        spike, samples 120-124 likely share similar volatility due to clustering.
 
-    Multi-Asset Purging
-    -------------------
+    Multi-Asset Handling
+    --------------------
 
-    When ``groups`` parameter is provided (e.g., asset symbols), CPCV applies purging
-    independently for each asset. This prevents cross-asset leakage:
+    When ``groups`` parameter is provided (e.g., asset symbols), CPCV handles
+    each asset independently. This prevents cross-asset leakage:
 
     **Process**:
         1. For each asset, find its training and test samples
-        2. Apply purging/embargo only to that asset's data
+        2. Apply label_horizon/embargo only to that asset's data
         3. Combine results across all assets
 
     **Why Important?**
-        Without per-asset purging, information could leak between assets that trade at
+        Without per-asset handling, information could leak between assets that trade at
         different times (e.g., European markets vs US markets).
 
     Based on Bailey et al. (2014) "The Probability of Backtest Overfitting" and
@@ -229,13 +237,15 @@ class CombinatorialPurgedCV(BaseSplitter):
         Number of groups to use for testing in each combination.
 
     label_horizon : int or pd.Timedelta, default=0
-        Forward-looking period of labels for purging calculation.
+        How far ahead labels look into the future. Removes training samples whose
+        prediction targets overlap with test data.
 
     embargo_size : int or pd.Timedelta, optional
-        Size of embargo period after each test group.
+        Buffer zone after test groups. Excludes autocorrelated training samples
+        that follow test data chronologically.
 
     embargo_pct : float, optional
-        Embargo size as percentage of total samples.
+        Embargo size as percentage of total samples (alternative to embargo_size).
 
     max_combinations : int, optional
         Maximum number of combinations to generate. If None, generates all C(N,k).
@@ -278,9 +288,9 @@ class CombinatorialPurgedCV(BaseSplitter):
     Examples:
     --------
     >>> import numpy as np
-    >>> from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+    >>> from ml4t.diagnostic.splitters import CombinatorialCV
     >>> X = np.arange(200).reshape(200, 1)
-    >>> cv = CombinatorialPurgedCV(n_groups=6, n_test_groups=2, label_horizon=5)
+    >>> cv = CombinatorialCV(n_groups=6, n_test_groups=2, label_horizon=5)
     >>> combinations = list(cv.split(X))
     >>> print(f"Generated {len(combinations)} combinations")
     Generated 15 combinations
@@ -305,7 +315,7 @@ class CombinatorialPurgedCV(BaseSplitter):
 
     def __init__(
         self,
-        config: CombinatorialPurgedConfig | None = None,
+        config: CombinatorialConfig | None = None,
         *,
         n_groups: int = 8,
         n_test_groups: int = 2,
@@ -319,11 +329,11 @@ class CombinatorialPurgedCV(BaseSplitter):
         timestamp_col: str | None = None,
         isolate_groups: bool = True,
     ) -> None:
-        """Initialize CombinatorialPurgedCV.
+        """Initialize CombinatorialCV.
 
         This splitter uses a config-first architecture. You can either:
-        1. Pass a config object: CombinatorialPurgedCV(config=my_config)
-        2. Pass individual parameters: CombinatorialPurgedCV(n_groups=8, n_test_groups=2)
+        1. Pass a config object: CombinatorialCV(config=my_config)
+        2. Pass individual parameters: CombinatorialCV(n_groups=8, n_test_groups=2)
 
         Parameters are automatically converted to a config object internally,
         ensuring a single source of truth for all validation and logic.
@@ -331,17 +341,17 @@ class CombinatorialPurgedCV(BaseSplitter):
         Examples
         --------
         >>> # Approach 1: Direct parameters (convenient)
-        >>> cv = CombinatorialPurgedCV(n_groups=10, n_test_groups=3)
+        >>> cv = CombinatorialCV(n_groups=10, n_test_groups=3)
         >>>
         >>> # Approach 2: Config object (for serialization/reproducibility)
-        >>> from ml4t.diagnostic.splitters.config import CombinatorialPurgedConfig
-        >>> config = CombinatorialPurgedConfig(n_groups=10, n_test_groups=3)
-        >>> cv = CombinatorialPurgedCV(config=config)
+        >>> from ml4t.diagnostic.splitters.config import CombinatorialConfig
+        >>> config = CombinatorialConfig(n_groups=10, n_test_groups=3)
+        >>> cv = CombinatorialCV(config=config)
         >>>
         >>> # Config can be serialized
         >>> config.to_json("cpcv_config.json")
-        >>> loaded = CombinatorialPurgedConfig.from_json("cpcv_config.json")
-        >>> cv = CombinatorialPurgedCV(config=loaded)
+        >>> loaded = CombinatorialConfig.from_json("cpcv_config.json")
+        >>> cv = CombinatorialCV(config=loaded)
         """
         # Config-first: either use provided config or create from params
         if config is not None:
@@ -465,9 +475,9 @@ class CombinatorialPurgedCV(BaseSplitter):
         session_col: str,
         timestamp_col: str | None,
         isolate_groups: bool,
-    ) -> CombinatorialPurgedConfig:
+    ) -> CombinatorialConfig:
         """Create config object from individual parameters."""
-        return CombinatorialPurgedConfig(
+        return CombinatorialConfig(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=label_horizon,
@@ -655,7 +665,7 @@ class CombinatorialPurgedCV(BaseSplitter):
         Basic usage with purging::
 
             >>> import polars as pl
-            >>> from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+            >>> from ml4t.diagnostic.splitters import CombinatorialCV
             >>>
             >>> # Create sample data
             >>> n = 1000
@@ -663,7 +673,7 @@ class CombinatorialPurgedCV(BaseSplitter):
             >>> y = pl.Series(range(n))
             >>>
             >>> # Configure CPCV
-            >>> cv = CombinatorialPurgedCV(
+            >>> cv = CombinatorialCV(
             ...     n_groups=8,
             ...     n_test_groups=2,
             ...     label_horizon=5,
@@ -683,7 +693,7 @@ class CombinatorialPurgedCV(BaseSplitter):
             >>> symbols = pl.Series(["AAPL"] * 250 + ["MSFT"] * 250 +
             ...                      ["GOOGL"] * 250 + ["AMZN"] * 250)
             >>>
-            >>> cv = CombinatorialPurgedCV(
+            >>> cv = CombinatorialCV(
             ...     n_groups=6,
             ...     n_test_groups=2,
             ...     label_horizon=5,
@@ -707,7 +717,7 @@ class CombinatorialPurgedCV(BaseSplitter):
             ...     "feature1": range(1000)
             ... })
             >>>
-            >>> cv = CombinatorialPurgedCV(
+            >>> cv = CombinatorialCV(
             ...     n_groups=10,
             ...     n_test_groups=2,
             ...     label_horizon=pd.Timedelta(minutes=30),
@@ -722,7 +732,7 @@ class CombinatorialPurgedCV(BaseSplitter):
 
         See Also
         --------
-        CombinatorialPurgedConfig : Configuration object for CPCV parameters
+        CombinatorialConfig : Configuration object for CPCV parameters
         apply_purging_and_embargo : Low-level purging/embargo function
         BaseSplitter : Base class for all splitters
         """

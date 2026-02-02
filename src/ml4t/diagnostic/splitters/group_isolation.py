@@ -19,7 +19,7 @@ or 'asset_id' from your DataFrame.
 Example::
 
     import polars as pl
-    from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+    from ml4t.diagnostic.splitters import WalkForwardCV
 
     # Data with asset identifiers
     df = pl.DataFrame({
@@ -29,7 +29,7 @@ Example::
     })
 
     # Cross-validate with group isolation
-    cv = PurgedWalkForwardCV(n_splits=5, isolate_groups=True)
+    cv = WalkForwardCV(n_splits=5, isolate_groups=True)
 
     for train_idx, test_idx in cv.split(df, groups=df['symbol']):
         # Groups in test_idx will NEVER appear in train_idx

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters import WalkForwardCV
 
 
 class TestFinancialDataPatterns:
@@ -60,7 +60,7 @@ class TestFinancialDataPatterns:
         y = df["label"]
 
         # Use walk-forward CV with 20-day label horizon
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=5,
             label_horizon=pd.Timedelta("20D"),
             embargo_size=pd.Timedelta("5D"),
@@ -146,7 +146,7 @@ class TestFinancialDataPatterns:
         y = df.select("label").to_series()
 
         # Walk-forward CV with 12-bar (1 hour) label horizon
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=12,  # 12 bars = 1 hour
             embargo_size=6,  # 30 minutes embargo
@@ -215,7 +215,7 @@ class TestFinancialDataPatterns:
         y = labeled_df["label"]
 
         # With hourly data and 24-hour horizon
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=pd.Timedelta("24H"),
             embargo_size=pd.Timedelta("6H"),
@@ -266,7 +266,7 @@ class TestFinancialDataPatterns:
             X = df[feature_cols]
             y = df[label_col]
 
-            cv = PurgedWalkForwardCV(
+            cv = WalkForwardCV(
                 n_splits=3,
                 label_horizon=pd.Timedelta(f"{horizon_days}D"),
                 embargo_size=pd.Timedelta("2D"),
@@ -314,7 +314,7 @@ class TestFinancialDataPatterns:
         X = labeled_df[["feature1", "feature2", "feature3"]]
         y = labeled_df["label"]
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=pd.Timedelta("24H"),  # 24-hour horizon
             test_size=0.3,
@@ -375,7 +375,7 @@ class TestFinancialDataPatterns:
         y = df["future_return"]
 
         # Realistic walk-forward setup
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=12,  # Monthly rebalancing
             label_horizon=pd.Timedelta("20D"),  # 20 trading days
             embargo_size=pd.Timedelta("5D"),  # 5 days embargo

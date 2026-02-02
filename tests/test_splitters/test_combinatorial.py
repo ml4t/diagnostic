@@ -1,4 +1,4 @@
-"""Tests for CombinatorialPurgedCV splitter."""
+"""Tests for CombinatorialCV splitter."""
 
 import math
 
@@ -8,16 +8,16 @@ import polars as pl
 import pytest
 from pydantic import ValidationError
 
-from ml4t.diagnostic.splitters.combinatorial import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters.combinatorial import CombinatorialCV
 
 
-class TestCombinatorialPurgedCV:
-    """Test suite for CombinatorialPurgedCV."""
+class TestCombinatorialCV:
+    """Test suite for CombinatorialCV."""
 
     def test_basic_combinatorial_split(self):
         """Test basic combinatorial splitting without purging/embargo."""
         X = np.arange(240).reshape(240, 1)  # 240 samples
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=6,
             n_test_groups=2,
             label_horizon=0,
@@ -47,7 +47,7 @@ class TestCombinatorialPurgedCV:
         """Test that groups are correctly partitioned."""
         n_samples = 120
         np.arange(n_samples).reshape(n_samples, 1)
-        cv = CombinatorialPurgedCV(n_groups=5, n_test_groups=1)
+        cv = CombinatorialCV(n_groups=5, n_test_groups=1)
 
         # Test group boundary creation
         boundaries = cv._create_group_boundaries(n_samples)
@@ -64,7 +64,7 @@ class TestCombinatorialPurgedCV:
     def test_group_size_distribution(self):
         """Test that groups have approximately equal sizes."""
         n_samples = 100
-        cv = CombinatorialPurgedCV(n_groups=7)
+        cv = CombinatorialCV(n_groups=7)
         boundaries = cv._create_group_boundaries(n_samples)
 
         group_sizes = [end - start for start, end in boundaries]
@@ -85,7 +85,7 @@ class TestCombinatorialPurgedCV:
         ]
 
         for n_groups, n_test_groups, expected in test_cases:
-            cv = CombinatorialPurgedCV(n_groups=n_groups, n_test_groups=n_test_groups)
+            cv = CombinatorialCV(n_groups=n_groups, n_test_groups=n_test_groups)
             assert cv.get_n_splits() == expected
 
             splits = list(cv.split(X))
@@ -94,7 +94,7 @@ class TestCombinatorialPurgedCV:
     def test_max_combinations_limit(self):
         """Test limiting the number of combinations."""
         X = np.arange(200).reshape(200, 1)
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=8,
             n_test_groups=3,
             max_combinations=10,
@@ -113,7 +113,7 @@ class TestCombinatorialPurgedCV:
         X = np.arange(n_samples).reshape(n_samples, 1)
         label_horizon = 10
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=5,
             n_test_groups=2,
             label_horizon=label_horizon,
@@ -137,7 +137,7 @@ class TestCombinatorialPurgedCV:
         X = np.arange(n_samples).reshape(n_samples, 1)
         embargo_size = 8
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=6,
             n_test_groups=2,
             embargo_size=embargo_size,
@@ -161,7 +161,7 @@ class TestCombinatorialPurgedCV:
         dates = pd.date_range("2020-01-01", periods=n_samples, freq="D", tz="UTC")
         X = pd.DataFrame({"feature": np.arange(n_samples)}, index=dates)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=4,
             n_test_groups=1,
             label_horizon=pd.Timedelta("10D"),
@@ -183,7 +183,7 @@ class TestCombinatorialPurgedCV:
     def test_with_polars_dataframe(self):
         """Test with Polars DataFrame."""
         X = pl.DataFrame({"feature": np.arange(150)})
-        cv = CombinatorialPurgedCV(n_groups=5, n_test_groups=2)
+        cv = CombinatorialCV(n_groups=5, n_test_groups=2)
 
         splits = list(cv.split(X))
         assert len(splits) == 10  # C(5,2) = 10
@@ -195,7 +195,7 @@ class TestCombinatorialPurgedCV:
     def test_insufficient_data_per_group(self):
         """Test error when insufficient data per group."""
         X = np.arange(5).reshape(5, 1)  # Only 5 samples
-        cv = CombinatorialPurgedCV(n_groups=8)  # Want 8 groups
+        cv = CombinatorialCV(n_groups=8)  # Want 8 groups
 
         with pytest.raises(ValueError, match="Not enough samples"):
             list(cv.split(X))
@@ -204,31 +204,31 @@ class TestCombinatorialPurgedCV:
         """Test validation of invalid parameters."""
         # n_test_groups >= n_groups - validated by Pydantic config
         with pytest.raises(ValidationError, match="cannot exceed"):
-            CombinatorialPurgedCV(n_groups=4, n_test_groups=4)
+            CombinatorialCV(n_groups=4, n_test_groups=4)
 
         # Both embargo specifications - validated by Pydantic config model_validator
         with pytest.raises(ValidationError, match="Cannot specify both"):
-            CombinatorialPurgedCV(embargo_size=5, embargo_pct=0.1)
+            CombinatorialCV(embargo_size=5, embargo_pct=0.1)
 
         # Invalid embargo percentage - validated by Pydantic config Field(lt=1.0)
         with pytest.raises(ValidationError, match="less than 1"):
-            CombinatorialPurgedCV(embargo_pct=1.2)
+            CombinatorialCV(embargo_pct=1.2)
 
         # Negative parameters - validated by Pydantic config
         with pytest.raises(ValidationError, match="greater than 1"):
-            CombinatorialPurgedCV(n_groups=-1)
+            CombinatorialCV(n_groups=-1)
 
     def test_reproducible_sampling(self):
         """Test that random sampling is reproducible."""
         X = np.arange(200).reshape(200, 1)
 
-        cv1 = CombinatorialPurgedCV(
+        cv1 = CombinatorialCV(
             n_groups=10,
             n_test_groups=3,
             max_combinations=5,
             random_state=42,
         )
-        cv2 = CombinatorialPurgedCV(
+        cv2 = CombinatorialCV(
             n_groups=10,
             n_test_groups=3,
             max_combinations=5,
@@ -248,7 +248,7 @@ class TestCombinatorialPurgedCV:
     def test_all_combinations_covered(self):
         """Test that all possible combinations are generated when max_combinations is None."""
         X = np.arange(100).reshape(100, 1)
-        cv = CombinatorialPurgedCV(n_groups=5, n_test_groups=2)
+        cv = CombinatorialCV(n_groups=5, n_test_groups=2)
 
         splits = list(cv.split(X))
         test_group_combinations = []
@@ -278,7 +278,7 @@ class TestCombinatorialPurgedCV:
     def test_edge_case_single_test_group(self):
         """Test with single test group (leave-one-group-out style)."""
         X = np.arange(80).reshape(80, 1)
-        cv = CombinatorialPurgedCV(n_groups=4, n_test_groups=1)
+        cv = CombinatorialCV(n_groups=4, n_test_groups=1)
 
         splits = list(cv.split(X))
         assert len(splits) == 4  # C(4,1) = 4
@@ -294,7 +294,7 @@ class TestCombinatorialPurgedCV:
         n_samples = 2000
         X = np.random.randn(n_samples, 5)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=8,
             n_test_groups=2,
             max_combinations=10,  # Limit combinations for speed
@@ -347,7 +347,7 @@ class TestCombinatorialPurgedCV:
     def test_empty_data_raises_error(self):
         """Test that empty data raises appropriate error."""
         X = np.array([]).reshape(0, 1)
-        cv = CombinatorialPurgedCV(n_groups=4, n_test_groups=1)
+        cv = CombinatorialCV(n_groups=4, n_test_groups=1)
 
         with pytest.raises(ValueError, match="Not enough samples"):
             list(cv.split(X))
@@ -358,21 +358,21 @@ class TestCombinatorialPurgedCV:
 
         # n_test_groups must be < n_groups
         with pytest.raises(ValidationError):
-            CombinatorialPurgedCV(n_groups=1, n_test_groups=1)
+            CombinatorialCV(n_groups=1, n_test_groups=1)
 
     def test_zero_samples_per_group_raises_error(self):
         """Test that insufficient samples per group raises error."""
         X = np.arange(3).reshape(3, 1)  # Only 3 samples
-        cv = CombinatorialPurgedCV(n_groups=10, n_test_groups=2)
+        cv = CombinatorialCV(n_groups=10, n_test_groups=2)
 
         with pytest.raises(ValueError, match="Not enough samples"):
             list(cv.split(X))
 
     def test_config_based_initialization(self):
-        """Test initialization using CombinatorialPurgedConfig."""
-        from ml4t.diagnostic.splitters.config import CombinatorialPurgedConfig
+        """Test initialization using CombinatorialConfig."""
+        from ml4t.diagnostic.splitters.config import CombinatorialConfig
 
-        config = CombinatorialPurgedConfig(
+        config = CombinatorialConfig(
             n_groups=6,
             n_test_groups=2,
             label_horizon=5,
@@ -380,7 +380,7 @@ class TestCombinatorialPurgedCV:
             max_combinations=10,
         )
 
-        cv = CombinatorialPurgedCV(config=config)
+        cv = CombinatorialCV(config=config)
 
         assert cv.config.n_groups == 6
         assert cv.config.n_test_groups == 2
@@ -394,13 +394,13 @@ class TestCombinatorialPurgedCV:
 
     def test_config_conflicts_raise_error(self):
         """Test that providing both config and params raises error."""
-        from ml4t.diagnostic.splitters.config import CombinatorialPurgedConfig
+        from ml4t.diagnostic.splitters.config import CombinatorialConfig
 
-        config = CombinatorialPurgedConfig(n_groups=5, n_test_groups=2)
+        config = CombinatorialConfig(n_groups=5, n_test_groups=2)
 
         # Should raise error if non-default params provided with config
         with pytest.raises(ValueError, match="Cannot specify both"):
-            CombinatorialPurgedCV(config=config, n_groups=6)
+            CombinatorialCV(config=config, n_groups=6)
 
     def test_session_aligned_splitting(self):
         """Test session-aligned splitting (multi-day strategies)."""
@@ -419,7 +419,7 @@ class TestCombinatorialPurgedCV:
             }
         )
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=4,
             n_test_groups=1,
             align_to_sessions=True,
@@ -459,7 +459,7 @@ class TestCombinatorialPurgedCV:
             }
         )
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=3,
             n_test_groups=1,
             align_to_sessions=True,
@@ -484,7 +484,7 @@ class TestCombinatorialPurgedCV:
         )
 
         # Only 30 unique sessions (hours), but want 50 groups
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=50,
             n_test_groups=5,
             align_to_sessions=True,
@@ -505,7 +505,7 @@ class TestCombinatorialPurgedCV:
         n_samples = 10000
         X = np.random.randn(n_samples, 10)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=8,
             n_test_groups=2,
             max_combinations=5,  # Limit for speed
@@ -539,7 +539,7 @@ class TestCombinatorialPurgedCV:
         X = pd.DataFrame(data_rows, index=dates)
 
         # Apply realistic CPCV setup
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=6,
             n_test_groups=2,
             label_horizon=pd.Timedelta("5D"),  # 5-day prediction horizon
@@ -567,7 +567,7 @@ class TestCombinatorialPurgedCV:
         """Test embargo_pct (percentage-based embargo) parameter."""
         X = np.arange(400).reshape(400, 1)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=5,
             n_test_groups=2,
             embargo_pct=0.05,  # 5% embargo
@@ -778,7 +778,7 @@ class TestSessionAlignmentRegressions:
         X = pd.DataFrame(data)
         # Total: 4 sessions * 6 rows = 24 rows
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=2,
             n_test_groups=1,
             align_to_sessions=True,
@@ -835,7 +835,7 @@ class TestSessionAlignmentRegressions:
 
         X = pl.DataFrame(data)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=2,
             n_test_groups=1,
             align_to_sessions=True,
@@ -878,7 +878,7 @@ class TestCPCVInvariants:
         X = pd.DataFrame({"feature": np.arange(n_samples)})
         X["timestamp"] = pd.date_range("2020-01-01", periods=n_samples, freq="D", tz="UTC")
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=label_horizon,
@@ -932,7 +932,7 @@ class TestCPCVInvariants:
         # Each asset appears in 10 consecutive rows (asset_0 in 0-9, asset_1 in 10-19, etc.)
         groups = np.array([f"asset_{i // 10}" for i in range(n_samples)])
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=5,
             n_test_groups=2,
             label_horizon=1,
@@ -959,13 +959,13 @@ class TestCPCVInvariants:
         """Test that max_combinations with random_state produces stable sequence."""
         X = np.arange(200).reshape(200, 1)
 
-        cv1 = CombinatorialPurgedCV(
+        cv1 = CombinatorialCV(
             n_groups=8,
             n_test_groups=3,
             max_combinations=10,
             random_state=42,
         )
-        cv2 = CombinatorialPurgedCV(
+        cv2 = CombinatorialCV(
             n_groups=8,
             n_test_groups=3,
             max_combinations=10,
@@ -985,13 +985,13 @@ class TestCPCVInvariants:
         """Test that different random_state produces different splits."""
         X = np.arange(200).reshape(200, 1)
 
-        cv1 = CombinatorialPurgedCV(
+        cv1 = CombinatorialCV(
             n_groups=8,
             n_test_groups=3,
             max_combinations=10,
             random_state=42,
         )
-        cv2 = CombinatorialPurgedCV(
+        cv2 = CombinatorialCV(
             n_groups=8,
             n_test_groups=3,
             max_combinations=10,
@@ -1019,7 +1019,7 @@ class TestCPCVInvariants:
             }
         )
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=5,
             n_test_groups=2,
             label_horizon=2,
@@ -1063,7 +1063,7 @@ class TestCPCVInvariants:
 
         X = pd.DataFrame(data)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=2,  # 2 sessions per group
             n_test_groups=1,
             align_to_sessions=True,
@@ -1099,20 +1099,20 @@ class TestCPCVInvariants:
         Previously, random_state was not part of config, so users who used config
         could not control sampling reproducibility. This test verifies the fix.
         """
-        from ml4t.diagnostic.splitters.config import CombinatorialPurgedConfig
+        from ml4t.diagnostic.splitters.config import CombinatorialConfig
 
         X = np.arange(200).reshape(200, 1)
 
         # Create config with random_state
-        config = CombinatorialPurgedConfig(
+        config = CombinatorialConfig(
             n_groups=8,
             n_test_groups=3,
             max_combinations=10,
             random_state=42,  # This should now work
         )
 
-        cv1 = CombinatorialPurgedCV(config=config)
-        cv2 = CombinatorialPurgedCV(config=config)
+        cv1 = CombinatorialCV(config=config)
+        cv2 = CombinatorialCV(config=config)
 
         splits1 = list(cv1.split(X))
         splits2 = list(cv2.split(X))
@@ -1125,9 +1125,9 @@ class TestCPCVInvariants:
 
     def test_random_state_param_overrides_config(self):
         """Test that random_state parameter overrides config.random_state."""
-        from ml4t.diagnostic.splitters.config import CombinatorialPurgedConfig
+        from ml4t.diagnostic.splitters.config import CombinatorialConfig
 
-        config = CombinatorialPurgedConfig(
+        config = CombinatorialConfig(
             n_groups=8,
             n_test_groups=3,
             max_combinations=10,
@@ -1135,7 +1135,7 @@ class TestCPCVInvariants:
         )
 
         # Parameter should override config
-        cv = CombinatorialPurgedCV(config=config, random_state=123)
+        cv = CombinatorialCV(config=config, random_state=123)
         assert cv.random_state == 123
 
     def test_heterogeneous_type_defaults(self):
@@ -1144,17 +1144,17 @@ class TestCPCVInvariants:
         Issue 2.5: pd.Timedelta(0) should be treated as equivalent to 0 for
         label_horizon, and np.int64(0) should equal 0.
         """
-        from ml4t.diagnostic.splitters.config import CombinatorialPurgedConfig
+        from ml4t.diagnostic.splitters.config import CombinatorialConfig
 
-        config = CombinatorialPurgedConfig(n_groups=5, n_test_groups=2)
+        config = CombinatorialConfig(n_groups=5, n_test_groups=2)
 
         # These should NOT raise - they're semantically equivalent to defaults
-        cv1 = CombinatorialPurgedCV(config=config, label_horizon=pd.Timedelta(0))
+        cv1 = CombinatorialCV(config=config, label_horizon=pd.Timedelta(0))
         assert cv1.label_horizon == 0  # Config value
 
-        cv2 = CombinatorialPurgedCV(config=config, label_horizon=np.int64(0))
+        cv2 = CombinatorialCV(config=config, label_horizon=np.int64(0))
         assert cv2.label_horizon == 0  # Config value
 
         # Verify that non-zero values still trigger conflict
         with pytest.raises(ValueError, match="Cannot specify both 'config'"):
-            CombinatorialPurgedCV(config=config, label_horizon=5)
+            CombinatorialCV(config=config, label_horizon=5)

@@ -1,4 +1,4 @@
-"""Correctness tests for PurgedWalkForwardCV splitter.
+"""Correctness tests for WalkForwardCV splitter.
 
 These tests verify mathematical correctness of walk-forward splitting,
 particularly around purging, embargo, and session alignment.
@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml4t.diagnostic.splitters.config import PurgedWalkForwardConfig
-from ml4t.diagnostic.splitters.walk_forward import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters.config import WalkForwardConfig
+from ml4t.diagnostic.splitters.walk_forward import WalkForwardCV
 
 
 class TestWalkForwardInvariants:
@@ -28,7 +28,7 @@ class TestWalkForwardInvariants:
         X = np.arange(200).reshape(200, 1)
 
         for n_splits in [2, 3, 5, 10]:
-            cv = PurgedWalkForwardCV(n_splits=n_splits, label_horizon=5)
+            cv = WalkForwardCV(n_splits=n_splits, label_horizon=5)
 
             for train_idx, test_idx in cv.split(X):
                 max_train = np.max(train_idx)
@@ -42,7 +42,7 @@ class TestWalkForwardInvariants:
     def test_test_sets_are_contiguous(self):
         """Test sets should be contiguous blocks of indices."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=5)
+        cv = WalkForwardCV(n_splits=5)
 
         for _train_idx, test_idx in cv.split(X):
             # Sorted test indices should form a contiguous range
@@ -56,7 +56,7 @@ class TestWalkForwardInvariants:
 
         for n_splits in [3, 5]:
             for embargo_size in [0, 5]:
-                cv = PurgedWalkForwardCV(
+                cv = WalkForwardCV(
                     n_splits=n_splits, label_horizon=3, embargo_size=embargo_size
                 )
 
@@ -72,7 +72,7 @@ class TestWalkForwardInvariants:
         """All samples should appear in at least one test set (combined)."""
         n_samples = 100
         X = np.arange(n_samples).reshape(n_samples, 1)
-        cv = PurgedWalkForwardCV(n_splits=5, consecutive=True)
+        cv = WalkForwardCV(n_splits=5, consecutive=True)
 
         all_test_indices = set()
         for _train_idx, test_idx in cv.split(X):
@@ -93,7 +93,7 @@ class TestPurgingCorrectness:
         X = np.arange(n_samples).reshape(n_samples, 1)
         label_horizon = 10
 
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=label_horizon)
+        cv = WalkForwardCV(n_splits=3, label_horizon=label_horizon)
 
         for train_idx, test_idx in cv.split(X):
             test_start = np.min(test_idx)
@@ -111,7 +111,7 @@ class TestPurgingCorrectness:
         X = np.arange(n_samples).reshape(n_samples, 1)
         label_horizon = 5
 
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=label_horizon, expanding=True)
+        cv = WalkForwardCV(n_splits=3, label_horizon=label_horizon, expanding=True)
 
         for train_idx, test_idx in cv.split(X):
             test_start = np.min(test_idx)
@@ -135,7 +135,7 @@ class TestEmbargoCorrectness:
         X = np.arange(n_samples).reshape(n_samples, 1)
         embargo_size = 10
 
-        cv = PurgedWalkForwardCV(n_splits=3, embargo_size=embargo_size)
+        cv = WalkForwardCV(n_splits=3, embargo_size=embargo_size)
         splits = list(cv.split(X))
 
         # For each split, check that the following split's train doesn't
@@ -156,7 +156,7 @@ class TestEmbargoCorrectness:
         X = np.arange(n_samples).reshape(n_samples, 1)
         embargo_pct = 0.05  # 5% = 5 samples
 
-        cv = PurgedWalkForwardCV(n_splits=3, embargo_pct=embargo_pct)
+        cv = WalkForwardCV(n_splits=3, embargo_pct=embargo_pct)
 
         # Just verify it runs without error
         splits = list(cv.split(X))
@@ -171,7 +171,7 @@ class TestExpandingVsRolling:
         n_samples = 100
         X = np.arange(n_samples).reshape(n_samples, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=5, expanding=True)
+        cv = WalkForwardCV(n_splits=5, expanding=True)
 
         train_sizes = []
         for train_idx, _ in cv.split(X):
@@ -190,7 +190,7 @@ class TestExpandingVsRolling:
         X = np.arange(n_samples).reshape(n_samples, 1)
         train_size = 50
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             expanding=False,
             train_size=train_size,
@@ -219,7 +219,7 @@ class TestConsecutiveVsDistributed:
         n_samples = 100
         X = np.arange(n_samples).reshape(n_samples, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=4, consecutive=True)
+        cv = WalkForwardCV(n_splits=4, consecutive=True)
         splits = list(cv.split(X))
 
         # Check that test periods are back-to-back
@@ -241,7 +241,7 @@ class TestConsecutiveVsDistributed:
         n_samples = 200
         X = np.arange(n_samples).reshape(n_samples, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=3, consecutive=False)
+        cv = WalkForwardCV(n_splits=3, consecutive=False)
 
         # Just verify it runs
         splits = list(cv.split(X))
@@ -253,13 +253,13 @@ class TestConfigHandling:
 
     def test_config_object_usage(self):
         """Test creating splitter with config object."""
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             n_splits=5,
             test_size=20,
             label_horizon=5,
         )
 
-        cv = PurgedWalkForwardCV(config=config)
+        cv = WalkForwardCV(config=config)
 
         X = np.arange(200).reshape(200, 1)
         splits = list(cv.split(X))
@@ -268,13 +268,13 @@ class TestConfigHandling:
 
     def test_config_and_params_error(self):
         """Should error if both config and conflicting params are passed."""
-        config = PurgedWalkForwardConfig(n_splits=5)
+        config = WalkForwardConfig(n_splits=5)
 
         # This should raise an error or warning when conflicting params passed
         # Note: The actual behavior may be to ignore params when config is passed
         # or to raise an error - test reflects actual implementation
         try:
-            cv = PurgedWalkForwardCV(config=config, n_splits=10)
+            cv = WalkForwardCV(config=config, n_splits=10)
             # If no error, the config should take precedence
             assert cv.get_n_splits() == 5
         except (ValueError, TypeError):
@@ -286,7 +286,7 @@ class TestConfigHandling:
         n_samples = 100
         X = np.arange(n_samples).reshape(n_samples, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=3, test_size=0.2)
+        cv = WalkForwardCV(n_splits=3, test_size=0.2)
 
         for _train_idx, test_idx in cv.split(X):
             # Test size should be approximately 20% of dataset
@@ -302,7 +302,7 @@ class TestEdgeCases:
         """Test with small dataset (minimum viable)."""
         X = np.arange(20).reshape(20, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=2, label_horizon=2)
+        cv = WalkForwardCV(n_splits=2, label_horizon=2)
         splits = list(cv.split(X))
 
         assert len(splits) == 2
@@ -314,7 +314,7 @@ class TestEdgeCases:
         """Test with single split."""
         X = np.arange(100).reshape(100, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=1)
+        cv = WalkForwardCV(n_splits=1)
         splits = list(cv.split(X))
 
         assert len(splits) == 1
@@ -323,7 +323,7 @@ class TestEdgeCases:
         """Test without purging or embargo."""
         X = np.arange(100).reshape(100, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0, embargo_pct=None)
+        cv = WalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0, embargo_pct=None)
 
         splits = list(cv.split(X))
         assert len(splits) == 3
@@ -332,7 +332,7 @@ class TestEdgeCases:
         """Test when label_horizon is large relative to data."""
         X = np.arange(50).reshape(50, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=2, label_horizon=20)
+        cv = WalkForwardCV(n_splits=2, label_horizon=20)
 
         # Should still work, but train sets will be small
         splits = list(cv.split(X))
@@ -351,7 +351,7 @@ class TestWithDataFrameInput:
             }
         )
 
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
         splits = list(cv.split(df))
 
         assert len(splits) == 3
@@ -367,7 +367,7 @@ class TestWithDataFrameInput:
             index=dates,
         )
 
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
         splits = list(cv.split(df))
 
         assert len(splits) == 3
@@ -379,7 +379,7 @@ class TestNSplitsProperty:
     def test_get_n_splits_returns_correct_count(self):
         """get_n_splits should return configured number."""
         for n in [2, 3, 5, 10]:
-            cv = PurgedWalkForwardCV(n_splits=n)
+            cv = WalkForwardCV(n_splits=n)
             assert cv.get_n_splits() == n
 
     def test_actual_splits_match_n_splits(self):
@@ -387,7 +387,7 @@ class TestNSplitsProperty:
         X = np.arange(100).reshape(100, 1)
 
         for n in [2, 3, 5]:
-            cv = PurgedWalkForwardCV(n_splits=n)
+            cv = WalkForwardCV(n_splits=n)
             splits = list(cv.split(X))
             assert len(splits) == cv.get_n_splits() == n
 
@@ -399,8 +399,8 @@ class TestReproducibility:
         """Same configuration should give identical splits."""
         X = np.arange(100).reshape(100, 1)
 
-        cv1 = PurgedWalkForwardCV(n_splits=3, label_horizon=5)
-        cv2 = PurgedWalkForwardCV(n_splits=3, label_horizon=5)
+        cv1 = WalkForwardCV(n_splits=3, label_horizon=5)
+        cv2 = WalkForwardCV(n_splits=3, label_horizon=5)
 
         splits1 = list(cv1.split(X))
         splits2 = list(cv2.split(X))

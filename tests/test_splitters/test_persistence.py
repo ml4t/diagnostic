@@ -8,9 +8,9 @@ import pandas as pd
 import pytest
 
 from ml4t.diagnostic.splitters import (
-    CombinatorialPurgedCV,
-    PurgedWalkForwardConfig,
-    PurgedWalkForwardCV,
+    CombinatorialCV,
+    WalkForwardConfig,
+    WalkForwardCV,
     load_config,
     load_folds,
     save_config,
@@ -25,7 +25,7 @@ class TestSaveFolds:
     def test_save_folds_basic(self):
         """Test basic fold saving with numpy array."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
+        cv = WalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
         folds = list(cv.split(X))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -38,11 +38,11 @@ class TestSaveFolds:
     def test_save_folds_with_metadata(self):
         """Test saving folds with metadata."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
         folds = list(cv.split(X))
 
         metadata = {
-            "splitter": "PurgedWalkForwardCV",
+            "splitter": "WalkForwardCV",
             "n_splits": 3,
             "dataset": "test_data",
         }
@@ -60,7 +60,7 @@ class TestSaveFolds:
         dates = pd.date_range("2020-01-01", periods=100, freq="D", tz="UTC")
         X = pd.DataFrame({"feature": np.arange(100)}, index=dates)
 
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
         folds = list(cv.split(X))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -83,7 +83,7 @@ class TestSaveFolds:
         dates = pd.date_range("2020-01-01", periods=100, freq="D", tz="UTC")
         X = pd.DataFrame({"feature": np.arange(100)}, index=dates)
 
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
         folds = list(cv.split(X))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -101,7 +101,7 @@ class TestSaveFolds:
     def test_save_folds_creates_directory(self):
         """Test that save_folds creates parent directories if needed."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
         folds = list(cv.split(X))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -117,7 +117,7 @@ class TestLoadFolds:
     def test_load_folds_basic(self):
         """Test basic fold loading."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
+        cv = WalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
         original_folds = list(cv.split(X))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,7 +137,7 @@ class TestLoadFolds:
     def test_load_folds_with_metadata(self):
         """Test loading folds preserves metadata."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
         folds = list(cv.split(X))
 
         metadata = {"splitter": "test", "version": "1.0"}
@@ -176,7 +176,7 @@ class TestSaveLoadConfig:
 
     def test_save_load_config_walk_forward(self):
         """Test saving and loading walk-forward config."""
-        original = PurgedWalkForwardConfig(
+        original = WalkForwardConfig(
             n_splits=5,
             test_size=100,
             label_horizon=5,
@@ -188,7 +188,7 @@ class TestSaveLoadConfig:
             filepath = Path(tmpdir) / "config.json"
             save_config(original, filepath)
 
-            loaded = load_config(filepath, PurgedWalkForwardConfig)
+            loaded = load_config(filepath, WalkForwardConfig)
 
             assert loaded.n_splits == original.n_splits
             assert loaded.test_size == original.test_size
@@ -203,7 +203,7 @@ class TestVerifyFolds:
     def test_verify_folds_valid(self):
         """Test verification of valid folds."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
+        cv = WalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
         folds = list(cv.split(X))
 
         stats = verify_folds(folds, n_samples=100)
@@ -217,7 +217,7 @@ class TestVerifyFolds:
     def test_verify_folds_statistics(self):
         """Test that verification computes correct statistics."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
+        cv = WalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
         folds = list(cv.split(X))
 
         stats = verify_folds(folds, n_samples=100)
@@ -259,7 +259,7 @@ class TestVerifyFolds:
     def test_verify_folds_coverage(self):
         """Test coverage computation."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=5, label_horizon=0, embargo_size=0)
+        cv = WalkForwardCV(n_splits=5, label_horizon=0, embargo_size=0)
         folds = list(cv.split(X))
 
         stats = verify_folds(folds, n_samples=100)
@@ -279,7 +279,7 @@ class TestIntegration:
         dates = pd.date_range("2020-01-01", periods=100, freq="D", tz="UTC")
         X = pd.DataFrame({"feature": np.arange(100)}, index=dates)
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=5,
             test_size=10,
             label_horizon=pd.Timedelta("2D"),
@@ -309,9 +309,9 @@ class TestIntegration:
             assert stats["valid"] is True
 
     def test_save_load_combinatorial_workflow(self):
-        """Test workflow with CombinatorialPurgedCV."""
+        """Test workflow with CombinatorialCV."""
         X = np.arange(200).reshape(200, 1)
-        cv = CombinatorialPurgedCV(n_groups=5, n_test_groups=2, label_horizon=5, embargo_size=3)
+        cv = CombinatorialCV(n_groups=5, n_test_groups=2, label_horizon=5, embargo_size=3)
 
         original_folds = list(cv.split(X))
 
@@ -337,14 +337,14 @@ class TestIntegration:
         X = np.arange(100).reshape(100, 1)
 
         # Create and save config
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             n_splits=5,
             test_size=15,
             label_horizon=3,
             embargo_td=2,
         )
 
-        cv = PurgedWalkForwardCV(config=config)
+        cv = WalkForwardCV(config=config)
         folds = list(cv.split(X))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -356,11 +356,11 @@ class TestIntegration:
             save_folds(folds, X, folds_path)
 
             # Load both
-            loaded_config = load_config(config_path, PurgedWalkForwardConfig)
+            loaded_config = load_config(config_path, WalkForwardConfig)
             loaded_folds, _ = load_folds(folds_path)
 
             # Recreate splitter with loaded config
-            cv_recreated = PurgedWalkForwardCV(config=loaded_config)
+            cv_recreated = WalkForwardCV(config=loaded_config)
 
             # Verify parameters match
             assert cv_recreated.n_splits == cv.n_splits

@@ -58,9 +58,9 @@ class BaseSplitter(ABC):
 
     Then use with ml4t-diagnostic splitters::
 
-        from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+        from ml4t.diagnostic.splitters import WalkForwardCV
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=5,
             align_to_sessions=True,  # Align folds to session boundaries
             session_col='session_date'

@@ -1,10 +1,10 @@
-"""Tests for multi-asset purging functionality in CombinatorialPurgedCV."""
+"""Tests for multi-asset purging functionality in CombinatorialCV."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from ml4t.diagnostic.splitters.combinatorial import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters.combinatorial import CombinatorialCV
 
 
 class TestMultiAssetPurging:
@@ -42,7 +42,7 @@ class TestMultiAssetPurging:
         groups = np.array(groups)[X.index.argsort()]  # Sort to match sorted index
 
         # Create CPCV with multi-asset groups
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=6,
             n_test_groups=2,
@@ -101,7 +101,7 @@ class TestMultiAssetPurging:
         # Create groups where some assets may not appear in test sets
         groups = np.array([0] * 30 + [1] * 30 + [2] * 30)  # 3 assets, 30 samples each
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=6,  # This may result in some groups having single asset
             n_test_groups=1,
@@ -132,7 +132,7 @@ class TestMultiAssetPurging:
         X = np.random.randn(100, 3)
         y = np.random.randn(100)
 
-        cv = CombinatorialPurgedCV(isolate_groups=False, n_groups=4, n_test_groups=1)
+        cv = CombinatorialCV(isolate_groups=False, n_groups=4, n_test_groups=1)
 
         # Groups with wrong length should raise error
         wrong_groups = np.array([0, 1, 2])  # Only 3 elements for 100 samples
@@ -145,7 +145,7 @@ class TestMultiAssetPurging:
         X = np.random.randn(100, 3)
         y = np.random.randn(100)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=4,
             n_test_groups=1,
@@ -219,7 +219,7 @@ class TestMultiAssetPurging:
         groups = np.array(groups_list)[all_data.index.argsort()]
 
         # Test with realistic CPCV parameters
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=8,
             n_test_groups=2,

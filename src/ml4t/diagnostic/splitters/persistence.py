@@ -6,11 +6,11 @@ split computations (especially for CPCV with many combinations).
 
 Examples
 --------
->>> from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+>>> from ml4t.diagnostic.splitters import WalkForwardCV
 >>> from ml4t.diagnostic.splitters.persistence import save_folds, load_folds
 >>>
 >>> # Save fold configuration
->>> cv = PurgedWalkForwardCV(n_splits=5, test_size=100)
+>>> cv = WalkForwardCV(n_splits=5, test_size=100)
 >>> folds = list(cv.split(X))
 >>> save_folds(folds, X, "my_folds.json", metadata={"strategy": "walk_forward"})
 >>>
@@ -61,8 +61,8 @@ def save_folds(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.splitters import PurgedWalkForwardCV
-    >>> cv = PurgedWalkForwardCV(n_splits=5, test_size=100)
+    >>> from ml4t.diagnostic.splitters import WalkForwardCV
+    >>> cv = WalkForwardCV(n_splits=5, test_size=100)
     >>> folds = list(cv.split(X))
     >>> save_folds(folds, X, "cv_folds.json", metadata={"n_splits": 5})
     """
@@ -189,8 +189,8 @@ def save_config(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.splitters.config import PurgedWalkForwardConfig
-    >>> config = PurgedWalkForwardConfig(n_splits=5, test_size=100)
+    >>> from ml4t.diagnostic.splitters.config import WalkForwardConfig
+    >>> config = WalkForwardConfig(n_splits=5, test_size=100)
     >>> save_config(config, "cv_config.json")
     """
     filepath = Path(filepath)
@@ -211,7 +211,7 @@ def load_config(
     filepath : str or Path
         Path to saved configuration (JSON format).
     config_class : type
-        Configuration class to instantiate (e.g., PurgedWalkForwardConfig).
+        Configuration class to instantiate (e.g., WalkForwardConfig).
 
     Returns
     -------
@@ -220,8 +220,8 @@ def load_config(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.splitters.config import PurgedWalkForwardConfig
-    >>> config = load_config("cv_config.json", PurgedWalkForwardConfig)
+    >>> from ml4t.diagnostic.splitters.config import WalkForwardConfig
+    >>> config = load_config("cv_config.json", WalkForwardConfig)
     >>> print(config.n_splits)
     """
     filepath = Path(filepath)

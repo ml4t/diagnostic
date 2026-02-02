@@ -22,7 +22,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis import (
     sortino_ratio,
 )
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio_from_statistics
-from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters import CombinatorialCV
 
 
 def compute_psr(
@@ -465,7 +465,7 @@ class TestCrossValidationProperties:
         y = np.random.randn(n)
         times = np.arange(n)
 
-        cv = CombinatorialPurgedCV(n_groups=8, n_test_groups=2)
+        cv = CombinatorialCV(n_groups=8, n_test_groups=2)
 
         for train_idx, test_idx in cv.split(X, y, times):
             train_set = set(train_idx)
@@ -484,7 +484,7 @@ class TestCrossValidationProperties:
         y = np.random.randn(n)
         times = np.arange(n)
 
-        cv = CombinatorialPurgedCV(n_groups=8, n_test_groups=2)
+        cv = CombinatorialCV(n_groups=8, n_test_groups=2)
 
         for train_idx, test_idx in cv.split(X, y, times):
             all_indices = np.concatenate([train_idx, test_idx])
@@ -500,7 +500,7 @@ class TestCrossValidationProperties:
         times = np.arange(n)
 
         # Large purge to make gap obvious
-        cv = CombinatorialPurgedCV(n_groups=8, n_test_groups=2, embargo_pct=0.05)
+        cv = CombinatorialCV(n_groups=8, n_test_groups=2, embargo_pct=0.05)
 
         for train_idx, test_idx in cv.split(X, y, times):
             train_max = train_idx.max()

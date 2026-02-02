@@ -34,8 +34,8 @@ Complete API documentation for ML4T Diagnostic.
     options:
       show_root_heading: true
       members:
-        - CombinatorialPurgedCV
-        - PurgedWalkForwardCV
+        - CombinatorialCV
+        - WalkForwardCV
         - CalendarSplitter
         - GroupIsolationSplitter
 

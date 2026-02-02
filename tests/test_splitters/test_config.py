@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from ml4t.diagnostic.splitters.config import (
-    CombinatorialPurgedConfig,
-    PurgedWalkForwardConfig,
+    CombinatorialConfig,
+    WalkForwardConfig,
     SplitterConfig,
 )
 
@@ -124,12 +124,12 @@ class TestSplitterConfig:
             temp_path.unlink()
 
 
-class TestPurgedWalkForwardConfig:
-    """Tests for PurgedWalkForwardConfig class."""
+class TestWalkForwardConfig:
+    """Tests for WalkForwardConfig class."""
 
     def test_default_values(self):
         """Test that default values are set correctly."""
-        config = PurgedWalkForwardConfig()
+        config = WalkForwardConfig()
 
         assert config.n_splits == 5
         assert config.test_size is None
@@ -139,7 +139,7 @@ class TestPurgedWalkForwardConfig:
 
     def test_custom_values(self):
         """Test creating config with custom values."""
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             n_splits=10,
             test_size=100,
             train_size=500,
@@ -158,10 +158,10 @@ class TestPurgedWalkForwardConfig:
     def test_step_size_validation(self):
         """Test that step_size must be positive when specified."""
         with pytest.raises(ValueError, match="greater than or equal to 1"):
-            PurgedWalkForwardConfig(step_size=0)
+            WalkForwardConfig(step_size=0)
 
         with pytest.raises(ValueError, match="greater than or equal to 1"):
-            PurgedWalkForwardConfig(step_size=-1)
+            WalkForwardConfig(step_size=-1)
 
     def test_time_based_size_with_sessions_validation(self):
         """Test that time-based sizes are rejected with session alignment."""
@@ -169,7 +169,7 @@ class TestPurgedWalkForwardConfig:
             ValueError,
             match="align_to_sessions=True does not support time-based size",
         ):
-            PurgedWalkForwardConfig(
+            WalkForwardConfig(
                 align_to_sessions=True,
                 test_size="4W",  # Time-based not allowed
             )
@@ -178,14 +178,14 @@ class TestPurgedWalkForwardConfig:
             ValueError,
             match="align_to_sessions=True does not support time-based size",
         ):
-            PurgedWalkForwardConfig(
+            WalkForwardConfig(
                 align_to_sessions=True,
                 train_size="12W",  # Time-based not allowed
             )
 
     def test_time_based_size_without_sessions_allowed(self):
         """Test that time-based sizes are allowed without session alignment."""
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             align_to_sessions=False,
             test_size="4W",
             train_size="12W",
@@ -196,7 +196,7 @@ class TestPurgedWalkForwardConfig:
 
     def test_int_size_with_sessions_allowed(self):
         """Test that integer sizes work with session alignment."""
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             align_to_sessions=True,
             test_size=5,  # 5 sessions
             train_size=20,  # 20 sessions
@@ -207,7 +207,7 @@ class TestPurgedWalkForwardConfig:
 
     def test_float_size_with_sessions_allowed(self):
         """Test that float proportions work with session alignment."""
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             align_to_sessions=True,
             test_size=0.2,  # 20% of sessions
             train_size=0.5,  # 50% of sessions
@@ -218,7 +218,7 @@ class TestPurgedWalkForwardConfig:
 
     def test_json_round_trip(self):
         """Test JSON serialization with walk-forward specific fields."""
-        original = PurgedWalkForwardConfig(
+        original = WalkForwardConfig(
             n_splits=5,
             test_size=100,
             train_size=500,
@@ -234,7 +234,7 @@ class TestPurgedWalkForwardConfig:
 
         try:
             original.to_json(temp_path)
-            loaded = PurgedWalkForwardConfig.from_json(temp_path)
+            loaded = WalkForwardConfig.from_json(temp_path)
 
             assert loaded.n_splits == original.n_splits
             assert loaded.test_size == original.test_size
@@ -248,12 +248,12 @@ class TestPurgedWalkForwardConfig:
             temp_path.unlink()
 
 
-class TestCombinatorialPurgedConfig:
-    """Tests for CombinatorialPurgedConfig class."""
+class TestCombinatorialConfig:
+    """Tests for CombinatorialConfig class."""
 
     def test_default_values(self):
         """Test that default values are set correctly."""
-        config = CombinatorialPurgedConfig()
+        config = CombinatorialConfig()
 
         assert config.n_groups == 8
         assert config.n_test_groups == 2
@@ -263,7 +263,7 @@ class TestCombinatorialPurgedConfig:
 
     def test_custom_values(self):
         """Test creating config with custom values."""
-        config = CombinatorialPurgedConfig(
+        config = CombinatorialConfig(
             n_groups=10,
             n_test_groups=3,
             max_combinations=100,
@@ -282,35 +282,35 @@ class TestCombinatorialPurgedConfig:
     def test_n_groups_validation(self):
         """Test that n_groups must be > 1."""
         with pytest.raises(ValueError, match="greater than 1"):
-            CombinatorialPurgedConfig(n_groups=1)
+            CombinatorialConfig(n_groups=1)
 
         with pytest.raises(ValueError, match="greater than 1"):
-            CombinatorialPurgedConfig(n_groups=0)
+            CombinatorialConfig(n_groups=0)
 
     def test_n_test_groups_validation(self):
         """Test that n_test_groups must be positive."""
         with pytest.raises(ValueError, match="greater than 0"):
-            CombinatorialPurgedConfig(n_test_groups=0)
+            CombinatorialConfig(n_test_groups=0)
 
     def test_n_test_groups_less_than_n_groups_validation(self):
         """Test that n_test_groups must be less than n_groups."""
         with pytest.raises(ValueError, match="cannot exceed"):
-            CombinatorialPurgedConfig(n_groups=5, n_test_groups=5)
+            CombinatorialConfig(n_groups=5, n_test_groups=5)
 
         with pytest.raises(ValueError, match="cannot exceed"):
-            CombinatorialPurgedConfig(n_groups=5, n_test_groups=6)
+            CombinatorialConfig(n_groups=5, n_test_groups=6)
 
     def test_max_combinations_validation(self):
         """Test that max_combinations must be positive when specified."""
         with pytest.raises(ValueError, match="greater than 0"):
-            CombinatorialPurgedConfig(max_combinations=0)
+            CombinatorialConfig(max_combinations=0)
 
         with pytest.raises(ValueError, match="greater than 0"):
-            CombinatorialPurgedConfig(max_combinations=-1)
+            CombinatorialConfig(max_combinations=-1)
 
     def test_json_round_trip(self):
         """Test JSON serialization with CPCV specific fields."""
-        original = CombinatorialPurgedConfig(
+        original = CombinatorialConfig(
             n_groups=10,
             n_test_groups=3,
             max_combinations=50,
@@ -326,7 +326,7 @@ class TestCombinatorialPurgedConfig:
 
         try:
             original.to_json(temp_path)
-            loaded = CombinatorialPurgedConfig.from_json(temp_path)
+            loaded = CombinatorialConfig.from_json(temp_path)
 
             assert loaded.n_groups == original.n_groups
             assert loaded.n_test_groups == original.n_test_groups
@@ -344,10 +344,10 @@ class TestConfigIntegration:
     """Integration tests for config system with splitters."""
 
     def test_walk_forward_with_config_object(self):
-        """Test creating PurgedWalkForwardCV with explicit config object."""
-        from ml4t.diagnostic.splitters import PurgedWalkForwardConfig, PurgedWalkForwardCV
+        """Test creating WalkForwardCV with explicit config object."""
+        from ml4t.diagnostic.splitters import WalkForwardConfig, WalkForwardCV
 
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             n_splits=5,
             test_size=100,
             train_size=500,
@@ -358,7 +358,7 @@ class TestConfigIntegration:
             isolate_groups=True,
         )
 
-        cv = PurgedWalkForwardCV(config=config)
+        cv = WalkForwardCV(config=config)
 
         assert cv.n_splits == 5
         assert cv.test_size == 100
@@ -370,10 +370,10 @@ class TestConfigIntegration:
         assert cv.isolate_groups is True
 
     def test_walk_forward_with_params(self):
-        """Test creating PurgedWalkForwardCV with direct parameters."""
-        from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+        """Test creating WalkForwardCV with direct parameters."""
+        from ml4t.diagnostic.splitters import WalkForwardCV
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=5,
             test_size=100,
             train_size=500,
@@ -396,20 +396,20 @@ class TestConfigIntegration:
 
     def test_walk_forward_rejects_mixed_config_and_params(self):
         """Test that specifying both config and params raises error."""
-        from ml4t.diagnostic.splitters import PurgedWalkForwardConfig, PurgedWalkForwardCV
+        from ml4t.diagnostic.splitters import WalkForwardConfig, WalkForwardCV
 
-        config = PurgedWalkForwardConfig(n_splits=5)
+        config = WalkForwardConfig(n_splits=5)
 
         with pytest.raises(
             ValueError, match="Cannot specify both 'config' and individual parameters"
         ):
-            PurgedWalkForwardCV(config=config, test_size=100)
+            WalkForwardCV(config=config, test_size=100)
 
     def test_combinatorial_with_config_object(self):
-        """Test creating CombinatorialPurgedCV with explicit config object."""
-        from ml4t.diagnostic.splitters import CombinatorialPurgedConfig, CombinatorialPurgedCV
+        """Test creating CombinatorialCV with explicit config object."""
+        from ml4t.diagnostic.splitters import CombinatorialConfig, CombinatorialCV
 
-        config = CombinatorialPurgedConfig(
+        config = CombinatorialConfig(
             n_groups=10,
             n_test_groups=3,
             max_combinations=50,
@@ -420,7 +420,7 @@ class TestConfigIntegration:
             isolate_groups=False,
         )
 
-        cv = CombinatorialPurgedCV(config=config)
+        cv = CombinatorialCV(config=config)
 
         assert cv.n_groups == 10
         assert cv.n_test_groups == 3
@@ -432,10 +432,10 @@ class TestConfigIntegration:
         assert cv.isolate_groups is False
 
     def test_combinatorial_with_params(self):
-        """Test creating CombinatorialPurgedCV with direct parameters."""
-        from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+        """Test creating CombinatorialCV with direct parameters."""
+        from ml4t.diagnostic.splitters import CombinatorialCV
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=10,
             n_test_groups=3,
             max_combinations=50,
@@ -452,21 +452,21 @@ class TestConfigIntegration:
 
     def test_combinatorial_rejects_mixed_config_and_params(self):
         """Test that specifying both config and params raises error."""
-        from ml4t.diagnostic.splitters import CombinatorialPurgedConfig, CombinatorialPurgedCV
+        from ml4t.diagnostic.splitters import CombinatorialConfig, CombinatorialCV
 
-        config = CombinatorialPurgedConfig(n_groups=10)
+        config = CombinatorialConfig(n_groups=10)
 
         with pytest.raises(
             ValueError, match="Cannot specify both 'config' and individual parameters"
         ):
-            CombinatorialPurgedCV(config=config, n_test_groups=3)
+            CombinatorialCV(config=config, n_test_groups=3)
 
     def test_config_serialization_and_splitter_creation(self):
         """Test full workflow: create config, serialize, load, create splitter."""
-        from ml4t.diagnostic.splitters import PurgedWalkForwardConfig, PurgedWalkForwardCV
+        from ml4t.diagnostic.splitters import WalkForwardConfig, WalkForwardCV
 
         # Create and serialize config
-        original_config = PurgedWalkForwardConfig(
+        original_config = WalkForwardConfig(
             n_splits=5,
             test_size=100,
             label_horizon=5,
@@ -481,10 +481,10 @@ class TestConfigIntegration:
             original_config.to_json(temp_path)
 
             # Load config
-            loaded_config = PurgedWalkForwardConfig.from_json(temp_path)
+            loaded_config = WalkForwardConfig.from_json(temp_path)
 
             # Create splitter from loaded config
-            cv = PurgedWalkForwardCV(config=loaded_config)
+            cv = WalkForwardCV(config=loaded_config)
 
             # Verify splitter has correct parameters
             assert cv.n_splits == 5

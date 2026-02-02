@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from ml4t.diagnostic.config import StatisticalConfig
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio_from_statistics
-from ml4t.diagnostic.splitters.combinatorial import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters.combinatorial import CombinatorialCV
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -201,7 +201,7 @@ class ValidatedCrossValidation:
         self.statistical_config = statistical_config or StatisticalConfig()
 
         # Initialize CPCV splitter
-        self._cv = CombinatorialPurgedCV(
+        self._cv = CombinatorialCV(
             n_groups=self.config.n_groups,
             n_test_groups=self.config.n_test_groups,
             embargo_pct=self.config.embargo_pct,

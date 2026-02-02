@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 
 from ml4t.diagnostic.evaluation.framework import EvaluationResult, Evaluator
-from ml4t.diagnostic.splitters import CombinatorialPurgedCV, PurgedWalkForwardCV
+from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
 
 
 class TestEvaluationResult:
@@ -26,12 +26,12 @@ class TestEvaluationResult:
 
         result = EvaluationResult(
             tier=2,
-            splitter_name="PurgedWalkForwardCV",
+            splitter_name="WalkForwardCV",
             metrics_results=metrics_results,
         )
 
         assert result.tier == 2
-        assert result.splitter_name == "PurgedWalkForwardCV"
+        assert result.splitter_name == "WalkForwardCV"
         assert result.metrics_results == metrics_results
         assert len(result.statistical_tests) == 0
         assert len(result.fold_results) == 0
@@ -47,7 +47,7 @@ class TestEvaluationResult:
 
         result = EvaluationResult(
             tier=1,
-            splitter_name="CombinatorialPurgedCV",
+            splitter_name="CombinatorialCV",
             metrics_results=metrics_results,
             statistical_tests=statistical_tests,
         )
@@ -55,7 +55,7 @@ class TestEvaluationResult:
         summary = result.summary()
 
         assert summary["tier"] == 1
-        assert summary["splitter"] == "CombinatorialPurgedCV"
+        assert summary["splitter"] == "CombinatorialCV"
         assert "timestamp" in summary
         assert summary["metrics"]["sharpe"]["mean"] == 1.5
         assert summary["statistical_tests"]["dsr"]["test_statistic"] == 0.8
@@ -82,7 +82,7 @@ class TestEvaluator:
     def test_tier_inference(self):
         """Test automatic tier inference."""
         # Tier 1: CPCV splitter
-        evaluator1 = Evaluator(splitter=CombinatorialPurgedCV(n_groups=4))
+        evaluator1 = Evaluator(splitter=CombinatorialCV(n_groups=4))
         assert evaluator1.tier == 1
 
         # Tier 1: DSR statistical test
@@ -101,21 +101,21 @@ class TestEvaluator:
         """Test default configurations for each tier."""
         # Tier 3
         evaluator3 = Evaluator(tier=3)
-        assert isinstance(evaluator3.splitter, PurgedWalkForwardCV)
+        assert isinstance(evaluator3.splitter, WalkForwardCV)
         assert evaluator3.splitter.n_splits == 3
         assert set(evaluator3.metrics) == {"ic", "hit_rate"}
         assert evaluator3.statistical_tests == []
 
         # Tier 2
         evaluator2 = Evaluator(tier=2)
-        assert isinstance(evaluator2.splitter, PurgedWalkForwardCV)
+        assert isinstance(evaluator2.splitter, WalkForwardCV)
         assert evaluator2.splitter.n_splits == 5
         assert set(evaluator2.metrics) == {"ic", "sharpe", "hit_rate"}
         assert evaluator2.statistical_tests == ["hac_ic"]
 
         # Tier 1
         evaluator1 = Evaluator(tier=1)
-        assert isinstance(evaluator1.splitter, CombinatorialPurgedCV)
+        assert isinstance(evaluator1.splitter, CombinatorialCV)
         assert set(evaluator1.metrics) == {
             "ic",
             "sharpe",
@@ -247,7 +247,7 @@ class TestEvaluator:
         model = LinearRegression()
 
         # Use smaller CPCV configuration for speed
-        small_cpcv = CombinatorialPurgedCV(n_groups=4, n_test_groups=1)
+        small_cpcv = CombinatorialCV(n_groups=4, n_test_groups=1)
         evaluator = Evaluator(
             splitter=small_cpcv,
             tier=1,
@@ -342,7 +342,7 @@ class TestEvaluator:
 
         model = LinearRegression()
         evaluator = Evaluator(
-            splitter=PurgedWalkForwardCV(n_splits=2),  # Minimal splits
+            splitter=WalkForwardCV(n_splits=2),  # Minimal splits
             tier=3,
             metrics=["ic"],
         )

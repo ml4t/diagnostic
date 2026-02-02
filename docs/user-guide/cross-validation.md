@@ -15,9 +15,9 @@ Standard k-fold cross-validation leaks information in financial time series:
 CPCV addresses these issues with purging and embargo:
 
 ```python
-from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters import CombinatorialCV
 
-cv = CombinatorialPurgedCV(
+cv = CombinatorialCV(
     n_splits=10,
     n_test_splits=2,      # Test on 2 groups at a time
     embargo_pct=0.01,     # 1% embargo after each test fold
@@ -54,9 +54,9 @@ for train_idx, test_idx in cv.split(X, y, times):
 Rolling window approach with purging:
 
 ```python
-from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters import WalkForwardCV
 
-cv = PurgedWalkForwardCV(
+cv = WalkForwardCV(
     n_splits=5,
     train_period=252,     # 1 year training
     test_period=63,       # 1 quarter test

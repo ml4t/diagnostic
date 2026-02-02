@@ -247,8 +247,8 @@ from ml4t.diagnostic.evaluation import (
 ```python
 from ml4t.diagnostic.evaluation import stats
 from ml4t.diagnostic.splitters import (
-    PurgedWalkForwardCV,        # Walk-forward with purging
-    CombinatorialPurgedCV,      # CPCV
+    WalkForwardCV,        # Walk-forward with purging
+    CombinatorialCV,      # CPCV
 )
 ```
 

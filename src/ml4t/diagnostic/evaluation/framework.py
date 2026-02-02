@@ -24,8 +24,8 @@ from sklearn.base import BaseEstimator, clone
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.splitters.base import BaseSplitter
-from ml4t.diagnostic.splitters.combinatorial import CombinatorialPurgedCV
-from ml4t.diagnostic.splitters.walk_forward import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters.combinatorial import CombinatorialCV
+from ml4t.diagnostic.splitters.walk_forward import WalkForwardCV
 
 from .dashboard import create_evaluation_dashboard
 from .metric_registry import MetricRegistry
@@ -317,7 +317,7 @@ class Evaluator:
 
         # Tier 1: Full rigorous evaluation
         >>> evaluator = Evaluator(
-        ...     splitter=CombinatorialPurgedCV(n_groups=8),
+        ...     splitter=CombinatorialCV(n_groups=8),
         ...     metrics=["sharpe", "sortino", "max_drawdown"],
         ...     statistical_tests=["dsr", "whites_reality_check"],
         ...     tier=1
@@ -392,7 +392,7 @@ class Evaluator:
     ) -> int:
         """Infer tier level from configuration."""
         # Tier 1 indicators: CPCV splitter or advanced statistical tests
-        if isinstance(splitter, CombinatorialPurgedCV) or (
+        if isinstance(splitter, CombinatorialCV) or (
             statistical_tests
             and any(test in ["dsr", "whites_reality_check"] for test in statistical_tests)
         ):
@@ -408,11 +408,11 @@ class Evaluator:
     def _get_default_splitter(self, tier: int) -> BaseSplitter:
         """Get default splitter for tier."""
         if tier == 1:
-            return CombinatorialPurgedCV(n_groups=8, n_test_groups=2)
+            return CombinatorialCV(n_groups=8, n_test_groups=2)
         if tier == 2:
-            return PurgedWalkForwardCV(n_splits=5)
+            return WalkForwardCV(n_splits=5)
         # tier == 3
-        return PurgedWalkForwardCV(n_splits=3)
+        return WalkForwardCV(n_splits=3)
 
     def _get_default_metrics(self, tier: int) -> list[str]:
         """Get default metrics for tier."""
@@ -477,9 +477,9 @@ class Evaluator:
             )
 
         # Tier-specific validations with Pydantic-style consistency checks
-        if self.tier == 1 and not isinstance(self.splitter, CombinatorialPurgedCV):
+        if self.tier == 1 and not isinstance(self.splitter, CombinatorialCV):
             warnings.warn(
-                "Tier 1 evaluation should use CombinatorialPurgedCV for maximum rigor",
+                "Tier 1 evaluation should use CombinatorialCV for maximum rigor",
                 stacklevel=2,
             )
 

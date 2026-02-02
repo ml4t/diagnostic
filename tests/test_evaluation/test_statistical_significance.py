@@ -40,7 +40,7 @@ from ml4t.diagnostic.evaluation.stats import (
     stationary_bootstrap_ic,
     whites_reality_check,
 )
-from ml4t.diagnostic.splitters.walk_forward import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters.walk_forward import WalkForwardCV
 
 
 class TestWhitesRealityCheck:
@@ -130,7 +130,7 @@ class TestWhitesRealityCheck:
         y = pd.Series(0.01 * X["feature_1"] + np.random.randn(n_samples) * 0.02)
 
         evaluator = Evaluator(
-            splitter=PurgedWalkForwardCV(n_splits=3),
+            splitter=WalkForwardCV(n_splits=3),
             tier=2,
             metrics=["sharpe"],
             statistical_tests=["whites_reality_check"],
@@ -606,7 +606,7 @@ class TestIntegrationScenarios:
         y = pd.Series(signal + noise)
 
         evaluator = Evaluator(
-            splitter=PurgedWalkForwardCV(n_splits=3),
+            splitter=WalkForwardCV(n_splits=3),
             tier=2,
             metrics=["sharpe", "ic"],
             statistical_tests=["dsr", "hac_ic", "whites_reality_check"],
@@ -639,14 +639,14 @@ class TestIntegrationScenarios:
 
         # Run evaluation twice with same random state
         evaluator1 = Evaluator(
-            splitter=PurgedWalkForwardCV(n_splits=3),
+            splitter=WalkForwardCV(n_splits=3),
             tier=2,
             statistical_tests=["hac_ic"],
             random_state=999,
         )
 
         evaluator2 = Evaluator(
-            splitter=PurgedWalkForwardCV(n_splits=3),
+            splitter=WalkForwardCV(n_splits=3),
             tier=2,
             statistical_tests=["hac_ic"],
             random_state=999,
@@ -681,7 +681,7 @@ class TestIntegrationScenarios:
         y = pd.Series(np.random.randn(n_samples) * 0.01)
 
         evaluator = Evaluator(
-            splitter=PurgedWalkForwardCV(n_splits=2),  # Minimal splits
+            splitter=WalkForwardCV(n_splits=2),  # Minimal splits
             tier=2,
             statistical_tests=["hac_ic"],
             random_state=1,
@@ -708,7 +708,7 @@ class TestIntegrationScenarios:
         y = pd.Series(0.02 * X["f1"] + np.random.randn(n_samples) * 0.02)
 
         evaluator = Evaluator(
-            splitter=PurgedWalkForwardCV(n_splits=3),
+            splitter=WalkForwardCV(n_splits=3),
             tier=2,
             metrics=["sharpe", "ic", "hit_rate"],
             statistical_tests=["dsr", "whites_reality_check"],

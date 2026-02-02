@@ -28,27 +28,27 @@ class TestSplitterConfig:
     def test_valid_walk_forward_config(self):
         """Test valid walk-forward splitter configuration."""
         config = SplitterConfig(
-            type="PurgedWalkForwardCV",
+            type="WalkForwardCV",
             params={"n_splits": 5, "test_size": 0.2},
         )
 
-        assert config.type == "PurgedWalkForwardCV"
+        assert config.type == "WalkForwardCV"
         assert config.params["n_splits"] == 5
 
     def test_valid_combinatorial_config(self):
         """Test valid combinatorial splitter configuration."""
         config = SplitterConfig(
-            type="CombinatorialPurgedCV",
+            type="CombinatorialCV",
             params={"n_groups": 10},
         )
 
-        assert config.type == "CombinatorialPurgedCV"
+        assert config.type == "CombinatorialCV"
 
     def test_invalid_n_splits(self):
         """Test validation of n_splits range."""
         with pytest.raises(ValueError, match="n_splits must be between 2 and 50"):
             SplitterConfig(
-                type="PurgedWalkForwardCV",
+                type="WalkForwardCV",
                 params={"n_splits": 1},  # Too low
             )
 
@@ -56,7 +56,7 @@ class TestSplitterConfig:
         """Test validation of test_size range."""
         with pytest.raises(ValueError, match="test_size must be between 0 and 1"):
             SplitterConfig(
-                type="PurgedWalkForwardCV",
+                type="WalkForwardCV",
                 params={"test_size": 1.5},  # > 1
             )
 
@@ -64,7 +64,7 @@ class TestSplitterConfig:
         """Test validation of n_groups range."""
         with pytest.raises(ValueError, match="n_groups must be between 2 and 20"):
             SplitterConfig(
-                type="CombinatorialPurgedCV",
+                type="CombinatorialCV",
                 params={"n_groups": 100},  # Too high
             )
 
@@ -180,18 +180,18 @@ class TestQEvalConfig:
     """Tests for complete QEvalConfig schema."""
 
     def test_tier_1_requires_combinatorial(self):
-        """Test that tier 1 requires CombinatorialPurgedCV."""
-        with pytest.raises(ValueError, match="Tier 1.*CombinatorialPurgedCV"):
+        """Test that tier 1 requires CombinatorialCV."""
+        with pytest.raises(ValueError, match="Tier 1.*CombinatorialCV"):
             QEvalConfig(
                 evaluation=EvaluatorConfig(tier=1),
-                splitter=SplitterConfig(type="PurgedWalkForwardCV"),
+                splitter=SplitterConfig(type="WalkForwardCV"),
             )
 
     def test_valid_tier_1_config(self):
         """Test valid tier 1 configuration."""
         config = QEvalConfig(
             evaluation=EvaluatorConfig(tier=1),
-            splitter=SplitterConfig(type="CombinatorialPurgedCV"),
+            splitter=SplitterConfig(type="CombinatorialCV"),
         )
 
         assert config.evaluation.tier == 1
@@ -200,7 +200,7 @@ class TestQEvalConfig:
         """Test that at least one metric is required."""
         with pytest.raises(ValueError):
             QEvalConfig(
-                splitter=SplitterConfig(type="PurgedWalkForwardCV"),
+                splitter=SplitterConfig(type="WalkForwardCV"),
                 metrics=[],
             )
 
@@ -213,7 +213,7 @@ class TestEvaluationConfigManager:
         manager = EvaluationConfigManager()
 
         assert manager.config is not None
-        assert manager.config.splitter.type == "PurgedWalkForwardCV"
+        assert manager.config.splitter.type == "WalkForwardCV"
 
     def test_get_nested_value(self):
         """Test getting nested configuration value."""
@@ -237,7 +237,7 @@ evaluation:
   confidence_level: 0.01
 
 splitter:
-  type: PurgedWalkForwardCV
+  type: WalkForwardCV
   params:
     n_splits: 10
 """
@@ -326,7 +326,7 @@ class TestLoadConfig:
         """Test loading with explicit path."""
         yaml_content = """
 splitter:
-  type: PurgedWalkForwardCV
+  type: WalkForwardCV
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
@@ -334,7 +334,7 @@ splitter:
 
             try:
                 manager = load_config(f.name)
-                assert manager.config.splitter.type == "PurgedWalkForwardCV"
+                assert manager.config.splitter.type == "WalkForwardCV"
             finally:
                 os.unlink(f.name)
 

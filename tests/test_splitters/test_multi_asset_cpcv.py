@@ -1,7 +1,7 @@
 """
 Tests for multi-asset Combinatorial Purged Cross-Validation scenarios.
 
-This module specifically tests the multi-asset purging logic in CombinatorialPurgedCV,
+This module specifically tests the multi-asset purging logic in CombinatorialCV,
 with focus on non-contiguous test groups and edge cases that can cause data leakage.
 
 Key test scenarios:
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml4t.diagnostic.splitters.combinatorial import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters.combinatorial import CombinatorialCV
 
 
 class TestMultiAssetNonContiguous:
@@ -63,7 +63,7 @@ class TestMultiAssetNonContiguous:
 
         # Use non-contiguous groups: [1, 3, 5] out of 10 groups
         # Note: isolate_groups=False because we're testing temporal purging, not asset isolation
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=10,
             n_test_groups=3,
@@ -93,7 +93,7 @@ class TestMultiAssetNonContiguous:
         assets = ["AAPL", "MSFT"]
         X, y, groups, timestamps = self.create_multi_asset_data(n_days, assets)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=6,  # 6 groups of 5 days each
             n_test_groups=2,  # Use 2 non-contiguous groups
@@ -123,7 +123,7 @@ class TestMultiAssetNonContiguous:
         X, y, groups, timestamps = self.create_multi_asset_data(n_days=60)
 
         # Contiguous case: groups [1, 2, 3]
-        cv_contiguous = CombinatorialPurgedCV(
+        cv_contiguous = CombinatorialCV(
             isolate_groups=False,
             n_groups=10,
             n_test_groups=3,
@@ -133,7 +133,7 @@ class TestMultiAssetNonContiguous:
         )
 
         # Non-contiguous case: groups that would be [1, 4, 7] etc
-        cv_non_contiguous = CombinatorialPurgedCV(
+        cv_non_contiguous = CombinatorialCV(
             isolate_groups=False,
             n_groups=10,
             n_test_groups=3,
@@ -163,7 +163,7 @@ class TestMultiAssetNonContiguous:
         # Create single-asset data
         X, y, groups, timestamps = self.create_multi_asset_data(n_days=40, assets=["AAPL"])
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=8,
             n_test_groups=2,
@@ -216,7 +216,7 @@ class TestMultiAssetNonContiguous:
         y = pd.Series(df["return"].values, index=df["date"])
         groups = pd.Series(df["asset"].values, index=df["date"])
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=6,
             n_test_groups=2,
@@ -246,7 +246,7 @@ class TestMultiAssetNonContiguous:
         X, y, groups, timestamps = self.create_multi_asset_data(n_days=50)
 
         # Use groups [1, 5, 9] - maximally spaced
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=10,
             n_test_groups=3,
@@ -269,7 +269,7 @@ class TestMultiAssetNonContiguous:
         X, y, groups, timestamps = self.create_multi_asset_data(n_days=40)
 
         # This should behave like one contiguous segment
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=8,
             n_test_groups=2,  # Could get adjacent groups like [3, 4]
@@ -288,7 +288,7 @@ class TestMultiAssetNonContiguous:
         """Property test: verify no data leakage in any split."""
         X, y, groups, timestamps = self.create_multi_asset_data(n_days=60)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=10,
             n_test_groups=3,
@@ -376,7 +376,7 @@ class TestMultiAssetNonContiguous:
         y = pd.Series(df["return"].values, index=df["date"])
         groups = pd.Series(df["asset"].values, index=df["date"])
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=8,
             n_test_groups=3,
@@ -404,7 +404,7 @@ class TestMultiAssetNonContiguous:
         X, y, groups, timestamps = self.create_multi_asset_data(n_days=50)
 
         # Large embargo that could cause overlaps
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=5,
             n_test_groups=2,
@@ -459,7 +459,7 @@ class TestMultiAssetNonContiguous:
         y = pd.Series(df["return"].values, index=df["date"])
         groups = pd.Series(df["asset"].values, index=df["date"])
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=6,
             n_test_groups=2,
@@ -525,7 +525,7 @@ class TestMultiAssetNonContiguous:
         y = pd.Series(df["return"].values, index=df["date"])
         groups = pd.Series(df["asset"].values, index=df["date"])
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=10,
             n_test_groups=3,
@@ -559,7 +559,7 @@ class TestMultiAssetNonContiguous:
 
         X, y, groups, timestamps = self.create_multi_asset_data(n_days, assets)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=20,
             n_test_groups=5,
@@ -586,7 +586,7 @@ class TestMultiAssetNonContiguous:
         """Test edge case with single test group."""
         X, y, groups, timestamps = self.create_multi_asset_data(n_days=30)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             isolate_groups=False,
             n_groups=10,
             n_test_groups=1,  # Single test group
@@ -610,7 +610,7 @@ class TestMultiAssetNonContiguous:
         # Test with different embargo percentages
         # Use moderate embargo values to avoid empty train sets
         for embargo_pct in [0.0, 0.1, 0.2, 0.3]:
-            cv = CombinatorialPurgedCV(
+            cv = CombinatorialCV(
                 isolate_groups=False,
                 n_groups=8,
                 n_test_groups=2,

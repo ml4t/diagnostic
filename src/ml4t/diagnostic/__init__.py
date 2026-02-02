@@ -6,7 +6,7 @@ overfitting, and statistical fallacies.
 
 Main Features
 -------------
-- **Cross-Validation**: CPCV, Purged Walk-Forward with proper embargo/purging
+- **Cross-Validation**: Combinatorial CV, Walk-Forward CV with label overlap prevention
 - **Statistical Validity**: DSR, RAS, FDR corrections for multiple testing
 - **Feature Analysis**: IC, importance (MDI/PFI/MDA/SHAP), interactions
 - **Trade Diagnostics**: SHAP-based error pattern analysis
@@ -15,7 +15,7 @@ Main Features
 Quick Start
 -----------
 >>> from ml4t.diagnostic import ValidatedCrossValidation
->>> from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+>>> from ml4t.diagnostic.splitters import CombinatorialCV
 >>>
 >>> # One-step validated cross-validation
 >>> vcv = ValidatedCrossValidation(n_splits=10)

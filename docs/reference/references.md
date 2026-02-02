@@ -309,7 +309,7 @@ Sample 100 is in test set
 
 ### Combinatorial Purged Cross-Validation (CPCV)
 
-**Implementation**: `ml4t.diagnostic.splitters.CombinatorialPurgedCV`
+**Implementation**: `ml4t.diagnostic.splitters.CombinatorialCV`
 
 **What it does**: Generates multiple train/test splits by combining groups, with proper purging and embargo to prevent information leakage.
 
@@ -330,13 +330,13 @@ Number of backtest paths = C(N,k):
 #### Usage Example
 
 ```python
-from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters import CombinatorialCV
 import numpy as np
 
 X = np.random.randn(1000, 10)
 y = np.random.randn(1000)
 
-cv = CombinatorialPurgedCV(
+cv = CombinatorialCV(
     n_groups=8,           # Split into 8 time groups
     n_test_groups=2,      # 2 groups for testing → C(8,2)=28 combinations
     label_horizon=5,      # Labels look forward 5 samples

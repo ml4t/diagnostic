@@ -6,8 +6,8 @@ Time-series CV with purging and embargo.
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| combinatorial.py | 1392 | `CombinatorialPurgedCV` (CPCV) |
-| walk_forward.py | 757 | `PurgedWalkForwardCV` |
+| combinatorial.py | 1392 | `CombinatorialCV` (CPCV) |
+| walk_forward.py | 757 | `WalkForwardCV` |
 | base.py | 501 | `BaseSplitter` abstract |
 | calendar.py | 421 | `TradingCalendar` |
 | config.py | 315 | Configuration classes |
@@ -16,4 +16,4 @@ Time-series CV with purging and embargo.
 
 ## Key Classes
 
-`CombinatorialPurgedCV`, `PurgedWalkForwardCV`, `TradingCalendar`
+`CombinatorialCV`, `WalkForwardCV`, `TradingCalendar`

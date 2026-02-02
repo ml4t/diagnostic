@@ -49,9 +49,9 @@ class TestCrossValidationBenchmarks:
 
     def test_cpcv_split_small(self, benchmark, small_data):
         """Benchmark CPCV split generation on small data."""
-        from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+        from ml4t.diagnostic.splitters import CombinatorialCV
 
-        cv = CombinatorialPurgedCV(n_groups=5, embargo_pct=0.01)
+        cv = CombinatorialCV(n_groups=5, embargo_pct=0.01)
         X, y, times = small_data["X"], small_data["y"], small_data["times"]
 
         def run():
@@ -62,9 +62,9 @@ class TestCrossValidationBenchmarks:
 
     def test_cpcv_split_medium(self, benchmark, medium_data):
         """Benchmark CPCV split generation on medium data."""
-        from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+        from ml4t.diagnostic.splitters import CombinatorialCV
 
-        cv = CombinatorialPurgedCV(n_groups=10, embargo_pct=0.01)
+        cv = CombinatorialCV(n_groups=10, embargo_pct=0.01)
         X, y, times = medium_data["X"], medium_data["y"], medium_data["times"]
 
         def run():

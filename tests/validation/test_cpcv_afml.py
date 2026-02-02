@@ -34,7 +34,7 @@ from collections import Counter
 import numpy as np
 import pytest
 
-from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters import CombinatorialCV
 
 
 class TestCPCVAFMLFormulas:
@@ -60,7 +60,7 @@ class TestCPCVAFMLFormulas:
         """
         expected_combinations = math.comb(n_groups, n_test_groups)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=0,  # No purging for mathematical properties
@@ -86,7 +86,7 @@ class TestCPCVAFMLFormulas:
         """
         expected_test_appearances = math.comb(n_groups - 1, n_test_groups - 1)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=0,
@@ -125,7 +125,7 @@ class TestCPCVAFMLFormulas:
         """
         expected_train_appearances = math.comb(n_groups - 1, n_test_groups)
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=0,
@@ -169,7 +169,7 @@ class TestCPCVAFMLFormulas:
         alternative = n_groups * math.comb(n_groups - 1, n_test_groups - 1)
         assert expected_total_slots == alternative
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=0,
@@ -200,7 +200,7 @@ class TestCPCVAFMLFormulas:
         AFML Chapter 7 emphasizes that CPCV treats all time periods equally,
         unlike walk-forward CV which has early periods tested less frequently.
         """
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=0,
@@ -261,10 +261,10 @@ class TestCPCVPurgingProperties:
         n_samples = 600
         X = np.arange(n_samples).reshape(-1, 1)
 
-        cv_no_purge = CombinatorialPurgedCV(
+        cv_no_purge = CombinatorialCV(
             n_groups=6, n_test_groups=2, label_horizon=0, embargo_size=0
         )
-        cv_with_purge = CombinatorialPurgedCV(
+        cv_with_purge = CombinatorialCV(
             n_groups=6, n_test_groups=2, label_horizon=10, embargo_size=0
         )
 
@@ -300,10 +300,10 @@ class TestCPCVPurgingProperties:
         n_samples = 600
         X = np.arange(n_samples).reshape(-1, 1)
 
-        cv_no_embargo = CombinatorialPurgedCV(
+        cv_no_embargo = CombinatorialCV(
             n_groups=6, n_test_groups=2, label_horizon=0, embargo_size=0
         )
-        cv_with_embargo = CombinatorialPurgedCV(
+        cv_with_embargo = CombinatorialCV(
             n_groups=6, n_test_groups=2, label_horizon=0, embargo_size=10
         )
 
@@ -339,7 +339,7 @@ class TestCPCVSpecificExamples:
         - Each group in test C(4, 1) = 4 times
         - Each group in train C(4, 2) = 6 times
         """
-        cv = CombinatorialPurgedCV(n_groups=5, n_test_groups=2)
+        cv = CombinatorialCV(n_groups=5, n_test_groups=2)
 
         # 10 combinations
         assert cv.get_n_splits() == 10
@@ -366,7 +366,7 @@ class TestCPCVSpecificExamples:
         - Each group in test C(5, 1) = 5 times
         - Each group in train C(5, 2) = 10 times
         """
-        cv = CombinatorialPurgedCV(n_groups=6, n_test_groups=2)
+        cv = CombinatorialCV(n_groups=6, n_test_groups=2)
 
         assert cv.get_n_splits() == 15
 
@@ -402,7 +402,7 @@ class TestCPCVSpecificExamples:
 
         This is the most "balanced" CPCV configuration.
         """
-        cv = CombinatorialPurgedCV(n_groups=8, n_test_groups=4)
+        cv = CombinatorialCV(n_groups=8, n_test_groups=4)
 
         assert cv.get_n_splits() == 70
 
@@ -456,7 +456,7 @@ class TestCPCVExpectedBacktestsPhi:
         assert phi == phi_alt
 
         # Verify empirically
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=n_groups,
             n_test_groups=n_test_groups,
             label_horizon=0,

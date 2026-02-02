@@ -17,10 +17,10 @@ import pandas as pd
 import pytest
 
 from ml4t.diagnostic.splitters import (
-    CombinatorialPurgedConfig,
-    CombinatorialPurgedCV,
-    PurgedWalkForwardConfig,
-    PurgedWalkForwardCV,
+    CombinatorialConfig,
+    CombinatorialCV,
+    WalkForwardConfig,
+    WalkForwardCV,
     load_config,
     load_folds,
     save_config,
@@ -59,7 +59,7 @@ class TestSessionAwareWorkflow:
         X = self.create_session_data(n_days=60, sessions_per_day=2)
 
         # Create config with session alignment
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             n_splits=5,
             test_size=4,  # 4 sessions
             label_horizon=1,  # 1 session
@@ -69,7 +69,7 @@ class TestSessionAwareWorkflow:
         )
 
         # Create splitter from config
-        cv = PurgedWalkForwardCV(config=config)
+        cv = WalkForwardCV(config=config)
 
         # Generate folds
         folds = list(cv.split(X))
@@ -93,7 +93,7 @@ class TestSessionAwareWorkflow:
             )
 
             # Load config and folds
-            loaded_config = load_config(config_path, PurgedWalkForwardConfig)
+            loaded_config = load_config(config_path, WalkForwardConfig)
             loaded_folds, metadata = load_folds(folds_path)
 
             # Verify config round-trip
@@ -109,7 +109,7 @@ class TestSessionAwareWorkflow:
             assert metadata["n_sessions"] == X["session_date"].nunique()
 
             # Recreate splitter and verify it matches
-            cv_recreated = PurgedWalkForwardCV(config=loaded_config)
+            cv_recreated = WalkForwardCV(config=loaded_config)
             assert cv_recreated.n_splits == cv.n_splits
             assert cv_recreated.align_to_sessions == cv.align_to_sessions
 
@@ -117,7 +117,7 @@ class TestSessionAwareWorkflow:
         """Verify that session alignment actually aligns to session boundaries."""
         X = self.create_session_data(n_days=50, sessions_per_day=2)
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             test_size=5,  # 5 sessions
             align_to_sessions=True,
@@ -184,7 +184,7 @@ class TestGroupIsolationWorkflow:
         X, y, groups = self.create_multi_asset_data(n_days=120)
 
         # Create config - use isolate_groups=False for date-interleaved multi-asset data
-        config = CombinatorialPurgedConfig(
+        config = CombinatorialConfig(
             n_groups=6,
             n_test_groups=2,
             label_horizon=pd.Timedelta("2D"),
@@ -193,7 +193,7 @@ class TestGroupIsolationWorkflow:
         )
 
         # Create splitter
-        cv = CombinatorialPurgedCV(config=config)
+        cv = CombinatorialCV(config=config)
 
         # Generate folds with group isolation
         folds = list(cv.split(X, y, groups))
@@ -218,7 +218,7 @@ class TestGroupIsolationWorkflow:
             assert stats["valid"], f"Invalid folds: {stats['errors']}"
 
             # Load and verify
-            loaded_config = load_config(config_path, CombinatorialPurgedConfig)
+            loaded_config = load_config(config_path, CombinatorialConfig)
             loaded_folds, metadata = load_folds(folds_path)
 
             assert loaded_config.isolate_groups == config.isolate_groups
@@ -263,7 +263,7 @@ class TestGroupIsolationWorkflow:
         y = pd.Series(df["return"].values, index=df["date"])
         groups = pd.Series(df["asset"].values, index=df["date"])
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=6,  # 6 groups over 180 days = ~30 days each
             n_test_groups=2,
             label_horizon=pd.Timedelta("1D"),
@@ -315,7 +315,7 @@ class TestCompleteWorkflow:
         groups = pd.Series(df["contract"].values, index=df["timestamp"])
 
         # Create config with both session alignment and group isolation
-        config = PurgedWalkForwardConfig(
+        config = WalkForwardConfig(
             n_splits=5,
             test_size=3,  # 3 sessions
             label_horizon=1,  # 1 session
@@ -325,7 +325,7 @@ class TestCompleteWorkflow:
             isolate_groups=True,  # Also isolate contracts
         )
 
-        cv = PurgedWalkForwardCV(config=config)
+        cv = WalkForwardCV(config=config)
         folds = list(cv.split(X, y, groups))
 
         # Verify session alignment and group isolation
@@ -394,7 +394,7 @@ class TestCompleteWorkflow:
         groups = pd.Series(df["asset"].values, index=df["timestamp"])
 
         # Config with session alignment (but not group isolation for date-interleaved data)
-        config = CombinatorialPurgedConfig(
+        config = CombinatorialConfig(
             n_groups=8,
             n_test_groups=2,
             label_horizon=2,  # 2 sessions
@@ -404,7 +404,7 @@ class TestCompleteWorkflow:
             isolate_groups=False,  # With date-interleaved data, isolation would be too aggressive
         )
 
-        cv = CombinatorialPurgedCV(config=config)
+        cv = CombinatorialCV(config=config)
         folds = list(cv.split(X, y, groups))
 
         # Comprehensive verification
@@ -430,7 +430,7 @@ class TestCompleteWorkflow:
             assert stats["n_folds"] > 0
 
             # Load and verify
-            loaded_config = load_config(tmp_path / "config.json", CombinatorialPurgedConfig)
+            loaded_config = load_config(tmp_path / "config.json", CombinatorialConfig)
             loaded_folds, metadata = load_folds(tmp_path / "folds.json")
 
             assert loaded_config.align_to_sessions == config.align_to_sessions
@@ -448,7 +448,7 @@ class TestReproducibility:
     def test_config_serialization_reproducibility(self):
         """Verify that saving/loading config produces identical results."""
         # Create original config
-        original = PurgedWalkForwardConfig(
+        original = WalkForwardConfig(
             n_splits=5,
             test_size=20,
             train_size=80,
@@ -464,7 +464,7 @@ class TestReproducibility:
 
             # Save and load
             save_config(original, filepath)
-            loaded = load_config(filepath, PurgedWalkForwardConfig)
+            loaded = load_config(filepath, WalkForwardConfig)
 
             # Verify all attributes match
             assert loaded.n_splits == original.n_splits
@@ -477,8 +477,8 @@ class TestReproducibility:
             assert loaded.isolate_groups == original.isolate_groups
 
             # Create splitters from both configs and verify they match
-            cv_original = PurgedWalkForwardCV(config=original)
-            cv_loaded = PurgedWalkForwardCV(config=loaded)
+            cv_original = WalkForwardCV(config=original)
+            cv_loaded = WalkForwardCV(config=loaded)
 
             assert cv_original.n_splits == cv_loaded.n_splits
             assert cv_original.test_size == cv_loaded.test_size
@@ -489,7 +489,7 @@ class TestReproducibility:
         """Verify that saved folds can be loaded and reused identically."""
         X = np.arange(200).reshape(200, 1)
 
-        cv = PurgedWalkForwardCV(n_splits=5, test_size=30, label_horizon=5, embargo_size=3)
+        cv = WalkForwardCV(n_splits=5, test_size=30, label_horizon=5, embargo_size=3)
 
         original_folds = list(cv.split(X))
 
@@ -520,7 +520,7 @@ class TestErrorHandling:
         dates = pd.date_range("2023-01-01", periods=50, freq="D", tz="UTC")
         X = pd.DataFrame({"feature": np.arange(50)}, index=dates)
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             test_size=5,
             align_to_sessions=True,
@@ -536,7 +536,7 @@ class TestErrorHandling:
         X = pd.DataFrame({"feature": np.arange(50), "session_date": dates}, index=dates)
 
         # This should work - timedeltas are supported
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             test_size=5,  # Sessions
             label_horizon=pd.Timedelta("2D"),

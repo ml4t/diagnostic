@@ -1,4 +1,4 @@
-"""Tests for PurgedWalkForwardCV splitter."""
+"""Tests for WalkForwardCV splitter."""
 
 import numpy as np
 import pandas as pd
@@ -6,16 +6,16 @@ import polars as pl
 import pytest
 from pydantic import ValidationError
 
-from ml4t.diagnostic.splitters.walk_forward import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters.walk_forward import WalkForwardCV
 
 
-class TestPurgedWalkForwardCV:
-    """Test suite for PurgedWalkForwardCV."""
+class TestWalkForwardCV:
+    """Test suite for WalkForwardCV."""
 
     def test_basic_walk_forward_split(self):
         """Test basic walk-forward splitting without purging/embargo."""
         X = np.arange(100).reshape(100, 1)
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
+        cv = WalkForwardCV(n_splits=3, label_horizon=0, embargo_size=0)
 
         splits = list(cv.split(X))
         assert len(splits) == 3
@@ -42,7 +42,7 @@ class TestPurgedWalkForwardCV:
         n_samples = 100
         X = np.arange(n_samples).reshape(n_samples, 1)
         label_horizon = 5
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=label_horizon)
+        cv = WalkForwardCV(n_splits=3, label_horizon=label_horizon)
 
         for train_idx, test_idx in cv.split(X):
             # Check purging: no training sample should be within
@@ -57,7 +57,7 @@ class TestPurgedWalkForwardCV:
         n_samples = 100
         X = np.arange(n_samples).reshape(n_samples, 1)
         embargo_size = 3
-        cv = PurgedWalkForwardCV(n_splits=2, embargo_size=embargo_size)
+        cv = WalkForwardCV(n_splits=2, embargo_size=embargo_size)
 
         splits = list(cv.split(X))
 
@@ -78,7 +78,7 @@ class TestPurgedWalkForwardCV:
         X = np.arange(n_samples).reshape(n_samples, 1)
 
         # Expanding window
-        cv_expanding = PurgedWalkForwardCV(n_splits=3, expanding=True)
+        cv_expanding = WalkForwardCV(n_splits=3, expanding=True)
         splits_expanding = list(cv_expanding.split(X))
 
         # Each successive training set should be larger
@@ -86,7 +86,7 @@ class TestPurgedWalkForwardCV:
         assert all(train_sizes[i] < train_sizes[i + 1] for i in range(len(train_sizes) - 1))
 
         # Rolling window with fixed size
-        cv_rolling = PurgedWalkForwardCV(n_splits=3, expanding=False, train_size=30)
+        cv_rolling = WalkForwardCV(n_splits=3, expanding=False, train_size=30)
         splits_rolling = list(cv_rolling.split(X))
 
         # Training sets should have similar sizes (accounting for purging)
@@ -99,7 +99,7 @@ class TestPurgedWalkForwardCV:
         dates = pd.date_range("2020-01-01", periods=100, freq="D", tz="UTC")
         X = pd.DataFrame({"feature": np.arange(100)}, index=dates)
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=2,
             label_horizon=pd.Timedelta("5D"),
             embargo_size=pd.Timedelta("3D"),
@@ -117,7 +117,7 @@ class TestPurgedWalkForwardCV:
     def test_with_polars_dataframe(self):
         """Test with polars DataFrame input."""
         X = pl.DataFrame({"feature": np.arange(100)})
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
 
         splits = list(cv.split(X))
         assert len(splits) == 3
@@ -132,12 +132,12 @@ class TestPurgedWalkForwardCV:
         X = np.arange(n_samples).reshape(n_samples, 1)
 
         # Fixed test size
-        cv_fixed = PurgedWalkForwardCV(n_splits=3, test_size=20)
+        cv_fixed = WalkForwardCV(n_splits=3, test_size=20)
         for _, test_idx in cv_fixed.split(X):
             assert len(test_idx) == 20
 
         # Proportional test size
-        cv_prop = PurgedWalkForwardCV(n_splits=3, test_size=0.2)
+        cv_prop = WalkForwardCV(n_splits=3, test_size=0.2)
         for _, test_idx in cv_prop.split(X):
             assert len(test_idx) == 20  # 0.2 * 100
 
@@ -145,7 +145,7 @@ class TestPurgedWalkForwardCV:
         """Test gap between train and test sets."""
         X = np.arange(100).reshape(100, 1)
         gap = 5
-        cv = PurgedWalkForwardCV(n_splits=2, gap=gap)
+        cv = WalkForwardCV(n_splits=2, gap=gap)
 
         for train_idx, test_idx in cv.split(X):
             # Check gap between train and test
@@ -155,7 +155,7 @@ class TestPurgedWalkForwardCV:
         """Test embargo specified as percentage."""
         n_samples = 100
         X = np.arange(n_samples).reshape(n_samples, 1)
-        cv = PurgedWalkForwardCV(n_splits=2, embargo_pct=0.05)
+        cv = WalkForwardCV(n_splits=2, embargo_pct=0.05)
 
         splits = list(cv.split(X))
         assert len(splits) == 2
@@ -175,7 +175,7 @@ class TestPurgedWalkForwardCV:
 
     def test_get_n_splits(self):
         """Test get_n_splits method."""
-        cv = PurgedWalkForwardCV(n_splits=5)
+        cv = WalkForwardCV(n_splits=5)
         assert cv.get_n_splits() == 5
 
         # Should work with any input (ignored)
@@ -186,20 +186,20 @@ class TestPurgedWalkForwardCV:
         """Test validation of invalid parameters."""
         # Negative splits - now validated by Pydantic config
         with pytest.raises(ValidationError, match="greater than 0"):
-            PurgedWalkForwardCV(n_splits=-1)
+            WalkForwardCV(n_splits=-1)
 
         # Negative label_horizon - validated by Pydantic
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
-            PurgedWalkForwardCV(label_horizon=-1)
+            WalkForwardCV(label_horizon=-1)
 
         # Negative embargo - validated by Pydantic
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
-            PurgedWalkForwardCV(embargo_size=-1)
+            WalkForwardCV(embargo_size=-1)
 
     def test_edge_case_small_dataset(self):
         """Test with small dataset."""
         X = np.arange(20).reshape(20, 1)
-        cv = PurgedWalkForwardCV(n_splits=2, label_horizon=2, embargo_size=2)
+        cv = WalkForwardCV(n_splits=2, label_horizon=2, embargo_size=2)
 
         splits = list(cv.split(X))
         assert len(splits) == 2
@@ -213,7 +213,7 @@ class TestPurgedWalkForwardCV:
         """Test that last split uses all remaining data."""
         n_samples = 105  # Not evenly divisible
         X = np.arange(n_samples).reshape(n_samples, 1)
-        cv = PurgedWalkForwardCV(n_splits=3)
+        cv = WalkForwardCV(n_splits=3)
 
         splits = list(cv.split(X))
         last_train, last_test = splits[-1]

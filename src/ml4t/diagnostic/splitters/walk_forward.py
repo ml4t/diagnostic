@@ -1,7 +1,7 @@
-"""Walk-forward cross-validation with purging and embargo.
+"""Walk-forward cross-validation for time-series data.
 
-This module implements walk-forward cross-validation that prevents data leakage
-through purging and embargo, suitable for time-series financial data.
+This module implements walk-forward cross-validation with optional safeguards
+against data leakage from overlapping labels and autocorrelation.
 """
 
 from collections.abc import Generator
@@ -15,7 +15,7 @@ from ml4t.diagnostic.core.purging import apply_purging_and_embargo
 from ml4t.diagnostic.splitters.base import BaseSplitter
 from ml4t.diagnostic.splitters.calendar import TradingCalendar, parse_time_size_calendar_aware
 from ml4t.diagnostic.splitters.calendar_config import CalendarConfig
-from ml4t.diagnostic.splitters.config import PurgedWalkForwardConfig
+from ml4t.diagnostic.splitters.config import WalkForwardConfig
 from ml4t.diagnostic.splitters.group_isolation import isolate_groups_from_train
 from ml4t.diagnostic.splitters.utils import convert_indices_to_timestamps
 
@@ -23,12 +23,12 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-class PurgedWalkForwardCV(BaseSplitter):
-    """Walk-forward cross-validator with purging and embargo.
+class WalkForwardCV(BaseSplitter):
+    """Walk-forward cross-validator for time-series data.
 
     Walk-forward CV creates sequential train/test splits where training data
-    always precedes test data. This implementation adds purging and embargo
-    to prevent data leakage from label overlap and serial correlation.
+    always precedes test data. Includes optional safeguards against data leakage
+    from overlapping labels and autocorrelation.
 
     Parameters
     ----------
@@ -52,13 +52,20 @@ class PurgedWalkForwardCV(BaseSplitter):
         Time-based specifications require X to have a DatetimeIndex.
 
     gap : int, default=0
-        Gap between training and test set (in addition to purging).
+        Gap between training and test set (in addition to label_horizon).
 
     label_horizon : int or pd.Timedelta, default=0
-        Forward-looking period of labels for purging calculation.
+        How far ahead labels look into the future. Removes training samples whose
+        prediction targets overlap with validation/test data.
+
+        Example: If predicting 5-day forward returns, a training sample at day 95
+        has a label computed from prices on days 95-100. If validation starts at
+        day 98, this training sample's label "sees" validation data, creating leakage.
+        Setting label_horizon=5 removes training samples from days 93-97.
 
     embargo_size : int or pd.Timedelta, optional
-        Size of embargo period after each test set.
+        Buffer zone after test periods. For standard walk-forward CV where training
+        always precedes test, this has no effect. It is primarily used by CombinatorialCV.
 
     embargo_pct : float, optional
         Embargo size as percentage of total samples.
@@ -92,8 +99,8 @@ class PurgedWalkForwardCV(BaseSplitter):
 
         Examples:
         >>> from ml4t.diagnostic.splitters.calendar_config import CME_CONFIG
-        >>> cv = PurgedWalkForwardCV(test_size='4W', calendar=CME_CONFIG)  # CME futures
-        >>> cv = PurgedWalkForwardCV(test_size='1W', calendar='NYSE')  # US equities (simple)
+        >>> cv = WalkForwardCV(test_size='4W', calendar=CME_CONFIG)  # CME futures
+        >>> cv = WalkForwardCV(test_size='1W', calendar='NYSE')  # US equities (simple)
 
     align_to_sessions : bool, default=False
         If True, align fold boundaries to trading session boundaries.
@@ -119,7 +126,7 @@ class PurgedWalkForwardCV(BaseSplitter):
         Requires passing `groups` parameter to split() method with asset IDs.
 
         Example:
-        >>> cv = PurgedWalkForwardCV(n_splits=5, isolate_groups=True)
+        >>> cv = WalkForwardCV(n_splits=5, isolate_groups=True)
         >>> for train, test in cv.split(df, groups=df['symbol']):
         ...     # train and test will have completely different symbols
         ...     pass
@@ -132,9 +139,9 @@ class PurgedWalkForwardCV(BaseSplitter):
     Examples:
     --------
     >>> import numpy as np
-    >>> from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+    >>> from ml4t.diagnostic.splitters import WalkForwardCV
     >>> X = np.arange(100).reshape(100, 1)
-    >>> cv = PurgedWalkForwardCV(n_splits=3, label_horizon=5, embargo_size=2)
+    >>> cv = WalkForwardCV(n_splits=3, label_horizon=5, embargo_size=2)
     >>> for train, test in cv.split(X):
     ...     print(f"Train: {len(train)}, Test: {len(test)}")
     Train: 17, Test: 25
@@ -144,7 +151,7 @@ class PurgedWalkForwardCV(BaseSplitter):
 
     def __init__(
         self,
-        config: PurgedWalkForwardConfig | None = None,
+        config: WalkForwardConfig | None = None,
         *,
         n_splits: int = 5,
         test_size: float | None = None,
@@ -161,11 +168,11 @@ class PurgedWalkForwardCV(BaseSplitter):
         timestamp_col: str | None = None,
         isolate_groups: bool = False,
     ) -> None:
-        """Initialize PurgedWalkForwardCV.
+        """Initialize WalkForwardCV.
 
         This splitter uses a config-first architecture. You can either:
-        1. Pass a config object: PurgedWalkForwardCV(config=my_config)
-        2. Pass individual parameters: PurgedWalkForwardCV(n_splits=5, test_size=100)
+        1. Pass a config object: WalkForwardCV(config=my_config)
+        2. Pass individual parameters: WalkForwardCV(n_splits=5, test_size=100)
 
         Parameters are automatically converted to a config object internally,
         ensuring a single source of truth for all validation and logic.
@@ -173,17 +180,17 @@ class PurgedWalkForwardCV(BaseSplitter):
         Examples
         --------
         >>> # Approach 1: Direct parameters (convenient)
-        >>> cv = PurgedWalkForwardCV(n_splits=5, test_size=100)
+        >>> cv = WalkForwardCV(n_splits=5, test_size=100)
         >>>
         >>> # Approach 2: Config object (for serialization/reproducibility)
-        >>> from ml4t.diagnostic.splitters.config import PurgedWalkForwardConfig
-        >>> config = PurgedWalkForwardConfig(n_splits=5, test_size=100)
-        >>> cv = PurgedWalkForwardCV(config=config)
+        >>> from ml4t.diagnostic.splitters.config import WalkForwardConfig
+        >>> config = WalkForwardConfig(n_splits=5, test_size=100)
+        >>> cv = WalkForwardCV(config=config)
         >>>
         >>> # Config can be serialized
         >>> config.to_json("cv_config.json")
-        >>> loaded = PurgedWalkForwardConfig.from_json("cv_config.json")
-        >>> cv = PurgedWalkForwardCV(config=loaded)
+        >>> loaded = WalkForwardConfig.from_json("cv_config.json")
+        >>> cv = WalkForwardCV(config=loaded)
         """
         # Config-first: either use provided config or create from params
         if config is not None:
@@ -229,7 +236,7 @@ class PurgedWalkForwardCV(BaseSplitter):
         else:
             # Create config from individual parameters
             # Note: embargo_size maps to embargo_td in config
-            self.config = PurgedWalkForwardConfig(
+            self.config = WalkForwardConfig(
                 n_splits=n_splits,
                 test_size=test_size,
                 train_size=train_size,
@@ -339,7 +346,7 @@ class PurgedWalkForwardCV(BaseSplitter):
                     "Time-based size specifications require timestamps. "
                     "For pandas DataFrames: use a DatetimeIndex. "
                     "For Polars DataFrames: set timestamp_col='your_datetime_column'. "
-                    "Example: PurgedWalkForwardCV(test_size='4W', timestamp_col='date')"
+                    "Example: WalkForwardCV(test_size='4W', timestamp_col='date')"
                 )
 
             # Use calendar-aware parsing if calendar is configured

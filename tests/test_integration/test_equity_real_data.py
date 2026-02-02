@@ -25,7 +25,7 @@ from ml4t.diagnostic.evaluation.stats import (
     deflated_sharpe_ratio,
     deflated_sharpe_ratio_from_statistics,
 )
-from ml4t.diagnostic.splitters import CombinatorialPurgedCV, PurgedWalkForwardCV
+from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
 
 # Path to test fixture data
 FIXTURES_PATH = Path("~/ml4t/third-edition/tests/fixtures/data").expanduser()
@@ -145,7 +145,7 @@ class TestCPCVWithRealData:
         X = df[["feat1", "feat2"]]
         y = df["label"]
 
-        cv = CombinatorialPurgedCV(
+        cv = CombinatorialCV(
             n_groups=5,
             n_test_groups=2,
             label_horizon=pd.Timedelta("5D"),
@@ -195,7 +195,7 @@ class TestCPCVWithRealData:
         X.index = pd.to_datetime(X.index).tz_localize("UTC")
         y.index = pd.to_datetime(y.index).tz_localize("UTC")
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=pd.Timedelta("1D"),
             embargo_size=pd.Timedelta("1D"),
@@ -385,7 +385,7 @@ class TestPurgingWithRealData:
         )
         df = df.set_index("date")
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=pd.Timedelta("5D"),
             embargo_size=pd.Timedelta("2D"),

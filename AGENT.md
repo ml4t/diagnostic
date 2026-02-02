@@ -18,7 +18,7 @@ Statistical validation for ML-based quantitative trading.
 
 ```python
 from ml4t.diagnostic import analyze_signal, ValidatedCrossValidation, BarrierAnalysis
-from ml4t.diagnostic.splitters import CombinatorialPurgedCV
+from ml4t.diagnostic.splitters import CombinatorialCV
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio, ras_sharpe_adjustment
 ```
 

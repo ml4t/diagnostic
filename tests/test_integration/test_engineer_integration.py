@@ -21,7 +21,7 @@ try:
 except ImportError:
     ENGINEER_AVAILABLE = False
 
-from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters import WalkForwardCV
 
 
 @pytest.mark.skipif(
@@ -85,7 +85,7 @@ class TestEngineerIntegration:
         return labeled_events
 
     def test_purged_walk_forward_with_labeled_data(self, create_labeled_data):
-        """Test PurgedWalkForwardCV with ml4t.engineer labeled data."""
+        """Test WalkForwardCV with ml4t.engineer labeled data."""
         labeled_df = create_labeled_data
 
         # Extract features and labels
@@ -94,7 +94,7 @@ class TestEngineerIntegration:
         y = labeled_df.select("label").to_series()
 
         # The label horizon in this case is the max_holding_period (20 days)
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=5,
             label_horizon=20,  # Match the labeling horizon
             embargo_size=5,  # 5 days embargo
@@ -128,7 +128,7 @@ class TestEngineerIntegration:
         y = pandas_df["label"]
 
         # Use timedelta for label_horizon when using timestamps
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=5,
             label_horizon=pd.Timedelta("20D"),
             embargo_size=pd.Timedelta("5D"),
@@ -155,7 +155,7 @@ class TestEngineerIntegration:
         X = labeled_df.select(feature_cols).to_pandas()
         y = labeled_df.select("label").to_pandas()["label"]
 
-        cv = PurgedWalkForwardCV(n_splits=3, label_horizon=20)
+        cv = WalkForwardCV(n_splits=3, label_horizon=20)
 
         # Check label distribution across splits
         for train_idx, test_idx in cv.split(X, y):
@@ -186,7 +186,7 @@ class TestEngineerIntegration:
         X = labeled_df.select(feature_cols)
         y = labeled_df.select("label").to_series()
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=4,
             label_horizon=20,
             embargo_size=5,
@@ -271,7 +271,7 @@ class TestEngineerIntegration:
             X = asset_data.select(["sma_10", "vol_10", "returns"])
             y = asset_data.select("label").to_series()
 
-            cv = PurgedWalkForwardCV(n_splits=3, label_horizon=15)
+            cv = WalkForwardCV(n_splits=3, label_horizon=15)
             splits = list(cv.split(X, y))
 
             assert len(splits) == 3
@@ -299,7 +299,7 @@ class TestEngineerIntegration:
         y = y[valid_idx].values
 
         # Use our purged walk-forward CV
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=20,
             embargo_size=5,
@@ -344,7 +344,7 @@ class TestEngineerIntegration:
         X = labeled_df.select(feature_cols)
         y = labeled_df.select("label").to_series()
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=20,
             expanding=True,  # Expanding window
@@ -365,7 +365,7 @@ class TestEngineerIntegration:
         X = labeled_df.select(feature_cols)
         y = labeled_df.select("label").to_series()
 
-        cv = PurgedWalkForwardCV(
+        cv = WalkForwardCV(
             n_splits=3,
             label_horizon=20,
             expanding=False,  # Rolling window

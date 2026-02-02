@@ -11,12 +11,12 @@ Session-aware splitting consumes `session_date` column from qdata library:
     assigner = SessionAssigner.from_exchange('CME')
     df_with_sessions = assigner.assign_sessions(df)
 
-    config = PurgedWalkForwardConfig(
+    config = WalkForwardConfig(
         n_splits=5,
         test_size=4,  # 4 sessions
         align_to_sessions=True
     )
-    cv = PurgedWalkForwardCV.from_config(config)
+    cv = WalkForwardCV.from_config(config)
     for train, test in cv.split(df_with_sessions):
         # Fold boundaries aligned to session boundaries
         pass
@@ -24,16 +24,16 @@ Session-aware splitting consumes `session_date` column from qdata library:
 Examples
 --------
 >>> # Parameter-based initialization (backward compatible)
->>> cv = PurgedWalkForwardCV(n_splits=5, test_size=100)
+>>> cv = WalkForwardCV(n_splits=5, test_size=100)
 >>>
 >>> # Config-based initialization
->>> config = PurgedWalkForwardConfig(n_splits=5, test_size=100)
->>> cv = PurgedWalkForwardCV.from_config(config)
+>>> config = WalkForwardConfig(n_splits=5, test_size=100)
+>>> cv = WalkForwardCV.from_config(config)
 >>>
 >>> # Serialize config for reproducibility
 >>> config.to_json("cv_config.json")
->>> loaded_config = PurgedWalkForwardConfig.from_json("cv_config.json")
->>> cv = PurgedWalkForwardCV.from_config(loaded_config)
+>>> loaded_config = WalkForwardConfig.from_json("cv_config.json")
+>>> cv = WalkForwardCV.from_config(loaded_config)
 """
 
 from __future__ import annotations
@@ -55,18 +55,37 @@ class SplitterConfig(BaseConfig):
     ----------
     n_splits : int
         Number of cross-validation folds.
-    label_horizon : int
-        Number of periods ahead that labels look.
-        Used for purging and embargo calculations.
-    embargo_td : int | None
-        Embargo buffer to prevent serial correlation leakage.
-        If None, no embargo is applied.
+
+    label_horizon : int or pd.Timedelta
+        How far ahead labels look into the future. Used to remove training samples
+        whose prediction targets overlap with validation/test data.
+
+        Example: If predicting 5-day forward returns, a training sample at day 95
+        has a label computed from days 95-100. If the test set starts at day 98,
+        this training sample's label "sees" test data, creating leakage.
+        Setting label_horizon=5 removes training samples from days 93-97.
+
+    embargo_td : int or pd.Timedelta or None
+        Buffer zone after test periods where training samples are also excluded.
+        Prevents autocorrelation leakage in combinatorial CV where training data
+        can follow test data chronologically.
+
+        Example: When using CombinatorialCV with test groups in the middle of
+        the timeline, training may include data from after the test period.
+        If you're predicting volatility and the test period has a volatility spike,
+        samples immediately after likely share similar volatility due to clustering.
+        An embargo of 5 bars excludes those autocorrelated samples from training.
+
+        For standard walk-forward CV (training always before test), this has no effect.
+
     align_to_sessions : bool
         If True, fold boundaries are aligned to trading session boundaries.
         Requires 'session_date' column in data (from ml4t.data.sessions.SessionAssigner).
+
     session_col : str
         Column name containing session identifiers.
         Default: 'session_date' (standard qdata column name).
+
     isolate_groups : bool
         If True, ensures no overlap between train/test group identifiers.
         Useful for multi-asset validation to prevent data leakage.
@@ -75,11 +94,18 @@ class SplitterConfig(BaseConfig):
     n_splits: int = Field(5, gt=0, description="Number of cross-validation folds")
     label_horizon: Any = Field(
         0,
-        description="Number of periods ahead that labels look (for purging/embargo). Can be int or pd.Timedelta.",
+        description=(
+            "How far ahead labels look (int bars or pd.Timedelta). "
+            "Removes training samples whose targets overlap with validation/test data."
+        ),
     )
     embargo_td: Any = Field(
         None,
-        description="Embargo buffer in periods (prevents serial correlation leakage). Can be int, pd.Timedelta, or None.",
+        description=(
+            "Buffer zone after test periods (int bars, pd.Timedelta, or None). "
+            "Excludes autocorrelated training samples that follow test data. "
+            "Only affects CombinatorialCV where training can follow test chronologically."
+        ),
     )
     align_to_sessions: bool = Field(
         False,
@@ -154,8 +180,8 @@ class SplitterConfig(BaseConfig):
         )
 
 
-class PurgedWalkForwardConfig(SplitterConfig):
-    """Configuration for Purged Walk-Forward Cross-Validation.
+class WalkForwardConfig(SplitterConfig):
+    """Configuration for Walk-Forward Cross-Validation.
 
     Walk-forward validation is the standard approach for time-series backtesting,
     where the model is trained on historical data and tested on future periods.
@@ -225,11 +251,11 @@ class PurgedWalkForwardConfig(SplitterConfig):
         return v
 
 
-class CombinatorialPurgedConfig(SplitterConfig):
-    """Configuration for Combinatorial Purged Cross-Validation (CPCV).
+class CombinatorialConfig(SplitterConfig):
+    """Configuration for Combinatorial Cross-Validation (CPCV).
 
-    CPCV is designed for multi-asset strategies and combating overfitting by
-    creating multiple test sets from combinatorial group selections.
+    Combinatorial CV is designed for multi-asset strategies and combating overfitting
+    by creating multiple test sets from combinatorial group selections.
 
     Reference: Bailey & López de Prado (2014)
     "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting and Non-Normality"
@@ -304,7 +330,7 @@ class CombinatorialPurgedConfig(SplitterConfig):
         return v
 
     @model_validator(mode="after")
-    def validate_embargo_mutual_exclusivity(self) -> CombinatorialPurgedConfig:
+    def validate_embargo_mutual_exclusivity(self) -> CombinatorialConfig:
         """Validate that embargo_td and embargo_pct are mutually exclusive."""
         if self.embargo_td is not None and self.embargo_pct is not None:
             raise ValueError(
@@ -317,6 +343,6 @@ class CombinatorialPurgedConfig(SplitterConfig):
 # Export all config classes
 __all__ = [
     "SplitterConfig",
-    "PurgedWalkForwardConfig",
-    "CombinatorialPurgedConfig",
+    "WalkForwardConfig",
+    "CombinatorialConfig",
 ]

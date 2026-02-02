@@ -20,7 +20,7 @@ class ConfigError(Exception):
 class SplitterConfig(BaseModel):
     """Configuration schema for cross-validation splitters."""
 
-    type: Literal["PurgedWalkForwardCV", "CombinatorialPurgedCV"] = Field(
+    type: Literal["WalkForwardCV", "CombinatorialCV"] = Field(
         description="Type of cross-validation splitter",
     )
     params: dict[str, Any] = Field(
@@ -34,14 +34,14 @@ class SplitterConfig(BaseModel):
         """Validate splitter-specific parameters."""
         splitter_type = info.data.get("type")
 
-        if splitter_type == "PurgedWalkForwardCV":
+        if splitter_type == "WalkForwardCV":
             # Validate walk-forward specific parameters
             if "n_splits" in v and (v["n_splits"] < 2 or v["n_splits"] > 50):
                 raise ValueError("n_splits must be between 2 and 50")
             if "test_size" in v and (v["test_size"] <= 0 or v["test_size"] >= 1):
                 raise ValueError("test_size must be between 0 and 1")
 
-        elif splitter_type == "CombinatorialPurgedCV":
+        elif splitter_type == "CombinatorialCV":
             # Validate combinatorial specific parameters
             if "n_groups" in v and (v["n_groups"] < 2 or v["n_groups"] > 20):
                 raise ValueError("n_groups must be between 2 and 20")
@@ -192,10 +192,10 @@ class QEvalConfig(BaseModel):
         """Validate configuration consistency across tiers."""
         tier = self.evaluation.tier
 
-        # Tier 1 should use CombinatorialPurgedCV for maximum rigor
-        if tier == 1 and self.splitter.type != "CombinatorialPurgedCV":
+        # Tier 1 should use CombinatorialCV for maximum rigor
+        if tier == 1 and self.splitter.type != "CombinatorialCV":
             raise ValueError(
-                "Tier 1 evaluation should use CombinatorialPurgedCV for maximum rigor",
+                "Tier 1 evaluation should use CombinatorialCV for maximum rigor",
             )
 
         # Tier 3 should have minimal statistical tests
@@ -236,7 +236,7 @@ class EvaluationConfigManager:
         """Create default configuration with all required fields."""
         return QEvalConfig(
             splitter=SplitterConfig(
-                type="PurgedWalkForwardCV",
+                type="WalkForwardCV",
                 params={
                     "n_splits": 5,
                     "test_size": 0.2,
@@ -403,7 +403,7 @@ class EvaluationConfigManager:
             Configured evaluator instance
         """
         from ml4t.diagnostic.evaluation.framework import Evaluator
-        from ml4t.diagnostic.splitters import CombinatorialPurgedCV, PurgedWalkForwardCV
+        from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
 
         # Create splitter
         splitter_type = self.config.splitter.type
@@ -415,10 +415,10 @@ class EvaluationConfigManager:
         if "embargo_pct" not in splitter_params:
             splitter_params["embargo_pct"] = self.config.data.embargo_pct
 
-        if splitter_type == "PurgedWalkForwardCV":
-            splitter = PurgedWalkForwardCV(**splitter_params)
-        else:  # CombinatorialPurgedCV
-            splitter = CombinatorialPurgedCV(**splitter_params)
+        if splitter_type == "WalkForwardCV":
+            splitter = WalkForwardCV(**splitter_params)
+        else:  # CombinatorialCV
+            splitter = CombinatorialCV(**splitter_params)
 
         # Get tier-specific configuration
         tier = self.config.evaluation.tier
@@ -490,7 +490,7 @@ evaluation:
   n_jobs: 1                 # Number of parallel jobs
 
 splitter:
-  type: PurgedWalkForwardCV  # or CombinatorialPurgedCV
+  type: WalkForwardCV  # or CombinatorialCV
   params:
     n_splits: 5
     test_size: 0.2

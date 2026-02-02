@@ -1,8 +1,10 @@
 """
-Example: Purged Walk-Forward Cross-Validation with ML4T Engineer Output
+Example: Walk-Forward Cross-Validation with ML4T Engineer Output
 
-This example demonstrates how to use ML4T Evaluation's PurgedWalkForwardCV splitter
-with output from ML4T Engineer, showcasing proper data leakage prevention.
+This example demonstrates how to use ML4T Evaluation's WalkForwardCV splitter
+with output from ML4T Engineer, showcasing proper data leakage prevention
+through label_horizon (removing training samples whose labels overlap with
+validation data).
 """
 
 import sys
@@ -16,7 +18,7 @@ import polars as pl
 # Add ml4t-diagnostic source to path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from ml4t.diagnostic.splitters import PurgedWalkForwardCV
+from ml4t.diagnostic.splitters import WalkForwardCV
 
 
 def create_sample_features_data() -> pl.DataFrame:
@@ -117,7 +119,7 @@ def demonstrate_basic_walk_forward():
     y = df["label"].to_numpy()
 
     # Basic walk-forward without purging
-    cv = PurgedWalkForwardCV(
+    cv = WalkForwardCV(
         n_splits=5,
         test_size=0.2,  # 20% of data for each test set
         expanding=True,  # Use expanding window
@@ -138,7 +140,7 @@ def demonstrate_basic_walk_forward():
         print(f"  Test:  {len(test_idx):3d} samples | {test_dates.min()} to {test_dates.max()}")
 
 
-def demonstrate_purged_walk_forward():
+def demonstrate_walk_forward():
     """Demonstrate walk-forward with purging to prevent label leakage."""
     print("\n" + "=" * 60)
     print("2. PURGED WALK-FORWARD (PREVENTING LABEL LEAKAGE)")
@@ -155,7 +157,7 @@ def demonstrate_purged_walk_forward():
     # Walk-forward WITH purging
     label_horizon = 20  # 20-day forward-looking labels
 
-    cv_purged = PurgedWalkForwardCV(
+    cv_with_horizon = WalkForwardCV(
         n_splits=5,
         test_size=0.2,
         expanding=True,
@@ -168,7 +170,7 @@ def demonstrate_purged_walk_forward():
     print("\nSplit details (WITH purging):")
     print("-" * 40)
 
-    for i, (train_idx, test_idx) in enumerate(cv_purged.split(X, y)):
+    for i, (train_idx, test_idx) in enumerate(cv_with_horizon.split(X, y)):
         train_dates = df[train_idx]["event_time"]
         test_dates = df[test_idx]["event_time"]
 
@@ -199,7 +201,7 @@ def demonstrate_embargo():
     y = df["label"].to_numpy()
 
     # Walk-forward with BOTH purging and embargo
-    cv_full = PurgedWalkForwardCV(
+    cv_full = WalkForwardCV(
         n_splits=3,  # Fewer splits to see embargo effect
         test_size=0.2,
         expanding=True,
@@ -254,7 +256,7 @@ def demonstrate_rolling_window():
     y = df["label"].to_numpy()
 
     # Expanding window (default)
-    cv_expanding = PurgedWalkForwardCV(
+    cv_expanding = WalkForwardCV(
         n_splits=4,
         test_size=0.15,
         expanding=True,
@@ -262,7 +264,7 @@ def demonstrate_rolling_window():
     )
 
     # Rolling window with fixed training size
-    cv_rolling = PurgedWalkForwardCV(
+    cv_rolling = WalkForwardCV(
         n_splits=4,
         test_size=0.15,
         train_size=100,  # Fixed 100 samples for training
@@ -282,7 +284,7 @@ def demonstrate_rolling_window():
 
 
 def demonstrate_model_validation():
-    """Demonstrate actual model validation with purged walk-forward."""
+    """Demonstrate actual model validation with walk-forward CV."""
     print("\n" + "=" * 60)
     print("5. MODEL VALIDATION EXAMPLE")
     print("=" * 60)
@@ -298,17 +300,17 @@ def demonstrate_model_validation():
     X = df.select(feature_cols).to_numpy()
     y = df["label"].to_numpy()
 
-    # Set up purged walk-forward CV
-    cv = PurgedWalkForwardCV(
+    # Set up walk-forward CV with label_horizon to prevent data leakage
+    cv = WalkForwardCV(
         n_splits=3,
         test_size=0.2,
         expanding=True,
-        label_horizon=20,
+        label_horizon=20,  # Labels look 20 bars ahead - remove overlapping training samples
         embargo_pct=0.01,
     )
 
     # Train and evaluate model
-    print("\nTraining Random Forest with Purged Walk-Forward CV")
+    print("\nTraining Random Forest with Walk-Forward CV")
     print("-" * 40)
 
     scores = []
@@ -356,12 +358,12 @@ def main():
     print("\n" + "=" * 60)
     print("PURGED WALK-FORWARD CROSS-VALIDATION EXAMPLES")
     print("=" * 60)
-    print("\nThis example demonstrates ML4T Evaluation's PurgedWalkForwardCV splitter")
+    print("\nThis example demonstrates ML4T Evaluation's WalkForwardCV splitter")
     print("for time-series cross-validation with data leakage prevention.")
 
     # Run demonstrations
     demonstrate_basic_walk_forward()
-    demonstrate_purged_walk_forward()
+    demonstrate_walk_forward()
     demonstrate_embargo()
     demonstrate_rolling_window()
     demonstrate_model_validation()
