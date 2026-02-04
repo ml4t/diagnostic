@@ -141,10 +141,15 @@ class TestComputeForwardReturns:
         asset_e = result.filter(pl.col("asset") == "E")
         assert asset_e["1D_fwd_return"][0] is None
 
-    def test_missing_date_in_prices(self, simple_factor_data):
-        """Test when price data has gap (missing date)."""
-        # Price data missing day 2
-        prices_with_gap = pl.DataFrame(
+    def test_forward_return_uses_price_calendar(self, simple_factor_data):
+        """Test that forward returns use price date calendar, not factor dates.
+
+        When computing N-day forward returns, we use the Nth PRICE date forward,
+        not the Nth factor date. This is the correct behavior for trading:
+        "1 day forward" means the next trading day in the price calendar.
+        """
+        # Prices have: day 1 (idx 0), day 3 (idx 1) - skipping day 2
+        prices_sparse = pl.DataFrame(
             {
                 "date": [
                     date(2024, 1, 1),
@@ -160,10 +165,13 @@ class TestComputeForwardReturns:
         # Factor only has day 1
         factor_day1 = simple_factor_data.filter(pl.col("date") == date(2024, 1, 1))
 
-        result = compute_forward_returns(factor_day1, prices_with_gap, periods=(1,))
+        result = compute_forward_returns(factor_day1, prices_sparse, periods=(1,))
 
-        # 1D forward from day 1 should be None (day 2 missing in prices)
-        assert result.filter(pl.col("asset") == "A")["1D_fwd_return"][0] is None
+        # 1D forward from day 1 uses next PRICE date (day 3), not calendar day 2
+        # Return = (102 - 100) / 100 = 0.02 for asset A
+        assert result.filter(pl.col("asset") == "A")["1D_fwd_return"][0] == pytest.approx(0.02)
+        # Return = (104 - 100) / 100 = 0.04 for asset B
+        assert result.filter(pl.col("asset") == "B")["1D_fwd_return"][0] == pytest.approx(0.04)
 
     def test_nan_price(self):
         """Test when current or future price is NaN."""
@@ -200,27 +208,35 @@ class TestComputeForwardReturns:
         assert abs(day1_b["1D_fwd_return"][0] - 0.02) < 1e-10
 
     def test_end_of_series(self, simple_factor_data, simple_price_data):
-        """Test that last dates have None for N-period returns when dates insufficient."""
+        """Test forward returns use PRICE calendar, not factor calendar.
+
+        Factor has 3 dates (1, 2, 3) but prices have 5 dates (1, 2, 3, 4, 5).
+        Forward returns should use the price calendar, so all factor dates
+        can compute 2D returns because price dates 4 and 5 exist.
+        """
         result = compute_forward_returns(simple_factor_data, simple_price_data, periods=(2,))
 
-        # Factor has 3 dates (1, 2, 3). For 2D returns:
-        # - Day 1: needs day 3 (index 2) - should work
-        # - Day 2: needs day 4 (index 3) - out of bounds since factor has 3 dates
-        # - Day 3: needs day 5 (index 4) - out of bounds
+        # Prices have 5 dates (1, 2, 3, 4, 5). For 2D returns:
+        # - Day 1 (price idx 0): needs price idx 2 (day 3) - valid
+        # - Day 2 (price idx 1): needs price idx 3 (day 4) - valid
+        # - Day 3 (price idx 2): needs price idx 4 (day 5) - valid
 
         day1 = result.filter(pl.col("date") == date(2024, 1, 1))
         day2 = result.filter(pl.col("date") == date(2024, 1, 2))
         day3 = result.filter(pl.col("date") == date(2024, 1, 3))
 
-        # Day 1 should have valid 2D returns (day 3 exists in factor dates)
+        # All days should have valid 2D returns (price dates 3, 4, 5 exist)
         assert all(r is not None for r in day1["2D_fwd_return"].to_list())
+        assert all(r is not None for r in day2["2D_fwd_return"].to_list())
+        assert all(r is not None for r in day3["2D_fwd_return"].to_list())
 
-        # Day 2 and Day 3 should have None (insufficient forward dates)
-        assert all(r is None for r in day2["2D_fwd_return"].to_list())
-        assert all(r is None for r in day3["2D_fwd_return"].to_list())
+        # Verify actual return values (day 1 asset A: day 3 price / day 1 price - 1)
+        # Day 1 asset A: (102 - 100) / 100 = 0.02
+        day1_a = result.filter((pl.col("date") == date(2024, 1, 1)) & (pl.col("asset") == "A"))
+        assert day1_a["2D_fwd_return"][0] == pytest.approx(0.02)
 
-    def test_end_of_series_insufficient_future(self):
-        """Test None when insufficient future dates."""
+    def test_end_of_series_insufficient_price_dates(self):
+        """Test None when insufficient future PRICE dates."""
         factor = pl.DataFrame(
             {
                 "date": [date(2024, 1, 3)],
@@ -228,6 +244,7 @@ class TestComputeForwardReturns:
                 "factor": [1.0],
             }
         )
+        # Only 2 price dates available
         prices = pl.DataFrame(
             {
                 "date": [date(2024, 1, 3), date(2024, 1, 4)],
@@ -238,7 +255,7 @@ class TestComputeForwardReturns:
 
         result = compute_forward_returns(factor, prices, periods=(5,))
 
-        # 5D forward from day 3 needs day 8, which doesn't exist
+        # 5D forward from price idx 0 needs price idx 5, but only 2 price dates exist
         assert result["5D_fwd_return"][0] is None
 
     def test_single_asset(self):

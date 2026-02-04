@@ -160,8 +160,11 @@ def compute_forward_returns(
     """Compute forward returns for each period using vectorized operations.
 
     For each (date, asset), computes return from date to date + period.
-    Forward returns are computed using the factor data's date universe,
-    so period N means "N dates forward in the factor dates", not calendar days.
+
+    Forward returns are computed using the PRICE date universe (trading days),
+    so period N means "N trading days forward in the price data", not N factor
+    dates forward. This ensures returns are computed correctly even when factor
+    dates are a subset of price dates (e.g., due to lookback requirements).
 
     Parameters
     ----------
@@ -170,7 +173,7 @@ def compute_forward_returns(
     prices : pl.DataFrame
         Price data with date, asset, and price columns.
     periods : tuple[int, ...]
-        Forward return periods in trading days (factor date indices).
+        Forward return periods in trading days.
     date_col, asset_col, price_col : str
         Column names.
 
@@ -185,10 +188,10 @@ def compute_forward_returns(
             data = data.with_columns(pl.lit(None).cast(pl.Float64).alias(f"{p}D_fwd_return"))
         return data
 
-    # 1. Create date index mapping from FACTOR data (not prices)
-    # This ensures forward returns align with factor date universe
-    factor_dates = data.select(date_col).unique().sort(date_col)
-    factor_dates = factor_dates.with_row_index("_factor_date_idx")
+    # 1. Create date index mapping from PRICE data (not factor data)
+    # This ensures forward returns use the trading day calendar
+    price_dates = prices.select(date_col).unique().sort(date_col)
+    price_dates = price_dates.with_row_index("_price_date_idx")
 
     # 2. Join data with current prices
     result = data.join(
@@ -197,25 +200,25 @@ def compute_forward_returns(
         how="left",
     )
 
-    # 3. Join to get factor date index for each row
-    result = result.join(factor_dates, on=date_col, how="left")
+    # 3. Join to get price date index for each row
+    result = result.join(price_dates, on=date_col, how="left")
 
     # 4. For each period, compute forward return via joins
     for p in periods:
         col_name = f"{p}D_fwd_return"
 
-        # Create mapping: current_factor_idx -> future_factor_date
-        # future_factor_idx = current_factor_idx + p
-        future_date_map = factor_dates.with_columns(
-            (pl.col("_factor_date_idx") - p).alias("_current_idx")
+        # Create mapping: current_price_idx -> future_price_date
+        # future_price_idx = current_price_idx + p
+        future_date_map = price_dates.with_columns(
+            (pl.col("_price_date_idx") - p).alias("_current_idx")
         ).filter(pl.col("_current_idx") >= 0)
 
-        # Join to get future date (from factor date sequence)
+        # Join to get future date (from price date sequence)
         result = result.join(
             future_date_map.select([date_col, "_current_idx"]).rename(
                 {date_col: f"_future_date_{p}"}
             ),
-            left_on="_factor_date_idx",
+            left_on="_price_date_idx",
             right_on="_current_idx",
             how="left",
         )
