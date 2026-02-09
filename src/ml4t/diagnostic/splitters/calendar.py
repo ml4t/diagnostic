@@ -325,6 +325,232 @@ class TradingCalendar:
 
         return counts.values.tolist()
 
+    def previous_trading_day(
+        self,
+        from_date: pd.Timestamp | str,
+        n: int = 1,
+    ) -> pd.Timestamp:
+        """Get the nth previous trading day from a given date.
+
+        Parameters
+        ----------
+        from_date : pd.Timestamp or str
+            Reference date (will be converted to date for calendar lookup)
+        n : int, default=1
+            Number of trading days to go back (must be >= 1)
+
+        Returns
+        -------
+        pd.Timestamp
+            The nth previous trading day (tz-aware in calendar's timezone)
+
+        Examples
+        --------
+        >>> calendar = TradingCalendar('NYSE')
+        >>> # If from_date is Monday 2024-01-08
+        >>> calendar.previous_trading_day('2024-01-08', n=1)
+        Timestamp('2024-01-05 00:00:00-0500', tz='America/New_York')  # Friday
+        >>> calendar.previous_trading_day('2024-01-08', n=5)
+        Timestamp('2024-01-02 00:00:00-0500', tz='America/New_York')  # Tue (skips MLK day)
+        """
+        if n < 1:
+            raise ValueError(f"n must be >= 1, got {n}")
+
+        # Convert to timestamp if string
+        if isinstance(from_date, str):
+            from_date = pd.Timestamp(from_date)
+
+        # Normalize to tz-naive date for schedule comparison
+        from_date_naive = from_date.tz_localize(None) if from_date.tz else from_date
+        from_date_normalized = from_date_naive.normalize()
+
+        # Get schedule for a reasonable lookback period
+        # Use 2x the number of days to account for weekends/holidays
+        lookback_days = max(n * 2 + 10, 30)
+        start_date = from_date_normalized - pd.Timedelta(days=lookback_days)
+        end_date = from_date_normalized
+
+        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+
+        # Filter to dates strictly before from_date (schedule.index is tz-naive dates)
+        valid_dates = schedule.index[schedule.index < from_date_normalized]
+
+        if len(valid_dates) < n:
+            raise ValueError(
+                f"Not enough trading days in calendar before {from_date}. "
+                f"Requested n={n}, found {len(valid_dates)}"
+            )
+
+        # Get the nth previous trading day (1-indexed)
+        result_date = valid_dates[-n]
+        return pd.Timestamp(result_date).tz_localize(self.tz)
+
+    def next_trading_day(
+        self,
+        from_date: pd.Timestamp | str,
+        n: int = 1,
+    ) -> pd.Timestamp:
+        """Get the nth next trading day from a given date.
+
+        Parameters
+        ----------
+        from_date : pd.Timestamp or str
+            Reference date (will be converted to date for calendar lookup)
+        n : int, default=1
+            Number of trading days to go forward (must be >= 1)
+
+        Returns
+        -------
+        pd.Timestamp
+            The nth next trading day (tz-aware in calendar's timezone)
+
+        Examples
+        --------
+        >>> calendar = TradingCalendar('NYSE')
+        >>> # If from_date is Friday 2024-01-05
+        >>> calendar.next_trading_day('2024-01-05', n=1)
+        Timestamp('2024-01-08 00:00:00-0500', tz='America/New_York')  # Monday
+        >>> calendar.next_trading_day('2024-01-05', n=5)
+        Timestamp('2024-01-12 00:00:00-0500', tz='America/New_York')  # Friday
+        """
+        if n < 1:
+            raise ValueError(f"n must be >= 1, got {n}")
+
+        # Convert to timestamp if string
+        if isinstance(from_date, str):
+            from_date = pd.Timestamp(from_date)
+
+        # Normalize to tz-naive date for schedule comparison
+        from_date_naive = from_date.tz_localize(None) if from_date.tz else from_date
+        from_date_normalized = from_date_naive.normalize()
+
+        # Get schedule for a reasonable lookahead period
+        lookahead_days = max(n * 2 + 10, 30)
+        start_date = from_date_normalized
+        end_date = from_date_normalized + pd.Timedelta(days=lookahead_days)
+
+        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+
+        # Filter to dates strictly after from_date (schedule.index is tz-naive dates)
+        valid_dates = schedule.index[schedule.index > from_date_normalized]
+
+        if len(valid_dates) < n:
+            raise ValueError(
+                f"Not enough trading days in calendar after {from_date}. "
+                f"Requested n={n}, found {len(valid_dates)}"
+            )
+
+        # Get the nth next trading day (1-indexed)
+        result_date = valid_dates[n - 1]
+        return pd.Timestamp(result_date).tz_localize(self.tz)
+
+    def trading_days_between(
+        self,
+        start: pd.Timestamp | str,
+        end: pd.Timestamp | str,
+    ) -> int:
+        """Count the number of trading days between two dates (exclusive of end).
+
+        Parameters
+        ----------
+        start : pd.Timestamp or str
+            Start date (inclusive)
+        end : pd.Timestamp or str
+            End date (exclusive)
+
+        Returns
+        -------
+        int
+            Number of trading days in [start, end)
+
+        Examples
+        --------
+        >>> calendar = TradingCalendar('NYSE')
+        >>> # Monday to Friday (same week)
+        >>> calendar.trading_days_between('2024-01-08', '2024-01-12')
+        4  # Mon, Tue, Wed, Thu (Fri excluded)
+        """
+        # Convert to timestamps if strings
+        if isinstance(start, str):
+            start = pd.Timestamp(start)
+        if isinstance(end, str):
+            end = pd.Timestamp(end)
+
+        # Normalize to tz-naive dates for schedule comparison
+        start_naive = start.tz_localize(None) if start.tz else start
+        end_naive = end.tz_localize(None) if end.tz else end
+        start_normalized = start_naive.normalize()
+        end_normalized = end_naive.normalize()
+
+        if start_normalized >= end_normalized:
+            return 0
+
+        schedule = self.calendar.schedule(
+            start_date=start_normalized - pd.Timedelta(days=1),
+            end_date=end_normalized + pd.Timedelta(days=1),
+        )
+
+        # Count trading days in [start, end)
+        mask = (schedule.index >= start_normalized) & (schedule.index < end_normalized)
+        return int(mask.sum())
+
+
+def trading_days_to_timedelta(
+    n_trading_days: int,
+    calendar: TradingCalendar,
+    reference_date: pd.Timestamp,
+    direction: str = "backward",
+) -> pd.Timedelta:
+    """Convert trading days to a calendar timedelta.
+
+    This function calculates the actual calendar time span that covers
+    a specified number of trading days, accounting for weekends and holidays.
+
+    Parameters
+    ----------
+    n_trading_days : int
+        Number of trading days
+    calendar : TradingCalendar
+        Trading calendar instance
+    reference_date : pd.Timestamp
+        Reference date from which to calculate
+    direction : {"backward", "forward"}, default="backward"
+        Direction to calculate from reference_date:
+        - "backward": Calculate timedelta to reach n trading days before reference_date
+        - "forward": Calculate timedelta to reach n trading days after reference_date
+
+    Returns
+    -------
+    pd.Timedelta
+        Calendar timedelta spanning n_trading_days
+
+    Examples
+    --------
+    >>> calendar = TradingCalendar('NYSE')
+    >>> ref = pd.Timestamp('2024-01-15', tz='UTC')
+    >>> # 5 trading days backward might span 7 calendar days (weekend)
+    >>> delta = trading_days_to_timedelta(5, calendar, ref, 'backward')
+    >>> delta
+    Timedelta('7 days 00:00:00')
+
+    Notes
+    -----
+    This is useful for converting label_horizon from "5 trading days" to an
+    actual timedelta that can be used for purging calculations. The timedelta
+    will vary based on the reference date due to weekends and holidays.
+    """
+    if n_trading_days <= 0:
+        return pd.Timedelta(0)
+
+    if direction == "backward":
+        target_date = calendar.previous_trading_day(reference_date, n=n_trading_days)
+        return reference_date - target_date
+    elif direction == "forward":
+        target_date = calendar.next_trading_day(reference_date, n=n_trading_days)
+        return target_date - reference_date
+    else:
+        raise ValueError(f"direction must be 'backward' or 'forward', got '{direction}'")
+
 
 def parse_time_size_calendar_aware(
     size_spec: str,

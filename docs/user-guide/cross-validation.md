@@ -2,6 +2,8 @@
 
 ML4T Diagnostic provides time-series aware cross-validation methods that prevent data leakage through proper purging and embargo.
 
+**See also**: [cv-configuration.md](cv-configuration.md) - JSON/YAML configuration format and fold persistence
+
 ## The Leakage Problem
 
 Standard k-fold cross-validation leaks information in financial time series:

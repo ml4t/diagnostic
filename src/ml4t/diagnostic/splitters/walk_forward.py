@@ -2,10 +2,18 @@
 
 This module implements walk-forward cross-validation with optional safeguards
 against data leakage from overlapping labels and autocorrelation.
+
+Supports two modes:
+1. Traditional walk-forward: Folds step forward through time
+2. Held-out test with backward validation: Reserve most recent data for
+   final evaluation, validation folds step backward from test boundary
 """
 
+from __future__ import annotations
+
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Any, Union, cast
+from datetime import date
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -13,7 +21,10 @@ import polars as pl
 
 from ml4t.diagnostic.core.purging import apply_purging_and_embargo
 from ml4t.diagnostic.splitters.base import BaseSplitter
-from ml4t.diagnostic.splitters.calendar import TradingCalendar, parse_time_size_calendar_aware
+from ml4t.diagnostic.splitters.calendar import (
+    TradingCalendar,
+    parse_time_size_calendar_aware,
+)
 from ml4t.diagnostic.splitters.calendar_config import CalendarConfig
 from ml4t.diagnostic.splitters.config import WalkForwardConfig
 from ml4t.diagnostic.splitters.group_isolation import isolate_groups_from_train
@@ -167,6 +178,11 @@ class WalkForwardCV(BaseSplitter):
         session_col: str = "session_date",
         timestamp_col: str | None = None,
         isolate_groups: bool = False,
+        # New parameters for held-out test
+        test_period: int | str | None = None,
+        test_start: date | str | None = None,
+        test_end: date | str | None = None,
+        fold_direction: Literal["forward", "backward"] = "forward",
     ) -> None:
         """Initialize WalkForwardCV.
 
@@ -187,10 +203,22 @@ class WalkForwardCV(BaseSplitter):
         >>> config = WalkForwardConfig(n_splits=5, test_size=100)
         >>> cv = WalkForwardCV(config=config)
         >>>
-        >>> # Config can be serialized
-        >>> config.to_json("cv_config.json")
-        >>> loaded = WalkForwardConfig.from_json("cv_config.json")
-        >>> cv = WalkForwardCV(config=loaded)
+        >>> # Approach 3: With held-out test period
+        >>> cv = WalkForwardCV(
+        ...     n_splits=5,
+        ...     test_period="52D",      # Reserve most recent 52 days for final evaluation
+        ...     test_size=20,           # 20-day validation folds
+        ...     train_size=252,         # 1-year training windows
+        ...     label_horizon=5,        # 5 trading days gap
+        ...     calendar="NYSE",        # NYSE trading calendar
+        ...     fold_direction="backward",  # Folds step backward from test
+        ... )
+        >>>
+        >>> # Validation folds (step backward from held-out test)
+        >>> for train_idx, val_idx in cv.split(X):
+        ...     model.fit(X.iloc[train_idx], y.iloc[train_idx])
+        >>> # Final evaluation on held-out test
+        >>> test_score = model.score(X.iloc[cv.test_indices_], y.iloc[cv.test_indices_])
         """
         # Config-first: either use provided config or create from params
         if config is not None:
@@ -225,6 +253,14 @@ class WalkForwardCV(BaseSplitter):
                 non_default_params.append("timestamp_col")
             if isolate_groups:
                 non_default_params.append("isolate_groups")
+            if test_period is not None:
+                non_default_params.append("test_period")
+            if test_start is not None:
+                non_default_params.append("test_start")
+            if test_end is not None:
+                non_default_params.append("test_end")
+            if fold_direction != "forward":
+                non_default_params.append("fold_direction")
 
             if non_default_params:
                 raise ValueError(
@@ -246,19 +282,28 @@ class WalkForwardCV(BaseSplitter):
                 session_col=session_col,
                 timestamp_col=timestamp_col,
                 isolate_groups=isolate_groups,
+                test_period=test_period,
+                test_start=test_start,
+                test_end=test_end,
+                fold_direction=fold_direction,
+                calendar_id=calendar if isinstance(calendar, str) else None,
             )
 
         # Handle calendar initialization
-        # NOTE: Calendar config could be moved to WalkForwardConfig in future version
-        if calendar is None:
+        # Use calendar_id from config if no calendar parameter provided
+        effective_calendar = calendar
+        if effective_calendar is None and self.config.calendar_id is not None:
+            effective_calendar = self.config.calendar_id
+
+        if effective_calendar is None:
             self.calendar = None
-        elif isinstance(calendar, str | CalendarConfig):
-            self.calendar = TradingCalendar(calendar)
-        elif isinstance(calendar, TradingCalendar):
-            self.calendar = calendar
+        elif isinstance(effective_calendar, str | CalendarConfig):
+            self.calendar = TradingCalendar(effective_calendar)
+        elif isinstance(effective_calendar, TradingCalendar):
+            self.calendar = effective_calendar
         else:
             raise TypeError(
-                f"calendar must be str, CalendarConfig, TradingCalendar, or None, got {type(calendar)}"
+                f"calendar must be str, CalendarConfig, TradingCalendar, or None, got {type(effective_calendar)}"
             )
 
         # Legacy attributes for compatibility with existing split() implementation
@@ -267,6 +312,11 @@ class WalkForwardCV(BaseSplitter):
         self.embargo_pct = embargo_pct
         self.expanding = expanding
         self.consecutive = consecutive
+
+        # Private state for held-out test (populated after split() is called)
+        self._test_indices: np.ndarray | None = None
+        self._test_start_idx: int | None = None
+        self._test_end_idx: int | None = None
 
     # Property accessors for config values (clean API)
     @property
@@ -313,6 +363,142 @@ class WalkForwardCV(BaseSplitter):
     def isolate_groups(self) -> bool:
         """Whether to prevent group overlap between train/test."""
         return self.config.isolate_groups
+
+    @property
+    def test_period(self) -> int | str | None:
+        """Held-out test period specification."""
+        return self.config.test_period
+
+    @property
+    def test_start_date(self) -> date | None:
+        """Explicit start date for held-out test period."""
+        # Validator converts str to date, so this is always date | None at runtime
+        return cast(date | None, self.config.test_start)
+
+    @property
+    def test_end_date(self) -> date | None:
+        """Explicit end date for held-out test period."""
+        # Validator converts str to date, so this is always date | None at runtime
+        return cast(date | None, self.config.test_end)
+
+    @property
+    def fold_direction(self) -> Literal["forward", "backward"]:
+        """Direction of validation folds."""
+        return self.config.fold_direction
+
+    @property
+    def calendar_id(self) -> str | None:
+        """Trading calendar identifier."""
+        return self.config.calendar_id
+
+    @property
+    def test_indices_(self) -> NDArray[np.intp]:
+        """Held-out test indices (populated after split() is called).
+
+        Returns
+        -------
+        ndarray
+            Indices reserved for the held-out test period.
+
+        Raises
+        ------
+        ValueError
+            If no held-out test is configured or split() hasn't been called.
+
+        Examples
+        --------
+        >>> cv = WalkForwardCV(n_splits=5, test_period="52D")
+        >>> for train_idx, val_idx in cv.split(X):
+        ...     pass  # Training loop
+        >>> # Now test_indices_ is available
+        >>> final_score = model.score(X.iloc[cv.test_indices_], y.iloc[cv.test_indices_])
+        """
+        if self._test_indices is None:
+            if not self._has_held_out_test():
+                raise ValueError(
+                    "No held-out test period configured. "
+                    "Set test_period or test_start to enable held-out test."
+                )
+            raise ValueError(
+                "test_indices_ not available. Call split() first to compute indices."
+            )
+        return self._test_indices
+
+    def _has_held_out_test(self) -> bool:
+        """Check if a held-out test period is configured."""
+        return self.config.test_period is not None or self.config.test_start is not None
+
+    def _compute_test_period(
+        self,
+        n_samples: int,
+        timestamps: pd.DatetimeIndex | None,
+    ) -> tuple[int, int]:
+        """Compute held-out test period boundaries.
+
+        Returns
+        -------
+        tuple[int, int]
+            (test_start_idx, test_end_idx) as sample indices
+        """
+        if self.config.test_start is not None:
+            # Explicit start date provided
+            if timestamps is None:
+                raise ValueError(
+                    "test_start requires timestamps. "
+                    "Use a DatetimeIndex or set timestamp_col."
+                )
+
+            test_start_date = self.config.test_start
+            test_start_ts = pd.Timestamp(test_start_date, tz=timestamps.tz)
+            test_start_idx = int(timestamps.searchsorted(test_start_ts, side="left"))
+
+            if self.config.test_end is not None:
+                test_end_date = self.config.test_end
+                test_end_ts = pd.Timestamp(test_end_date, tz=timestamps.tz)
+                # Find the index of the first timestamp >= test_end
+                test_end_idx = int(timestamps.searchsorted(test_end_ts, side="right"))
+            else:
+                # Default: end of data
+                test_end_idx = n_samples
+
+        elif self.config.test_period is not None:
+            # test_period specifies duration to reserve from end
+            if isinstance(self.config.test_period, int):
+                # Integer: trading days (requires calendar) or samples
+                if self.calendar is not None and timestamps is not None:
+                    # Trading-day interpretation
+                    end_timestamp = timestamps[-1]
+                    test_start_ts = self.calendar.previous_trading_day(
+                        end_timestamp, n=self.config.test_period
+                    )
+                    test_start_idx = int(timestamps.searchsorted(test_start_ts, side="left"))
+                else:
+                    # Sample count interpretation
+                    test_start_idx = max(0, n_samples - self.config.test_period)
+            else:
+                # String: time-based (e.g., "52D")
+                if timestamps is None:
+                    raise ValueError(
+                        "Time-based test_period requires timestamps. "
+                        "Use a DatetimeIndex or set timestamp_col."
+                    )
+                time_delta = pd.Timedelta(self.config.test_period)
+                end_timestamp = timestamps[-1]
+                test_start_ts = end_timestamp - time_delta
+                test_start_idx = int(timestamps.searchsorted(test_start_ts, side="left"))
+
+            # test_end is always end of data for test_period mode
+            if self.config.test_end is not None and timestamps is not None:
+                test_end_date = self.config.test_end
+                test_end_ts = pd.Timestamp(test_end_date, tz=timestamps.tz)
+                test_end_idx = int(timestamps.searchsorted(test_end_ts, side="right"))
+            else:
+                test_end_idx = n_samples
+        else:
+            # No held-out test configured
+            return n_samples, n_samples
+
+        return test_start_idx, test_end_idx
 
     def _parse_time_size(
         self,
@@ -365,9 +551,9 @@ class WalkForwardCV(BaseSplitter):
 
     def get_n_splits(
         self,
-        X: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"] | None = None,
-        y: Union[pl.Series, pd.Series, "NDArray[Any]"] | None = None,
-        groups: Union[pl.Series, pd.Series, "NDArray[Any]"] | None = None,
+        X: pl.DataFrame | pd.DataFrame | NDArray[Any] | None = None,
+        y: pl.Series | pd.Series | NDArray[Any] | None = None,
+        groups: pl.Series | pd.Series | NDArray[Any] | None = None,
     ) -> int:
         """Get number of splits.
 
@@ -392,11 +578,15 @@ class WalkForwardCV(BaseSplitter):
 
     def split(
         self,
-        X: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
-        y: Union[pl.Series, pd.Series, "NDArray[Any]"] | None = None,
-        groups: Union[pl.Series, pd.Series, "NDArray[Any]"] | None = None,
-    ) -> Generator[tuple["NDArray[np.intp]", "NDArray[np.intp]"], None, None]:
-        """Generate train/test indices for walk-forward splits.
+        X: pl.DataFrame | pd.DataFrame | NDArray[Any],
+        y: pl.Series | pd.Series | NDArray[Any] | None = None,
+        groups: pl.Series | pd.Series | NDArray[Any] | None = None,
+    ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
+        """Generate train/validation indices for walk-forward splits.
+
+        When a held-out test period is configured (test_period or test_start),
+        this method yields train/validation splits for cross-validation, and
+        the held-out test indices are accessible via test_indices_ property.
 
         Parameters
         ----------
@@ -414,8 +604,20 @@ class WalkForwardCV(BaseSplitter):
         train : ndarray
             Training set indices for this split.
 
-        test : ndarray
-            Test set indices for this split.
+        val : ndarray
+            Validation set indices for this split (or test if no held-out test).
+
+        Notes
+        -----
+        When using held-out test mode with fold_direction="backward":
+
+        ```
+        [train1][val1][train2][val2][train3][val3] | [HELD-OUT TEST]
+                ←     ←     ←     ←     ←     ←     test_start
+        ```
+
+        Validation folds step backward from the test boundary, ensuring that
+        all validation is done on data chronologically before the held-out test.
         """
         # Validate inputs and get sample count
         n_samples = self._validate_data(X, y, groups)
@@ -423,24 +625,45 @@ class WalkForwardCV(BaseSplitter):
         # Validate session alignment if enabled
         self._validate_session_alignment(X, self.align_to_sessions, self.session_col)
 
-        # Branch between session-based and sample-based logic
-        if self.align_to_sessions:
-            # Session-aware splitting: operate on unique sessions
-            # X is verified to be a DataFrame by _validate_session_alignment
-            yield from self._split_by_sessions(
-                cast(pl.DataFrame | pd.DataFrame, X), y, groups, n_samples
-            )
+        # Extract timestamps for held-out test computation
+        timestamps = self._extract_timestamps(X, self.timestamp_col)
+
+        # Compute held-out test period if configured
+        if self._has_held_out_test():
+            test_start_idx, test_end_idx = self._compute_test_period(n_samples, timestamps)
+            self._test_start_idx = test_start_idx
+            self._test_end_idx = test_end_idx
+            self._test_indices = np.arange(test_start_idx, test_end_idx, dtype=np.intp)
+
+            # Use backward or forward splitting for validation folds
+            if self.fold_direction == "backward":
+                yield from self._split_backward(X, y, groups, n_samples, test_start_idx, timestamps)
+            else:
+                # Forward direction with held-out test: traditional walk-forward up to test boundary
+                yield from self._split_forward_with_test(
+                    X, y, groups, n_samples, test_start_idx, timestamps
+                )
         else:
-            # Standard sample-based splitting
-            yield from self._split_by_samples(X, y, groups, n_samples)
+            # Legacy behavior: no held-out test, standard walk-forward
+            self._test_indices = None
+            self._test_start_idx = None
+            self._test_end_idx = None
+
+            # Branch between session-based and sample-based logic
+            if self.align_to_sessions:
+                yield from self._split_by_sessions(
+                    cast(pl.DataFrame | pd.DataFrame, X), y, groups, n_samples
+                )
+            else:
+                yield from self._split_by_samples(X, y, groups, n_samples)
 
     def _split_by_samples(
         self,
-        X: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
-        _y: Union[pl.Series, pd.Series, "NDArray[Any]"] | None,
-        groups: Union[pl.Series, pd.Series, "NDArray[Any]"] | None,
+        X: pl.DataFrame | pd.DataFrame | NDArray[Any],
+        _y: pl.Series | pd.Series | NDArray[Any] | None,
+        groups: pl.Series | pd.Series | NDArray[Any] | None,
         n_samples: int,
-    ) -> Generator[tuple["NDArray[np.intp]", "NDArray[np.intp]"], None, None]:
+    ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
         """Generate splits using sample indices (original implementation)."""
         # Extract timestamps if available (supports both Polars and pandas)
         timestamps = self._extract_timestamps(X, self.timestamp_col)
@@ -535,6 +758,7 @@ class WalkForwardCV(BaseSplitter):
                 embargo_pct=self.embargo_pct,
                 n_samples=n_samples,
                 timestamps=timestamps,
+                calendar=self.calendar,
             )
 
             # Test indices
@@ -551,10 +775,10 @@ class WalkForwardCV(BaseSplitter):
     def _split_by_sessions(
         self,
         X: pl.DataFrame | pd.DataFrame,
-        _y: Union[pl.Series, pd.Series, "NDArray[Any]"] | None,
-        groups: Union[pl.Series, pd.Series, "NDArray[Any]"] | None,
+        _y: pl.Series | pd.Series | NDArray[Any] | None,
+        groups: pl.Series | pd.Series | NDArray[Any] | None,
         n_samples: int,
-    ) -> Generator[tuple["NDArray[np.intp]", "NDArray[np.intp]"], None, None]:
+    ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
         """Generate splits using session boundaries (session-aware)."""
         # Get unique sessions in chronological order
         unique_sessions = self._get_unique_sessions(X, self.session_col)
@@ -685,6 +909,7 @@ class WalkForwardCV(BaseSplitter):
                     embargo_pct=self.embargo_pct,
                     n_samples=n_samples,
                     timestamps=timestamps,
+                    calendar=self.calendar,
                 )
             else:
                 clean_train_indices = train_indices
@@ -721,7 +946,7 @@ class WalkForwardCV(BaseSplitter):
 
     @staticmethod
     def _timestamp_window_from_indices(
-        indices: "NDArray[np.intp]",
+        indices: NDArray[np.intp],
         timestamps: pd.DatetimeIndex | None,
     ) -> tuple[int | pd.Timestamp, int | pd.Timestamp]:
         """Compute timestamp window from actual indices (for session-aligned purging).
@@ -762,3 +987,237 @@ class WalkForwardCV(BaseSplitter):
         # Add 1 nanosecond to make end exclusive (handles duplicate timestamps)
         end_time_exclusive = test_timestamps.max() + pd.Timedelta(1, "ns")
         return start_time, end_time_exclusive
+
+    def _split_backward(
+        self,
+        X: pl.DataFrame | pd.DataFrame | NDArray[Any],
+        _y: pl.Series | pd.Series | NDArray[Any] | None,
+        groups: pl.Series | pd.Series | NDArray[Any] | None,
+        n_samples: int,
+        test_start_idx: int,
+        timestamps: pd.DatetimeIndex | None,
+    ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
+        """Generate splits stepping backward from held-out test boundary.
+
+        Validation folds step backward in time from the held-out test start,
+        ensuring all validation data is chronologically before the final test.
+
+        ```
+        [train1][val1][train2][val2][train3][val3] | [HELD-OUT TEST]
+                ←     ←     ←     ←     ←     ←     test_start_idx
+        ```
+
+        Parameters
+        ----------
+        X : array-like
+            Input data.
+        _y : array-like, optional
+            Target (unused).
+        groups : array-like, optional
+            Group labels.
+        n_samples : int
+            Total samples in X.
+        test_start_idx : int
+            Index where held-out test period starts.
+        timestamps : pd.DatetimeIndex, optional
+            Timestamps for each sample.
+        """
+        # Available data for validation (before held-out test)
+        available_samples = test_start_idx
+
+        # Calculate validation fold size
+        if self.test_size is None:
+            val_size = available_samples // (self.n_splits + 1)
+        else:
+            val_size = self._parse_time_size(self.test_size, timestamps, available_samples)
+
+        # Calculate train size if specified
+        if self.train_size is not None:
+            train_size = self._parse_time_size(self.train_size, timestamps, available_samples)
+        else:
+            train_size = None
+
+        # Calculate step size
+        if self.config.step_size is not None:
+            step_size = self.config.step_size
+        else:
+            step_size = val_size  # Non-overlapping validation folds
+
+        # Generate splits stepping backward from test_start_idx
+        # Fold 0 has validation ending at test_start_idx
+        # Fold 1 has validation ending at test_start_idx - step_size
+        # etc.
+        for i in range(self.n_splits):
+            # Validation fold boundaries (stepping backward)
+            val_end = test_start_idx - i * step_size
+            val_start = max(0, val_end - val_size)
+
+            if val_start >= val_end:
+                # No more room for validation folds
+                break
+
+            # Training boundaries
+            if self.expanding:
+                # Expanding window: use all data from start up to val_start
+                train_start = 0
+            else:
+                # Rolling window
+                if train_size is not None:
+                    train_start = max(0, val_start - self.gap - train_size)
+                else:
+                    # Use all available data before validation
+                    train_start = 0
+
+            train_end = max(0, val_start - self.gap)
+
+            if train_end <= train_start:
+                # No room for training data
+                continue
+
+            # Create initial indices
+            train_indices = np.arange(train_start, train_end, dtype=np.intp)
+            val_indices = np.arange(val_start, val_end, dtype=np.intp)
+
+            # Convert boundaries to timestamps for purging
+            val_start_time, val_end_time = convert_indices_to_timestamps(
+                val_start, val_end, timestamps
+            )
+
+            # Apply purging and embargo
+            clean_train_indices = apply_purging_and_embargo(
+                train_indices=train_indices,
+                test_start=val_start_time,
+                test_end=val_end_time,
+                label_horizon=self.label_horizon,
+                embargo_size=self.embargo_size,
+                embargo_pct=self.embargo_pct,
+                n_samples=n_samples,
+                timestamps=timestamps,
+                calendar=self.calendar,
+            )
+
+            # Apply group isolation if requested
+            if self.isolate_groups and groups is not None:
+                clean_train_indices = isolate_groups_from_train(
+                    clean_train_indices, val_indices, groups
+                )
+
+            yield clean_train_indices, val_indices
+
+    def _split_forward_with_test(
+        self,
+        X: pl.DataFrame | pd.DataFrame | NDArray[Any],
+        _y: pl.Series | pd.Series | NDArray[Any] | None,
+        groups: pl.Series | pd.Series | NDArray[Any] | None,
+        n_samples: int,
+        test_start_idx: int,
+        timestamps: pd.DatetimeIndex | None,
+    ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
+        """Generate splits stepping forward, stopping before held-out test.
+
+        Traditional walk-forward validation but constrained to stay before
+        the held-out test boundary.
+
+        Parameters
+        ----------
+        X : array-like
+            Input data.
+        _y : array-like, optional
+            Target (unused).
+        groups : array-like, optional
+            Group labels.
+        n_samples : int
+            Total samples in X.
+        test_start_idx : int
+            Index where held-out test period starts.
+        timestamps : pd.DatetimeIndex, optional
+            Timestamps for each sample.
+        """
+        # Available data for validation (before held-out test)
+        available_samples = test_start_idx
+
+        # Calculate validation fold size
+        if self.test_size is None:
+            val_size = available_samples // (self.n_splits + 1)
+        else:
+            val_size = self._parse_time_size(self.test_size, timestamps, available_samples)
+
+        # Calculate train size if specified
+        if self.train_size is not None:
+            train_size = self._parse_time_size(self.train_size, timestamps, available_samples)
+        else:
+            train_size = None
+
+        # Calculate step size
+        if self.config.step_size is not None:
+            step_size = self.config.step_size
+        elif self.consecutive:
+            step_size = val_size  # Consecutive: back-to-back folds
+        else:
+            # Spread folds across available data
+            available_for_splits = available_samples - val_size
+            step_size = available_for_splits // self.n_splits
+
+        # Determine where first validation fold starts
+        if self.consecutive:
+            if train_size is not None and not self.expanding:
+                first_val_start = train_size
+            elif self.expanding:
+                first_val_start = train_size if train_size is not None else val_size
+            else:
+                first_val_start = val_size
+        else:
+            first_val_start = val_size
+
+        # Generate forward-stepping splits
+        for i in range(self.n_splits):
+            val_start = first_val_start + i * step_size
+            val_end = min(val_start + val_size, test_start_idx)
+
+            if val_start >= test_start_idx:
+                # Would overlap with held-out test
+                break
+
+            # Training boundaries
+            if self.expanding:
+                train_start = 0
+            else:
+                if train_size is not None:
+                    train_start = max(0, val_start - self.gap - train_size)
+                else:
+                    train_start = 0
+
+            train_end = max(0, val_start - self.gap)
+
+            if train_end <= train_start:
+                continue
+
+            # Create initial indices
+            train_indices = np.arange(train_start, train_end, dtype=np.intp)
+            val_indices = np.arange(val_start, val_end, dtype=np.intp)
+
+            # Convert boundaries to timestamps for purging
+            val_start_time, val_end_time = convert_indices_to_timestamps(
+                val_start, val_end, timestamps
+            )
+
+            # Apply purging and embargo
+            clean_train_indices = apply_purging_and_embargo(
+                train_indices=train_indices,
+                test_start=val_start_time,
+                test_end=val_end_time,
+                label_horizon=self.label_horizon,
+                embargo_size=self.embargo_size,
+                embargo_pct=self.embargo_pct,
+                n_samples=n_samples,
+                timestamps=timestamps,
+                calendar=self.calendar,
+            )
+
+            # Apply group isolation if requested
+            if self.isolate_groups and groups is not None:
+                clean_train_indices = isolate_groups_from_train(
+                    clean_train_indices, val_indices, groups
+                )
+
+            yield clean_train_indices, val_indices

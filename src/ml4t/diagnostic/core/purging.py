@@ -8,6 +8,9 @@ serial correlation).
 Based on López de Prado (2018) "Advances in Financial Machine Learning".
 """
 
+from __future__ import annotations
+
+import warnings
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -16,6 +19,8 @@ import pandas as pd
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+    from ml4t.diagnostic.splitters.calendar import TradingCalendar
+
 
 def calculate_purge_indices(
     n_samples: int | None = None,
@@ -23,6 +28,7 @@ def calculate_purge_indices(
     test_end: int | pd.Timestamp | None = None,
     label_horizon: int | pd.Timedelta = 0,
     timestamps: pd.DatetimeIndex | None = None,
+    calendar: TradingCalendar | None = None,
 ) -> list[int]:
     """Calculate indices to purge from training set to prevent label leakage.
 
@@ -46,8 +52,16 @@ def calculate_purge_indices(
         Forward-looking period of labels. For example, if predicting
         20-day returns, label_horizon=20 (days).
 
+        When timestamps and calendar are provided and label_horizon is int,
+        it is interpreted as trading days (not calendar days).
+
     timestamps : pandas.DatetimeIndex, optional
         Timestamps for each sample when using time-based indices.
+
+    calendar : TradingCalendar, optional
+        Trading calendar for trading-day-aware conversion.
+        When provided with integer label_horizon and timestamps,
+        label_horizon is interpreted as trading days.
 
     Returns:
     -------
@@ -70,6 +84,17 @@ def calculate_purge_indices(
     ...     test_start=times[50],
     ...     test_end=times[60],
     ...     label_horizon=pd.Timedelta("5D")
+    ... )
+
+    >>> # Trading-day-aware purging
+    >>> from ml4t.diagnostic.splitters.calendar import TradingCalendar
+    >>> calendar = TradingCalendar('NYSE')
+    >>> purged = calculate_purge_indices(
+    ...     timestamps=times,
+    ...     test_start=times[50],
+    ...     test_end=times[60],
+    ...     label_horizon=5,  # 5 TRADING days
+    ...     calendar=calendar
     ... )
     """
     if timestamps is not None:
@@ -104,8 +129,27 @@ def calculate_purge_indices(
         test_end = test_end.tz_convert("UTC")
 
         if not isinstance(label_horizon, pd.Timedelta):
-            # Convert integer days to Timedelta
-            label_horizon = pd.Timedelta(days=label_horizon)
+            # label_horizon is int - need to convert
+            if calendar is not None:
+                # Trading-day-aware conversion
+                from ml4t.diagnostic.splitters.calendar import trading_days_to_timedelta
+
+                label_horizon = trading_days_to_timedelta(
+                    n_trading_days=label_horizon,
+                    calendar=calendar,
+                    reference_date=test_start,
+                    direction="backward",
+                )
+            else:
+                # Fallback to calendar days with warning
+                if label_horizon > 0:
+                    warnings.warn(
+                        f"label_horizon={label_horizon} (int) with timestamps but no calendar. "
+                        "Interpreting as calendar days. For trading days, provide a calendar.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                label_horizon = pd.Timedelta(days=label_horizon)
 
         # Calculate purge start time
         purge_start_time = test_start - label_horizon
@@ -263,7 +307,7 @@ def calculate_embargo_indices(
 
 
 def apply_purging_and_embargo(
-    train_indices: "NDArray[np.intp]",
+    train_indices: NDArray[np.intp],
     test_start: int | pd.Timestamp,
     test_end: int | pd.Timestamp,
     label_horizon: int | pd.Timedelta = 0,
@@ -271,7 +315,8 @@ def apply_purging_and_embargo(
     embargo_pct: float | None = None,
     n_samples: int | None = None,
     timestamps: pd.DatetimeIndex | None = None,
-) -> "NDArray[np.intp]":
+    calendar: TradingCalendar | None = None,
+) -> NDArray[np.intp]:
     """Apply both purging and embargo to training indices.
 
     This is a convenience function that combines purging and embargo
@@ -291,6 +336,8 @@ def apply_purging_and_embargo(
 
     label_horizon : int or pandas.Timedelta, default=0
         Forward-looking period of labels.
+        When timestamps and calendar are provided and label_horizon is int,
+        it is interpreted as trading days (not calendar days).
 
     embargo_size : int or pandas.Timedelta, optional
         Size of embargo period after test set.
@@ -303,6 +350,11 @@ def apply_purging_and_embargo(
 
     timestamps : pandas.DatetimeIndex, optional
         Timestamps for each sample when using time-based indices.
+
+    calendar : TradingCalendar, optional
+        Trading calendar for trading-day-aware conversion.
+        When provided with integer label_horizon and timestamps,
+        label_horizon is interpreted as trading days.
 
     Returns:
     -------
@@ -331,6 +383,7 @@ def apply_purging_and_embargo(
         test_end=test_end,
         label_horizon=label_horizon,
         timestamps=timestamps,
+        calendar=calendar,
     )
     purged_arr = np.asarray(purged_list, dtype=np.intp)
 

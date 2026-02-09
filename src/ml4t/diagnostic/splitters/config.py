@@ -38,7 +38,9 @@ Examples
 
 from __future__ import annotations
 
-from typing import Any
+import warnings
+from datetime import date
+from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 
@@ -189,7 +191,7 @@ class WalkForwardConfig(SplitterConfig):
     Attributes
     ----------
     test_size : int | float | str | None
-        Test set size specification:
+        Size of validation folds:
         - int: Number of samples (or sessions if align_to_sessions=True)
         - float: Proportion of dataset (0.0 to 1.0)
         - str: Time-based ('4W', '3M') - NOT supported with align_to_sessions=True
@@ -201,12 +203,31 @@ class WalkForwardConfig(SplitterConfig):
         Step size between consecutive splits:
         - int: Number of samples (or sessions if align_to_sessions=True)
         - None: Defaults to test_size (non-overlapping test sets)
+    test_period : int | str | None
+        Held-out test period specification (reserves most recent data for final evaluation):
+        - int: Number of trading days (requires calendar_id)
+        - str: Time-based ('52D', '4W')
+        - None: No held-out test period (default, legacy behavior)
+    test_start : date | str | None
+        Explicit start date for held-out test period. Mutually exclusive with test_period.
+        Accepts date object or ISO format string ('2024-01-01').
+    test_end : date | str | None
+        Explicit end date for held-out test period. Default: end of data.
+        Accepts date object or ISO format string ('2024-12-31').
+    fold_direction : Literal["forward", "backward"]
+        Direction of validation folds:
+        - "forward": Traditional walk-forward (folds step forward in time)
+        - "backward": Folds step backward from held-out test boundary
+    calendar_id : str | None
+        Trading calendar for trading-day-aware gap calculations.
+        Examples: "NYSE", "CME_Equity", "LSE"
+        Required when label_horizon is int and you want trading-day interpretation.
     """
 
     test_size: int | float | str | None = Field(
         None,
         description=(
-            "Test set size: int (samples/sessions), float (proportion), "
+            "Validation fold size: int (samples/sessions), float (proportion), "
             "str (time-based, e.g., '4W'). "
             "Time-based NOT supported with align_to_sessions=True."
         ),
@@ -226,6 +247,49 @@ class WalkForwardConfig(SplitterConfig):
             "Step size between splits (int: samples/sessions). None defaults to test_size (non-overlapping)."
         ),
     )
+
+    # Held-out test period specification
+    test_period: int | str | None = Field(
+        None,
+        description=(
+            "Held-out test period: int (trading days, requires calendar_id), "
+            "str (time-based, e.g., '52D'). Reserves most recent data for final evaluation."
+        ),
+    )
+    test_start: date | str | None = Field(
+        None,
+        description=(
+            "Explicit start date for held-out test period. "
+            "Mutually exclusive with test_period."
+        ),
+    )
+    test_end: date | str | None = Field(
+        None,
+        description=(
+            "Explicit end date for held-out test period. "
+            "Default: end of data."
+        ),
+    )
+
+    # Fold direction
+    fold_direction: Literal["forward", "backward"] = Field(
+        "forward",
+        description=(
+            "Direction of validation folds: 'forward' (traditional) or "
+            "'backward' (step backward from held-out test boundary)."
+        ),
+    )
+
+    # Calendar for trading-day-aware calculations
+    calendar_id: str | None = Field(
+        None,
+        description=(
+            "Trading calendar for trading-day-aware gap calculations. "
+            "Examples: 'NYSE', 'CME_Equity', 'LSE'. "
+            "Required when label_horizon is int and you want trading-day interpretation."
+        ),
+    )
+
     isolate_groups: bool = Field(
         False,
         description=(
@@ -249,6 +313,88 @@ class WalkForwardConfig(SplitterConfig):
                 f"Use integer (number of sessions) or float (proportion). Got: {v!r}"
             )
         return v
+
+    @field_validator("test_start", "test_end")
+    @classmethod
+    def validate_test_dates(cls, v: date | str | None) -> date | None:
+        """Convert string dates to date objects."""
+        if v is None:
+            return v
+        if isinstance(v, date):
+            return v
+        if isinstance(v, str):
+            try:
+                return date.fromisoformat(v)
+            except ValueError as e:
+                raise ValueError(
+                    f"Could not parse date string '{v}'. Use ISO format: 'YYYY-MM-DD'"
+                ) from e
+        raise ValueError(f"test_start/test_end must be date or ISO string, got {type(v)}")
+
+    @field_validator("test_period")
+    @classmethod
+    def validate_test_period(cls, v: int | str | None, info) -> int | str | None:
+        """Validate test_period specification."""
+        if v is None:
+            return v
+
+        if isinstance(v, int):
+            if v <= 0:
+                raise ValueError("test_period must be a positive integer (trading days)")
+            # Check if calendar_id is available (warning issued in model validator)
+            return v
+
+        if isinstance(v, str):
+            # Validate time-based format (e.g., "52D", "4W")
+            import pandas as pd
+
+            try:
+                pd.Timedelta(v)
+            except Exception as e:
+                raise ValueError(
+                    f"Could not parse test_period string '{v}' as Timedelta. "
+                    f"Use formats like '52D', '4W', '3M'. Error: {e}"
+                ) from e
+            return v
+
+        raise ValueError(f"test_period must be int or str, got {type(v)}")
+
+    @model_validator(mode="after")
+    def validate_held_out_test_config(self) -> WalkForwardConfig:
+        """Validate held-out test configuration consistency."""
+        # test_period and test_start are mutually exclusive
+        if self.test_period is not None and self.test_start is not None:
+            raise ValueError(
+                "Cannot specify both 'test_period' and 'test_start'. "
+                "'test_period' reserves most recent data, "
+                "'test_start' specifies an explicit date range."
+            )
+
+        # test_end without test_start or test_period is invalid
+        if self.test_end is not None and self.test_start is None and self.test_period is None:
+            raise ValueError(
+                "'test_end' requires either 'test_period' or 'test_start' to define the held-out test."
+            )
+
+        # test_period as int requires calendar_id for trading-day interpretation
+        if isinstance(self.test_period, int) and self.calendar_id is None:
+            warnings.warn(
+                f"test_period={self.test_period} (int) without calendar_id will be interpreted "
+                "as calendar days, not trading days. Set calendar_id for trading-day interpretation.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # label_horizon as int with calendar_id should use trading days
+        if (
+            isinstance(self.label_horizon, int)
+            and self.label_horizon > 0
+            and self.calendar_id is not None
+        ):
+            # Valid configuration - label_horizon will be converted to trading days
+            pass
+
+        return self
 
 
 class CombinatorialConfig(SplitterConfig):

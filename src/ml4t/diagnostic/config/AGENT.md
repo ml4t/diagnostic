@@ -16,6 +16,18 @@
 | ReportConfig | Report generation |
 | RuntimeConfig | Execution settings |
 
+## Splitter Configs
+
+Located in `splitters/config.py`:
+
+| Config | Purpose |
+|--------|---------|
+| WalkForwardConfig | Walk-forward CV settings |
+| CombinatorialConfig | CPCV settings |
+| CalendarConfig | Trading calendar for session-aware splits |
+
+**User Guide**: [docs/user-guide/cv-configuration.md](../../../../docs/user-guide/cv-configuration.md)
+
 ## Pattern
 
 ```python
