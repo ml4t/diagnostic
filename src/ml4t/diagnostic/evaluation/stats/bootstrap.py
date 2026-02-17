@@ -89,6 +89,15 @@ def stationary_bootstrap_ic(
             stacklevel=2,
         )
 
+    if n > 50_000:
+        warnings.warn(
+            f"Input has {n:,} observations. stationary_bootstrap_ic() computes "
+            f"spearmanr() per bootstrap iteration — this will be very slow for "
+            f"large arrays. For panel data, bootstrap the cross-sectional IC time "
+            f"series instead (one IC per date, then bootstrap that series).",
+            stacklevel=2,
+        )
+
     # Calculate observed IC
     observed_ic, _ = spearmanr(pred_clean, ret_clean)
 

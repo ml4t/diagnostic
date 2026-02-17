@@ -351,5 +351,44 @@ class TestEdgeCasesBootstrap:
         assert not np.isnan(result["p_value"]), "P-value should not be NaN"
 
 
+class TestPanelScalingWarning:
+    """Tests for large-sample panel data warning."""
+
+    def test_warns_on_large_input(self):
+        """Should warn when n > 50K that bootstrap will be slow."""
+        import warnings
+
+        n = 60_000
+        np.random.seed(42)
+        predictions = np.random.randn(n)
+        returns = np.random.randn(n)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            # Use n_samples=1 to avoid actually running the slow bootstrap
+            stationary_bootstrap_ic(predictions, returns, n_samples=1)
+
+            panel_warnings = [x for x in w if "very slow" in str(x.message)]
+            assert len(panel_warnings) == 1
+            assert "60,000" in str(panel_warnings[0].message)
+            assert "cross-sectional IC" in str(panel_warnings[0].message)
+
+    def test_no_warning_below_threshold(self):
+        """Should not warn when n <= 50K."""
+        import warnings
+
+        n = 5_000
+        np.random.seed(42)
+        predictions = np.random.randn(n)
+        returns = np.random.randn(n)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            stationary_bootstrap_ic(predictions, returns, n_samples=10)
+
+            panel_warnings = [x for x in w if "very slow" in str(x.message)]
+            assert len(panel_warnings) == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

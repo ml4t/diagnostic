@@ -150,24 +150,49 @@ class ExcursionAnalysisResult:
         return "\n".join(lines)
 
 
+def _to_float64_array(
+    data: pl.Series | pd.Series | NDArray | None, name: str = "data"
+) -> np.ndarray | None:
+    """Convert input to float64 numpy array, or return None if input is None."""
+    if data is None:
+        return None
+    if isinstance(data, pl.Series):
+        return data.to_numpy().astype(np.float64)
+    if isinstance(data, np.ndarray):
+        return data.astype(np.float64)
+    if hasattr(data, "to_numpy"):  # pandas Series
+        return data.to_numpy().astype(np.float64)
+    return np.asarray(data, dtype=np.float64)
+
+
 def compute_excursions(
     prices: pl.Series | pd.Series | NDArray,
     horizons: list[int],
     return_type: Literal["pct", "log", "abs"] = "pct",
+    high: pl.Series | pd.Series | NDArray | None = None,
+    low: pl.Series | pd.Series | NDArray | None = None,
 ) -> pl.DataFrame:
     """Compute MFE/MAE for each horizon.
 
     For each bar t and horizon h:
-    - MFE[t,h] = max(prices[t:t+h]) / prices[t] - 1  (for pct)
-    - MAE[t,h] = min(prices[t:t+h]) / prices[t] - 1  (for pct)
+    - MFE[t,h] = max(high[t:t+h]) / prices[t] - 1  (for pct)
+    - MAE[t,h] = min(low[t:t+h]) / prices[t] - 1   (for pct)
+
+    When ``high``/``low`` are not provided, close prices are used for both
+    (legacy behavior). For accurate MFE/MAE that captures intraday extremes,
+    pass high and low prices explicitly.
 
     Args:
-        prices: Price series (close prices typically)
+        prices: Close price series (used as entry price)
         horizons: List of horizons to compute (e.g., [15, 30, 60])
         return_type: How to compute returns:
             - 'pct': Percentage returns (default)
             - 'log': Log returns
             - 'abs': Absolute price changes
+        high: High price series. If provided, used for MFE (max favorable).
+            Must be same length as prices.
+        low: Low price series. If provided, used for MAE (max adverse).
+            Must be same length as prices.
 
     Returns:
         DataFrame with columns: mfe_{h}, mae_{h} for each horizon h
@@ -185,57 +210,70 @@ def compute_excursions(
         │ 0.02     ┆ -0.02    ┆ 0.05     ┆ -0.02    │
         │ ...      ┆ ...      ┆ ...      ┆ ...      │
         └──────────┴──────────┴──────────┴──────────┘
-    """
-    # Convert to numpy for computation
-    if isinstance(prices, pl.Series):
-        price_array = prices.to_numpy()
-    elif isinstance(prices, np.ndarray):
-        price_array = prices
-    elif hasattr(prices, "to_numpy"):  # pandas Series
-        price_array = prices.to_numpy()
-    else:
-        price_array = np.asarray(prices)
 
-    price_array = price_array.astype(np.float64)
+        With high/low for accurate intraday excursions:
+
+        >>> result = compute_excursions(
+        ...     prices=close, horizons=[30, 60],
+        ...     high=high_prices, low=low_prices,
+        ... )
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    price_array = _to_float64_array(prices, "prices")
+    assert price_array is not None  # for type checker
     n = len(price_array)
 
-    # Validate
+    # Use high/low when provided, otherwise fall back to close
+    high_array = _to_float64_array(high, "high") if high is not None else price_array
+    low_array = _to_float64_array(low, "low") if low is not None else price_array
+
+    # Validate lengths
+    if len(high_array) != n:
+        raise ValueError(f"high length ({len(high_array)}) must match prices length ({n})")
+    if len(low_array) != n:
+        raise ValueError(f"low length ({len(low_array)}) must match prices length ({n})")
+
+    # Validate minimum length
     if n < max(horizons) + 1:
         raise ValueError(
-            f"Price series too short ({n}) for max horizon ({max(horizons)}). Need at least {max(horizons) + 1} prices."
+            f"Price series too short ({n}) for max horizon ({max(horizons)}). "
+            f"Need at least {max(horizons) + 1} prices."
         )
 
-    # Pre-allocate result arrays
+    if return_type not in ("pct", "log", "abs"):
+        raise ValueError(f"Unknown return_type: {return_type}")
+
     results = {}
     max_horizon = max(horizons)
+    output_len = n - max_horizon
+
+    # Entry prices for all valid positions
+    entry = price_array[:output_len]
 
     for h in horizons:
-        mfe = np.full(n - max_horizon, np.nan)
-        mae = np.full(n - max_horizon, np.nan)
+        # Sliding window views — zero-copy, shape (n - h, h + 1)
+        high_windows = sliding_window_view(high_array, h + 1)[:output_len]  # type: ignore[no-matching-overload]
+        low_windows = sliding_window_view(low_array, h + 1)[:output_len]  # type: ignore[no-matching-overload]
 
-        for i in range(n - max_horizon):
-            entry_price = price_array[i]
-            if entry_price <= 0 or np.isnan(entry_price):
-                continue
+        forward_max = np.max(high_windows, axis=1)
+        forward_min = np.min(low_windows, axis=1)
 
-            window = price_array[i : i + h + 1]  # Include entry price
-            if np.any(np.isnan(window)) or np.any(window <= 0):
-                continue
+        # Mask invalid entries (non-positive or NaN)
+        invalid = (entry <= 0) | np.isnan(entry)
 
-            max_price = np.max(window)
-            min_price = np.min(window)
+        if return_type == "pct":
+            mfe = (forward_max - entry) / entry
+            mae = (forward_min - entry) / entry
+        elif return_type == "log":
+            mfe = np.log(forward_max / entry)
+            mae = np.log(forward_min / entry)
+        else:  # abs
+            mfe = forward_max - entry
+            mae = forward_min - entry
 
-            if return_type == "pct":
-                mfe[i] = (max_price - entry_price) / entry_price
-                mae[i] = (min_price - entry_price) / entry_price
-            elif return_type == "log":
-                mfe[i] = np.log(max_price / entry_price)
-                mae[i] = np.log(min_price / entry_price)
-            elif return_type == "abs":
-                mfe[i] = max_price - entry_price
-                mae[i] = min_price - entry_price
-            else:
-                raise ValueError(f"Unknown return_type: {return_type}")
+        mfe[invalid] = np.nan
+        mae[invalid] = np.nan
 
         results[f"mfe_{h}"] = mfe
         results[f"mae_{h}"] = mae
@@ -250,6 +288,8 @@ def analyze_excursions(
     percentiles: list[float] | None = None,
     keep_raw: bool = False,
     rolling_window: int | None = None,
+    high: pl.Series | pd.Series | NDArray | None = None,
+    low: pl.Series | pd.Series | NDArray | None = None,
 ) -> ExcursionAnalysisResult:
     """Analyze price excursions with statistics and percentiles.
 
@@ -258,12 +298,14 @@ def analyze_excursions(
     take-profit and stop-loss levels.
 
     Args:
-        prices: Price series (close prices typically)
+        prices: Close price series (used as entry price)
         horizons: List of horizons to analyze. Default: [15, 30, 60]
         return_type: How to compute returns ('pct', 'log', 'abs')
         percentiles: Percentiles to compute. Default: [10, 25, 50, 75, 90]
         keep_raw: If True, include raw excursion values in result
         rolling_window: If provided, compute rolling statistics over this window
+        high: High price series for MFE computation. If None, uses close prices.
+        low: Low price series for MAE computation. If None, uses close prices.
 
     Returns:
         ExcursionAnalysisResult with statistics and percentiles
@@ -291,7 +333,7 @@ def analyze_excursions(
     horizons = sorted(horizons)
 
     # Compute raw excursions
-    excursions = compute_excursions(prices, horizons, return_type)
+    excursions = compute_excursions(prices, horizons, return_type, high=high, low=low)
     n_samples = len(excursions)
 
     # Compute statistics per horizon

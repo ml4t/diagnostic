@@ -285,3 +285,181 @@ class TestExcursionUseCases:
         # High vol should have larger excursions
         assert result_high.statistics[20].mfe_std > result_low.statistics[20].mfe_std
         assert abs(result_high.statistics[20].mae_std) > abs(result_low.statistics[20].mae_std)
+
+
+class TestHighLowExcursions:
+    """Tests for high/low price support in excursion computation."""
+
+    def test_high_low_gives_larger_excursions(self):
+        """When high > close and low < close, excursions should be larger."""
+        np.random.seed(42)
+        n = 200
+        close = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
+
+        # Generate high/low that bracket close
+        spread = np.abs(np.random.randn(n)) * 0.5
+        high = close + spread
+        low = close - spread
+
+        result_close = compute_excursions(pl.Series(close), horizons=[10])
+        result_hl = compute_excursions(
+            pl.Series(close),
+            horizons=[10],
+            high=pl.Series(high),
+            low=pl.Series(low),
+        )
+
+        mfe_close = result_close["mfe_10"].drop_nulls().to_numpy()
+        mfe_hl = result_hl["mfe_10"].drop_nulls().to_numpy()
+        mae_close = result_close["mae_10"].drop_nulls().to_numpy()
+        mae_hl = result_hl["mae_10"].drop_nulls().to_numpy()
+
+        # MFE with high should be >= MFE with close only
+        assert np.mean(mfe_hl) > np.mean(mfe_close)
+
+        # MAE with low should be <= MAE with close only (more negative)
+        assert np.mean(mae_hl) < np.mean(mae_close)
+
+    def test_high_low_none_equals_close_only(self):
+        """When high/low are None, result matches close-only behavior."""
+        np.random.seed(99)
+        close = 100 * np.exp(np.cumsum(np.random.randn(100) * 0.01))
+
+        result_default = compute_excursions(pl.Series(close), horizons=[5, 10])
+        result_explicit = compute_excursions(
+            pl.Series(close),
+            horizons=[5, 10],
+            high=None,
+            low=None,
+        )
+
+        for col in result_default.columns:
+            np.testing.assert_array_almost_equal(
+                result_default[col].to_numpy(),
+                result_explicit[col].to_numpy(),
+            )
+
+    def test_high_low_known_values(self):
+        """Test with hand-calculated high/low excursions."""
+        # close: 100, 102, 98, 105, 100
+        # high:  101, 106, 100, 108, 103
+        # low:    99,  99,  96, 102,  97
+        close = np.array([100.0, 102.0, 98.0, 105.0, 100.0])
+        high = np.array([101.0, 106.0, 100.0, 108.0, 103.0])
+        low = np.array([99.0, 99.0, 96.0, 102.0, 97.0])
+
+        result = compute_excursions(
+            pl.Series(close),
+            horizons=[2],
+            high=pl.Series(high),
+            low=pl.Series(low),
+        )
+
+        # At index 0 (entry=100), horizon=2: window is indices 0,1,2
+        # forward_max of high[0:3] = max(101, 106, 100) = 106
+        # forward_min of low[0:3]  = min(99, 99, 96) = 96
+        # MFE = (106 - 100) / 100 = 0.06
+        # MAE = (96 - 100) / 100 = -0.04
+        assert pytest.approx(result["mfe_2"][0], rel=0.01) == 0.06
+        assert pytest.approx(result["mae_2"][0], rel=0.01) == -0.04
+
+        # Versus close-only:
+        result_close = compute_excursions(pl.Series(close), horizons=[2])
+        # forward_max of close[0:3] = max(100, 102, 98) = 102 → MFE = 0.02
+        # forward_min of close[0:3] = min(100, 102, 98) = 98 → MAE = -0.02
+        assert pytest.approx(result_close["mfe_2"][0], rel=0.01) == 0.02
+        assert pytest.approx(result_close["mae_2"][0], rel=0.01) == -0.02
+
+    def test_high_low_length_mismatch(self):
+        """Test that mismatched lengths raise ValueError."""
+        close = np.array([100.0, 102.0, 98.0, 105.0, 100.0])
+        high_short = np.array([101.0, 106.0, 100.0])
+
+        with pytest.raises(ValueError, match="high length"):
+            compute_excursions(
+                pl.Series(close),
+                horizons=[2],
+                high=pl.Series(high_short),
+            )
+
+    def test_high_low_with_log_returns(self):
+        """Test high/low works with log return type."""
+        close = np.array([100.0, 102.0, 98.0, 105.0, 100.0])
+        high = np.array([101.0, 106.0, 100.0, 108.0, 103.0])
+        low = np.array([99.0, 99.0, 96.0, 102.0, 97.0])
+
+        result = compute_excursions(
+            pl.Series(close),
+            horizons=[2],
+            return_type="log",
+            high=pl.Series(high),
+            low=pl.Series(low),
+        )
+
+        # MFE = log(106/100) ≈ 0.0583
+        assert pytest.approx(result["mfe_2"][0], rel=0.01) == np.log(106 / 100)
+        # MAE = log(96/100) ≈ -0.0408
+        assert pytest.approx(result["mae_2"][0], rel=0.01) == np.log(96 / 100)
+
+    def test_high_low_with_abs_returns(self):
+        """Test high/low works with absolute return type."""
+        close = np.array([100.0, 102.0, 98.0, 105.0, 100.0])
+        high = np.array([101.0, 106.0, 100.0, 108.0, 103.0])
+        low = np.array([99.0, 99.0, 96.0, 102.0, 97.0])
+
+        result = compute_excursions(
+            pl.Series(close),
+            horizons=[2],
+            return_type="abs",
+            high=pl.Series(high),
+            low=pl.Series(low),
+        )
+
+        # MFE = 106 - 100 = 6.0
+        assert pytest.approx(result["mfe_2"][0], rel=0.01) == 6.0
+        # MAE = 96 - 100 = -4.0
+        assert pytest.approx(result["mae_2"][0], rel=0.01) == -4.0
+
+    def test_analyze_excursions_with_high_low(self):
+        """Test that analyze_excursions passes high/low through."""
+        np.random.seed(42)
+        n = 300
+        close = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
+        spread = np.abs(np.random.randn(n)) * 0.5
+        high = close + spread
+        low = close - spread
+
+        result = analyze_excursions(
+            pl.Series(close),
+            horizons=[20],
+            high=pl.Series(high),
+            low=pl.Series(low),
+        )
+
+        assert isinstance(result, ExcursionAnalysisResult)
+        assert result.statistics[20].mfe_mean > 0
+        assert result.statistics[20].mae_mean < 0
+
+    def test_numpy_high_low_input(self):
+        """Test that numpy arrays work for high/low."""
+        close = np.array([100.0, 102.0, 98.0, 105.0, 100.0])
+        high = np.array([101.0, 106.0, 100.0, 108.0, 103.0])
+        low = np.array([99.0, 99.0, 96.0, 102.0, 97.0])
+
+        result = compute_excursions(close, horizons=[2], high=high, low=low)
+
+        assert isinstance(result, pl.DataFrame)
+        assert pytest.approx(result["mfe_2"][0], rel=0.01) == 0.06
+
+    def test_pandas_high_low_input(self):
+        """Test that pandas Series work for high/low."""
+        import pandas as pd
+
+        close = pd.Series([100.0, 102.0, 98.0, 105.0, 100.0])
+        high = pd.Series([101.0, 106.0, 100.0, 108.0, 103.0])
+        low = pd.Series([99.0, 99.0, 96.0, 102.0, 97.0])
+
+        result = compute_excursions(close, horizons=[2], high=high, low=low)
+
+        assert isinstance(result, pl.DataFrame)
+        assert pytest.approx(result["mfe_2"][0], rel=0.01) == 0.06
