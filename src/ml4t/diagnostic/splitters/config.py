@@ -59,26 +59,25 @@ class SplitterConfig(BaseConfig):
         Number of cross-validation folds.
 
     label_horizon : int or pd.Timedelta
-        How far ahead labels look into the future. Used to remove training samples
-        whose prediction targets overlap with validation/test data.
+        Gap between train_end and val_start sized to the label horizon.
+        Removes training samples whose prediction targets overlap with
+        validation/test data ("label buffer").
 
         Example: If predicting 5-day forward returns, a training sample at day 95
         has a label computed from days 95-100. If the test set starts at day 98,
         this training sample's label "sees" test data, creating leakage.
         Setting label_horizon=5 removes training samples from days 93-97.
 
-    embargo_td : int or pd.Timedelta or None
-        Buffer zone after test periods where training samples are also excluded.
-        Prevents autocorrelation leakage in combinatorial CV where training data
-        can follow test data chronologically.
+        Aliases: ``label_buffer`` is accepted as an equivalent input name.
 
-        Example: When using CombinatorialCV with test groups in the middle of
-        the timeline, training may include data from after the test period.
-        If you're predicting volatility and the test period has a volatility spike,
-        samples immediately after likely share similar volatility due to clustering.
-        An embargo of 5 bars excludes those autocorrelated samples from training.
+    embargo_td : int or pd.Timedelta or None
+        Buffer zone after test periods where training samples are also excluded
+        ("feature buffer"). Prevents autocorrelation leakage in combinatorial CV
+        where training data can follow test data chronologically.
 
         For standard walk-forward CV (training always before test), this has no effect.
+
+        Aliases: ``feature_buffer`` is accepted as an equivalent input name.
 
     align_to_sessions : bool
         If True, fold boundaries are aligned to trading session boundaries.
@@ -97,16 +96,15 @@ class SplitterConfig(BaseConfig):
     label_horizon: Any = Field(
         0,
         description=(
-            "How far ahead labels look (int bars or pd.Timedelta). "
-            "Removes training samples whose targets overlap with validation/test data."
+            "Gap between train_end and val_start sized to the label horizon "
+            "(int bars or pd.Timedelta). Alias: label_buffer."
         ),
     )
     embargo_td: Any = Field(
         None,
         description=(
             "Buffer zone after test periods (int bars, pd.Timedelta, or None). "
-            "Excludes autocorrelated training samples that follow test data. "
-            "Only affects CombinatorialCV where training can follow test chronologically."
+            "Alias: feature_buffer."
         ),
     )
     align_to_sessions: bool = Field(
@@ -135,6 +133,31 @@ class SplitterConfig(BaseConfig):
         ),
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_aliases(cls, data: Any) -> Any:
+        """Accept label_buffer -> label_horizon and feature_buffer -> embargo_td."""
+        if isinstance(data, dict):
+            if "label_buffer" in data and "label_horizon" not in data:
+                data["label_horizon"] = data.pop("label_buffer")
+            elif "label_buffer" in data:
+                data.pop("label_buffer")  # label_horizon takes precedence
+            if "feature_buffer" in data and "embargo_td" not in data:
+                data["embargo_td"] = data.pop("feature_buffer")
+            elif "feature_buffer" in data:
+                data.pop("feature_buffer")  # embargo_td takes precedence
+        return data
+
+    @property
+    def label_buffer(self) -> Any:
+        """Alias for label_horizon (preferred name)."""
+        return self.label_horizon
+
+    @property
+    def feature_buffer(self) -> Any:
+        """Alias for embargo_td (preferred name)."""
+        return self.embargo_td
+
     @field_validator("label_horizon")
     @classmethod
     def validate_label_horizon(cls, v: Any) -> Any:
@@ -153,7 +176,10 @@ class SplitterConfig(BaseConfig):
             try:
                 return pd.Timedelta(v)
             except Exception as e:
-                raise ValueError(f"Could not parse label_horizon string '{v}' as Timedelta: {e}")  # noqa: B904
+                raise ValueError(  # noqa: B904
+                    f"Could not parse label_horizon/label_buffer string '{v}' as Timedelta. "
+                    f"Expected formats: '5D', '21D', '1W', '8h'. Error: {e}"
+                )
         raise ValueError(f"label_horizon must be int >= 0 or timedelta-like object, got {type(v)}")
 
     @field_validator("embargo_td")
@@ -176,7 +202,10 @@ class SplitterConfig(BaseConfig):
             try:
                 return pd.Timedelta(v)
             except Exception as e:
-                raise ValueError(f"Could not parse embargo_td string '{v}' as Timedelta: {e}")  # noqa: B904
+                raise ValueError(  # noqa: B904
+                    f"Could not parse embargo_td/feature_buffer string '{v}' as Timedelta. "
+                    f"Expected formats: '5D', '1W', '0D'. Error: {e}"
+                )
         raise ValueError(
             f"embargo_td must be None, int >= 0, or timedelta-like object, got {type(v)}"
         )
@@ -191,7 +220,7 @@ class WalkForwardConfig(SplitterConfig):
     Attributes
     ----------
     test_size : int | float | str | None
-        Size of validation folds:
+        Size of validation folds. Alias: ``val_size``.
         - int: Number of samples (or sessions if align_to_sessions=True)
         - float: Proportion of dataset (0.0 to 1.0)
         - str: Time-based ('4W', '3M') - NOT supported with align_to_sessions=True
@@ -211,9 +240,11 @@ class WalkForwardConfig(SplitterConfig):
     test_start : date | str | None
         Explicit start date for held-out test period. Mutually exclusive with test_period.
         Accepts date object or ISO format string ('2024-01-01').
+        Alias: ``holdout_start``.
     test_end : date | str | None
         Explicit end date for held-out test period. Default: end of data.
         Accepts date object or ISO format string ('2024-12-31').
+        Alias: ``holdout_end``.
     fold_direction : Literal["forward", "backward"]
         Direction of validation folds:
         - "forward": Traditional walk-forward (folds step forward in time)
@@ -228,8 +259,7 @@ class WalkForwardConfig(SplitterConfig):
         None,
         description=(
             "Validation fold size: int (samples/sessions), float (proportion), "
-            "str (time-based, e.g., '4W'). "
-            "Time-based NOT supported with align_to_sessions=True."
+            "str (time-based, e.g., '4W'). Alias: val_size."
         ),
     )
     train_size: int | float | str | None = Field(
@@ -244,7 +274,8 @@ class WalkForwardConfig(SplitterConfig):
         None,
         ge=1,
         description=(
-            "Step size between splits (int: samples/sessions). None defaults to test_size (non-overlapping)."
+            "Step size between splits (int: samples/sessions). "
+            "None defaults to test_size (non-overlapping)."
         ),
     )
 
@@ -260,14 +291,14 @@ class WalkForwardConfig(SplitterConfig):
         None,
         description=(
             "Explicit start date for held-out test period. "
-            "Mutually exclusive with test_period."
+            "Mutually exclusive with test_period. Alias: holdout_start."
         ),
     )
     test_end: date | str | None = Field(
         None,
         description=(
             "Explicit end date for held-out test period. "
-            "Default: end of data."
+            "Default: end of data. Alias: holdout_end."
         ),
     )
 
@@ -293,9 +324,48 @@ class WalkForwardConfig(SplitterConfig):
     isolate_groups: bool = Field(
         False,
         description=(
-            "Default False for walk-forward (opt-in). Set True for multi-asset validation to prevent group leakage."
+            "Default False for walk-forward (opt-in). "
+            "Set True for multi-asset validation to prevent group leakage."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_wf_aliases(cls, data: Any) -> Any:
+        """Accept val_size -> test_size and holdout_start/end -> test_start/end."""
+        if isinstance(data, dict):
+            if "val_size" in data and "test_size" not in data:
+                data["test_size"] = data.pop("val_size")
+            elif "val_size" in data:
+                data.pop("val_size")
+            if "holdout_start" in data and "test_start" not in data:
+                data["test_start"] = data.pop("holdout_start")
+            elif "holdout_start" in data:
+                data.pop("holdout_start")
+            if "holdout_end" in data and "test_end" not in data:
+                data["test_end"] = data.pop("holdout_end")
+            elif "holdout_end" in data:
+                data.pop("holdout_end")
+            if "calendar" in data and "calendar_id" not in data:
+                data["calendar_id"] = data.pop("calendar")
+            elif "calendar" in data:
+                data.pop("calendar")
+        return data
+
+    @property
+    def val_size(self) -> int | float | str | None:
+        """Alias for test_size (preferred name in book context)."""
+        return self.test_size
+
+    @property
+    def holdout_start(self) -> date | None:
+        """Alias for test_start."""
+        return self.test_start
+
+    @property
+    def holdout_end(self) -> date | None:
+        """Alias for test_end."""
+        return self.test_end
 
     @field_validator("test_size", "train_size")
     @classmethod
@@ -341,7 +411,6 @@ class WalkForwardConfig(SplitterConfig):
         if isinstance(v, int):
             if v <= 0:
                 raise ValueError("test_period must be a positive integer (trading days)")
-            # Check if calendar_id is available (warning issued in model validator)
             return v
 
         if isinstance(v, str):
@@ -403,7 +472,7 @@ class CombinatorialConfig(SplitterConfig):
     Combinatorial CV is designed for multi-asset strategies and combating overfitting
     by creating multiple test sets from combinatorial group selections.
 
-    Reference: Bailey & López de Prado (2014)
+    Reference: Bailey & Lopez de Prado (2014)
     "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting and Non-Normality"
 
     Attributes
@@ -435,7 +504,8 @@ class CombinatorialConfig(SplitterConfig):
     contiguous_test_blocks: bool = Field(
         False,
         description=(
-            "If True, only use contiguous test groups (less overfitting). If False, allow any combination."
+            "If True, only use contiguous test groups (less overfitting). "
+            "If False, allow any combination."
         ),
     )
     embargo_pct: float | None = Field(

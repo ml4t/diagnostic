@@ -107,21 +107,19 @@ def calculate_purge_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        # Validate timezone awareness
+        # Auto-localize tz-naive timestamps to UTC with warning
         if timestamps.tz is None:
-            raise ValueError(
-                "timestamps must be timezone-aware. Use timestamps.tz_localize('UTC') or timestamps.tz_convert('UTC')"
+            warnings.warn(
+                "timestamps are timezone-naive; auto-localizing to UTC. "
+                "For explicit control, use timestamps.tz_localize('UTC').",
+                UserWarning,
+                stacklevel=2,
             )
+            timestamps = timestamps.tz_localize("UTC")
         if test_start.tz is None:
-            raise ValueError(
-                "test_start must be timezone-aware when using timestamps. "
-                "Use pd.Timestamp(test_start, tz='UTC') or test_start.tz_localize('UTC')"
-            )
+            test_start = test_start.tz_localize("UTC")
         if test_end.tz is None:
-            raise ValueError(
-                "test_end must be timezone-aware when using timestamps. "
-                "Use pd.Timestamp(test_end, tz='UTC') or test_end.tz_localize('UTC')"
-            )
+            test_end = test_end.tz_localize("UTC")
 
         # Convert all to UTC for consistent calculations
         timestamps = timestamps.tz_convert("UTC")
@@ -246,21 +244,19 @@ def calculate_embargo_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        # Validate timezone awareness
+        # Auto-localize tz-naive timestamps to UTC with warning
         if timestamps.tz is None:
-            raise ValueError(
-                "timestamps must be timezone-aware. Use timestamps.tz_localize('UTC') or timestamps.tz_convert('UTC')"
+            warnings.warn(
+                "timestamps are timezone-naive; auto-localizing to UTC. "
+                "For explicit control, use timestamps.tz_localize('UTC').",
+                UserWarning,
+                stacklevel=2,
             )
+            timestamps = timestamps.tz_localize("UTC")
         if test_start.tz is None:
-            raise ValueError(
-                "test_start must be timezone-aware when using timestamps. "
-                "Use pd.Timestamp(test_start, tz='UTC') or test_start.tz_localize('UTC')"
-            )
+            test_start = test_start.tz_localize("UTC")
         if test_end.tz is None:
-            raise ValueError(
-                "test_end must be timezone-aware when using timestamps. "
-                "Use pd.Timestamp(test_end, tz='UTC') or test_end.tz_localize('UTC')"
-            )
+            test_end = test_end.tz_localize("UTC")
 
         # Convert all to UTC for consistent calculations
         timestamps = timestamps.tz_convert("UTC")

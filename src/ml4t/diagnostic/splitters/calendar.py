@@ -234,15 +234,20 @@ class TradingCalendar:
         # Ensure timezone-aware
         timestamps_tz = self._ensure_timezone_aware(timestamps)
 
-        # Parse period specification
-        match = re.match(r"(\d+)([DWM])", period_spec.upper())
+        # Parse period specification (D/W/M/Y supported)
+        match = re.match(r"(\d+)([DWMY])", period_spec.upper())
         if not match:
             raise ValueError(
-                f"Invalid period specification '{period_spec}'. Use format like '1D', '4W', '3M'"
+                f"Invalid period specification '{period_spec}'. Use format like '1D', '4W', '3M', '1Y'"
             )
 
         n_periods = int(match.group(1))
         freq = match.group(2)
+
+        # Normalize Y → M (1Y = 12M, 10Y = 120M)
+        if freq == "Y":
+            n_periods = n_periods * 12
+            freq = "M"
 
         # Determine if data is intraday (multiple samples per day)
         df = pd.DataFrame({"timestamp": timestamps_tz})
@@ -304,10 +309,14 @@ class TradingCalendar:
         self,
         timestamps: pd.DatetimeIndex,
         freq: str,
-        _n_periods: int,
+        n_periods: int,
     ) -> list[int]:
-        """Count samples by calendar periods (for daily data or monthly specs)."""
-        # Group by calendar period
+        """Count samples by calendar periods (for daily data or monthly specs).
+
+        Groups timestamps into blocks of ``n_periods`` calendar units and
+        counts samples in each complete block.
+        """
+        # Group by calendar period (atomic unit)
         if freq == "D":
             period_groups = cast(Any, timestamps).normalize()
         elif freq == "W":
@@ -319,11 +328,22 @@ class TradingCalendar:
         else:
             raise ValueError(f"Unsupported frequency: {freq}")
 
-        # Count samples per period
+        # Count samples per atomic period
         df = pd.DataFrame({"period": period_groups})
-        counts = df.groupby("period").size()
+        counts_per_unit = df.groupby("period").size()
 
-        return counts.values.tolist()
+        if n_periods <= 1:
+            return counts_per_unit.values.tolist()
+
+        # Aggregate atomic units into blocks of n_periods
+        n_units = len(counts_per_unit)
+        block_counts = []
+        for i in range(0, n_units, n_periods):
+            block = counts_per_unit.iloc[i : i + n_periods]
+            if len(block) == n_periods:  # Only complete blocks
+                block_counts.append(int(block.sum()))
+
+        return block_counts
 
     def previous_trading_day(
         self,
