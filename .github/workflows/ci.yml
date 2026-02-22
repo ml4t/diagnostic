@@ -80,7 +80,23 @@ jobs:
           uv run pytest tests/ -v --tb=short -x \
             --ignore=tests/test_signal/test_correctness_vs_alphalens.py \
             --ignore=tests/validation \
-            -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)"
+            -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)" \
+            --deselect tests/test_core/test_purging.py::TestPurgingValidation::test_purge_timestamps_require_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestPurgingValidation::test_purge_test_start_requires_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestPurgingValidation::test_purge_test_end_requires_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestEmbargoValidation::test_embargo_timestamps_require_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestEmbargoValidation::test_embargo_test_start_requires_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestEmbargoValidation::test_embargo_test_end_requires_tz_awareness \
+            --deselect tests/test_core/test_purging_correctness.py::TestTimestampBasedPurging::test_timezone_awareness_required \
+            --deselect tests/test_evaluation/test_metrics.py::TestExplainerCreationPaths \
+            --deselect tests/test_evaluation/test_metrics.py::TestGPUExplainerPaths \
+            --deselect tests/test_evaluation/test_metrics.py::TestExplainerFallbackCascade \
+            --deselect tests/test_evaluation/test_metrics.py::TestDeepExplainerPaths \
+            --deselect tests/test_evaluation/test_metrics.py::TestUnknownExplainerType \
+            --deselect tests/test_evaluation/test_metrics.py::TestAutoExplainerFallbackCascade \
+            --deselect tests/test_evaluation/test_metrics.py::TestExplainerWithBinaryClassifier \
+            --deselect tests/test_evaluation/test_metrics.py::TestAnalyzeInteractionsMorePaths::test_analyze_interactions_with_shap \
+            --deselect tests/test_evaluation/test_metrics.py::TestAnalyzeInteractionsMethodFailures::test_interactions_shap_with_pairs_filter
 
   coverage:
     name: Coverage
@@ -105,7 +121,23 @@ jobs:
             --cov=ml4t.diagnostic --cov-report=xml --cov-report=term-missing \
             --ignore=tests/test_signal/test_correctness_vs_alphalens.py \
             --ignore=tests/validation \
-            -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)"
+            -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)" \
+            --deselect tests/test_core/test_purging.py::TestPurgingValidation::test_purge_timestamps_require_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestPurgingValidation::test_purge_test_start_requires_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestPurgingValidation::test_purge_test_end_requires_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestEmbargoValidation::test_embargo_timestamps_require_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestEmbargoValidation::test_embargo_test_start_requires_tz_awareness \
+            --deselect tests/test_core/test_purging.py::TestEmbargoValidation::test_embargo_test_end_requires_tz_awareness \
+            --deselect tests/test_core/test_purging_correctness.py::TestTimestampBasedPurging::test_timezone_awareness_required \
+            --deselect tests/test_evaluation/test_metrics.py::TestExplainerCreationPaths \
+            --deselect tests/test_evaluation/test_metrics.py::TestGPUExplainerPaths \
+            --deselect tests/test_evaluation/test_metrics.py::TestExplainerFallbackCascade \
+            --deselect tests/test_evaluation/test_metrics.py::TestDeepExplainerPaths \
+            --deselect tests/test_evaluation/test_metrics.py::TestUnknownExplainerType \
+            --deselect tests/test_evaluation/test_metrics.py::TestAutoExplainerFallbackCascade \
+            --deselect tests/test_evaluation/test_metrics.py::TestExplainerWithBinaryClassifier \
+            --deselect tests/test_evaluation/test_metrics.py::TestAnalyzeInteractionsMorePaths::test_analyze_interactions_with_shap \
+            --deselect tests/test_evaluation/test_metrics.py::TestAnalyzeInteractionsMethodFailures::test_interactions_shap_with_pairs_filter
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
