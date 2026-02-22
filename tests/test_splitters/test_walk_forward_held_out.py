@@ -374,7 +374,6 @@ class TestConfigSerialization:
 
     def test_config_roundtrip(self):
         """Test config can be serialized and restored."""
-        from datetime import date
         import json
 
         config = WalkForwardConfig(

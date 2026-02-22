@@ -261,9 +261,7 @@ class TestCPCVPurgingProperties:
         n_samples = 600
         X = np.arange(n_samples).reshape(-1, 1)
 
-        cv_no_purge = CombinatorialCV(
-            n_groups=6, n_test_groups=2, label_horizon=0, embargo_size=0
-        )
+        cv_no_purge = CombinatorialCV(n_groups=6, n_test_groups=2, label_horizon=0, embargo_size=0)
         cv_with_purge = CombinatorialCV(
             n_groups=6, n_test_groups=2, label_horizon=10, embargo_size=0
         )

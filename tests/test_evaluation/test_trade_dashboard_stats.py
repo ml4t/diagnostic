@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
-from scipy import stats as scipy_stats
 
 from ml4t.diagnostic.evaluation.trade_dashboard.stats import (
     benjamini_hochberg_fdr,

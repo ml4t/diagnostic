@@ -54,9 +54,7 @@ def wiki_returns(wiki_prices):
     returns = (
         df.sort(["ticker", "date"])
         .with_columns(
-            (pl.col("adj_close") / pl.col("adj_close").shift(1).over("ticker") - 1).alias(
-                "return"
-            )
+            (pl.col("adj_close") / pl.col("adj_close").shift(1).over("ticker") - 1).alias("return")
         )
         .drop_nulls("return")
     )
@@ -238,9 +236,7 @@ class TestICWithRealData:
 
             common = mom_cross.index.intersection(fwd_cross.index)
             if len(common) >= 5:
-                ic = information_coefficient(
-                    mom_cross[common].values, fwd_cross[common].values
-                )
+                ic = information_coefficient(mom_cross[common].values, fwd_cross[common].values)
                 if np.isfinite(ic):
                     ic_values.append(ic)
 
@@ -362,11 +358,7 @@ class TestPurgingWithRealData:
         """Test that purging handles non-trading days correctly."""
         # Get dates for a single stock
         ticker = wiki_prices["ticker"][0]
-        dates = (
-            wiki_prices.filter(pl.col("ticker") == ticker)
-            .sort("date")["date"]
-            .to_list()
-        )
+        dates = wiki_prices.filter(pl.col("ticker") == ticker).sort("date")["date"].to_list()
 
         if len(dates) < 20:
             pytest.skip("Insufficient dates")
@@ -381,7 +373,11 @@ class TestPurgingWithRealData:
         # Create simple test data with timezone-aware dates
         tz_dates = [pd.Timestamp(d).tz_localize("UTC") for d in dates]
         df = pd.DataFrame(
-            {"date": tz_dates, "feature": np.random.randn(len(dates)), "label": np.random.randn(len(dates))}
+            {
+                "date": tz_dates,
+                "feature": np.random.randn(len(dates)),
+                "label": np.random.randn(len(dates)),
+            }
         )
         df = df.set_index("date")
 

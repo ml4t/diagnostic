@@ -37,10 +37,6 @@ from ml4t.diagnostic.visualization.barrier_plots import (
     plot_profit_factor_bar,
     plot_time_to_target_box,
 )
-from ml4t.diagnostic.visualization.cv_plots import (
-    # Cross-validation fold visualization
-    plot_cv_folds,
-)
 from ml4t.diagnostic.visualization.core import (
     # Common plot elements
     add_annotation,
@@ -60,6 +56,10 @@ from ml4t.diagnostic.visualization.core import (
     validate_plot_results,
     validate_positive_int,
     validate_theme,
+)
+from ml4t.diagnostic.visualization.cv_plots import (
+    # Cross-validation fold visualization
+    plot_cv_folds,
 )
 from ml4t.diagnostic.visualization.dashboards import (
     # Dashboard base classes

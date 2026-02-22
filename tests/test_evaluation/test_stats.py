@@ -1677,9 +1677,7 @@ class TestDeflatedSharpeRatioRawReturns:
         returns = np.random.randn(252) * 0.01 + 0.001
 
         result_default = deflated_sharpe_ratio(returns, frequency="daily", benchmark_sharpe=0.0)
-        result_high_bench = deflated_sharpe_ratio(
-            returns, frequency="daily", benchmark_sharpe=0.5
-        )
+        result_high_bench = deflated_sharpe_ratio(returns, frequency="daily", benchmark_sharpe=0.5)
 
         # Higher benchmark should give lower probability
         assert result_high_bench.probability <= result_default.probability

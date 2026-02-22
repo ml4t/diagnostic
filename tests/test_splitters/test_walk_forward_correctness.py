@@ -56,9 +56,7 @@ class TestWalkForwardInvariants:
 
         for n_splits in [3, 5]:
             for embargo_size in [0, 5]:
-                cv = WalkForwardCV(
-                    n_splits=n_splits, label_horizon=3, embargo_size=embargo_size
-                )
+                cv = WalkForwardCV(n_splits=n_splits, label_horizon=3, embargo_size=embargo_size)
 
                 for train_idx, test_idx in cv.split(X):
                     train_set = set(train_idx)

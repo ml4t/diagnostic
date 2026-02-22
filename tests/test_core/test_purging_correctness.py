@@ -18,7 +18,8 @@ AFML Golden Cases:
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from ml4t.diagnostic.core.purging import (
     apply_purging_and_embargo,
@@ -620,9 +621,7 @@ class TestExtendedEdgeCases:
 
     def test_single_sample_test_set(self):
         """Test with a single sample in the test set."""
-        purged = calculate_purge_indices(
-            n_samples=100, test_start=50, test_end=51, label_horizon=5
-        )
+        purged = calculate_purge_indices(n_samples=100, test_start=50, test_end=51, label_horizon=5)
         # Should purge [45, 50)
         assert purged == list(range(45, 50))
 
@@ -667,7 +666,10 @@ class TestExtendedEdgeCases:
     def test_large_horizon_vs_small_dataset(self):
         """Test when horizon is larger than available data."""
         purged = calculate_purge_indices(
-            n_samples=50, test_start=10, test_end=20, label_horizon=100  # Much larger
+            n_samples=50,
+            test_start=10,
+            test_end=20,
+            label_horizon=100,  # Much larger
         )
         # Can only purge [0, 10)
         assert purged == list(range(10))

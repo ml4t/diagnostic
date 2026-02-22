@@ -155,6 +155,7 @@ def compute_ic_series(
     pred_col: str = "prediction",
     ret_col: str = "forward_return",
     date_col: str = "date",
+    entity_col: str | list[str] | None = None,
     method: str = "spearman",
     min_periods: int = 10,
 ) -> pl.DataFrame | pd.DataFrame:
@@ -176,6 +177,11 @@ def compute_ic_series(
         Column name for forward returns
     date_col : str, default "date"
         Column name for dates (for grouping by period)
+    entity_col : str or list[str] or None, default None
+        Entity column(s) for panel data (e.g., "symbol" or ["symbol"]).
+        When provided, join includes entity columns to avoid Cartesian
+        products. Required for cross-sectional data with multiple
+        entities per date.
     method : str, default "spearman"
         Correlation method: "spearman" or "pearson"
     min_periods : int, default 10
@@ -188,26 +194,34 @@ def compute_ic_series(
 
     Examples
     --------
-    >>> # Create sample data
-    >>> dates = pd.date_range("2024-01-01", periods=100)
-    >>> pred_df = pd.DataFrame({
-    ...     "date": dates,
-    ...     "prediction": np.random.randn(100)
+    >>> # Panel data with multiple symbols per date
+    >>> pred_df = pl.DataFrame({
+    ...     "date": ["2024-01-01"] * 4 + ["2024-01-02"] * 4,
+    ...     "symbol": ["SPY", "QQQ", "IWM", "DIA"] * 2,
+    ...     "prediction": np.random.randn(8),
     ... })
-    >>> ret_df = pd.DataFrame({
-    ...     "date": dates,
-    ...     "forward_return": np.random.randn(100) * 0.02
+    >>> ret_df = pl.DataFrame({
+    ...     "date": ["2024-01-01"] * 4 + ["2024-01-02"] * 4,
+    ...     "symbol": ["SPY", "QQQ", "IWM", "DIA"] * 2,
+    ...     "forward_return": np.random.randn(8) * 0.02,
     ... })
-    >>> ic_series = compute_ic_series(pred_df, ret_df)
-    >>> print(ic_series.head())
+    >>> ic_series = compute_ic_series(pred_df, ret_df, entity_col="symbol")
     """
     is_polars = isinstance(predictions, pl.DataFrame)
+
+    # Build join columns (date + entity for panel data)
+    join_on: list[str] = [date_col]
+    if entity_col is not None:
+        if isinstance(entity_col, str):
+            join_on.append(entity_col)
+        else:
+            join_on.extend(entity_col)
 
     if is_polars:
         # Merge predictions and returns
         predictions_pl = cast(pl.DataFrame, predictions)
         returns_pl = cast(pl.DataFrame, returns)
-        df = predictions_pl.join(returns_pl, on=date_col, how="inner")
+        df = predictions_pl.join(returns_pl, on=join_on, how="inner")
 
         # Use group_by().map_groups() for efficient per-group processing
         def compute_group_ic(group: pl.DataFrame) -> pl.DataFrame:
@@ -237,7 +251,7 @@ def compute_ic_series(
     # Merge predictions and returns
     predictions_pd = cast(pd.DataFrame, predictions)
     returns_pd = cast(pd.DataFrame, returns)
-    df_pd = pd.merge(predictions_pd, returns_pd, on=date_col, how="inner")
+    df_pd = pd.merge(predictions_pd, returns_pd, on=join_on, how="inner")
 
     # Group by date and compute IC
     def compute_period_ic(group: pd.DataFrame) -> pd.Series:
@@ -324,16 +338,20 @@ def compute_ic_by_horizon(
         prices, periods=horizons, price_col=price_col, group_col=group_col
     )
 
-    # Merge with predictions - declare type before branching
+    # Merge with predictions - include group_col to avoid Cartesian products
+    merge_on: list[str] = [date_col]
+    if group_col is not None:
+        merge_on.append(group_col)
+
     df: pl.DataFrame | pd.DataFrame
 
     if isinstance(predictions, pl.DataFrame):
         # Type is narrowed by isinstance check, but prices_with_fwd needs cast
         prices_with_fwd_pl = cast(pl.DataFrame, prices_with_fwd)
-        df = predictions.join(prices_with_fwd_pl, on=date_col, how="inner")
+        df = predictions.join(prices_with_fwd_pl, on=merge_on, how="inner")
     elif isinstance(predictions, pd.DataFrame):
         prices_with_fwd_pd = cast(pd.DataFrame, prices_with_fwd)
-        df = pd.merge(predictions, prices_with_fwd_pd, on=date_col, how="inner")
+        df = pd.merge(predictions, prices_with_fwd_pd, on=merge_on, how="inner")
     else:
         raise TypeError(
             f"predictions must be pl.DataFrame or pd.DataFrame, got {type(predictions)}"

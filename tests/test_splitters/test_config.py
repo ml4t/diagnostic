@@ -7,8 +7,8 @@ import pytest
 
 from ml4t.diagnostic.splitters.config import (
     CombinatorialConfig,
-    WalkForwardConfig,
     SplitterConfig,
+    WalkForwardConfig,
 )
 
 

@@ -157,9 +157,7 @@ class TestInformationCoefficient:
         returns = [0.01, 0.02, 0.03, 0.04, 0.05]
 
         # Lists should work through numpy conversion
-        ic = information_coefficient(
-            np.array(predictions), np.array(returns)
-        )
+        ic = information_coefficient(np.array(predictions), np.array(returns))
 
         assert ic == pytest.approx(1.0, abs=1e-10)
 
@@ -173,9 +171,7 @@ class TestInformationCoefficientWithConfidenceIntervals:
         predictions = np.random.randn(100)
         returns = np.random.randn(100) * 0.01 + predictions * 0.005
 
-        result = information_coefficient(
-            predictions, returns, confidence_intervals=True
-        )
+        result = information_coefficient(predictions, returns, confidence_intervals=True)
 
         assert isinstance(result, dict)
         assert "ic" in result
@@ -189,9 +185,7 @@ class TestInformationCoefficientWithConfidenceIntervals:
         predictions = np.random.randn(100)
         returns = np.random.randn(100) * 0.01 + predictions * 0.01
 
-        result = information_coefficient(
-            predictions, returns, confidence_intervals=True
-        )
+        result = information_coefficient(predictions, returns, confidence_intervals=True)
 
         assert result["lower_ci"] < result["ic"]
         assert result["ic"] < result["upper_ci"]
@@ -241,9 +235,7 @@ class TestInformationCoefficientWithConfidenceIntervals:
         predictions = np.array([1, 2, 3])
         returns = np.array([0.01, 0.02, 0.03])
 
-        result = information_coefficient(
-            predictions, returns, confidence_intervals=True
-        )
+        result = information_coefficient(predictions, returns, confidence_intervals=True)
 
         # IC should be computed
         assert np.isfinite(result["ic"])
@@ -256,9 +248,7 @@ class TestInformationCoefficientWithConfidenceIntervals:
         predictions = np.array([1])
         returns = np.array([0.01])
 
-        result = information_coefficient(
-            predictions, returns, confidence_intervals=True
-        )
+        result = information_coefficient(predictions, returns, confidence_intervals=True)
 
         assert np.isnan(result["ic"])
         assert np.isnan(result["lower_ci"])
@@ -271,9 +261,7 @@ class TestInformationCoefficientWithConfidenceIntervals:
         predictions = np.arange(100)
         returns = predictions * 0.01 + np.random.randn(100) * 0.1
 
-        result = information_coefficient(
-            predictions, returns, confidence_intervals=True
-        )
+        result = information_coefficient(predictions, returns, confidence_intervals=True)
 
         # p-value should be small for significant correlation
         assert result["p_value"] < 0.05
@@ -298,12 +286,14 @@ class TestComputeICSeries:
             for i in range(n_assets):
                 pred = np.random.randn()
                 fwd_ret = pred * 0.01 + np.random.randn() * 0.005
-                rows.append({
-                    "date": d,
-                    "asset": f"A{i}",
-                    "prediction": pred,
-                    "forward_return": fwd_ret,
-                })
+                rows.append(
+                    {
+                        "date": d,
+                        "asset": f"A{i}",
+                        "prediction": pred,
+                        "forward_return": fwd_ret,
+                    }
+                )
 
         df = pl.DataFrame(rows)
         pred_df = df.select(["date", "asset", "prediction"])
@@ -331,7 +321,7 @@ class TestComputeICSeries:
             merged.select(["date", "forward_return"]),
             pred_col="prediction",
             ret_col="forward_return",
-            min_periods=5
+            min_periods=5,
         )
 
         assert isinstance(result, pl.DataFrame)
@@ -352,7 +342,7 @@ class TestComputeICSeries:
             merged[["date", "forward_return"]],
             pred_col="prediction",
             ret_col="forward_return",
-            min_periods=5
+            min_periods=5,
         )
 
         assert isinstance(result, pd.DataFrame)
@@ -377,10 +367,7 @@ class TestComputeICSeries:
 
         # With min_periods=5 and only 1 obs per date, all IC should be NaN
         result = compute_ic_series(
-            pred_df, ret_df,
-            pred_col="prediction",
-            ret_col="forward_return",
-            min_periods=5
+            pred_df, ret_df, pred_col="prediction", ret_col="forward_return", min_periods=5
         )
 
         # All IC values should be NaN since n_obs (1) < min_periods (5)
@@ -400,11 +387,13 @@ class TestComputeICSeries:
             pred_col="prediction",
             ret_col="forward_return",
             method="pearson",
-            min_periods=5
+            min_periods=5,
         )
 
         assert len(result) > 0
-        ic_values = result["ic"].to_numpy() if isinstance(result, pl.DataFrame) else result["ic"].values
+        ic_values = (
+            result["ic"].to_numpy() if isinstance(result, pl.DataFrame) else result["ic"].values
+        )
         # Should have mostly finite IC values
         assert np.sum(np.isfinite(ic_values)) > len(ic_values) // 2
 
@@ -442,10 +431,7 @@ class TestComputeICByHorizon:
         """Test IC by horizon with custom horizons."""
         pred_df, price_df = sample_predictions_and_prices
 
-        result = compute_ic_by_horizon(
-            pred_df, price_df,
-            horizons=[1, 3, 10]
-        )
+        result = compute_ic_by_horizon(pred_df, price_df, horizons=[1, 3, 10])
 
         assert 1 in result
         assert 3 in result
@@ -460,10 +446,7 @@ class TestComputeICByHorizon:
         pred_pl = pl.from_pandas(pred_df)
         price_pl = pl.from_pandas(price_df)
 
-        result = compute_ic_by_horizon(
-            pred_pl, price_pl,
-            horizons=[1, 5]
-        )
+        result = compute_ic_by_horizon(pred_pl, price_pl, horizons=[1, 5])
 
         assert isinstance(result, dict)
         assert 1 in result
@@ -473,10 +456,7 @@ class TestComputeICByHorizon:
         """Test that IC values are finite for valid data."""
         pred_df, price_df = sample_predictions_and_prices
 
-        result = compute_ic_by_horizon(
-            pred_df, price_df,
-            horizons=[1, 5]
-        )
+        result = compute_ic_by_horizon(pred_df, price_df, horizons=[1, 5])
 
         for horizon, ic in result.items():
             assert np.isfinite(ic), f"IC for horizon {horizon} is not finite"
@@ -580,7 +560,9 @@ class TestComputeICIRWithConfidenceIntervals:
 
     def test_confidence_intervals_structure(self):
         """Test CI output structure."""
-        ic_values = np.array([0.05, 0.06, 0.04, 0.07, 0.05, 0.06, 0.05, 0.04, 0.06, 0.05, 0.07, 0.04])
+        ic_values = np.array(
+            [0.05, 0.06, 0.04, 0.07, 0.05, 0.06, 0.05, 0.04, 0.06, 0.05, 0.07, 0.04]
+        )
 
         result = compute_ic_ir(ic_values, confidence_intervals=True)
 
@@ -618,7 +600,9 @@ class TestComputeICIRWithConfidenceIntervals:
 
     def test_bootstrap_reproducibility(self):
         """Test that bootstrap results are reproducible (seeded)."""
-        ic_values = np.array([0.05, 0.06, 0.04, 0.07, 0.05, 0.06, 0.05, 0.04, 0.06, 0.05, 0.07, 0.04])
+        ic_values = np.array(
+            [0.05, 0.06, 0.04, 0.07, 0.05, 0.06, 0.05, 0.04, 0.06, 0.05, 0.07, 0.04]
+        )
 
         result1 = compute_ic_ir(ic_values, confidence_intervals=True)
         result2 = compute_ic_ir(ic_values, confidence_intervals=True)

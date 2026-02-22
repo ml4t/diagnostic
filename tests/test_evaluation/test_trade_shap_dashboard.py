@@ -454,9 +454,7 @@ def test_shap_tab_implementation():
 
     # Check for SHAP visualization components
     assert "render_tab" in content, "Missing render_tab function"
-    assert "shap" in content.lower() or "feature" in content.lower(), (
-        "Missing SHAP-related content"
-    )
+    assert "shap" in content.lower() or "feature" in content.lower(), "Missing SHAP-related content"
 
 
 def test_patterns_tab_enhanced():

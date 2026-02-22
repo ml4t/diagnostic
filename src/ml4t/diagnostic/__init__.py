@@ -29,7 +29,7 @@ This library follows semantic versioning. The public API consists of all symbols
 exported in __all__. Breaking changes will only occur in major version bumps.
 """
 
-__version__ = "0.1.0a6"
+__version__ = "0.1.0a7"
 
 # Sub-modules for advanced usage
 from . import backends, caching, config, core, evaluation, integration, logging, signal, splitters
