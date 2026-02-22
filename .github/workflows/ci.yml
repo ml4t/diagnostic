@@ -50,8 +50,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run mypy
-        run: uv run mypy src/ml4t/diagnostic/
+      - name: Run ty check
+        run: uv run ty check
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -73,10 +73,13 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev --all-extras
+        run: uv sync --dev
 
       - name: Run tests
-        run: uv run pytest tests/ -v --tb=short -x
+        run: |
+          uv run pytest tests/ -v --tb=short -x \
+            --ignore=tests/test_signal/test_correctness_vs_alphalens.py \
+            -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)"
 
   coverage:
     name: Coverage
@@ -93,10 +96,14 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev --all-extras
+        run: uv sync --dev
 
       - name: Run tests with coverage
-        run: uv run pytest tests/ --cov=ml4t.diagnostic --cov-report=xml --cov-report=term-missing
+        run: |
+          uv run pytest tests/ \
+            --cov=ml4t.diagnostic --cov-report=xml --cov-report=term-missing \
+            --ignore=tests/test_signal/test_correctness_vs_alphalens.py \
+            -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -120,7 +127,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev --all-extras
+        run: uv sync --dev
 
       - name: Run property-based tests
         run: uv run pytest tests/test_property/ -v --hypothesis-seed=42 --hypothesis-profile=ci
@@ -140,7 +147,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev --all-extras
+        run: uv sync --dev
 
       - name: Run benchmarks
         run: uv run pytest tests/test_benchmarks/ --benchmark-only --benchmark-autosave

@@ -236,7 +236,16 @@ Changelog = "https://github.com/ml4t/ml4t-evaluation/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
-    "mypy>=1.19.1",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.3.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-benchmark>=4.0.0",
+    "hypothesis>=6.80.0",
+    "ruff>=0.8.0",
+    "ty",
+    "pre-commit>=3.3.0",
+    "twine>=6.0.0",
 ]
 
 [tool.pytest.ini_options]
