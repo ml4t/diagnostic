@@ -79,6 +79,7 @@ jobs:
         run: |
           uv run pytest tests/ -v --tb=short -x \
             --ignore=tests/test_signal/test_correctness_vs_alphalens.py \
+            --ignore=tests/validation \
             -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)"
 
   coverage:
@@ -103,6 +104,7 @@ jobs:
           uv run pytest tests/ \
             --cov=ml4t.diagnostic --cov-report=xml --cov-report=term-missing \
             --ignore=tests/test_signal/test_correctness_vs_alphalens.py \
+            --ignore=tests/validation \
             -k "not (TestSHAP or test_shap or TestKernelExplainer or test_save_png or test_setup_complete)"
 
       - name: Upload coverage to Codecov

@@ -323,6 +323,9 @@ extend-ignore-names = [
     "N817",  # Allow CamelCase imported as acronym in tests
     "N814",  # Allow CamelCase imported as constant in tests
     "B018",  # Allow useless expressions (kaleido availability checks)
+    "B007",  # Unused loop variables in test iterations
+    "F841",  # Unused local variables (common in test setup)
+    "F401",  # Unused imports (availability checks)
 ]
 
 # ty - High-performance type checker (Astral)
@@ -346,6 +349,8 @@ unknown-argument = "ignore"         # Dynamic config patterns
 non-subscriptable = "ignore"        # Union return types
 invalid-argument-type = "ignore"    # Complex union types in function calls
 possibly-missing-attribute = "ignore"  # Optional library attributes (lgb.LGBMClassifier)
+invalid-return-type = "ignore"         # Pydantic model property return types
+unresolved-attribute = "ignore"        # DatetimeIndex.normalize() etc.
 
 [tool.coverage.run]
 source = ["src/ml4t/diagnostic"]
