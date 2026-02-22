@@ -152,7 +152,7 @@ jobs:
         run: uv sync --dev
 
       - name: Run benchmarks
-        run: uv run pytest tests/test_benchmarks/ -p no:xdist --benchmark-only --benchmark-autosave
+        run: uv run pytest tests/test_benchmarks/ -p no:xdist -o "addopts=" --benchmark-only --benchmark-autosave
 
   build:
     name: Build Package
