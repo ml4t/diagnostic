@@ -496,6 +496,7 @@ splitter:
     test_size: 0.2
     gap: 0
     expanding: true
+    calendar: NYSE      # Default. Options: NYSE, CME_Equity, LSE, NASDAQ, etc.
 
 metrics:
   - ic

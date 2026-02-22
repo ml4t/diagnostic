@@ -126,6 +126,13 @@ class SplitterConfig(BaseConfig):
             "If None, falls back to pandas DatetimeIndex (backward compatible)."
         ),
     )
+    filter_non_trading: bool = Field(
+        True,
+        description=(
+            "When calendar is active, exclude non-trading day rows from fold indices. "
+            "Set False to include all rows regardless of trading calendar."
+        ),
+    )
     isolate_groups: bool = Field(
         False,
         description=(
@@ -297,8 +304,7 @@ class WalkForwardConfig(SplitterConfig):
     test_end: date | str | None = Field(
         None,
         description=(
-            "Explicit end date for held-out test period. "
-            "Default: end of data. Alias: holdout_end."
+            "Explicit end date for held-out test period. Default: end of data. Alias: holdout_end."
         ),
     )
 
@@ -313,11 +319,11 @@ class WalkForwardConfig(SplitterConfig):
 
     # Calendar for trading-day-aware calculations
     calendar_id: str | None = Field(
-        None,
+        "NYSE",
         description=(
-            "Trading calendar for trading-day-aware gap calculations. "
-            "Examples: 'NYSE', 'CME_Equity', 'LSE'. "
-            "Required when label_horizon is int and you want trading-day interpretation."
+            "Trading calendar for calendar-first splitting and gap calculations. "
+            "Default: 'NYSE'. Examples: 'NYSE', 'CME_Equity', 'LSE'. "
+            "Set to None to disable calendar-aware splitting."
         ),
     )
 
@@ -427,6 +433,19 @@ class WalkForwardConfig(SplitterConfig):
             return v
 
         raise ValueError(f"test_period must be int or str, got {type(v)}")
+
+    @model_validator(mode="after")
+    def validate_calendar_and_sessions(self) -> WalkForwardConfig:
+        """Warn when align_to_sessions is used alongside calendar_id."""
+        if self.align_to_sessions and self.calendar_id is not None:
+            warnings.warn(
+                "align_to_sessions=True is deprecated when calendar_id is set. "
+                "Calendar-first splitting subsumes session alignment. "
+                "Remove align_to_sessions=True to silence this warning.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_held_out_test_config(self) -> WalkForwardConfig:

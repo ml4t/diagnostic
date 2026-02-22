@@ -201,6 +201,117 @@ class TradingCalendar:
         result = df_merged.sort_values("original_idx").set_index(timestamps)["session_date"]
         return result
 
+    def get_sessions_and_mask(
+        self,
+        timestamps: pd.DatetimeIndex,
+    ) -> tuple[pd.Series, np.ndarray]:
+        """Assign each timestamp to its trading session date and identify non-trading rows.
+
+        Unlike get_sessions(), this method does NOT forward-fill non-trading timestamps.
+        Non-trading rows (weekends, holidays) get NaT session and False mask.
+
+        Parameters
+        ----------
+        timestamps : pd.DatetimeIndex
+            Timestamps to assign to sessions (may be tz-naive or tz-aware)
+
+        Returns
+        -------
+        sessions : pd.Series
+            Session dates for each timestamp. Non-trading rows have NaT.
+        trading_mask : np.ndarray of bool
+            True for rows that fall on trading days, False otherwise.
+        """
+        # Ensure all timestamps are in calendar timezone
+        timestamps_tz = self._ensure_timezone_aware(timestamps)
+
+        # Get schedule for the data period (with buffer for edge cases)
+        start_date = timestamps_tz[0].normalize() - pd.Timedelta(days=7)
+        end_date = timestamps_tz[-1].normalize() + pd.Timedelta(days=7)
+
+        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+
+        # Get the set of trading dates from the schedule
+        trading_dates = set(schedule.index.normalize())
+
+        # Normalize each timestamp to its date and check if it's a trading day
+        ts_dates = timestamps_tz.normalize()  # type: ignore[unresolved-attribute]
+        # For tz-aware DatetimeIndex, we need to compare tz-naive dates
+        ts_dates_naive = ts_dates.tz_localize(None) if ts_dates.tz else ts_dates
+
+        trading_mask = np.array([d in trading_dates for d in ts_dates_naive], dtype=bool)
+
+        # Assign sessions using get_sessions() for trading rows, NaT for non-trading
+        # Use positional indexing to handle duplicate timestamps (panel data)
+        session_values = np.full(len(timestamps), np.datetime64("NaT"), dtype="datetime64[ns]")
+        if trading_mask.any():
+            trading_timestamps = timestamps[trading_mask]
+            trading_sessions = self.get_sessions(trading_timestamps)
+            session_values[trading_mask] = trading_sessions.values
+
+        sessions = pd.Series(session_values, index=timestamps)
+        return sessions, trading_mask
+
+    def time_spec_to_sessions(self, spec: str) -> int:
+        """Convert a time-period string to a trading session count.
+
+        Uses the calendar's schedule for a representative year to produce
+        accurate counts for month/year specifications.
+
+        Parameters
+        ----------
+        spec : str
+            Time period specification, e.g. "1D", "4W", "3M", "1Y".
+
+        Returns
+        -------
+        int
+            Number of trading sessions in the specified period.
+
+        Examples
+        --------
+        >>> cal = TradingCalendar("NYSE")
+        >>> cal.time_spec_to_sessions("1D")
+        1
+        >>> cal.time_spec_to_sessions("4W")
+        20
+        >>> cal.time_spec_to_sessions("1Y")
+        252
+        """
+        import re
+
+        match = re.match(r"(\d+)([DWMY])", spec.upper())
+        if not match:
+            raise ValueError(
+                f"Invalid time specification '{spec}'. Use format like '1D', '4W', '3M', '1Y'"
+            )
+
+        n = int(match.group(1))
+        freq = match.group(2)
+
+        if freq == "D":
+            return n
+
+        # Query a representative year for session counts
+        ref_year = 2024
+        year_start = pd.Timestamp(f"{ref_year}-01-01")
+        year_end = pd.Timestamp(f"{ref_year}-12-31")
+        schedule = self.calendar.schedule(start_date=year_start, end_date=year_end)
+        sessions_per_year = len(schedule)
+
+        if freq == "W":
+            # Standard trading week = 5 sessions (Mon-Fri)
+            # Use 5 rather than yearly average (252/52 ≈ 4.85) because
+            # "4 weeks" conventionally means 20 trading sessions.
+            return 5 * n
+        elif freq == "M":
+            sessions_per_month = sessions_per_year / 12
+            return int(round(sessions_per_month * n))
+        elif freq == "Y":
+            return int(round(sessions_per_year * n))
+
+        raise ValueError(f"Unsupported frequency: {freq}")
+
     def count_samples_in_period(
         self,
         timestamps: pd.DatetimeIndex,

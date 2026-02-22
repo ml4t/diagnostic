@@ -11,6 +11,8 @@ Supports two modes:
 
 from __future__ import annotations
 
+import logging
+import warnings
 from collections.abc import Generator
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -32,6 +34,8 @@ from ml4t.diagnostic.splitters.utils import convert_indices_to_timestamps
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+logger = logging.getLogger(__name__)
 
 
 class WalkForwardCV(BaseSplitter):
@@ -272,22 +276,35 @@ class WalkForwardCV(BaseSplitter):
         else:
             # Create config from individual parameters
             # Note: embargo_size maps to embargo_td in config
-            self.config = WalkForwardConfig(
-                n_splits=n_splits,
-                test_size=test_size,
-                train_size=train_size,
-                label_horizon=label_horizon,
-                embargo_td=embargo_size,
-                align_to_sessions=align_to_sessions,
-                session_col=session_col,
-                timestamp_col=timestamp_col,
-                isolate_groups=isolate_groups,
-                test_period=test_period,
-                test_start=test_start,
-                test_end=test_end,
-                fold_direction=fold_direction,
-                calendar_id=calendar if isinstance(calendar, str) else None,
-            )
+            # Determine calendar_id: explicit str overrides default,
+            # CalendarConfig/TradingCalendar handled separately,
+            # None means use config default ("NYSE")
+            config_kwargs: dict[str, Any] = {
+                "n_splits": n_splits,
+                "test_size": test_size,
+                "train_size": train_size,
+                "label_horizon": label_horizon,
+                "embargo_td": embargo_size,
+                "align_to_sessions": align_to_sessions,
+                "session_col": session_col,
+                "timestamp_col": timestamp_col,
+                "isolate_groups": isolate_groups,
+                "test_period": test_period,
+                "test_start": test_start,
+                "test_end": test_end,
+                "fold_direction": fold_direction,
+            }
+            if isinstance(calendar, str):
+                config_kwargs["calendar_id"] = calendar
+            elif calendar is not None:
+                # CalendarConfig or TradingCalendar — extract exchange name
+                if isinstance(calendar, CalendarConfig):
+                    config_kwargs["calendar_id"] = calendar.exchange
+                elif isinstance(calendar, TradingCalendar):
+                    config_kwargs["calendar_id"] = calendar.config.exchange
+            # When calendar is None, omit calendar_id to use config default ("NYSE")
+
+            self.config = WalkForwardConfig(**config_kwargs)
 
         # Handle calendar initialization
         # Use calendar_id from config if no calendar parameter provided
@@ -419,9 +436,7 @@ class WalkForwardCV(BaseSplitter):
                     "No held-out test period configured. "
                     "Set test_period or test_start to enable held-out test."
                 )
-            raise ValueError(
-                "test_indices_ not available. Call split() first to compute indices."
-            )
+            raise ValueError("test_indices_ not available. Call split() first to compute indices.")
         return self._test_indices
 
     def _has_held_out_test(self) -> bool:
@@ -444,8 +459,7 @@ class WalkForwardCV(BaseSplitter):
             # Explicit start date provided
             if timestamps is None:
                 raise ValueError(
-                    "test_start requires timestamps. "
-                    "Use a DatetimeIndex or set timestamp_col."
+                    "test_start requires timestamps. Use a DatetimeIndex or set timestamp_col."
                 )
 
             test_start_date = self.config.test_start
@@ -649,8 +663,19 @@ class WalkForwardCV(BaseSplitter):
             self._test_start_idx = None
             self._test_end_idx = None
 
-            # Branch between session-based and sample-based logic
-            if self.align_to_sessions:
+            # Dispatch: calendar-first > session-based > sample-based
+            # Calendar splitting requires timestamps; fall back for numpy arrays
+            has_timestamps = self._extract_timestamps(X, self.timestamp_col) is not None
+            if self._should_use_calendar_splitting() and has_timestamps:
+                if self.align_to_sessions:
+                    warnings.warn(
+                        "align_to_sessions=True is deprecated when calendar is active. "
+                        "Calendar-first splitting subsumes session alignment.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                yield from self._split_by_calendar(X, y, groups, n_samples)
+            elif self.align_to_sessions:
                 yield from self._split_by_sessions(
                     cast(pl.DataFrame | pd.DataFrame, X), y, groups, n_samples
                 )
@@ -900,6 +925,225 @@ class WalkForwardCV(BaseSplitter):
                     test_indices, timestamps
                 )
 
+                clean_train_indices = apply_purging_and_embargo(
+                    train_indices=train_indices,
+                    test_start=test_start_time,
+                    test_end=test_end_time,
+                    label_horizon=self.label_horizon,
+                    embargo_size=self.embargo_size,
+                    embargo_pct=self.embargo_pct,
+                    n_samples=n_samples,
+                    timestamps=timestamps,
+                    calendar=self.calendar,
+                )
+            else:
+                clean_train_indices = train_indices
+
+            # Apply group isolation if requested
+            if self.isolate_groups and groups is not None:
+                clean_train_indices = isolate_groups_from_train(
+                    clean_train_indices, test_indices, groups
+                )
+
+            yield clean_train_indices.astype(np.intp), test_indices.astype(np.intp)
+
+    def _should_use_calendar_splitting(self) -> bool:
+        """Determine if calendar-first splitting should be used.
+
+        Calendar splitting is used when:
+        1. A calendar is configured (always true now with NYSE default), AND
+        2. Time-based sizes are used (str test_size/train_size), OR
+        3. The config has filter_non_trading=True (default)
+        """
+        if self.calendar is None:
+            return False
+
+        # Time-based sizes always need calendar
+        if isinstance(self.test_size, str) or isinstance(self.train_size, str):
+            return True
+
+        # Calendar filtering of non-trading rows
+        if self.config.filter_non_trading:
+            return True
+
+        return False
+
+    def _size_to_sessions(
+        self,
+        size_spec: int | float | str,
+        n_sessions: int,
+    ) -> int:
+        """Convert a size specification to a session count.
+
+        Parameters
+        ----------
+        size_spec : int, float, or str
+            - int: pass through (already a session count)
+            - float: proportion of total sessions
+            - str: time period, converted via calendar.time_spec_to_sessions()
+        n_sessions : int
+            Total number of unique sessions (for proportion calculation).
+
+        Returns
+        -------
+        int
+            Number of sessions.
+        """
+        if isinstance(size_spec, str):
+            if self.calendar is None:
+                raise ValueError("Calendar required for time-based size specifications.")
+            return self.calendar.time_spec_to_sessions(size_spec)
+        elif isinstance(size_spec, float):
+            return max(1, int(n_sessions * size_spec))
+        else:
+            return int(size_spec)
+
+    def _split_by_calendar(
+        self,
+        X: pl.DataFrame | pd.DataFrame | NDArray[Any],
+        _y: pl.Series | pd.Series | NDArray[Any] | None,
+        groups: pl.Series | pd.Series | NDArray[Any] | None,
+        n_samples: int,
+    ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
+        """Generate splits using calendar-aware session boundaries.
+
+        This is the calendar-first code path. All fold arithmetic happens in
+        session space, and non-trading rows are filtered out.
+        """
+        # Extract timestamps
+        timestamps = self._extract_timestamps(X, self.timestamp_col)
+        if timestamps is None:
+            raise ValueError(
+                "Calendar-first splitting requires timestamps. "
+                "For pandas DataFrames: use a DatetimeIndex. "
+                "For Polars DataFrames: set timestamp_col='your_datetime_column'."
+            )
+
+        assert self.calendar is not None  # guaranteed by _should_use_calendar_splitting
+
+        # Get sessions and trading mask
+        sessions, trading_mask = self.calendar.get_sessions_and_mask(timestamps)
+
+        # Log non-trading row exclusion
+        n_excluded = int((~trading_mask).sum())
+        if n_excluded > 0 and self.config.filter_non_trading:
+            logger.info(
+                "Calendar %s: %d non-trading rows excluded from %d total",
+                self.calendar.config.exchange,
+                n_excluded,
+                n_samples,
+            )
+
+        # Build unique sessions and session-to-indices mapping
+        # Only consider trading rows
+        if self.config.filter_non_trading:
+            trading_indices = np.where(trading_mask)[0]
+            trading_sessions = sessions.iloc[trading_indices].dropna()
+        else:
+            trading_indices = np.arange(n_samples)
+            trading_sessions = sessions
+
+        # Get unique sessions in order
+        unique_sessions_raw = trading_sessions.unique()
+        unique_sessions_raw = unique_sessions_raw[~pd.isna(unique_sessions_raw)]
+        unique_sessions = np.sort(unique_sessions_raw)
+        n_sessions = len(unique_sessions)
+
+        if n_sessions == 0:
+            raise ValueError(
+                "No trading sessions found in the data for calendar "
+                f"'{self.calendar.config.exchange}'."
+            )
+
+        # Build session -> row indices mapping (only trading rows)
+        session_to_indices: dict[Any, NDArray[np.intp]] = {}
+        for session_date in unique_sessions:
+            mask = (sessions.values == session_date) & trading_mask
+            session_to_indices[session_date] = np.where(mask)[0].astype(np.intp)
+
+        # Convert size specs to session counts
+        if self.test_size is None:
+            test_size_sessions = n_sessions // (self.n_splits + 1)
+        else:
+            test_size_sessions = self._size_to_sessions(self.test_size, n_sessions)
+
+        if self.train_size is not None:
+            train_size_sessions = self._size_to_sessions(self.train_size, n_sessions)
+        else:
+            train_size_sessions = None
+
+        # Calculate split points in session space
+        if self.consecutive:
+            step_size_sessions = test_size_sessions
+            if train_size_sessions is not None and not self.expanding:
+                first_test_start_session = train_size_sessions
+            elif self.expanding:
+                first_test_start_session = (
+                    train_size_sessions if train_size_sessions is not None else test_size_sessions
+                )
+            else:
+                first_test_start_session = test_size_sessions
+
+            total_required = first_test_start_session + self.n_splits * test_size_sessions
+            if total_required > n_sessions:
+                raise ValueError(
+                    f"Insufficient trading sessions for consecutive splits: "
+                    f"need {total_required} sessions "
+                    f"({first_test_start_session} + {self.n_splits} x {test_size_sessions}), "
+                    f"but only have {n_sessions} sessions in calendar "
+                    f"'{self.calendar.config.exchange}'."
+                )
+        else:
+            available = n_sessions - test_size_sessions
+            step_size_sessions = available // self.n_splits
+            first_test_start_session = test_size_sessions
+
+        # Generate splits
+        for i in range(self.n_splits):
+            test_start_s = first_test_start_session + i * step_size_sessions
+            test_end_s = min(test_start_s + test_size_sessions, n_sessions)
+
+            if i == self.n_splits - 1 and self.test_size is None:
+                test_end_s = n_sessions
+
+            # Train session range
+            if self.expanding:
+                train_start_s = 0
+            else:
+                if train_size_sessions is not None:
+                    train_start_s = max(0, test_start_s - self.gap - train_size_sessions)
+                else:
+                    train_start_s = 0
+
+            train_end_s = max(0, test_start_s - self.gap)
+
+            # Map session ranges to row indices
+            train_sessions = unique_sessions[train_start_s:train_end_s]
+            test_sessions = unique_sessions[test_start_s:test_end_s]
+
+            train_indices = (
+                np.concatenate([session_to_indices[s] for s in train_sessions])
+                if len(train_sessions) > 0
+                else np.array([], dtype=np.intp)
+            )
+            test_indices = (
+                np.concatenate([session_to_indices[s] for s in test_sessions])
+                if len(test_sessions) > 0
+                else np.array([], dtype=np.intp)
+            )
+
+            # Sort indices (sessions may have interleaved assets)
+            train_indices = np.sort(train_indices)
+            test_indices = np.sort(test_indices)
+
+            if len(train_indices) == 0 or len(test_indices) == 0:
+                continue
+
+            # Apply purging and embargo using actual timestamp boundaries
+            if self._has_purging_or_embargo():
+                test_start_time, test_end_time = self._timestamp_window_from_indices(
+                    test_indices, timestamps
+                )
                 clean_train_indices = apply_purging_and_embargo(
                     train_indices=train_indices,
                     test_start=test_start_time,

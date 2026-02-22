@@ -383,3 +383,126 @@ class TestCalendarSessionsEdgeCases:
 
         # Index should match the input timestamps
         assert list(sessions.index) == list(timestamps)
+
+
+class TestGetSessionsAndMask:
+    """Tests for TradingCalendar.get_sessions_and_mask()."""
+
+    def test_all_trading_days(self):
+        """All weekday timestamps should be trading rows."""
+        cal = TradingCalendar("NYSE")
+        # Tue-Thu in Jan 2024 (all trading days)
+        timestamps = pd.date_range("2024-01-02 10:00", periods=3, freq="1D", tz="America/New_York")
+        sessions, mask = cal.get_sessions_and_mask(timestamps)
+
+        assert mask.all()
+        assert sessions.notna().all()
+
+    def test_weekend_excluded(self):
+        """Weekend timestamps should be non-trading."""
+        cal = TradingCalendar("NYSE")
+        timestamps = pd.DatetimeIndex(
+            [
+                pd.Timestamp("2024-01-05 12:00", tz="America/New_York"),  # Friday
+                pd.Timestamp("2024-01-06 12:00", tz="America/New_York"),  # Saturday
+                pd.Timestamp("2024-01-07 12:00", tz="America/New_York"),  # Sunday
+                pd.Timestamp("2024-01-08 12:00", tz="America/New_York"),  # Monday
+            ]
+        )
+        sessions, mask = cal.get_sessions_and_mask(timestamps)
+
+        assert mask[0]  # Friday = trading
+        assert not mask[1]  # Saturday = non-trading
+        assert not mask[2]  # Sunday = non-trading
+        assert mask[3]  # Monday = trading
+        assert pd.isna(sessions.iloc[1])
+        assert pd.isna(sessions.iloc[2])
+
+    def test_holiday_excluded(self):
+        """Holiday timestamps should be non-trading."""
+        cal = TradingCalendar("NYSE")
+        # 2024-01-01 is New Year's Day (Monday holiday)
+        timestamps = pd.DatetimeIndex(
+            [
+                pd.Timestamp("2023-12-29 12:00", tz="America/New_York"),  # Friday
+                pd.Timestamp("2024-01-01 12:00", tz="America/New_York"),  # Holiday
+                pd.Timestamp("2024-01-02 12:00", tz="America/New_York"),  # Tuesday
+            ]
+        )
+        sessions, mask = cal.get_sessions_and_mask(timestamps)
+
+        assert mask[0]  # Friday = trading
+        assert not mask[1]  # Holiday = non-trading
+        assert mask[2]  # Tuesday = trading
+
+    def test_mask_length_matches_input(self):
+        """Mask and sessions should have same length as input."""
+        cal = TradingCalendar("NYSE")
+        timestamps = pd.date_range("2024-01-01", periods=10, freq="1D", tz="UTC")
+        sessions, mask = cal.get_sessions_and_mask(timestamps)
+
+        assert len(mask) == len(timestamps)
+        assert len(sessions) == len(timestamps)
+
+    def test_all_non_trading_days(self):
+        """All non-trading timestamps should return empty mask and NaT sessions."""
+        cal = TradingCalendar("NYSE")
+        timestamps = pd.DatetimeIndex(
+            [
+                pd.Timestamp("2024-01-06 12:00", tz="America/New_York"),  # Saturday
+                pd.Timestamp("2024-01-07 12:00", tz="America/New_York"),  # Sunday
+            ]
+        )
+        sessions, mask = cal.get_sessions_and_mask(timestamps)
+
+        assert not mask.any()
+        assert sessions.isna().all()
+
+
+class TestTimeSpecToSessions:
+    """Tests for TradingCalendar.time_spec_to_sessions()."""
+
+    def test_1d_returns_1(self):
+        """1D should return 1 session."""
+        cal = TradingCalendar("NYSE")
+        assert cal.time_spec_to_sessions("1D") == 1
+
+    def test_5d_returns_5(self):
+        """5D should return 5 sessions."""
+        cal = TradingCalendar("NYSE")
+        assert cal.time_spec_to_sessions("5D") == 5
+
+    def test_4w_returns_20(self):
+        """4W should return ~20 sessions (4 weeks x 5 days/week)."""
+        cal = TradingCalendar("NYSE")
+        result = cal.time_spec_to_sessions("4W")
+        assert result == 20
+
+    def test_1w_returns_5(self):
+        """1W should return ~5 sessions."""
+        cal = TradingCalendar("NYSE")
+        result = cal.time_spec_to_sessions("1W")
+        assert result == 5
+
+    def test_1m_returns_about_21(self):
+        """1M should return ~21 sessions."""
+        cal = TradingCalendar("NYSE")
+        result = cal.time_spec_to_sessions("1M")
+        assert 20 <= result <= 23
+
+    def test_1y_returns_about_252(self):
+        """1Y should return ~252 sessions."""
+        cal = TradingCalendar("NYSE")
+        result = cal.time_spec_to_sessions("1Y")
+        assert 250 <= result <= 253
+
+    def test_invalid_spec_raises(self):
+        """Invalid spec should raise ValueError."""
+        cal = TradingCalendar("NYSE")
+        with pytest.raises(ValueError, match="Invalid time specification"):
+            cal.time_spec_to_sessions("invalid")
+
+    def test_case_insensitive(self):
+        """Spec should be case-insensitive."""
+        cal = TradingCalendar("NYSE")
+        assert cal.time_spec_to_sessions("4w") == cal.time_spec_to_sessions("4W")
