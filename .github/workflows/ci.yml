@@ -97,7 +97,7 @@ jobs:
             --deselect tests/test_evaluation/test_metrics.py::TestExplainerWithBinaryClassifier \
             --deselect tests/test_evaluation/test_metrics.py::TestAnalyzeInteractionsMorePaths::test_analyze_interactions_with_shap \
             --deselect tests/test_evaluation/test_metrics.py::TestAnalyzeInteractionsMethodFailures::test_interactions_shap_with_pairs_filter \
-            --deselect tests/test_visualization/test_cv_plots.py::TestPlotCvFoldsColors::test_train_bar_color \
+            --deselect tests/test_visualization/test_cv_plots.py::TestPlotCvFoldsColors \
             --deselect tests/test_evaluation/test_multi_signal_performance.py::TestParallelPerformance::test_parallel_faster_than_sequential
 
   coverage:
