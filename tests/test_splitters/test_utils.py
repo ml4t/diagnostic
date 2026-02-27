@@ -186,6 +186,18 @@ class TestValidateTimestampArray:
 
         validate_timestamp_array(timestamps, 3)  # Should not raise
 
+    def test_valid_non_strictly_increasing_numpy(self):
+        """Test that duplicate numpy timestamps are allowed."""
+        timestamps = np.array(
+            [
+                np.datetime64("2020-01-01"),
+                np.datetime64("2020-01-01"),
+                np.datetime64("2020-01-02"),
+            ],
+        )
+
+        validate_timestamp_array(timestamps, 3)  # Should not raise
+
 
 class TestGetTimeBoundaries:
     """Test batch timestamp conversion utility."""
