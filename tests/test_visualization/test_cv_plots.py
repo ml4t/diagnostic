@@ -346,7 +346,7 @@ class TestPlotCvFoldsTheme:
         sample_data_numpy: np.ndarray,
     ) -> None:
         """Test default theme."""
-        fig = plot_cv_folds(walk_forward_cv, sample_data_numpy)
+        fig = plot_cv_folds(walk_forward_cv, sample_data_numpy, theme="default")
 
         # Default theme has light background
         assert fig.layout.paper_bgcolor.upper() == "#FFFFFF"
