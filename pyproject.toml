@@ -71,10 +71,10 @@ dependencies = [
     # Data processing
     "polars>=0.20.0",
     "pandas>=2.0.0",
-    "numpy>=1.24.0",
+    "numpy>=1.24.0,<2.0.0",
     "pyarrow>=14.0.0",
     # Scientific computing
-    "scipy>=1.10.0",
+    "scipy>=1.10.0,<1.16.0",
     "scikit-learn>=1.3.0",
     "statsmodels>=0.14.0",
     # Performance optimization
@@ -99,7 +99,7 @@ dependencies = [
     "anywidget>=0.9.21",
     "pandas-datareader>=0.10.0",
     "setuptools>=80.9.0",
-    "riskfolio-lib>=7.1.0",
+    "riskfolio-lib>=7.0.0,<7.1.0",
 ]
 
 [project.optional-dependencies]
