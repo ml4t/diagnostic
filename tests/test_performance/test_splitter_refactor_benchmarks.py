@@ -230,7 +230,9 @@ class TestWalkForwardSessionBenchmark:
         assert optimized_time <= legacy_time * 1.25
 
     @pytest.mark.benchmark
-    def test_session_split_mapping_speed_large_panel(self, large_session_panel_df: pd.DataFrame) -> None:
+    def test_session_split_mapping_speed_large_panel(
+        self, large_session_panel_df: pd.DataFrame
+    ) -> None:
         """Validate correctness and throughput on a larger panel shape."""
         config = WalkForwardConfig(
             n_splits=8,
