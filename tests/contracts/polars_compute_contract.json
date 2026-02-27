@@ -1,0 +1,33 @@
+{
+  "target_files": [
+    "src/ml4t/diagnostic/core/sampling.py",
+    "src/ml4t/diagnostic/evaluation/metrics/basic.py",
+    "src/ml4t/diagnostic/evaluation/metrics/conditional_ic.py",
+    "src/ml4t/diagnostic/evaluation/metrics/feature_outcome.py",
+    "src/ml4t/diagnostic/evaluation/metrics/ic_statistics.py",
+    "src/ml4t/diagnostic/evaluation/metrics/information_coefficient.py",
+    "src/ml4t/diagnostic/evaluation/autocorrelation.py",
+    "src/ml4t/diagnostic/evaluation/event_analysis.py",
+    "src/ml4t/diagnostic/evaluation/excursion.py",
+    "src/ml4t/diagnostic/evaluation/feature_diagnostics.py",
+    "src/ml4t/diagnostic/evaluation/multi_signal.py",
+    "src/ml4t/diagnostic/splitters/calendar.py",
+    "src/ml4t/diagnostic/splitters/walk_forward.py"
+  ],
+  "forbidden_patterns": [
+    "\\.groupby\\(",
+    "\\.merge\\(",
+    "\\.merge_asof\\(",
+    "\\.pivot_table\\(",
+    "\\.pivot\\(",
+    "\\.resample\\(",
+    "\\.rolling\\(",
+    "\\.ewm\\(",
+    "\\.expanding\\(",
+    "\\.pct_change\\(",
+    "\\.sort_values\\(",
+    "pd\\.merge\\(",
+    "pd\\.concat\\(",
+    "pd\\.crosstab\\("
+  ]
+}

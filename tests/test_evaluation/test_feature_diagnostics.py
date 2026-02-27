@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pytest
 
 from ml4t.diagnostic.errors import ValidationError
@@ -245,6 +246,16 @@ class TestFeatureDiagnostics:
         assert result.feature_name == "series_test"
         assert result.n_obs == 1000
 
+    def test_run_diagnostics_polars_series_input(self, white_noise):
+        """Test with Polars Series input."""
+        series = pl.Series("test_series", white_noise)
+
+        diagnostics = FeatureDiagnostics()
+        result = diagnostics.run_diagnostics(series, name="series_test")
+
+        assert result.feature_name == "series_test"
+        assert result.n_obs == 1000
+
     def test_run_diagnostics_invalid_input(self):
         """Test error handling for invalid input."""
         diagnostics = FeatureDiagnostics()
@@ -357,6 +368,19 @@ class TestBatchDiagnostics:
             }
         )
 
+    @pytest.fixture
+    def multi_feature_pl_df(self):
+        """Create Polars DataFrame with multiple features."""
+        np.random.seed(42)
+        n = 500
+        return pl.DataFrame(
+            {
+                "white_noise": np.random.randn(n),
+                "random_walk": np.cumsum(np.random.randn(n)),
+                "ar1": self._generate_ar1(n, phi=0.6),
+            }
+        )
+
     def _generate_ar1(self, n, phi):
         """Helper to generate AR(1) process."""
         x = np.zeros(n)
@@ -417,6 +441,16 @@ class TestBatchDiagnostics:
         # Not a DataFrame
         with pytest.raises(ValidationError, match="must be pd.DataFrame"):
             diagnostics.run_batch_diagnostics(np.random.randn(100))
+
+    def test_run_batch_diagnostics_polars(self, multi_feature_pl_df):
+        """Test batch processing with Polars DataFrame input."""
+        diagnostics = FeatureDiagnostics()
+        results = diagnostics.run_batch_diagnostics(multi_feature_pl_df)
+
+        assert len(results) == 3
+        assert "white_noise" in results
+        assert "random_walk" in results
+        assert "ar1" in results
 
     def test_batch_health_comparison(self, multi_feature_df):
         """Test comparing health scores across features."""

@@ -13,6 +13,8 @@ Tests cover:
 
 # Check if PDF export dependencies are available
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -27,7 +29,36 @@ from ml4t.diagnostic.visualization.report_generation import (
     generate_interaction_report,
 )
 
-PDF_EXPORT_AVAILABLE = importlib.util.find_spec("pypdf") is not None
+
+def _pdf_export_runtime_available() -> bool:
+    """Return True only when Plotly PDF export works in this runtime.
+
+    Some environments have `pypdf`/`kaleido` installed but no usable rendering
+    backend, which can cause `to_image(..., format="pdf")` to hang.
+    """
+    if importlib.util.find_spec("pypdf") is None:
+        return False
+    if importlib.util.find_spec("kaleido") is None:
+        return False
+
+    probe = (
+        "import plotly.graph_objects as go;"
+        "fig=go.Figure(data=[go.Scatter(x=[1,2],y=[1,2])]);"
+        "fig.to_image(format='pdf')"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    return result.returncode == 0
+
+
+PDF_EXPORT_AVAILABLE = _pdf_export_runtime_available()
 
 
 # ============================================================================

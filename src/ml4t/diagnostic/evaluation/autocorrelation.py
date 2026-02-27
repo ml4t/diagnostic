@@ -15,8 +15,10 @@ from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from statsmodels.tsa.stattools import acf, pacf
 
+from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.errors import ComputationError, ValidationError
 from ml4t.diagnostic.logging import get_logger
 
@@ -137,7 +139,7 @@ PACFResult = CorrelationResult
 
 
 def _validate_and_prepare(
-    data: pd.Series | np.ndarray,
+    data: pl.Series | pd.Series | np.ndarray,
     nlags: int | None,
     kind: Literal["acf", "pacf"],
     missing: Literal["none", "raise", "conservative", "drop"] = "none",
@@ -156,8 +158,8 @@ def _validate_and_prepare(
     Raises:
         ValidationError: If data is invalid.
     """
-    # Convert to numpy
-    values = data.to_numpy() if isinstance(data, pd.Series) else np.asarray(data)
+    # Convert to 1D numpy consistently across pandas/polars/ndarray inputs.
+    values = DataFrameAdapter.to_numpy(data).astype(np.float64).reshape(-1)
 
     # Check empty
     if len(values) == 0:
@@ -233,7 +235,7 @@ def _validate_and_prepare(
 
 
 def compute_acf(
-    data: pd.Series | np.ndarray,
+    data: pl.Series | pd.Series | np.ndarray,
     nlags: int | None = None,
     alpha: float = 0.05,
     fft: bool = False,
@@ -284,7 +286,7 @@ def compute_acf(
 
 
 def compute_pacf(
-    data: pd.Series | np.ndarray,
+    data: pl.Series | pd.Series | np.ndarray,
     nlags: int | None = None,
     alpha: float = 0.05,
     method: Literal[
@@ -429,7 +431,7 @@ class AutocorrelationAnalysisResult:
 
 
 def analyze_autocorrelation(
-    data: pd.Series | np.ndarray,
+    data: pl.Series | pd.Series | np.ndarray,
     max_lags: int | None = None,
     alpha: float = 0.05,
     acf_method: Literal["standard", "fft"] = "standard",

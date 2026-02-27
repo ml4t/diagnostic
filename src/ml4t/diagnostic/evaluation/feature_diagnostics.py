@@ -65,7 +65,9 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
+from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.errors import ValidationError
 from ml4t.diagnostic.logging import get_logger
 
@@ -695,7 +697,7 @@ class FeatureDiagnostics:
 
     def run_diagnostics(
         self,
-        data: pd.Series | np.ndarray,
+        data: pd.Series | pl.Series | np.ndarray,
         name: str = "feature",
     ) -> FeatureDiagnosticsResult:
         """Run comprehensive diagnostic analysis on a single feature.
@@ -717,19 +719,20 @@ class FeatureDiagnostics:
             >>> result = diagnostics.run_diagnostics(feature, name="returns")
             >>> print(result.summary())
         """
-        # Validate input
-        if isinstance(data, pd.Series):
-            data_array = data.to_numpy()
-            n_obs = len(data)
-        elif isinstance(data, np.ndarray):
-            if data.ndim != 1:
-                raise ValidationError(f"Data must be 1-dimensional, got shape {data.shape}")
-            data_array = data
-            n_obs = len(data)
-        else:
+        # Validate input and normalize to 1D numpy for downstream diagnostics.
+        try:
+            data_array = DataFrameAdapter.to_numpy(data)
+        except TypeError:
             raise ValidationError(
-                f"Data must be pd.Series or np.ndarray, got {type(data).__name__}"
-            )
+                f"Data must be pd.Series or np.ndarray, got {type(data).__name__}. "
+                "pl.Series is also supported."
+            ) from None
+
+        if data_array.ndim != 1:
+            raise ValidationError(f"Data must be 1-dimensional, got shape {data_array.shape}")
+
+        data_array = np.asarray(data_array, dtype=np.float64)
+        n_obs = len(data_array)
 
         if n_obs == 0:
             raise ValidationError("Data must not be empty")
@@ -817,7 +820,7 @@ class FeatureDiagnostics:
 
     def run_batch_diagnostics(
         self,
-        data: pd.DataFrame,
+        data: pd.DataFrame | pl.DataFrame,
         feature_names: list[str] | None = None,
     ) -> dict[str, FeatureDiagnosticsResult]:
         """Run diagnostics on multiple features in batch.
@@ -848,26 +851,31 @@ class FeatureDiagnostics:
             ...     print(f"  Health: {result.health_score:.2f}")
             ...     print(f"  Flags: {result.flags}")
         """
-        if not isinstance(data, pd.DataFrame):
+        if isinstance(data, pd.DataFrame):
+            data_pl = pl.from_pandas(data)
+        elif isinstance(data, pl.DataFrame):
+            data_pl = data
+        else:
             raise ValidationError(
-                f"Data must be pd.DataFrame for batch processing, got {type(data).__name__}"
+                f"Data must be pd.DataFrame for batch processing, got {type(data).__name__}. "
+                "pl.DataFrame is also supported."
             )
 
         if feature_names is None:
-            feature_names = list(data.columns)
+            feature_names = list(data_pl.columns)
 
         if self.config.verbose:
             logger.info(f"Running batch diagnostics on {len(feature_names)} features")
 
         results = {}
         for name in feature_names:
-            if name not in data.columns:
+            if name not in data_pl.columns:
                 logger.warning(f"Feature '{name}' not found in DataFrame, skipping")
                 continue
 
             if self.config.verbose:
                 logger.info(f"\nProcessing feature: {name}")
 
-            results[name] = self.run_diagnostics(data[name], name=name)
+            results[name] = self.run_diagnostics(data_pl[name], name=name)
 
         return results

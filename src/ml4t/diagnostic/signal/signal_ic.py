@@ -72,7 +72,7 @@ def compute_ic_series(
         else:
             ic = float(np.corrcoef(factors, returns)[0, 1])
 
-        if not np.isnan(ic):
+        if np.isfinite(ic):
             dates.append(date)
             ic_values.append(float(ic))
 
