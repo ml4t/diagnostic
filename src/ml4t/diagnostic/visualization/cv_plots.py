@@ -448,11 +448,10 @@ def plot_cv_folds(
     - Held-out test period (if configured) shown as separate row at bottom
     - X-axis shows dates if timestamps available, otherwise sample indices
     """
-    # Validate theme
-    theme = validate_theme(theme)
-    theme_config = get_theme_config(theme)
-
-    # Select colors based on theme
+    # Validate theme for layout. Keep the fold palette deterministic unless the
+    # caller explicitly asks for dark mode.
+    resolved_theme = validate_theme(theme)
+    theme_config = get_theme_config(resolved_theme)
     colors = COLORS_DARK if theme == "dark" else COLORS
 
     # Extract timestamps if available

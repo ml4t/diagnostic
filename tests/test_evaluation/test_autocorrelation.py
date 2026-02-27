@@ -9,6 +9,7 @@ This module tests ACF computation with various time series patterns:
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pytest
 from statsmodels.tsa.stattools import acf as sm_acf
 
@@ -232,6 +233,16 @@ class TestComputeACF:
         """Test ACF with pandas Series input."""
         np.random.seed(42)
         data = pd.Series(np.random.randn(100), name="returns")
+
+        result = compute_acf(data, nlags=10)
+
+        assert result.n_obs == 100
+        assert len(result.acf_values) == 11
+
+    def test_polars_series_input(self):
+        """Test ACF with Polars Series input."""
+        np.random.seed(42)
+        data = pl.Series("returns", np.random.randn(100))
 
         result = compute_acf(data, nlags=10)
 

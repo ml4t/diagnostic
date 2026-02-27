@@ -28,6 +28,7 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
+from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.config.event_config import EventConfig
 from ml4t.diagnostic.results.event_results import AbnormalReturnResult, EventStudyResult
 
@@ -108,16 +109,11 @@ class EventStudyAnalysis:
 
     def _to_polars(self, df: Any) -> pl.DataFrame:
         """Convert DataFrame to Polars if needed."""
-        if isinstance(df, pl.DataFrame):
-            return df
         try:
-            import pandas as pd
-
-            if isinstance(df, pd.DataFrame):
-                return pl.from_pandas(df)
-        except ImportError:
-            pass
-        raise TypeError(f"Expected Polars or Pandas DataFrame, got {type(df)}")
+            converted, _ = DataFrameAdapter.to_polars(df)
+            return converted
+        except TypeError:
+            raise TypeError(f"Expected Polars or Pandas DataFrame, got {type(df)}") from None
 
     def _validate_inputs(self) -> None:
         """Validate input DataFrames have required columns."""
