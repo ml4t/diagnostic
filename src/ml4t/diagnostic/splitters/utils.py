@@ -168,7 +168,13 @@ def validate_timestamp_array(
             if not timestamps.is_monotonic_increasing:
                 raise ValueError("Timestamps must be in non-decreasing order")
         else:
-            if not np.all(np.diff(timestamps) >= 0):
+            diffs = np.diff(timestamps)
+            if np.issubdtype(diffs.dtype, np.timedelta64):
+                non_decreasing = np.all(diffs >= np.timedelta64(0, "ns"))
+            else:
+                non_decreasing = np.all(diffs >= 0)
+
+            if not non_decreasing:
                 raise ValueError("Timestamps must be in non-decreasing order")
 
 
