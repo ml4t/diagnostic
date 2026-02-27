@@ -122,8 +122,12 @@ class TestHypothesisGeneratorCore:
     def test_adjust_confidence_penalties_and_clamping(self) -> None:
         generator = HypothesisGenerator()
 
-        assert generator._adjust_confidence(0.6, n_trades=20, separation_score=1.6) == pytest.approx(0.7)
-        assert generator._adjust_confidence(0.6, n_trades=10, separation_score=1.0) == pytest.approx(0.64)
+        assert generator._adjust_confidence(
+            0.6, n_trades=20, separation_score=1.6
+        ) == pytest.approx(0.7)
+        assert generator._adjust_confidence(
+            0.6, n_trades=10, separation_score=1.0
+        ) == pytest.approx(0.64)
         assert generator._adjust_confidence(0.6, n_trades=1, separation_score=0.2) == 0.0
         assert generator._adjust_confidence(0.6, n_trades=4, separation_score=0.4) == 0.0
 

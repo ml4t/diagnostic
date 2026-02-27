@@ -163,7 +163,9 @@ class TestTradePlots:
         fig = plot_mfe_mae_scatter(sample_trades)
 
         assert isinstance(fig, go.Figure)
-        marker_trace = next(trace for trace in fig.data if trace.type == "scatter" and trace.mode == "markers")
+        marker_trace = next(
+            trace for trace in fig.data if trace.type == "scatter" and trace.mode == "markers"
+        )
         assert len(marker_trace.x) == sample_trades.height
         assert len(marker_trace.y) == sample_trades.height
         assert np.all(np.array(marker_trace.x) >= 0.0)  # MAE is plotted as absolute values
