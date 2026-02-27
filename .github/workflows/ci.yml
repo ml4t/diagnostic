@@ -148,6 +148,30 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+  viz-coverage:
+    name: Visualization Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run visualization tests with coverage gate
+        run: |
+          uv run pytest tests/test_visualization/ -q -n 0 \
+            --cov=ml4t.diagnostic.visualization \
+            --cov-report=term-missing \
+            --cov-fail-under=45
+
   property-tests:
     name: Property-Based Tests
     runs-on: ubuntu-latest
@@ -186,7 +210,25 @@ jobs:
         run: uv sync --dev
 
       - name: Run benchmarks
-        run: uv run pytest tests/test_benchmarks/ -p no:xdist -o "addopts=" --benchmark-only --benchmark-autosave
+        run: |
+          mkdir -p artifacts/benchmarks
+          uv run pytest tests/test_benchmarks/ -p no:xdist -o "addopts=" \
+            --benchmark-only \
+            --benchmark-autosave \
+            --benchmark-json artifacts/benchmarks/pytest-benchmark.json
+
+      - name: Generate benchmark report
+        run: |
+          uv run python scripts/benchmark_report.py \
+            --input artifacts/benchmarks/pytest-benchmark.json \
+            --output artifacts/benchmarks/benchmark-report.md \
+            --baseline tests/benchmarks/baseline.json
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: artifacts/benchmarks/
 
   build:
     name: Build Package

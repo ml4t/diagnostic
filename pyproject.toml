@@ -357,15 +357,8 @@ source = ["src/ml4t/diagnostic"]
 omit = [
     "*/tests/*",
     "*/__init__.py",
-    # Visualization modules - low-value testing (Plotly chart generation)
-    "*/visualization/*",
-    "*_plots.py",
-    "*_dashboard.py",
-    "*/dashboard.py",
-    "*/dashboards.py",
-    # Report rendering - template-heavy, low logic
+    # Report rendering modules are template-heavy and covered by focused viz tests
     "*/reporting/*",
-    "*/report_generation.py",
 ]
 
 [tool.coverage.report]

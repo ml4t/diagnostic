@@ -11,6 +11,9 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
+pytestmark = pytest.mark.filterwarnings("ignore:X does not have valid feature names.*:UserWarning")
+
+
 from ml4t.diagnostic.evaluation.metrics import (
     analyze_feature_outcome,
     analyze_ml_importance,

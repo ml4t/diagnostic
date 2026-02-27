@@ -105,7 +105,11 @@ class TestExecutiveSummary:
         fig = create_executive_summary(sample_metrics)
 
         assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0  # Has traces
+        assert len(fig.data) == 6  # Default KPI selection
+        assert all(trace.type == "indicator" for trace in fig.data)
+        values = {trace.value for trace in fig.data}
+        assert sample_metrics["sharpe_ratio"] in values
+        assert sample_metrics["win_rate"] in values
         assert fig.layout.title is not None or fig.layout.annotations
 
     def test_create_executive_summary_themes(self, sample_metrics):
@@ -159,7 +163,14 @@ class TestTradePlots:
         fig = plot_mfe_mae_scatter(sample_trades)
 
         assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        marker_trace = next(trace for trace in fig.data if trace.type == "scatter" and trace.mode == "markers")
+        assert len(marker_trace.x) == sample_trades.height
+        assert len(marker_trace.y) == sample_trades.height
+        assert np.all(np.array(marker_trace.x) >= 0.0)  # MAE is plotted as absolute values
+        assert np.all(np.array(marker_trace.y) >= 0.0)  # Sample fixture uses positive MFE values
+        assert any(
+            getattr(trace, "name", "") == "Perfect Efficiency (Exit at MFE)" for trace in fig.data
+        )
 
     def test_plot_mfe_mae_scatter_color_by(self, sample_trades):
         """Test MFE/MAE scatter with different color options."""
@@ -204,7 +215,13 @@ class TestTradePlots:
         fig = plot_trade_waterfall(sample_trades)
 
         assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert len(fig.data) == 2  # PnL bars + cumulative line
+        assert fig.data[0].type == "bar"
+        assert fig.data[0].name == "Trade PnL"
+        assert fig.data[1].type == "scatter"
+        assert fig.data[1].name == "Cumulative Equity"
+        expected_final_equity = 100000.0 + float(sample_trades["pnl"].sum())
+        assert fig.data[1].y[-1] == pytest.approx(expected_final_equity)
 
     def test_plot_trade_waterfall_n_trades(self, sample_trades):
         """Test trade waterfall with limited trades."""
@@ -248,6 +265,11 @@ class TestCostAttribution:
         assert isinstance(fig, go.Figure)
         # Should have Waterfall trace
         assert any(isinstance(trace, go.Waterfall) for trace in fig.data)
+        trace = fig.data[0]
+        assert list(trace.x) == ["Gross PnL", "Commission", "Slippage", "Net PnL"]
+        assert list(trace.measure) == ["absolute", "relative", "relative", "total"]
+        assert trace.y[0] == 50000.0
+        assert trace.y[-1] == pytest.approx(48500.0)
 
     def test_plot_cost_waterfall_with_other_costs(self):
         """Test cost waterfall with additional cost categories."""
@@ -349,7 +371,12 @@ class TestStatisticalValidity:
         fig = plot_confidence_intervals(metrics)
 
         assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        # Provided data only includes 95% intervals + one point estimate per metric
+        assert len(fig.data) == 6
+        legend_names = {trace.name for trace in fig.data if trace.name}
+        assert "95% CI" in legend_names
+        assert "Point Estimate" in legend_names
+        assert list(fig.layout.yaxis.ticktext) == ["Sharpe", "CAGR", "Max DD"]
 
     def test_plot_confidence_intervals_orientation(self):
         """Test CI plot with different orientations."""

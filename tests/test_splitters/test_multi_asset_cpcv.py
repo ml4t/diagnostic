@@ -233,8 +233,8 @@ class TestMultiAssetNonContiguous:
             assert len(np.intersect1d(train_idx, test_idx)) == 0
 
             # Both AAPL and MSFT should appear in results
-            train_groups = groups[train_idx]
-            test_groups = groups[test_idx]
+            train_groups = groups.iloc[train_idx]
+            test_groups = groups.iloc[test_idx]
 
             # At least one asset should have training data
             assert len(np.unique(train_groups)) >= 1
