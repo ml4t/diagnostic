@@ -12,6 +12,8 @@ from sklearn.ensemble import RandomForestRegressor
 
 from ml4t.diagnostic.evaluation import compute_h_statistic
 
+pytestmark = pytest.mark.filterwarnings("ignore:X does not have valid feature names.*:UserWarning")
+
 
 class TestHStatisticBasic:
     """Test basic H-statistic computation."""
@@ -329,10 +331,6 @@ class TestHStatisticParameters:
         # Should use all 80 samples
         assert result["n_samples_used"] == 80
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="Timing comparison can fail under parallel load - computation times vary",
-    )
     def test_grid_resolution(self, grid_resolution_data_and_model):
         """Test grid resolution parameter."""
         X, _, model = grid_resolution_data_and_model
@@ -344,8 +342,11 @@ class TestHStatisticParameters:
         assert result_coarse["grid_resolution"] == 8
         assert result_fine["grid_resolution"] == 10
 
-        # Fine grid should take longer
-        assert result_fine["computation_time"] > result_coarse["computation_time"]
+        # Deterministic invariants independent of runtime noise
+        assert result_coarse["n_pairs_tested"] == result_fine["n_pairs_tested"]
+        assert len(result_coarse["h_statistics"]) == len(result_fine["h_statistics"])
+        assert all(0.0 <= h <= 1.0 for _, _, h in result_coarse["h_statistics"])
+        assert all(0.0 <= h <= 1.0 for _, _, h in result_fine["h_statistics"])
 
     def test_feature_pairs_with_names(self, pairs_name_data_and_model):
         """Test specifying feature pairs by name."""

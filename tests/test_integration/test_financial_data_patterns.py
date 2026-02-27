@@ -168,7 +168,7 @@ class TestFinancialDataPatterns:
         np.random.seed(42)
         n_samples = 1000
 
-        timestamps = pd.date_range("2022-01-01", periods=n_samples, freq="H", tz="UTC")
+        timestamps = pd.date_range("2022-01-01", periods=n_samples, freq="h", tz="UTC")
         prices = 100 * (1 + np.random.normal(0, 0.005, n_samples)).cumprod()
 
         df = pd.DataFrame(
@@ -217,8 +217,8 @@ class TestFinancialDataPatterns:
         # With hourly data and 24-hour horizon
         cv = WalkForwardCV(
             n_splits=3,
-            label_horizon=pd.Timedelta("24H"),
-            embargo_size=pd.Timedelta("6H"),
+            label_horizon=pd.Timedelta("24h"),
+            embargo_size=pd.Timedelta("6h"),
         )
 
         splits = list(cv.split(X, y))
@@ -292,7 +292,7 @@ class TestFinancialDataPatterns:
 
         df = pd.DataFrame(
             {
-                "timestamp": pd.date_range("2023-01-01", periods=n_samples, freq="H", tz="UTC"),
+                "timestamp": pd.date_range("2023-01-01", periods=n_samples, freq="h", tz="UTC"),
                 "feature1": np.random.randn(n_samples),
                 "feature2": np.random.randn(n_samples),
                 "feature3": np.random.randn(n_samples),
@@ -316,7 +316,7 @@ class TestFinancialDataPatterns:
 
         cv = WalkForwardCV(
             n_splits=3,
-            label_horizon=pd.Timedelta("24H"),  # 24-hour horizon
+            label_horizon=pd.Timedelta("24h"),  # 24-hour horizon
             test_size=0.3,
         )
 

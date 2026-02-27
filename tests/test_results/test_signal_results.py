@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import plotly.graph_objects as go
 import polars as pl
 import pytest
 
@@ -22,7 +23,9 @@ from ml4t.diagnostic.results.signal_results import (
     SignalICResult,
     SignalTearSheet,
     TurnoverAnalysisResult,
+    _figure_from_data,
     _normalize_period,
+    _validate_dict_keys_match,
 )
 
 # =============================================================================
@@ -1054,6 +1057,71 @@ class TestNormalizePeriod:
         assert _normalize_period(" 21 ") == "21D"
         assert _normalize_period(" 21D ") == "21D"
         assert _normalize_period("  5  ") == "5D"
+
+
+class TestSignalValidationHelpers:
+    """Tests for helper utilities in results.signal_results.validation."""
+
+    def test_validate_dict_keys_match_required_passes(self) -> None:
+        data = {
+            "ic_mean": {"1D": 0.1, "5D": 0.2},
+            "ic_std": {"1D": 0.01, "5D": 0.02},
+        }
+        _validate_dict_keys_match(data, required_fields=["ic_mean", "ic_std"])
+
+    def test_validate_dict_keys_match_required_missing_key_raises(self) -> None:
+        data = {
+            "ic_mean": {"1D": 0.1, "5D": 0.2},
+            "ic_std": {"1D": 0.01},
+        }
+        with pytest.raises(ValueError, match="Key mismatch in 'ic_std'"):
+            _validate_dict_keys_match(data, required_fields=["ic_mean", "ic_std"])
+
+    def test_validate_dict_keys_match_required_none_raises(self) -> None:
+        data = {
+            "ic_mean": {"1D": 0.1},
+            "ic_std": None,
+        }
+        with pytest.raises(ValueError, match="Required field 'ic_std' is None"):
+            _validate_dict_keys_match(data, required_fields=["ic_mean", "ic_std"])
+
+    def test_validate_dict_keys_match_optional_mismatch_raises(self) -> None:
+        data = {
+            "ic_mean": {"1D": 0.1, "5D": 0.2},
+            "ic_std": {"1D": 0.01, "5D": 0.02},
+            "ic_p_value": {"1D": 0.03},
+        }
+        with pytest.raises(ValueError, match="Key mismatch in 'ic_p_value'"):
+            _validate_dict_keys_match(
+                data,
+                required_fields=["ic_mean", "ic_std"],
+                optional_fields=["ic_p_value"],
+            )
+
+    def test_validate_dict_keys_match_empty_reference_returns(self) -> None:
+        data = {
+            "ic_mean": {},
+            "ic_std": {"1D": 0.01},
+        }
+        _validate_dict_keys_match(data, required_fields=["ic_mean", "ic_std"])
+
+    def test_validate_dict_keys_match_no_required_fields_returns(self) -> None:
+        _validate_dict_keys_match({"ic_mean": {"1D": 0.1}}, required_fields=[])
+
+    def test_figure_from_data_dict(self) -> None:
+        fig = _figure_from_data({"data": [{"type": "bar", "x": ["A"], "y": [1]}]})
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) == 1
+
+    def test_figure_from_data_json_string(self) -> None:
+        source = go.Figure(data=[go.Scatter(x=[1, 2], y=[3, 4])])
+        fig = _figure_from_data(source.to_json())
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) == 1
+
+    def test_figure_from_data_invalid_type_raises(self) -> None:
+        with pytest.raises(TypeError, match="Expected dict or str"):
+            _figure_from_data(123)  # type: ignore[arg-type]
 
 
 # =============================================================================

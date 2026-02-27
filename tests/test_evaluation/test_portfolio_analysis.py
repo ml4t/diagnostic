@@ -342,28 +342,34 @@ class TestCalmarRatio:
 class TestPortfolioMetrics:
     """Tests for PortfolioMetrics dataclass."""
 
+    @staticmethod
+    def _make_metrics(**overrides) -> PortfolioMetrics:
+        base = {
+            "total_return": 0.15,
+            "annual_return": 0.12,
+            "annual_volatility": 0.18,
+            "sharpe_ratio": 0.67,
+            "sortino_ratio": 1.0,
+            "calmar_ratio": 0.5,
+            "omega_ratio": 1.2,
+            "tail_ratio": 1.1,
+            "max_drawdown": -0.20,
+            "skewness": -0.5,
+            "kurtosis": 3.5,
+            "var_95": -0.025,
+            "cvar_95": -0.035,
+            "stability": 0.95,
+            "win_rate": 0.55,
+            "profit_factor": 1.2,
+            "avg_win": 0.008,
+            "avg_loss": -0.006,
+        }
+        base.update(overrides)
+        return PortfolioMetrics(**base)
+
     def test_initialization(self):
         """Test PortfolioMetrics initialization."""
-        metrics = PortfolioMetrics(
-            total_return=0.15,
-            annual_return=0.12,
-            annual_volatility=0.18,
-            sharpe_ratio=0.67,
-            sortino_ratio=1.0,
-            calmar_ratio=0.5,
-            omega_ratio=1.2,
-            tail_ratio=1.1,
-            max_drawdown=-0.20,
-            skewness=-0.5,
-            kurtosis=3.5,
-            var_95=-0.025,
-            cvar_95=-0.035,
-            stability=0.95,
-            win_rate=0.55,
-            profit_factor=1.2,
-            avg_win=0.008,
-            avg_loss=-0.006,
-        )
+        metrics = self._make_metrics()
 
         assert metrics.total_return == 0.15
         assert metrics.sharpe_ratio == 0.67
@@ -371,26 +377,7 @@ class TestPortfolioMetrics:
 
     def test_summary_without_benchmark(self):
         """Test summary method without benchmark metrics."""
-        metrics = PortfolioMetrics(
-            total_return=0.15,
-            annual_return=0.12,
-            annual_volatility=0.18,
-            sharpe_ratio=0.67,
-            sortino_ratio=1.0,
-            calmar_ratio=0.5,
-            omega_ratio=1.2,
-            tail_ratio=1.1,
-            max_drawdown=-0.20,
-            skewness=-0.5,
-            kurtosis=3.5,
-            var_95=-0.025,
-            cvar_95=-0.035,
-            stability=0.95,
-            win_rate=0.55,
-            profit_factor=1.2,
-            avg_win=0.008,
-            avg_loss=-0.006,
-        )
+        metrics = self._make_metrics()
 
         summary = metrics.summary()
         assert "Portfolio Performance Summary" in summary
@@ -400,25 +387,7 @@ class TestPortfolioMetrics:
 
     def test_summary_with_benchmark(self):
         """Test summary method with benchmark metrics."""
-        metrics = PortfolioMetrics(
-            total_return=0.15,
-            annual_return=0.12,
-            annual_volatility=0.18,
-            sharpe_ratio=0.67,
-            sortino_ratio=1.0,
-            calmar_ratio=0.5,
-            omega_ratio=1.2,
-            tail_ratio=1.1,
-            max_drawdown=-0.20,
-            skewness=-0.5,
-            kurtosis=3.5,
-            var_95=-0.025,
-            cvar_95=-0.035,
-            stability=0.95,
-            win_rate=0.55,
-            profit_factor=1.2,
-            avg_win=0.008,
-            avg_loss=-0.006,
+        metrics = self._make_metrics(
             alpha=0.03,
             beta=1.1,
             information_ratio=0.5,
@@ -430,6 +399,19 @@ class TestPortfolioMetrics:
         assert "Benchmark Comparison" in summary
         assert "Alpha" in summary
         assert "Beta" in summary
+
+    def test_to_dict_and_dataframe_exclude_none_optional_fields(self):
+        """Test dict export and DataFrame output omit None benchmark metrics."""
+        metrics = self._make_metrics()
+
+        as_dict = metrics.to_dict()
+        assert "alpha" in as_dict
+        assert as_dict["alpha"] is None
+
+        df = metrics.to_dataframe()
+        assert "alpha" not in df.columns
+        assert "total_return" in df.columns
+        assert df.height == 1
 
 
 # =============================================================================
@@ -514,6 +496,64 @@ class TestDrawdownResult:
         df = result.to_dataframe()
         assert "date" in df.columns
         assert "drawdown" in df.columns
+
+    def test_top_drawdowns_dataframe_empty(self):
+        """Test top_drawdowns_dataframe returns empty DataFrame when no drawdowns."""
+        dates = pl.Series(
+            "date", pl.date_range(pl.date(2023, 1, 1), pl.date(2023, 1, 10), eager=True)
+        )
+        underwater = pl.Series("underwater", np.random.randn(10) * -0.01)
+        result = DrawdownResult(
+            current_drawdown=-0.05,
+            max_drawdown=-0.15,
+            avg_drawdown=-0.08,
+            underwater_curve=underwater,
+            top_drawdowns=[],
+            max_duration_days=30,
+            avg_duration_days=15.5,
+            num_drawdowns=5,
+            dates=dates,
+        )
+
+        drawdowns_df = result.top_drawdowns_dataframe()
+        assert drawdowns_df.is_empty()
+
+    def test_top_drawdowns_dataframe_populated(self):
+        """Test top_drawdowns_dataframe exports top drawdown records."""
+        dates = pl.Series(
+            "date", pl.date_range(pl.date(2023, 1, 1), pl.date(2023, 1, 10), eager=True)
+        )
+        underwater = pl.Series("underwater", np.random.randn(10) * -0.01)
+        period = DrawdownPeriod(
+            peak_date="2023-01-02",
+            valley_date="2023-01-05",
+            recovery_date="2023-01-09",
+            depth=-0.12,
+            duration_days=3,
+            recovery_days=4,
+        )
+        result = DrawdownResult(
+            current_drawdown=-0.05,
+            max_drawdown=-0.15,
+            avg_drawdown=-0.08,
+            underwater_curve=underwater,
+            top_drawdowns=[period],
+            max_duration_days=30,
+            avg_duration_days=15.5,
+            num_drawdowns=5,
+            dates=dates,
+        )
+
+        drawdowns_df = result.top_drawdowns_dataframe()
+        assert drawdowns_df.height == 1
+        assert set(drawdowns_df.columns) == {
+            "peak_date",
+            "valley_date",
+            "recovery_date",
+            "depth",
+            "duration_days",
+            "recovery_days",
+        }
 
 
 class TestDrawdownPeriod:
