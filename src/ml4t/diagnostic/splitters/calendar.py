@@ -25,6 +25,7 @@ Example Issue (Dollar Bars):
 - Calendar approach: Exactly 7 calendar days with varying samples (CORRECT!)
 """
 
+import re
 from typing import Any, cast
 
 import numpy as np
@@ -149,57 +150,40 @@ class TradingCalendar:
             schedule["market_open"] = schedule["market_open"].dt.tz_convert(self.tz)
             schedule["market_close"] = schedule["market_close"].dt.tz_convert(self.tz)
 
-        # Vectorized assignment using merge_asof
-        # Create DataFrame with timestamps, preserving original index
-        df_ts = pd.DataFrame(
-            {"timestamp": timestamps_tz, "original_idx": range(len(timestamps_tz))}
-        )
+        # Convert to ns-resolution int64 for fast searchsorted joins.
+        ts_ns = timestamps_tz.as_unit("ns").asi8
+        market_open_ns = schedule["market_open"].dt.as_unit("ns").to_numpy(dtype=np.int64)
+        market_close_ns = schedule["market_close"].dt.as_unit("ns").to_numpy(dtype=np.int64)
+        session_dates = schedule.index.to_numpy(dtype="datetime64[ns]")
 
-        # Create DataFrame with session boundaries
-        df_sessions = pd.DataFrame(
-            {
-                "session_date": schedule.index,
-                "market_open": schedule["market_open"],
-                "market_close": schedule["market_close"],
-            }
-        ).reset_index(drop=True)
+        order = np.argsort(ts_ns, kind="mergesort")
+        ts_sorted = ts_ns[order]
 
-        # Sort for merge_asof (requires sorted data)
-        df_ts_sorted = df_ts.sort_values("timestamp")
-        df_sessions_sorted = df_sessions.sort_values("market_open")
+        # Candidate session from most recent market open.
+        prev_idx = np.searchsorted(market_open_ns, ts_sorted, side="right") - 1
+        assigned_sorted = np.full(len(ts_sorted), np.datetime64("NaT"), dtype="datetime64[ns]")
 
-        # First, assign based on market_open (find the session that opened before this timestamp)
-        df_merged = pd.merge_asof(
-            df_ts_sorted,
-            df_sessions_sorted,
-            left_on="timestamp",
-            right_on="market_open",
-            direction="backward",
-        )
+        valid_prev = prev_idx >= 0
+        within_session = np.zeros(len(ts_sorted), dtype=bool)
+        if np.any(valid_prev):
+            within_session[valid_prev] = (
+                ts_sorted[valid_prev] < market_close_ns[prev_idx[valid_prev]]
+            )
+            valid_assign = valid_prev & within_session
+            assigned_sorted[valid_assign] = session_dates[prev_idx[valid_assign]]
 
-        # Now filter: only keep assignments where timestamp < market_close
-        # For timestamps outside any session, assign to next session
-        within_session = df_merged["timestamp"] < df_merged["market_close"]
+        # For timestamps outside session windows, assign to next session.
+        outside_mask = ~within_session
+        if np.any(outside_mask):
+            next_idx = np.searchsorted(market_open_ns, ts_sorted[outside_mask], side="left")
+            valid_next = next_idx < len(session_dates)
+            outside_positions = np.where(outside_mask)[0]
+            assigned_sorted[outside_positions[valid_next]] = session_dates[next_idx[valid_next]]
 
-        # For timestamps outside sessions, use forward merge (next session)
-        if not within_session.all():
-            df_outside = df_merged[~within_session][["timestamp", "original_idx"]]
-            if len(df_outside) > 0:
-                df_outside_merged = pd.merge_asof(
-                    df_outside,
-                    df_sessions_sorted,
-                    left_on="timestamp",
-                    right_on="market_open",
-                    direction="forward",
-                )
-                # Update session assignments for outside timestamps
-                df_merged.loc[~within_session, "session_date"] = df_outside_merged[
-                    "session_date"
-                ].values
-
-        # Return series with original index order
-        result = df_merged.sort_values("original_idx").set_index(timestamps)["session_date"]
-        return result
+        # Restore original row order.
+        assigned = np.full(len(ts_ns), np.datetime64("NaT"), dtype="datetime64[ns]")
+        assigned[order] = assigned_sorted
+        return pd.Series(assigned, index=timestamps)
 
     def get_sessions_and_mask(
         self,
@@ -361,10 +345,10 @@ class TradingCalendar:
             freq = "M"
 
         # Determine if data is intraday (multiple samples per day)
-        df = pd.DataFrame({"timestamp": timestamps_tz})
         # Cast to Any for DatetimeIndex.normalize() which is valid but type stubs don't recognize
-        daily_counts = df.groupby(cast(Any, timestamps_tz).normalize()).size()
-        is_intraday = (daily_counts > 1).any()
+        normalized_days = np.asarray(cast(Any, timestamps_tz).normalize())
+        _, daily_counts = np.unique(normalized_days, return_counts=True)
+        is_intraday = bool(np.any(daily_counts > 1))
 
         if is_intraday and freq in ["D", "W"]:
             # Use trading calendar sessions
@@ -427,32 +411,39 @@ class TradingCalendar:
         Groups timestamps into blocks of ``n_periods`` calendar units and
         counts samples in each complete block.
         """
-        # Group by calendar period (atomic unit)
+        ts_naive = timestamps.tz_localize(None) if timestamps.tz is not None else timestamps
+        day_ns = 24 * 60 * 60 * 1_000_000_000
+        day_keys = ts_naive.normalize().asi8 // day_ns
+
+        # Group by calendar period (atomic unit) with integer keys to avoid
+        # expensive Period conversions and timezone warnings.
+        period_keys: np.ndarray
         if freq == "D":
-            period_groups = cast(Any, timestamps).normalize()
+            period_keys = day_keys
         elif freq == "W":
-            # Group by week start (Monday)
-            period_groups = timestamps.to_period("W").to_timestamp()
+            weekday = ts_naive.weekday.to_numpy(dtype=np.int64, copy=False)
+            period_keys = day_keys - weekday
         elif freq == "M":
-            # Group by month start
-            period_groups = timestamps.to_period("M").to_timestamp()
+            year = ts_naive.year.to_numpy(dtype=np.int64, copy=False)
+            month = ts_naive.month.to_numpy(dtype=np.int64, copy=False)
+            period_keys = year * 12 + (month - 1)
         else:
             raise ValueError(f"Unsupported frequency: {freq}")
 
-        # Count samples per atomic period
-        df = pd.DataFrame({"period": period_groups})
-        counts_per_unit = df.groupby("period").size()
+        # Count samples per atomic period (sorted by key)
+        _, counts_per_unit = np.unique(period_keys, return_counts=True)
+        counts_per_unit_list = counts_per_unit.tolist()
 
         if n_periods <= 1:
-            return counts_per_unit.values.tolist()
+            return counts_per_unit_list
 
         # Aggregate atomic units into blocks of n_periods
-        n_units = len(counts_per_unit)
+        n_units = len(counts_per_unit_list)
         block_counts = []
         for i in range(0, n_units, n_periods):
-            block = counts_per_unit.iloc[i : i + n_periods]
+            block = counts_per_unit_list[i : i + n_periods]
             if len(block) == n_periods:  # Only complete blocks
-                block_counts.append(int(block.sum()))
+                block_counts.append(int(sum(block)))
 
         return block_counts
 
@@ -756,7 +747,13 @@ def _parse_time_size_naive(
         time_delta = pd.Timedelta(size_spec)
     except ValueError:
         try:
-            offset = pd.tseries.frequencies.to_offset(size_spec)
+            # pandas deprecated plain "M" month-end alias in favor of "ME".
+            # Keep backward compatibility for inputs like "1M", "3M".
+            normalized_spec = size_spec
+            month_match = re.fullmatch(r"(\d+)M", size_spec.strip().upper())
+            if month_match:
+                normalized_spec = f"{month_match.group(1)}ME"
+            offset = pd.tseries.frequencies.to_offset(normalized_spec)
             ref_date = timestamps[0]
             time_delta = (ref_date + offset) - ref_date
         except Exception as e:

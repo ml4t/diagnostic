@@ -5,7 +5,7 @@ characteristics of financial data while reducing computational load
 or balancing classes.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -124,85 +124,61 @@ def stratified_sample_time_series(
     ... )
     """
     rng = np.random.RandomState(random_state)
+    output_as_pandas = isinstance(data, pd.DataFrame)
 
     if isinstance(data, pl.DataFrame):
-        # Polars implementation
-        unique_values = data[stratify_column].unique().to_list()
-        sampled_dfs = []
-
-        for value in unique_values:
-            stratum_df = data.filter(pl.col(stratify_column) == value)
-            n_stratum = len(stratum_df)
-            n_sample = int(n_stratum * sample_frac)
-
-            if n_sample > 0:
-                if preserve_order and time_column:
-                    # Sample by time blocks to preserve structure
-                    block_size = max(1, n_stratum // (n_sample // 10 + 1))
-                    sampled_indices: list[int] = []
-
-                    for i in range(0, n_stratum - block_size + 1, block_size):
-                        if rng.random() < sample_frac:
-                            sampled_indices.extend(
-                                range(i, min(i + block_size, n_stratum)),
-                            )
-
-                    sampled_stratum = stratum_df[sampled_indices[:n_sample]]
-                else:
-                    # Random sampling
-                    sample_indices = rng.choice(n_stratum, n_sample, replace=False)
-                    sampled_stratum = stratum_df[sorted(sample_indices)]
-
-                sampled_dfs.append(sampled_stratum)
-
-        result = pl.concat(sampled_dfs)
-
-        if time_column and preserve_order:
-            result = result.sort(time_column)
-
+        index_col = None
+        df = data.clone()
     elif isinstance(data, pd.DataFrame):
-        # Pandas implementation - explicit casts to ensure proper type narrowing
-        # Use completely separate variable names from Polars branch to avoid mypy redefinition errors
-        data_pandas: pd.DataFrame = data
-        unique_vals_pd = data_pandas[stratify_column].unique()  # Returns ndarray
-        collected_dfs: list[pd.DataFrame] = []
-
-        for val in unique_vals_pd:
-            stratum: pd.DataFrame = data_pandas[data_pandas[stratify_column] == val]
-            n_rows = len(stratum)
-            n_to_sample = int(n_rows * sample_frac)
-
-            if n_to_sample > 0:
-                selected: pd.DataFrame
-                if preserve_order:
-                    # Sample contiguous blocks
-                    blk_size = max(1, n_rows // (n_to_sample // 10 + 1))
-                    idx_list: list[Any] = []
-
-                    for j in range(0, n_rows - blk_size + 1, blk_size):
-                        if rng.random() < sample_frac:
-                            idx_list.extend(
-                                stratum.index[j : j + blk_size].tolist(),
-                            )
-
-                    selected = stratum.loc[idx_list[:n_to_sample]]
-                else:
-                    selected = stratum.sample(
-                        n=n_to_sample,
-                        random_state=random_state,
-                    )
-
-                collected_dfs.append(selected)
-
-        result_pd = pd.concat(collected_dfs)
-
-        if time_column and preserve_order:
-            result_pd = result_pd.sort_values(time_column)
-
-        return result_pd
+        index_col = "__orig_index__"
+        while index_col in data.columns:
+            index_col = f"_{index_col}"
+        df = pl.from_pandas(data.reset_index(names=index_col))
     else:
         raise TypeError(f"data must be pd.DataFrame or pl.DataFrame, got {type(data)}")
 
+    unique_values = df[stratify_column].unique().to_list()
+    sampled_dfs = []
+
+    for value in unique_values:
+        stratum_df = df.filter(pl.col(stratify_column) == value)
+        n_stratum = len(stratum_df)
+        n_sample = int(n_stratum * sample_frac)
+
+        if n_sample <= 0:
+            continue
+
+        if preserve_order:
+            # Sample contiguous blocks
+            block_size = max(1, n_stratum // (n_sample // 10 + 1))
+            sampled_indices: list[int] = []
+
+            for i in range(0, n_stratum - block_size + 1, block_size):
+                if rng.random() < sample_frac:
+                    sampled_indices.extend(range(i, min(i + block_size, n_stratum)))
+
+            sampled_stratum = stratum_df[sampled_indices[:n_sample]]
+        else:
+            # Random sampling
+            sample_indices = rng.choice(n_stratum, n_sample, replace=False)
+            sampled_stratum = stratum_df[sorted(sample_indices)]
+
+        sampled_dfs.append(sampled_stratum)
+
+    if sampled_dfs:
+        result = pl.concat(sampled_dfs)
+    else:
+        result = df.head(0)
+
+    if time_column and preserve_order and time_column in result.columns:
+        result = result.sort(time_column)
+
+    if output_as_pandas:
+        result_pd = result.to_pandas()
+        assert index_col is not None
+        result_pd = result_pd.set_index(index_col)
+        result_pd.index.name = cast(pd.DataFrame, data).index.name
+        return result_pd[cast(pd.DataFrame, data).columns]
     return result
 
 
@@ -276,9 +252,13 @@ def sample_weights_by_importance(
             # Can't calculate volatility with less than 2 samples
             weights = np.ones(n_samples) / n_samples
         else:
-            volatility: NDArray[Any] = (
-                pd.Series(returns).rolling(20, min_periods=1).std().to_numpy()
-            )
+            window = 20
+            volatility = np.full(n_samples, np.nan, dtype=np.float64)
+            for i in range(n_samples):
+                start = max(0, i - window + 1)
+                segment = returns[start : i + 1]
+                if len(segment) >= 2:
+                    volatility[i] = np.std(segment, ddof=1)
 
             # Handle case where volatility is all NaN or zero
             if np.all(np.isnan(volatility)) or float(np.nansum(volatility)) == 0:
@@ -430,17 +410,20 @@ def event_based_sample(
         raise ValueError("Either n_samples or sample_frac must be specified")
 
     rng = np.random.RandomState(random_state)
+    output_as_pandas = isinstance(data, pd.DataFrame)
 
     if isinstance(data, pl.DataFrame):
-        # Get event indices
-        event_mask_pl = data[event_column].cast(bool)
-        event_indices = np.where(event_mask_pl.to_numpy())[0]
+        index_col = None
+        df = data.clone()
     elif isinstance(data, pd.DataFrame):
-        # Pandas - explicit isinstance for type narrowing
-        event_mask_pd = data[event_column].astype(bool)
-        event_indices = np.where(event_mask_pd.to_numpy())[0]
+        index_col = "__orig_index__"
+        while index_col in data.columns:
+            index_col = f"_{index_col}"
+        df = pl.from_pandas(data.reset_index(names=index_col))
     else:
         raise TypeError(f"data must be pd.DataFrame or pl.DataFrame, got {type(data)}")
+
+    event_indices = np.where(df[event_column].cast(bool).to_numpy())[0]
 
     if n_samples is None:
         if sample_frac is None:
@@ -465,7 +448,11 @@ def event_based_sample(
         else:
             available_indices.pop(idx)
 
-    # Return data at sampled event indices
-    if isinstance(data, pl.DataFrame):
-        return data[sorted(sampled_events)]
-    return data.iloc[sorted(sampled_events)]
+    result = df[sorted(sampled_events)]
+    if output_as_pandas:
+        result_pd = result.to_pandas()
+        assert index_col is not None
+        result_pd = result_pd.set_index(index_col)
+        result_pd.index.name = cast(pd.DataFrame, data).index.name
+        return result_pd[cast(pd.DataFrame, data).columns]
+    return result
