@@ -35,7 +35,7 @@ def plot_top_bottom_turnover(
     Parameters
     ----------
     turnover_result : TurnoverAnalysisResult
-        Turnover analysis result from SignalAnalysis.compute_turnover_analysis()
+        Turnover analysis result from a signal analysis workflow.
     show_all_quantiles : bool, default False
         Show all quantiles instead of just top and bottom
     theme : str | None
@@ -187,7 +187,7 @@ def plot_autocorrelation(
     Parameters
     ----------
     turnover_result : TurnoverAnalysisResult
-        Turnover analysis result from SignalAnalysis.compute_turnover_analysis()
+        Turnover analysis result from a signal analysis workflow.
     period : str | None
         Period to plot. If None, uses first period.
     max_lags : int | None
@@ -335,7 +335,7 @@ def plot_turnover_heatmap(
     Parameters
     ----------
     turnover_result : TurnoverAnalysisResult
-        Turnover analysis result from SignalAnalysis.compute_turnover_analysis()
+        Turnover analysis result from a signal analysis workflow.
     theme : str | None
         Plot theme
     width : int | None

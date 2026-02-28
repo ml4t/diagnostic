@@ -61,12 +61,7 @@ class SignalDashboard(BaseDashboard):
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import SignalAnalysis
     >>> from ml4t.diagnostic.visualization.signal import SignalDashboard
-    >>>
-    >>> # Run signal analysis
-    >>> analyzer = SignalAnalysis(factor_data, price_data)
-    >>> tear_sheet = analyzer.create_tear_sheet()
     >>>
     >>> # Create and save dashboard
     >>> dashboard = SignalDashboard(title="Momentum Factor Analysis")
@@ -87,7 +82,6 @@ class SignalDashboard(BaseDashboard):
 
     See Also
     --------
-    SignalAnalysis : Main signal analysis class
     SignalTearSheet : Result container for signal analysis
     """
 
@@ -125,7 +119,7 @@ class SignalDashboard(BaseDashboard):
         Parameters
         ----------
         analysis_results : SignalTearSheet
-            Results from SignalAnalysis.create_tear_sheet()
+            Signal analysis tear-sheet results.
         include_events : bool, default=False
             Whether to include Events tab (requires event_analysis)
         event_analysis : EventStudyResult, optional
@@ -162,7 +156,7 @@ class SignalDashboard(BaseDashboard):
         output_path : str
             Path for output HTML file
         analysis_results : SignalTearSheet
-            Results from SignalAnalysis.create_tear_sheet()
+            Signal analysis tear-sheet results.
         include_events : bool, default=False
             Whether to include Events tab
         event_analysis : EventStudyResult, optional

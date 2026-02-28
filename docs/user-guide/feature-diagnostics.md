@@ -153,7 +153,7 @@ print(f"Recommendation: {result.recommended_distribution}")
 Monitor feature distribution changes:
 
 ```python
-from ml4t.diagnostic.evaluation import analyze_drift
+from ml4t.diagnostic.evaluation.drift import analyze_drift
 
 result = analyze_drift(
     train_features=X_train,

@@ -123,11 +123,7 @@ def compute_forward_returns(
     if isinstance(periods, int):
         periods = [periods]
 
-    df = (
-        cast(pl.DataFrame, prices).clone()
-        if isinstance(prices, pl.DataFrame)
-        else pl.from_pandas(cast(pd.DataFrame, prices))
-    )
+    df = prices.clone() if isinstance(prices, pl.DataFrame) else pl.from_pandas(cast(pd.DataFrame, prices))
 
     if date_col is not None and date_col in df.columns:
         if group_col is not None and group_col in df.columns:

@@ -43,7 +43,7 @@ def plot_ic_ts(
     Parameters
     ----------
     ic_result : SignalICResult
-        IC analysis result from SignalAnalysis.compute_ic_analysis()
+        IC analysis result from a signal analysis workflow.
     period : str | None
         Period to plot (e.g., "1D", "5D"). If None, uses first period.
     rolling_window : int, default 21
@@ -232,7 +232,7 @@ def plot_ic_histogram(
     Parameters
     ----------
     ic_result : SignalICResult
-        IC analysis result from SignalAnalysis.compute_ic_analysis()
+        IC analysis result from a signal analysis workflow.
     period : str | None
         Period to plot. If None, uses first period.
     bins : int, default 50
@@ -371,7 +371,7 @@ def plot_ic_qq(
     Parameters
     ----------
     ic_result : SignalICResult
-        IC analysis result from SignalAnalysis.compute_ic_analysis()
+        IC analysis result from a signal analysis workflow.
     period : str | None
         Period to plot. If None, uses first period.
     theme : str | None
@@ -489,7 +489,7 @@ def plot_ic_heatmap(
     Parameters
     ----------
     ic_result : SignalICResult
-        IC analysis result from SignalAnalysis.compute_ic_analysis()
+        IC analysis result from a signal analysis workflow.
     period : str | None
         Period to plot. If None, uses first period.
     colorscale : str, default "rdbu"

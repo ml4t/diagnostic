@@ -1,6 +1,6 @@
 """Trade SHAP analysis pipeline.
 
-This module provides the main TradeShapAnalyzer class that orchestrates
+This module provides the TradeShapPipeline class that orchestrates
 all components of trade SHAP analysis:
 - TradeShapExplainer for individual trade explanations
 - HierarchicalClusterer for error pattern clustering
