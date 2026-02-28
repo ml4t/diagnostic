@@ -15,13 +15,15 @@ Main Features
 Quick Start
 -----------
 >>> from ml4t.diagnostic import ValidatedCrossValidation
+>>> from ml4t.diagnostic.evaluation.validated_cv import ValidatedCrossValidationConfig
 >>> from ml4t.diagnostic.splitters import CombinatorialCV
 >>>
 >>> # One-step validated cross-validation
->>> vcv = ValidatedCrossValidation(n_splits=10)
->>> result = vcv.fit_validate(model, X, y, times)
+>>> config = ValidatedCrossValidationConfig(n_groups=10, n_test_groups=2)
+>>> vcv = ValidatedCrossValidation(config=config)
+>>> result = vcv.fit_evaluate(X, y, model, times=times)
 >>> if result.is_significant:
-...     print(f"Sharpe: {result.sharpe:.2f}, DSR p-value: {result.dsr_pvalue:.4f}")
+...     print(f"Mean Sharpe: {result.mean_sharpe:.2f}, DSR: {result.dsr:.4f}")
 
 API Stability
 -------------
@@ -32,7 +34,18 @@ exported in __all__. Breaking changes will only occur in major version bumps.
 __version__ = "0.1.0a8"
 
 # Sub-modules for advanced usage
-from . import backends, caching, config, core, evaluation, integration, logging, signal, splitters
+from . import (
+    api,
+    backends,
+    caching,
+    config,
+    core,
+    evaluation,
+    integration,
+    logging,
+    signal,
+    splitters,
+)
 
 # Configuration classes
 from .config import (
@@ -156,6 +169,7 @@ __all__ = [
     # Sub-modules
     "backends",
     "caching",
+    "api",
     "config",
     "core",
     "evaluation",

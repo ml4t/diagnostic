@@ -1,0 +1,46 @@
+{
+  "public_exports": {
+    "ml4t.diagnostic.api": [
+      "ValidatedCrossValidation",
+      "ValidatedCrossValidationConfig",
+      "ValidationFoldResult",
+      "ValidationResult",
+      "validated_cross_val_score",
+      "BarrierAnalysis",
+      "FeatureDiagnostics",
+      "FeatureDiagnosticsConfig",
+      "FeatureDiagnosticsResult",
+      "TradeAnalysis",
+      "PortfolioAnalysis",
+      "analyze_signal",
+      "SignalResult",
+      "CombinatorialCV",
+      "WalkForwardCV",
+      "compute_ic_series",
+      "compute_ic_hac_stats",
+      "compute_mdi_importance",
+      "compute_permutation_importance",
+      "compute_shap_importance",
+      "compute_h_statistic",
+      "compute_shap_interactions",
+      "analyze_ml_importance",
+      "analyze_interactions"
+    ]
+  },
+  "absent_exports": {
+    "ml4t.diagnostic.api": [
+      "fit_validate",
+      "SignalAnalysis",
+      "TradeShapAnalyzer",
+      "CalendarSplitter",
+      "GroupIsolationSplitter"
+    ]
+  },
+  "forbidden_symbols": [
+    "fit_validate",
+    "SignalAnalysis",
+    "TradeShapAnalyzer",
+    "CalendarSplitter",
+    "GroupIsolationSplitter"
+  ]
+}
