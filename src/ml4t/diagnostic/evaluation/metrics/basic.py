@@ -81,6 +81,7 @@ def compute_forward_returns(
     periods: int | list[int] = 1,
     price_col: str = "close",
     group_col: str | None = None,
+    date_col: str | None = "date",
 ) -> pl.DataFrame | pd.DataFrame:
     """Compute forward returns for given periods.
 
@@ -97,6 +98,9 @@ def compute_forward_returns(
         Column name containing prices
     group_col : str | None, default None
         Column for grouping (e.g., 'symbol' for multi-asset)
+    date_col : str | None, default "date"
+        Optional date/timestamp column used to sort before computing
+        forward returns. Set to None to skip sorting.
 
     Returns
     -------
@@ -113,48 +117,41 @@ def compute_forward_returns(
     >>> print(fwd_returns.columns)
     ['date', 'close', 'fwd_ret_1', 'fwd_ret_2']
     """
-    is_polars = isinstance(prices, pl.DataFrame)
+    output_as_pandas = isinstance(prices, pd.DataFrame)
 
     # Ensure periods is a list
     if isinstance(periods, int):
         periods = [periods]
 
-    if is_polars:
-        df = cast(pl.DataFrame, prices).clone()
+    df = (
+        cast(pl.DataFrame, prices).clone()
+        if isinstance(prices, pl.DataFrame)
+        else pl.from_pandas(cast(pd.DataFrame, prices))
+    )
 
-        if group_col is not None:
-            # Group-wise forward returns (e.g., per symbol)
-            for period in periods:
-                col_name = f"fwd_ret_{period}"
-                df = df.with_columns(
-                    [
-                        (
-                            pl.col(price_col).shift(-period).over(group_col) / pl.col(price_col) - 1
-                        ).alias(col_name)
-                    ]
-                )
+    if date_col is not None and date_col in df.columns:
+        if group_col is not None and group_col in df.columns:
+            df = df.sort([group_col, date_col])
         else:
-            # Simple forward returns
-            for period in periods:
-                col_name = f"fwd_ret_{period}"
-                df = df.with_columns(
-                    [(pl.col(price_col).shift(-period) / pl.col(price_col) - 1).alias(col_name)]
-                )
-
-        return df
-
-    # pandas - use different variable name to avoid type conflict
-    df_pd = cast(pd.DataFrame, prices).copy()
+            df = df.sort(date_col)
 
     if group_col is not None:
         # Group-wise forward returns
         for period in periods:
             col_name = f"fwd_ret_{period}"
-            df_pd[col_name] = df_pd.groupby(group_col)[price_col].pct_change(period).shift(-period)
+            df = df.with_columns(
+                ((pl.col(price_col).shift(-period).over(group_col) / pl.col(price_col)) - 1).alias(
+                    col_name
+                )
+            )
     else:
         # Simple forward returns
         for period in periods:
             col_name = f"fwd_ret_{period}"
-            df_pd[col_name] = df_pd[price_col].pct_change(period).shift(-period)
+            df = df.with_columns(
+                ((pl.col(price_col).shift(-period) / pl.col(price_col)) - 1).alias(col_name)
+            )
 
-    return df_pd
+    if output_as_pandas:
+        return df.to_pandas()
+    return df

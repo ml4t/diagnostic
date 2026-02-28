@@ -18,6 +18,21 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+def _to_numpy_with_feature_names(
+    X: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
+    feature_names: list[str] | None = None,
+) -> tuple["NDArray[Any]", list[str]]:
+    """Normalize input to numpy array plus feature names."""
+    if isinstance(X, pl.DataFrame):
+        names = X.columns if feature_names is None else feature_names
+        return X.to_numpy(), list(names)
+    if isinstance(X, pd.DataFrame):
+        names = list(X.columns) if feature_names is None else feature_names
+        return pl.from_pandas(X).to_numpy(), list(names)
+    names = feature_names if feature_names is not None else [f"f{i}" for i in range(X.shape[1])]
+    return X, list(names)
+
+
 def compute_h_statistic(
     model: Any,
     X: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
@@ -81,18 +96,8 @@ def compute_h_statistic(
     start_time = time.time()
 
     # Convert input to numpy
-    if isinstance(X, pl.DataFrame):
-        if feature_names is None:
-            feature_names = X.columns
-        X_array = X.to_numpy()
-    elif isinstance(X, pd.DataFrame):
-        if feature_names is None:
-            feature_names = list(X.columns)
-        X_array = X.values
-    else:  # numpy array
-        X_array = X
-        if feature_names is None:
-            feature_names = [f"f{i}" for i in range(X_array.shape[1])]
+    X_array, feature_names_list = _to_numpy_with_feature_names(X, feature_names)
+    feature_names = feature_names_list
 
     n_total_samples, n_features = X_array.shape
 
@@ -119,7 +124,7 @@ def compute_h_statistic(
         pairs_int = [(int(i), int(j)) for i, j in feature_pairs]
 
     # Ensure feature_names is a list for indexing
-    feature_names_list: list[str] = list(feature_names) if feature_names is not None else []
+    feature_names_list = list(feature_names)
 
     h_results: list[tuple[str, str, float]] = []
 
@@ -259,21 +264,7 @@ def compute_shap_interactions(
         ) from e
 
     # Convert input to numpy and extract feature names
-    if isinstance(X, pl.DataFrame):
-        if feature_names is None:
-            feature_names = X.columns
-        X_array = X.to_numpy()
-    elif isinstance(X, pd.DataFrame):
-        if feature_names is None:
-            feature_names = list(X.columns)
-        X_array = X.values
-    else:  # numpy array
-        X_array = X
-        if feature_names is None:
-            feature_names = [f"f{i}" for i in range(X_array.shape[1])]
-
-    # Type assertion: feature_names is guaranteed to be set at this point
-    assert feature_names is not None, "feature_names should be set by this point"
+    X_array, feature_names = _to_numpy_with_feature_names(X, feature_names)
 
     n_total_samples, n_features = X_array.shape
 

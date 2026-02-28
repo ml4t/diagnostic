@@ -4,7 +4,8 @@ This module provides the main entry point for evaluating feature predictive powe
 combining IC analysis, significance testing, monotonicity validation, and decay analysis.
 """
 
-from typing import TYPE_CHECKING, Any, cast
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,6 @@ from ml4t.diagnostic.evaluation.metrics.ic_statistics import (
 from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_ir,
     compute_ic_series,
-    information_coefficient,
 )
 from ml4t.diagnostic.evaluation.metrics.monotonicity import compute_monotonicity
 
@@ -152,69 +152,56 @@ def analyze_feature_outcome(
     - Monotonicity score: >0.8 for strong monotonicity
     - Half-life: Depends on strategy horizon (align with holding period)
     """
+    output_as_pandas = isinstance(predictions, pd.DataFrame)
+    predictions_pl = (
+        predictions if isinstance(predictions, pl.DataFrame) else pl.from_pandas(predictions)
+    )
+    prices_pl = prices if isinstance(prices, pl.DataFrame) else pl.from_pandas(prices)
+
     # 1. Compute forward returns from prices using compute_forward_returns
     prices_with_fwd = compute_forward_returns(
-        prices=prices,
+        prices=prices_pl,
         periods=1,  # 1-day forward returns for IC series
         price_col=price_col,
         group_col=group_col,
     )
+    prices_with_fwd_pl = (
+        prices_with_fwd
+        if isinstance(prices_with_fwd, pl.DataFrame)
+        else pl.from_pandas(prices_with_fwd)
+    )
 
     # 2. Merge predictions with returns
     merge_cols = [date_col, group_col] if group_col else [date_col]
-
-    merged: pl.DataFrame | pd.DataFrame
-    if isinstance(predictions, pl.DataFrame):
-        prices_fwd_pl = cast(pl.DataFrame, prices_with_fwd)
-        merged = predictions.join(prices_fwd_pl, on=merge_cols, how="inner")
-        # Drop NaN forward returns
-        merged = merged.filter(pl.col("fwd_ret_1").is_not_null())
-    else:
-        prices_fwd_pd = cast(pd.DataFrame, prices_with_fwd)
-        merged = pd.merge(predictions, prices_fwd_pd, on=merge_cols, how="inner")
-        # Drop NaN forward returns
-        merged = merged.dropna(subset=["fwd_ret_1"])
+    merged = predictions_pl.join(prices_with_fwd_pl, on=merge_cols, how="inner").filter(
+        pl.col("fwd_ret_1").is_not_null()
+    )
 
     # 3. Compute IC time series (cross-sectional IC per date)
     # For panel data, compute IC by grouping on date and correlating across assets
-    ic_series: pl.DataFrame | pd.DataFrame  # Declare type before branches
-
     if group_col:
-        # Panel data: group by date and compute IC within each date
-        def compute_date_ic(group: pd.DataFrame) -> pd.Series:
-            # Explicitly convert to float arrays to handle ExtensionArray types
-            pred_vals = np.asarray(group[pred_col].values, dtype=np.float64)
-            ret_vals = np.asarray(group["fwd_ret_1"].values, dtype=np.float64)
-
-            # Remove NaN pairs
-            valid_mask = ~(np.isnan(pred_vals) | np.isnan(ret_vals))
-            pred_clean = pred_vals[valid_mask]
-            ret_clean = ret_vals[valid_mask]
-
-            n_obs = len(pred_clean)
-
-            if n_obs >= 2:  # Need at least 2 observations for correlation
-                ic_val = information_coefficient(
-                    pred_clean, ret_clean, method=method, confidence_intervals=False
-                )
-            else:
-                ic_val = np.nan
-
-            return pd.Series({"ic": ic_val, "n_obs": n_obs})
-
-        # Convert to pandas for groupby.apply() operation
-        merged_pd: pd.DataFrame = merged.to_pandas() if isinstance(merged, pl.DataFrame) else merged
-        ic_series = merged_pd.groupby(date_col).apply(compute_date_ic).reset_index()
+        ic_series_pl = compute_ic_series(
+            predictions=merged.select([date_col, group_col, pred_col]),
+            returns=merged.select([date_col, group_col, "fwd_ret_1"]),
+            pred_col=pred_col,
+            ret_col="fwd_ret_1",
+            date_col=date_col,
+            entity_col=group_col,
+            method=method,
+            min_periods=2,
+        )
     else:
-        # Time series data: use standard compute_ic_series
-        ic_series = compute_ic_series(
-            predictions=merged[[date_col, pred_col]],
-            returns=merged[[date_col, "fwd_ret_1"]],
+        ic_series_pl = compute_ic_series(
+            predictions=merged.select([date_col, pred_col]),
+            returns=merged.select([date_col, "fwd_ret_1"]),
             pred_col=pred_col,
             ret_col="fwd_ret_1",
             date_col=date_col,
             method=method,
         )
+    ic_series: pl.DataFrame | pd.DataFrame = (
+        ic_series_pl.to_pandas() if output_as_pandas else ic_series_pl
+    )
 
     # 4. Compute IC-IR (Information Ratio)
     ic_ir_result = compute_ic_ir(
@@ -267,16 +254,9 @@ def analyze_feature_outcome(
     # 7. Compute monotonicity analysis (if requested)
     monotonicity_analysis = None
     if include_monotonicity:
-        # Use already-merged data with forward returns - convert to pandas for values access
-        merged_for_mono: pd.DataFrame
-        if isinstance(merged, pl.DataFrame):
-            merged_for_mono = merged.to_pandas()
-        else:
-            merged_for_mono = merged
-
         monotonicity_analysis = compute_monotonicity(
-            features=merged_for_mono[pred_col].to_numpy(),
-            outcomes=merged_for_mono["fwd_ret_1"].to_numpy(),
+            features=merged[pred_col].to_numpy(),
+            outcomes=merged["fwd_ret_1"].to_numpy(),
             n_quantiles=n_quantiles,
             method=method,
         )
@@ -316,7 +296,7 @@ def analyze_feature_outcome(
         "ic_series": ic_series,
         "interpretation": interpretation,
         "metadata": {
-            "analysis_date": pd.Timestamp.now().isoformat(),
+            "analysis_date": datetime.now(UTC).isoformat(),
             "method": method,
             "n_quantiles": n_quantiles,
             "horizons": horizons or [1, 2, 5, 10, 21],

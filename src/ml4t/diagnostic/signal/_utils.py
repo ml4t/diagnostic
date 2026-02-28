@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from ml4t.diagnostic.evaluation.metrics.basic import (
+    compute_forward_returns as compute_forward_returns_core,
+)
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -157,14 +161,12 @@ def compute_forward_returns(
     asset_col: str = "asset",
     price_col: str = "price",
 ) -> pl.DataFrame:
-    """Compute forward returns for each period using vectorized operations.
+    """Compute forward returns for each period.
 
-    For each (date, asset), computes return from date to date + period.
-
-    Forward returns are computed using the PRICE date universe (trading days),
-    so period N means "N trading days forward in the price data", not N factor
-    dates forward. This ensures returns are computed correctly even when factor
-    dates are a subset of price dates (e.g., due to lookback requirements).
+    Forward returns are computed on the full price universe (per asset) using
+    the shared core metrics implementation, then joined back to signal rows.
+    This preserves trading-day semantics when factor dates are a subset of the
+    available price dates.
 
     Parameters
     ----------
@@ -183,76 +185,38 @@ def compute_forward_returns(
         Data with forward return columns (e.g., "1D_fwd_return").
     """
     if data.is_empty():
-        # Add empty columns for each period
         for p in periods:
             data = data.with_columns(pl.lit(None).cast(pl.Float64).alias(f"{p}D_fwd_return"))
         return data
 
-    # 1. Create date index mapping from PRICE data (not factor data)
-    # This ensures forward returns use the trading day calendar
-    price_dates = prices.select(date_col).unique().sort(date_col)
-    price_dates = price_dates.with_row_index("_price_date_idx")
-
-    # 2. Join data with current prices
-    result = data.join(
-        prices.select([date_col, asset_col, price_col]).rename({price_col: "_current_price"}),
-        on=[date_col, asset_col],
-        how="left",
+    # Compute forward returns on full price history for each asset/date.
+    price_with_returns = compute_forward_returns_core(
+        prices,
+        periods=list(periods),
+        price_col=price_col,
+        group_col=asset_col,
+        date_col=date_col,
     )
 
-    # 3. Join to get price date index for each row
-    result = result.join(price_dates, on=date_col, how="left")
+    # Keep only keys + forward-return columns, then join onto factor rows.
+    join_cols = [date_col, asset_col]
+    ret_cols = [f"fwd_ret_{p}" for p in periods]
+    returns_lookup = price_with_returns.select(join_cols + ret_cols)
 
-    # 4. For each period, compute forward return via joins
-    for p in periods:
-        col_name = f"{p}D_fwd_return"
+    result = data.join(returns_lookup, on=join_cols, how="left")
 
-        # Create mapping: current_price_idx -> future_price_date
-        # future_price_idx = current_price_idx + p
-        future_date_map = price_dates.with_columns(
-            (pl.col("_price_date_idx") - p).alias("_current_idx")
-        ).filter(pl.col("_current_idx") >= 0)
+    # Match signal naming convention.
+    rename_map = {f"fwd_ret_{p}": f"{p}D_fwd_return" for p in periods}
+    result = result.rename(rename_map)
 
-        # Join to get future date (from price date sequence)
-        result = result.join(
-            future_date_map.select([date_col, "_current_idx"]).rename(
-                {date_col: f"_future_date_{p}"}
-            ),
-            left_on="_price_date_idx",
-            right_on="_current_idx",
-            how="left",
-        )
-
-        # Join to get future price (from price data)
-        result = result.join(
-            prices.select([date_col, asset_col, price_col]).rename(
-                {price_col: f"_future_price_{p}"}
-            ),
-            left_on=[f"_future_date_{p}", asset_col],
-            right_on=[date_col, asset_col],
-            how="left",
-        )
-
-        # Compute return: (future - current) / current
-        # Handle NaN in current price (use is_nan check)
+    # Preserve signal API semantics: invalid numeric returns are null, not NaN.
+    return_cols = list(rename_map.values())
+    for col in return_cols:
         result = result.with_columns(
-            pl.when(
-                pl.col("_current_price").is_not_null()
-                & pl.col("_current_price").is_not_nan()
-                & pl.col(f"_future_price_{p}").is_not_null()
-                & pl.col(f"_future_price_{p}").is_not_nan()
-                & (pl.col("_current_price") != 0)
-            )
-            .then(
-                (pl.col(f"_future_price_{p}") - pl.col("_current_price")) / pl.col("_current_price")
-            )
-            .otherwise(None)
-            .alias(col_name)
+            pl.when(pl.col(col).is_nan()).then(None).otherwise(pl.col(col)).alias(col)
         )
 
-    # 5. Clean up temporary columns
-    temp_cols = [c for c in result.columns if c.startswith("_")]
-    return result.drop(temp_cols)
+    return result
 
 
 __all__ = [

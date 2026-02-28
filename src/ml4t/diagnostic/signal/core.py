@@ -202,7 +202,7 @@ def analyze_signal(
 
         # IC
         dates, ic_vals = compute_ic_series(
-            data, period, ic_method, factor_col, date_col, min_assets
+            data, period, ic_method, factor_col, date_col, asset_col, min_assets
         )
         summary = compute_ic_summary(ic_vals)
 

@@ -207,7 +207,7 @@ def compute_ic_series(
     ... })
     >>> ic_series = compute_ic_series(pred_df, ret_df, entity_col="symbol")
     """
-    is_polars = isinstance(predictions, pl.DataFrame)
+    output_as_pandas = isinstance(predictions, pd.DataFrame)
 
     # Build join columns (date + entity for panel data)
     join_on: list[str] = [date_col]
@@ -217,47 +217,25 @@ def compute_ic_series(
         else:
             join_on.extend(entity_col)
 
-    if is_polars:
-        # Merge predictions and returns
-        predictions_pl = cast(pl.DataFrame, predictions)
-        returns_pl = cast(pl.DataFrame, returns)
-        df = predictions_pl.join(returns_pl, on=join_on, how="inner")
+    predictions_pl = (
+        cast(pl.DataFrame, predictions)
+        if isinstance(predictions, pl.DataFrame)
+        else pl.from_pandas(cast(pd.DataFrame, predictions))
+    )
+    returns_pl = (
+        cast(pl.DataFrame, returns)
+        if isinstance(returns, pl.DataFrame)
+        else pl.from_pandas(cast(pd.DataFrame, returns))
+    )
 
-        # Use group_by().map_groups() for efficient per-group processing
-        def compute_group_ic(group: pl.DataFrame) -> pl.DataFrame:
-            """Compute IC for a single date group."""
-            pred_array = group[pred_col].to_numpy()
-            ret_array = group[ret_col].to_numpy()
-
-            # Remove NaN pairs
-            valid_mask = ~(np.isnan(pred_array) | np.isnan(ret_array))
-            pred_clean = pred_array[valid_mask]
-            ret_clean = ret_array[valid_mask]
-
-            n_obs = len(pred_clean)
-
-            if n_obs >= min_periods:
-                ic_val = information_coefficient(
-                    pred_clean, ret_clean, method=method, confidence_intervals=False
-                )
-            else:
-                ic_val = np.nan
-
-            return pl.DataFrame({date_col: [group[date_col][0]], "ic": [ic_val], "n_obs": [n_obs]})
-
-        return df.group_by(date_col).map_groups(compute_group_ic).sort(date_col)
-
-    # pandas - use different variable name to avoid type conflict
     # Merge predictions and returns
-    predictions_pd = cast(pd.DataFrame, predictions)
-    returns_pd = cast(pd.DataFrame, returns)
-    df_pd = pd.merge(predictions_pd, returns_pd, on=join_on, how="inner")
+    df = predictions_pl.join(returns_pl, on=join_on, how="inner")
 
-    # Group by date and compute IC
-    def compute_period_ic(group: pd.DataFrame) -> pd.Series:
-        # Explicitly convert to ndarray to handle ExtensionArray types
-        pred_array = np.asarray(group[pred_col].values, dtype=np.float64)
-        ret_array = np.asarray(group[ret_col].values, dtype=np.float64)
+    # Use group_by().map_groups() for efficient per-group processing
+    def compute_group_ic(group: pl.DataFrame) -> pl.DataFrame:
+        """Compute IC for a single date group."""
+        pred_array = group[pred_col].to_numpy()
+        ret_array = group[ret_col].to_numpy()
 
         # Remove NaN pairs
         valid_mask = ~(np.isnan(pred_array) | np.isnan(ret_array))
@@ -273,11 +251,12 @@ def compute_ic_series(
         else:
             ic_val = np.nan
 
-        return pd.Series({"ic": ic_val, "n_obs": n_obs})
+        return pl.DataFrame({date_col: [group[date_col][0]], "ic": [ic_val], "n_obs": [n_obs]})
 
-    ic_series = df_pd.groupby(date_col, group_keys=False).apply(compute_period_ic).reset_index()
-
-    return ic_series
+    ic_series_pl = df.group_by(date_col).map_groups(compute_group_ic).sort(date_col)
+    if output_as_pandas:
+        return ic_series_pl.to_pandas()
+    return ic_series_pl
 
 
 def compute_ic_by_horizon(
@@ -331,11 +310,22 @@ def compute_ic_by_horizon(
     >>> print(f"1-day IC: {ic_by_horizon[1]:.3f}")
     >>> print(f"5-day IC: {ic_by_horizon[5]:.3f}")
     """
+    output_as_pandas = isinstance(predictions, pd.DataFrame)
+    predictions_pl = (
+        predictions if isinstance(predictions, pl.DataFrame) else pl.from_pandas(predictions)
+    )
+    prices_pl = prices if isinstance(prices, pl.DataFrame) else pl.from_pandas(prices)
+
     # Compute forward returns for all horizons
     if horizons is None:
         horizons = [1, 5, 21]
     prices_with_fwd = compute_forward_returns(
-        prices, periods=horizons, price_col=price_col, group_col=group_col
+        prices_pl, periods=horizons, price_col=price_col, group_col=group_col
+    )
+    prices_with_fwd_pl = (
+        prices_with_fwd
+        if isinstance(prices_with_fwd, pl.DataFrame)
+        else pl.from_pandas(prices_with_fwd)
     )
 
     # Merge with predictions - include group_col to avoid Cartesian products
@@ -343,19 +333,9 @@ def compute_ic_by_horizon(
     if group_col is not None:
         merge_on.append(group_col)
 
-    df: pl.DataFrame | pd.DataFrame
-
-    if isinstance(predictions, pl.DataFrame):
-        # Type is narrowed by isinstance check, but prices_with_fwd needs cast
-        prices_with_fwd_pl = cast(pl.DataFrame, prices_with_fwd)
-        df = predictions.join(prices_with_fwd_pl, on=merge_on, how="inner")
-    elif isinstance(predictions, pd.DataFrame):
-        prices_with_fwd_pd = cast(pd.DataFrame, prices_with_fwd)
-        df = pd.merge(predictions, prices_with_fwd_pd, on=merge_on, how="inner")
-    else:
-        raise TypeError(
-            f"predictions must be pl.DataFrame or pd.DataFrame, got {type(predictions)}"
-        )
+    df = predictions_pl.join(prices_with_fwd_pl, on=merge_on, how="inner")
+    if output_as_pandas:
+        df = df.to_pandas()
 
     # Compute IC for each horizon
     ic_results: dict[int, float] = {}
