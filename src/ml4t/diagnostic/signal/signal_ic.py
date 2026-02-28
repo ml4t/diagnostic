@@ -68,7 +68,9 @@ def compute_ic_series(
     if ic_df.height == 0:
         return [], []
 
-    ic_clean = ic_df.filter(pl.col("ic").is_not_null())
+    ic_clean = ic_df.filter(
+        (pl.col("n_obs") >= min_obs) & pl.col("ic").cast(pl.Float64).is_finite()
+    )
     dates = ic_clean[date_col].to_list()
     ic_values = ic_clean["ic"].cast(pl.Float64).to_list()
     return dates, ic_values
