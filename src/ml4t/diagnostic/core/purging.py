@@ -22,6 +22,26 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.splitters.calendar import TradingCalendar
 
 
+def _normalize_timezone_aware_inputs(
+    timestamps: pd.DatetimeIndex,
+    test_start: pd.Timestamp,
+    test_end: pd.Timestamp,
+) -> tuple[pd.DatetimeIndex, pd.Timestamp, pd.Timestamp]:
+    """Validate timezone awareness and normalize all inputs to UTC."""
+    if timestamps.tz is None:
+        raise ValueError("timestamps must be timezone-aware")
+    if test_start.tz is None:
+        raise ValueError("test_start must be timezone-aware")
+    if test_end.tz is None:
+        raise ValueError("test_end must be timezone-aware")
+
+    return (
+        timestamps.tz_convert("UTC"),
+        test_start.tz_convert("UTC"),
+        test_end.tz_convert("UTC"),
+    )
+
+
 def calculate_purge_indices(
     n_samples: int | None = None,
     test_start: int | pd.Timestamp | None = None,
@@ -107,24 +127,9 @@ def calculate_purge_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        # Auto-localize tz-naive timestamps to UTC with warning
-        if timestamps.tz is None:
-            warnings.warn(
-                "timestamps are timezone-naive; auto-localizing to UTC. "
-                "For explicit control, use timestamps.tz_localize('UTC').",
-                UserWarning,
-                stacklevel=2,
-            )
-            timestamps = timestamps.tz_localize("UTC")
-        if test_start.tz is None:
-            test_start = test_start.tz_localize("UTC")
-        if test_end.tz is None:
-            test_end = test_end.tz_localize("UTC")
-
-        # Convert all to UTC for consistent calculations
-        timestamps = timestamps.tz_convert("UTC")
-        test_start = test_start.tz_convert("UTC")
-        test_end = test_end.tz_convert("UTC")
+        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
+            timestamps, test_start, test_end
+        )
 
         if not isinstance(label_horizon, pd.Timedelta):
             # label_horizon is int - need to convert
@@ -244,24 +249,9 @@ def calculate_embargo_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        # Auto-localize tz-naive timestamps to UTC with warning
-        if timestamps.tz is None:
-            warnings.warn(
-                "timestamps are timezone-naive; auto-localizing to UTC. "
-                "For explicit control, use timestamps.tz_localize('UTC').",
-                UserWarning,
-                stacklevel=2,
-            )
-            timestamps = timestamps.tz_localize("UTC")
-        if test_start.tz is None:
-            test_start = test_start.tz_localize("UTC")
-        if test_end.tz is None:
-            test_end = test_end.tz_localize("UTC")
-
-        # Convert all to UTC for consistent calculations
-        timestamps = timestamps.tz_convert("UTC")
-        test_start = test_start.tz_convert("UTC")
-        test_end = test_end.tz_convert("UTC")
+        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
+            timestamps, test_start, test_end
+        )
 
         # Calculate embargo size if percentage given
         if embargo_pct is not None:
@@ -372,6 +362,13 @@ def apply_purging_and_embargo(
     >>> len(clean)
     85
     """
+    if timestamps is not None:
+        if not isinstance(test_start, pd.Timestamp) or not isinstance(test_end, pd.Timestamp):
+            raise TypeError("test_start and test_end must be Timestamps when using timestamps")
+        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
+            timestamps, test_start, test_end
+        )
+
     # Calculate indices to remove - convert to numpy arrays immediately
     purged_list = calculate_purge_indices(
         n_samples=n_samples,
