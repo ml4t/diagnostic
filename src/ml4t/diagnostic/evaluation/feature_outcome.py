@@ -99,7 +99,7 @@ class FeatureImportanceResults:
 
 
 @dataclass
-class FeatureOutcomeResult:
+class FeatureOutcomeAnalysisResult:
     """Comprehensive feature-outcome analysis results.
 
     This aggregates all Module C analyses into a single result object.
@@ -290,6 +290,10 @@ class FeatureOutcomeResult:
             recommendations.append(f"Analysis failed for: {error_features}{more}")
 
         return recommendations
+
+
+# Backward-compatible alias: evaluation-layer domain result.
+FeatureOutcomeResult = FeatureOutcomeAnalysisResult
 
 
 class FeatureOutcome:

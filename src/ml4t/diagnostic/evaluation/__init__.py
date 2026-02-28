@@ -89,6 +89,7 @@ from .excursion import (
 )
 from .feature_diagnostics import (
     FeatureDiagnostics,
+    FeatureDiagnosticsAnalysisResult,
     FeatureDiagnosticsConfig,
     FeatureDiagnosticsResult,
 )
@@ -96,6 +97,7 @@ from .feature_outcome import (
     FeatureICResults,
     FeatureImportanceResults,
     FeatureOutcome,
+    FeatureOutcomeAnalysisResult,
     FeatureOutcomeResult,
 )
 from .framework import EvaluationResult, Evaluator, get_metric_directionality
@@ -279,6 +281,7 @@ __all__: list[str] = [
     # Feature Diagnostics (Main API)
     "FeatureDiagnostics",
     "FeatureDiagnosticsConfig",
+    "FeatureDiagnosticsAnalysisResult",
     "FeatureDiagnosticsResult",
     # Stationarity tests
     "adf_test",
@@ -334,6 +337,7 @@ __all__: list[str] = [
     "ExcursionStats",
     # Feature-Outcome Analysis (Module C Orchestration)
     "FeatureOutcome",
+    "FeatureOutcomeAnalysisResult",
     "FeatureOutcomeResult",
     "FeatureICResults",
     "FeatureImportanceResults",

@@ -141,7 +141,7 @@ class FeatureDiagnosticsConfig:
 
 
 @dataclass
-class FeatureDiagnosticsResult:
+class FeatureDiagnosticsAnalysisResult:
     """Results from comprehensive feature diagnostic analysis.
 
     Aggregates results from all diagnostic modules with high-level summary.
@@ -661,6 +661,10 @@ class FeatureDiagnosticsResult:
             lines.append(f"  {i}. {rec}")
 
         return "\n".join(lines)
+
+
+# Backward-compatible alias: evaluation-layer domain result.
+FeatureDiagnosticsResult = FeatureDiagnosticsAnalysisResult
 
 
 class FeatureDiagnostics:

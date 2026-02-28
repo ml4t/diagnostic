@@ -1,8 +1,8 @@
-"""Configuration management for ml4t-diagnostic with Pydantic schema validation.
+"""Legacy configuration management for ml4t-diagnostic evaluation workflows.
 
-This module provides YAML-based configuration loading and validation
-for evaluation workflows, allowing users to define complex evaluation
-pipelines in configuration files with comprehensive validation.
+This module provides the original YAML-based evaluator configuration manager.
+New code should prefer the canonical configuration schemas under
+`ml4t.diagnostic.config`.
 """
 
 import os
@@ -205,6 +205,10 @@ class QEvalConfig(BaseModel):
             )
 
         return self
+
+
+# Explicit legacy alias to distinguish from `ml4t.diagnostic.config` models.
+LegacyEvaluationConfig = QEvalConfig
 
 
 class EvaluationConfigManager:
@@ -444,6 +448,9 @@ class EvaluationConfigManager:
         return f"EvaluationConfigManager(tier={self.config.evaluation.tier}, metrics={self.config.metrics})"
 
 
+# Explicit legacy alias to distinguish from `ml4t.diagnostic.config` managers.
+LegacyEvaluationConfigManager = EvaluationConfigManager
+
 # Backward compatibility alias
 EvaluationConfig = EvaluationConfigManager
 
@@ -541,3 +548,20 @@ def create_example_config(output_path: str | Path = "mlquant.evaluation.yaml") -
     with open(output_path, "w") as f:
         f.write(EXAMPLE_CONFIG)
     print(f"Example configuration created at: {output_path}")
+
+
+__all__ = [
+    "ConfigError",
+    "SplitterConfig",
+    "DataConfig",
+    "VisualizationConfig",
+    "LoggingConfig",
+    "EvaluatorConfig",
+    "QEvalConfig",
+    "LegacyEvaluationConfig",
+    "EvaluationConfigManager",
+    "LegacyEvaluationConfigManager",
+    "EvaluationConfig",
+    "load_config",
+    "create_example_config",
+]
