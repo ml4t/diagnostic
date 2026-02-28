@@ -735,8 +735,8 @@ class TestPortfolioAnalysisRolling:
 
         sharpe_series = result.sharpe[21]
         assert len(sharpe_series) == len(portfolio_analysis.returns)
-        # First 20 values should be NaN (need 21 for first window)
-        assert np.isnan(sharpe_series[0])
+        # First 20 values should be warmup-missing (null or NaN)
+        assert sharpe_series[0] is None or np.isnan(sharpe_series[0])
         assert np.isfinite(sharpe_series[-1])
 
     def test_rolling_volatility(self, portfolio_analysis):

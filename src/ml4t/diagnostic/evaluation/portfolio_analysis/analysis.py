@@ -350,19 +350,19 @@ class PortfolioAnalysis:
         for window in windows:
             if "sharpe" in metrics:
                 rolling_sharpe = self._rolling_sharpe(returns, window, rf, ppy)
-                result.sharpe[window] = pl.Series(f"sharpe_{window}d", rolling_sharpe)
+                result.sharpe[window] = pl.Series(f"sharpe_{window}d", rolling_sharpe).fill_nan(None)
 
             if "volatility" in metrics:
                 rolling_vol = self._rolling_volatility(returns, window, ppy)
-                result.volatility[window] = pl.Series(f"vol_{window}d", rolling_vol)
+                result.volatility[window] = pl.Series(f"vol_{window}d", rolling_vol).fill_nan(None)
 
             if "returns" in metrics:
                 rolling_ret = self._rolling_returns(returns, window)
-                result.returns[window] = pl.Series(f"ret_{window}d", rolling_ret)
+                result.returns[window] = pl.Series(f"ret_{window}d", rolling_ret).fill_nan(None)
 
             if "beta" in metrics and self.has_benchmark and self._benchmark is not None:
                 rolling_beta = self._rolling_beta(returns, self._benchmark, window)
-                result.beta[window] = pl.Series(f"beta_{window}d", rolling_beta)
+                result.beta[window] = pl.Series(f"beta_{window}d", rolling_beta).fill_nan(None)
 
         self._rolling_cache[cache_key] = result
         return result
@@ -729,6 +729,31 @@ class PortfolioAnalysis:
             index="year",
             on="month",
         ).sort("year")
+
+    def create_tear_sheet(
+        self,
+        theme: str | None = None,
+        cost_info: dict[str, str] | None = None,
+    ):
+        """Create comprehensive portfolio tear sheet.
+
+        Convenience method delegating to create_portfolio_dashboard().
+
+        Parameters
+        ----------
+        theme : str, optional
+            Plot theme ("default", "dark", "print", "presentation")
+        cost_info : dict[str, str] | None
+            Trading cost labels for display
+
+        Returns
+        -------
+        PortfolioTearSheet
+            Complete tear sheet with figures and metrics
+        """
+        from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
+
+        return create_portfolio_dashboard(self, theme=theme, cost_info=cost_info)
 
 
 __all__ = ["PortfolioAnalysis"]

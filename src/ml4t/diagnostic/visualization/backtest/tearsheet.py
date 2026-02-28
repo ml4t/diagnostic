@@ -430,20 +430,71 @@ def _create_section_figure(
             theme=theme,
         )
 
-    # Portfolio-level sections (use existing portfolio viz if available)
+    # Portfolio-level sections — delegate to portfolio visualization functions
+    # These require a returns series; create a PortfolioAnalysis on demand
     if section_name in (
         "equity_curve",
         "drawdowns",
         "monthly_returns",
         "annual_returns",
         "rolling_metrics",
+        "distribution",
     ):
-        # These would integrate with existing portfolio visualization
-        # For now, return None to skip
-        return None
+        if returns is None:
+            return None
 
-    if section_name in ("distribution", "tail_risk"):
-        # These would integrate with existing statistical visualization
+        import polars as pl
+
+        from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+        # Build PortfolioAnalysis from returns array
+        if isinstance(returns, np.ndarray):
+            ret_series = pl.Series("returns", returns)
+        else:
+            ret_series = returns
+
+        # Infer periods_per_year from data length and date range (heuristic)
+        n = len(ret_series)
+        periods_per_year = 252  # default daily
+        if n < 100:
+            periods_per_year = 12  # likely monthly
+
+        bench = None
+        if benchmark_returns is not None:
+            if isinstance(benchmark_returns, np.ndarray):
+                bench = pl.Series("benchmark", benchmark_returns)
+            else:
+                bench = benchmark_returns
+
+        pa = PortfolioAnalysis(ret_series, benchmark=bench, periods_per_year=periods_per_year)
+
+        if section_name == "equity_curve":
+            from ml4t.diagnostic.visualization.portfolio import plot_cumulative_returns
+            return plot_cumulative_returns(pa, theme=theme)
+
+        if section_name == "drawdowns":
+            from ml4t.diagnostic.visualization.portfolio import plot_drawdown_underwater
+            return plot_drawdown_underwater(pa, theme=theme)
+
+        if section_name == "monthly_returns":
+            from ml4t.diagnostic.visualization.portfolio import plot_monthly_returns_heatmap
+            return plot_monthly_returns_heatmap(pa, theme=theme)
+
+        if section_name == "annual_returns":
+            from ml4t.diagnostic.visualization.portfolio import plot_annual_returns_bar
+            return plot_annual_returns_bar(pa, theme=theme)
+
+        if section_name == "rolling_metrics":
+            from ml4t.diagnostic.visualization.portfolio import plot_rolling_sharpe
+            rolling = pa.compute_rolling_metrics(windows=[63, 252], metrics=["sharpe"])
+            return plot_rolling_sharpe(rolling_result=rolling, windows=[63, 252], theme=theme)
+
+        if section_name == "distribution":
+            from ml4t.diagnostic.visualization.portfolio import plot_returns_distribution
+            return plot_returns_distribution(pa, theme=theme)
+
+    if section_name == "tail_risk":
+        # Tail risk analysis not yet implemented
         return None
 
     # Unknown section

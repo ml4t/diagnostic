@@ -1,4 +1,4 @@
-# ML4T Evaluation - Mathematical rigor in quantitative finance validation
+# ML4T Diagnostic - Mathematical rigor in quantitative finance validation
 # Independent package configuration for standalone distribution
 
 [build-system]
@@ -86,8 +86,6 @@ dependencies = [
     "structlog>=23.0.0",
     # Trading calendars (for calendar-aware CV)
     "pandas_market_calendars>=4.0.0",
-    # Visualization (needed for viz module)
-    "plotly>=5.15.0",
     # Templating (needed for dashboard module)
     "jinja2>=3.1.0",
     "arch>=7.2.0",
@@ -228,11 +226,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ml4t/ml4t-evaluation"
-Documentation = "https://ml4t-evaluation.readthedocs.io"
-Repository = "https://github.com/ml4t/ml4t-evaluation"
-Issues = "https://github.com/ml4t/ml4t-evaluation/issues"
-Changelog = "https://github.com/ml4t/ml4t-evaluation/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/ml4t/diagnostic"
+Documentation = "https://ml4t-diagnostic.readthedocs.io"
+Repository = "https://github.com/ml4t/diagnostic"
+Issues = "https://github.com/ml4t/diagnostic/issues"
+Changelog = "https://github.com/ml4t/diagnostic/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
