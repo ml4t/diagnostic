@@ -21,14 +21,16 @@ Measure predictive power via rank correlation:
 from ml4t.diagnostic.evaluation.metrics import compute_ic_series
 
 ic_result = compute_ic_series(
-    factor=signal,
-    forward_returns=returns,
-    method='spearman'
+    predictions=pred_df,          # date, symbol, prediction
+    returns=ret_df,               # date, symbol, forward_return
+    pred_col="prediction",
+    ret_col="forward_return",
+    date_col="date",
+    entity_col="symbol",
+    method="spearman",
 )
 
-print(f"IC Mean: {ic_result.ic_mean:.4f}")
-print(f"IC Std: {ic_result.ic_std:.4f}")
-print(f"IC IR: {ic_result.ic_ir:.2f}")  # Risk-adjusted IC
+print(ic_result.head())
 ```
 
 ### IC Metrics
@@ -58,9 +60,9 @@ importance = compute_mdi_importance(
 ### Permutation Feature Importance (PFI)
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_pfi_importance
+from ml4t.diagnostic.evaluation.metrics import compute_permutation_importance
 
-importance = compute_pfi_importance(
+importance = compute_permutation_importance(
     model=model,
     X=X_test,
     y=y_test,
@@ -82,19 +84,19 @@ importance = compute_shap_importance(
 
 ### Consensus Ranking
 
-Combine multiple methods:
+Run a combined tear-sheet style comparison:
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_consensus_importance
+from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
 
-consensus = compute_consensus_importance(
-    results={
-        'mdi': mdi_result,
-        'pfi': pfi_result,
-        'shap': shap_result
-    },
-    weights={'mdi': 0.2, 'pfi': 0.4, 'shap': 0.4}
+analysis = analyze_ml_importance(
+    model=model,
+    X=X_train,
+    y=y_train,
+    methods=["mdi", "pfi", "shap"],
 )
+
+print(analysis["top_features_consensus"])
 ```
 
 ## Feature Interactions

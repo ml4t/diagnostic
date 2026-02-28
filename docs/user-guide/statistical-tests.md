@@ -11,14 +11,14 @@ from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
 result = deflated_sharpe_ratio(
     returns=strategy_returns,
-    num_trials=100,           # How many strategies tested
+    n_trials=100,             # How many strategies tested
     frequency='daily',        # Return frequency
-    annualization_factor=252
+    periods_per_year=252
 )
 
-print(f"Observed Sharpe: {result.sharpe:.2f}")
-print(f"Deflated Sharpe: {result.dsr:.2f}")
-print(f"p-value: {result.pvalue:.4f}")
+print(f"Observed Sharpe: {result.sharpe_ratio:.2f}")
+print(f"Deflated Sharpe: {result.deflated_sharpe:.2f}")
+print(f"p-value: {result.p_value:.4f}")
 ```
 
 ### When to Use DSR
@@ -43,15 +43,20 @@ See [Deflated Sharpe Ratio Guide](../guides/deflated-sharpe-ratio.md) for detail
 RAS detects backtest overfitting using complexity theory:
 
 ```python
-from ml4t.diagnostic.evaluation.stats import compute_ras
+from ml4t.diagnostic.evaluation.stats import rademacher_complexity, ras_sharpe_adjustment
 
-result = compute_ras(
-    returns=strategy_returns,
-    n_bootstraps=1000,
-    kappa=0.0  # 0 = pure complexity, 1 = Sharpe only
+# returns_matrix shape: (n_periods, n_strategies)
+complexity = rademacher_complexity(returns_matrix)
+observed_sharpes = returns_matrix.mean(axis=0) / returns_matrix.std(axis=0)
+result = ras_sharpe_adjustment(
+    observed_sharpe=observed_sharpes,
+    complexity=complexity,
+    n_samples=returns_matrix.shape[0],
+    n_strategies=returns_matrix.shape[1],
+    return_result=True,
 )
 
-print(f"RAS-adjusted Sharpe: {result.ras_sharpe:.2f}")
+print(f"Number significant after RAS: {result.n_significant}")
 print(f"Complexity penalty: {result.complexity:.4f}")
 ```
 
@@ -99,15 +104,13 @@ result = min_trl_fwer(
 Control the expected proportion of false positives:
 
 ```python
-from ml4t.diagnostic.evaluation.stats import fdr_correction
+from ml4t.diagnostic.evaluation.stats import benjamini_hochberg_fdr
 
-adjusted_pvalues = fdr_correction(
-    pvalues=[0.01, 0.03, 0.05, 0.08, 0.12],
-    method='bh'  # Benjamini-Hochberg
-)
+pvalues = [0.01, 0.03, 0.05, 0.08, 0.12]
+rejected = benjamini_hochberg_fdr(p_values=pvalues, alpha=0.05)
 
 # Identify discoveries
-discoveries = adjusted_pvalues < 0.05
+discoveries = rejected
 ```
 
 ### Methods
@@ -123,15 +126,16 @@ discoveries = adjusted_pvalues < 0.05
 Account for heteroskedasticity and autocorrelation:
 
 ```python
-from ml4t.diagnostic.evaluation.stats import compute_hac_stats
+from ml4t.diagnostic.evaluation.stats import hac_adjusted_ic
 
-result = compute_hac_stats(
-    ic_series=information_coefficients,
-    bandwidth='auto'  # Automatic bandwidth selection
+result = hac_adjusted_ic(
+    predictions=predictions,
+    returns=forward_returns,
+    return_details=True,
 )
 
-print(f"HAC t-stat: {result.tstat:.2f}")
-print(f"HAC std error: {result.std_error:.4f}")
+print(f"HAC t-stat: {result['t_stat']:.2f}")
+print(f"HAC std error: {result['bootstrap_std']:.4f}")
 ```
 
 ## Probability of Backtest Overfitting (PBO)
@@ -139,14 +143,14 @@ print(f"HAC std error: {result.std_error:.4f}")
 Estimate the probability that an optimal strategy is overfit:
 
 ```python
-from ml4t.diagnostic.evaluation.stats import probability_backtest_overfitting
+from ml4t.diagnostic.evaluation.stats import compute_pbo
 
-pbo = probability_backtest_overfitting(
-    strategy_returns_matrix,  # Returns from all tried strategies
-    n_partitions=16
+result = compute_pbo(
+    is_performance=is_returns_matrix,
+    oos_performance=oos_returns_matrix,
 )
 
-print(f"PBO: {pbo:.1%}")  # e.g., "32.5%"
+print(f"PBO: {result.pbo:.1%}")  # e.g., "32.5%"
 ```
 
 ### Interpretation

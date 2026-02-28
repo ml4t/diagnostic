@@ -48,38 +48,34 @@ pip install ml4t-diagnostic[all]  # Everything
 ### Signal Analysis
 
 ```python
-from ml4t.diagnostic.evaluation import SignalAnalysis
+from ml4t.diagnostic import analyze_signal
 
-analyzer = SignalAnalysis(
-    signal=factor_data,
-    returns=forward_returns,
-    periods=[1, 5, 21],
+result = analyze_signal(
+    factor=factor_data,  # date, asset, factor
+    prices=price_data,   # date, asset, price
+    periods=(1, 5, 21),
 )
 
-# IC with HAC adjustment for autocorrelation
-ic_result = analyzer.compute_ic_analysis()
-print(f"IC: {ic_result.ic_mean:.4f}, HAC t-stat: {ic_result.hac_tstat:.2f}")
-
-# Quantile returns
-quantile_result = analyzer.compute_quantile_analysis()
-print(f"Q5-Q1 spread: {quantile_result.spread:.2%}")
+print(f"IC (1D): {result.ic['1D']:.4f}")
+print(f"IC t-stat (1D): {result.ic_t_stat['1D']:.2f}")
+print(f"Q5-Q1 spread (1D): {result.spread['1D']:.2%}")
 ```
 
 ### Deflated Sharpe Ratio
 
 ```python
-from ml4t.diagnostic.evaluation import stats
+from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
 # Accounts for multiple testing
-dsr_result = stats.compute_dsr(
+dsr_result = deflated_sharpe_ratio(
     returns=strategy_returns,
-    benchmark_sr=0.0,
+    benchmark_sharpe=0.0,
     n_trials=100,
 )
 
-print(f"Sharpe: {dsr_result['sr']:.2f}")
-print(f"Deflated Sharpe: {dsr_result['dsr']:.2f}")
-print(f"Significant: {dsr_result['is_significant']}")
+print(f"Sharpe: {dsr_result.sharpe_ratio:.2f}")
+print(f"Deflated Sharpe: {dsr_result.deflated_sharpe:.2f}")
+print(f"Significant: {dsr_result.is_significant}")
 ```
 
 ### Feature Importance
