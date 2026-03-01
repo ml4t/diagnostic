@@ -43,6 +43,7 @@ import polars as pl
 
 from ml4t.diagnostic.config.feature_config import DiagnosticConfig
 from ml4t.diagnostic.evaluation.drift import DriftSummaryResult, analyze_drift
+from ml4t.diagnostic.evaluation.metrics.feature_outcome import analyze_feature_outcome_series
 from ml4t.diagnostic.utils.dependencies import DEPS, warn_if_missing
 
 
@@ -495,38 +496,41 @@ class FeatureOutcome:
             if verbose:
                 print("Running IC analysis...")
 
+            ic_method = (
+                self.config.ic.method.value
+                if hasattr(self.config.ic.method, "value")
+                else str(self.config.ic.method)
+            )
             for i, feature in enumerate(feature_names, 1):
                 try:
-                    feature_data = features[feature].to_numpy().astype(np.float64)
-                    outcome_data = outcomes_series.to_numpy().astype(np.float64)
+                    feature_data = features[feature].to_numpy()
+                    outcome_data = outcomes_series.to_numpy()
 
-                    # Remove NaN pairs
-                    mask = ~(np.isnan(feature_data) | np.isnan(outcome_data))
-                    feature_clean = feature_data[mask]
-                    outcome_clean = outcome_data[mask]
-
-                    if len(feature_clean) < 10:
+                    if np.sum(~(np.isnan(feature_data) | np.isnan(outcome_data))) < 10:
                         errors[feature] = "Insufficient non-NaN samples"
                         continue
 
-                    # Compute basic IC (Spearman correlation as proxy)
-                    from scipy.stats import spearmanr
-
-                    ic_mean, p_value = spearmanr(feature_clean, outcome_clean)
-                    ic_std = np.std(feature_clean)  # Simplified
-                    ic_ir = ic_mean / (ic_std + 1e-10)
+                    # Canonical metrics-layer series analysis (compatibility adapter path).
+                    series_result = analyze_feature_outcome_series(
+                        predictions=feature_data,
+                        outcomes=outcome_data,
+                        method=ic_method,
+                        include_monotonicity=False,
+                    )
 
                     ic_results[feature] = FeatureICResults(
                         feature=feature,
-                        ic_mean=ic_mean,
-                        ic_std=ic_std,
-                        ic_ir=ic_ir,
-                        p_value=p_value,
-                        n_observations=len(feature_clean),
+                        ic_mean=series_result["ic_mean"],
+                        ic_std=series_result["ic_std"],
+                        ic_ir=series_result["ic_ir"],
+                        p_value=series_result["p_value"],
+                        n_observations=series_result["n_observations"],
                     )
 
                     if verbose and i % max(1, len(feature_names) // 10) == 0:
-                        print(f"  [{i}/{len(feature_names)}] {feature}: IC={ic_mean:.3f}")
+                        print(
+                            f"  [{i}/{len(feature_names)}] {feature}: IC={series_result['ic_mean']:.3f}"
+                        )
 
                 except Exception as e:
                     errors[feature] = str(e)

@@ -19,11 +19,94 @@ from ml4t.diagnostic.evaluation.metrics.ic_statistics import (
 from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_ir,
     compute_ic_series,
+    information_coefficient,
 )
 from ml4t.diagnostic.evaluation.metrics.monotonicity import compute_monotonicity
 
 if TYPE_CHECKING:
     pass
+
+
+def analyze_feature_outcome_series(
+    predictions: np.ndarray | pd.Series | pl.Series,
+    outcomes: np.ndarray | pd.Series | pl.Series,
+    *,
+    method: str = "spearman",
+    include_monotonicity: bool = False,
+    n_quantiles: int = 5,
+) -> dict[str, Any]:
+    """Analyze single-series feature-outcome relationship.
+
+    This helper is the canonical metrics-layer engine for feature-vs-outcome
+    series analysis (one feature aligned to one outcome series). It is used by
+    `FeatureOutcome` as a compatibility adapter.
+    """
+    pred_array = np.asarray(predictions, dtype=np.float64).reshape(-1)
+    out_array = np.asarray(outcomes, dtype=np.float64).reshape(-1)
+
+    if len(pred_array) != len(out_array):
+        raise ValueError(
+            f"Predictions ({len(pred_array)}) and outcomes ({len(out_array)}) must have same length"
+        )
+
+    valid_mask = ~(np.isnan(pred_array) | np.isnan(out_array))
+    pred_clean = pred_array[valid_mask]
+    out_clean = out_array[valid_mask]
+    n_observations = int(len(pred_clean))
+
+    if n_observations == 0:
+        return {
+            "ic_mean": np.nan,
+            "ic_std": np.nan,
+            "ic_ir": np.nan,
+            "p_value": np.nan,
+            "n_observations": 0,
+            "monotonicity_analysis": None,
+        }
+
+    if n_observations < 3:
+        # Keep contract stable for small samples while signaling weak evidence.
+        ic_val = float(information_coefficient(pred_clean, out_clean, method=method))
+        return {
+            "ic_mean": ic_val,
+            "ic_std": float(np.std(pred_clean)),
+            "ic_ir": float(ic_val / (np.std(pred_clean) + 1e-10)),
+            "p_value": 1.0,
+            "n_observations": n_observations,
+            "monotonicity_analysis": None,
+        }
+
+    from scipy.stats import pearsonr, spearmanr
+
+    method_lower = method.lower()
+    if method_lower == "spearman":
+        ic_mean, p_value = spearmanr(pred_clean, out_clean)
+    elif method_lower == "pearson":
+        ic_mean, p_value = pearsonr(pred_clean, out_clean)
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'spearman' or 'pearson'.")
+
+    ic_mean_f = float(ic_mean)
+    ic_std_f = float(np.std(pred_clean))
+    ic_ir_f = float(ic_mean_f / (ic_std_f + 1e-10))
+
+    monotonicity_analysis: dict[str, Any] | None = None
+    if include_monotonicity:
+        monotonicity_analysis = compute_monotonicity(
+            features=pred_clean,
+            outcomes=out_clean,
+            n_quantiles=n_quantiles,
+            method=method_lower,
+        )
+
+    return {
+        "ic_mean": ic_mean_f,
+        "ic_std": ic_std_f,
+        "ic_ir": ic_ir_f,
+        "p_value": float(p_value),
+        "n_observations": n_observations,
+        "monotonicity_analysis": monotonicity_analysis,
+    }
 
 
 def analyze_feature_outcome(
