@@ -89,19 +89,11 @@ class TestExtractionSettings:
         with pytest.warns(UserWarning, match="may dilute signal"):
             ExtractionSettings(n_worst=150)
 
-    @pytest.mark.xfail(
-        reason="Pydantic field validation order: percentile_mode is validated after n_worst, "
-        "so validators see percentile_mode=False. This is a design limitation."
-    )
     def test_warns_on_large_percentile(self):
         """Test warning when percentile is >50%."""
         with pytest.warns(UserWarning, match="includes majority"):
             ExtractionSettings(n_worst=60, percentile_mode=True)
 
-    @pytest.mark.xfail(
-        reason="Pydantic field validation order: percentile_mode is validated after n_worst, "
-        "so validators see percentile_mode=False. This is a design limitation."
-    )
     def test_invalid_percentile_raises_error(self):
         """Test that invalid percentile value raises error."""
         with pytest.raises(ValueError, match="Percentile must be 1-100"):
