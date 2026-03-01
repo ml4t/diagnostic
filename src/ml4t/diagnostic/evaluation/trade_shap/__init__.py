@@ -22,13 +22,11 @@ from ml4t.diagnostic.evaluation.trade_shap.alignment import (
     TimestampAligner,
 )
 from ml4t.diagnostic.evaluation.trade_shap.characterize import (
-    CharacterizationConfig,
     FeatureStatistics,
     PatternCharacterizer,
     benjamini_hochberg,
 )
 from ml4t.diagnostic.evaluation.trade_shap.cluster import (
-    ClusteringConfig,
     HierarchicalClusterer,
     compute_centroids,
     compute_cluster_sizes,
@@ -36,7 +34,6 @@ from ml4t.diagnostic.evaluation.trade_shap.cluster import (
 )
 from ml4t.diagnostic.evaluation.trade_shap.explain import TradeShapExplainer
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses import (
-    HypothesisConfig,
     HypothesisGenerator,
     Template,
     TemplateMatcher,
@@ -74,18 +71,15 @@ __all__ = [
     "NormalizationType",
     # Clustering
     "HierarchicalClusterer",
-    "ClusteringConfig",
     "find_optimal_clusters",
     "compute_cluster_sizes",
     "compute_centroids",
     # Characterization
     "PatternCharacterizer",
-    "CharacterizationConfig",
     "FeatureStatistics",
     "benjamini_hochberg",
     # Hypothesis generation
     "HypothesisGenerator",
-    "HypothesisConfig",
     "TemplateMatcher",
     "Template",
     "load_templates",

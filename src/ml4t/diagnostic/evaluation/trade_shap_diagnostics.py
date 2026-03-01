@@ -32,17 +32,11 @@ from numpy.typing import NDArray
 from ml4t.diagnostic.evaluation.trade_shap import (
     # Alignment
     AlignmentResult,
-    # Characterization
-    CharacterizationConfig,
-    # Clustering
-    ClusteringConfig,
     ClusteringResult,
     # Result models
     ErrorPattern,
     FeatureStatistics,
     HierarchicalClusterer,
-    # Hypothesis generation
-    HypothesisConfig,
     HypothesisGenerator,
     # Normalization
     NormalizationType,
@@ -66,6 +60,15 @@ from ml4t.diagnostic.evaluation.trade_shap import (
     normalize_l1,
     normalize_l2,
     standardize,
+)
+from ml4t.diagnostic.evaluation.trade_shap.characterize import (
+    CharacterizationConfig as _CharacterizationConfig,
+)
+from ml4t.diagnostic.evaluation.trade_shap.cluster import (
+    ClusteringConfig as _ClusteringConfig,
+)
+from ml4t.diagnostic.evaluation.trade_shap.hypotheses import (
+    HypothesisConfig as _HypothesisConfig,
 )
 
 if TYPE_CHECKING:
@@ -350,7 +353,7 @@ class TradeShapAnalyzer:
 
         # Get clustering config
         clustering_cfg = self.config.clustering
-        config = ClusteringConfig(
+        config = _ClusteringConfig(
             min_cluster_size=clustering_cfg.min_cluster_size,
             min_trades_for_clustering=self.config.min_trades_for_clustering,
             distance_metric=clustering_cfg.distance_metric,
@@ -437,7 +440,7 @@ class TradeShapAnalyzer:
                     centroids[c] = shap_vectors[c_mask].mean(axis=0)
 
         # Use characterizer
-        config = CharacterizationConfig(top_n_features=top_n)
+        config = _CharacterizationConfig(top_n_features=top_n)
 
         characterizer = PatternCharacterizer(
             feature_names=feature_names,
@@ -478,7 +481,7 @@ class TradeShapAnalyzer:
         """Get hypothesis generator for custom hypothesis generation."""
         if self._hypothesis_generator is None:
             hypothesis_cfg = self.config.hypothesis
-            config = HypothesisConfig(
+            config = _HypothesisConfig(
                 template_library=hypothesis_cfg.template_library,
                 min_confidence=hypothesis_cfg.min_confidence,
                 max_actions=hypothesis_cfg.max_per_cluster,
@@ -521,12 +524,9 @@ __all__ = [
     "TimestampAligner",
     "AlignmentResult",
     "HierarchicalClusterer",
-    "ClusteringConfig",
     "PatternCharacterizer",
-    "CharacterizationConfig",
     "FeatureStatistics",
     "HypothesisGenerator",
-    "HypothesisConfig",
     # Utilities
     "normalize",
     "normalize_l1",
