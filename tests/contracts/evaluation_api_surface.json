@@ -12,7 +12,6 @@
     "ValidationFoldResult",
     "ValidationResult",
     "FeatureDiagnostics",
-    "FeatureDiagnosticsConfig",
     "FeatureDiagnosticsAnalysisResult",
     "FeatureDiagnosticsResult",
     "TradeAnalysis",

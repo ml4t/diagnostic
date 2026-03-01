@@ -8,7 +8,7 @@
       "validated_cross_val_score",
       "BarrierAnalysis",
       "FeatureDiagnostics",
-      "FeatureDiagnosticsConfig",
+      "DiagnosticConfig",
       "FeatureDiagnosticsResult",
       "TradeAnalysis",
       "PortfolioAnalysis",

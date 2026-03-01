@@ -5,10 +5,10 @@ Use this module for integration-safe imports. The package-level and
 in a future release.
 """
 
+from ml4t.diagnostic.config import DiagnosticConfig
 from ml4t.diagnostic.evaluation.barrier_analysis import BarrierAnalysis
 from ml4t.diagnostic.evaluation.feature_diagnostics import (
     FeatureDiagnostics,
-    FeatureDiagnosticsConfig,
     FeatureDiagnosticsResult,
 )
 from ml4t.diagnostic.evaluation.metrics import (
@@ -42,7 +42,7 @@ __all__ = [
     "validated_cross_val_score",
     "BarrierAnalysis",
     "FeatureDiagnostics",
-    "FeatureDiagnosticsConfig",
+    "DiagnosticConfig",
     "FeatureDiagnosticsResult",
     "TradeAnalysis",
     "PortfolioAnalysis",

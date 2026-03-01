@@ -4,77 +4,87 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
+from ml4t.diagnostic.config import (
+    ACFSettings,
+    DiagnosticConfig,
+    DistributionSettings,
+    StationaritySettings,
+    VolatilitySettings,
+)
 from ml4t.diagnostic.errors import ValidationError
 from ml4t.diagnostic.evaluation.feature_diagnostics import (
     FeatureDiagnostics,
-    FeatureDiagnosticsConfig,
     FeatureDiagnosticsResult,
 )
 
 
-class TestFeatureDiagnosticsConfig:
-    """Tests for FeatureDiagnosticsConfig."""
+class TestDiagnosticConfigForFeatureDiagnostics:
+    """Tests for canonical feature diagnostics configuration."""
 
     def test_default_config(self):
         """Test default configuration."""
-        config = FeatureDiagnosticsConfig()
+        config = DiagnosticConfig()
 
-        assert config.run_stationarity is True
-        assert config.run_autocorrelation is True
-        assert config.run_volatility is True
-        assert config.run_distribution is True
-        assert config.alpha == 0.05
+        assert config.stationarity.enabled is True
+        assert config.acf.enabled is True
+        assert config.volatility.enabled is True
+        assert config.distribution.enabled is True
+        assert config.distribution.alpha == 0.05
         assert config.verbose is False
 
     def test_custom_config(self):
         """Test custom configuration."""
-        config = FeatureDiagnosticsConfig(
-            run_stationarity=False,
-            run_autocorrelation=True,
-            run_volatility=False,
-            run_distribution=True,
-            alpha=0.01,
+        config = DiagnosticConfig(
+            stationarity=StationaritySettings(enabled=False),
+            acf=ACFSettings(enabled=True),
+            volatility=VolatilitySettings(enabled=False),
+            distribution=DistributionSettings(enabled=True, alpha=0.01),
             verbose=True,
         )
 
-        assert config.run_stationarity is False
-        assert config.run_autocorrelation is True
-        assert config.run_volatility is False
-        assert config.run_distribution is True
-        assert config.alpha == 0.01
+        assert config.stationarity.enabled is False
+        assert config.acf.enabled is True
+        assert config.volatility.enabled is False
+        assert config.distribution.enabled is True
+        assert config.distribution.alpha == 0.01
         assert config.verbose is True
 
     def test_invalid_alpha(self):
         """Test validation of alpha parameter."""
-        with pytest.raises(ValidationError, match="alpha must be in"):
-            FeatureDiagnosticsConfig(alpha=0.0)
+        with pytest.raises(PydanticValidationError):
+            DistributionSettings(alpha=0.0)
 
-        with pytest.raises(ValidationError, match="alpha must be in"):
-            FeatureDiagnosticsConfig(alpha=1.0)
+        with pytest.raises(PydanticValidationError):
+            DistributionSettings(alpha=1.0)
 
-        with pytest.raises(ValidationError, match="alpha must be in"):
-            FeatureDiagnosticsConfig(alpha=-0.05)
+        with pytest.raises(PydanticValidationError):
+            DistributionSettings(alpha=-0.05)
 
     def test_no_modules_enabled(self):
         """Test validation when no modules enabled."""
         with pytest.raises(ValidationError, match="At least one diagnostic module"):
-            FeatureDiagnosticsConfig(
-                run_stationarity=False,
-                run_autocorrelation=False,
-                run_volatility=False,
-                run_distribution=False,
+            FeatureDiagnostics(
+                DiagnosticConfig(
+                    stationarity=StationaritySettings(enabled=False),
+                    acf=ACFSettings(enabled=False),
+                    volatility=VolatilitySettings(enabled=False),
+                    distribution=DistributionSettings(enabled=False),
+                )
             )
 
     def test_specific_test_selection(self):
         """Test selecting specific tests within modules."""
-        config = FeatureDiagnosticsConfig(
-            stationarity_tests=["adf", "kpss"],
-            compute_tails=False,
+        config = DiagnosticConfig(
+            stationarity=StationaritySettings(adf_enabled=True, kpss_enabled=True, pp_enabled=False),
+            distribution=DistributionSettings(compute_tails=False),
         )
 
-        assert config.stationarity_tests == ["adf", "kpss"]
-        assert config.compute_tails is False
+        assert config.stationarity.adf_enabled is True
+        assert config.stationarity.kpss_enabled is True
+        assert config.stationarity.pp_enabled is False
+        assert config.distribution.compute_tails is False
 
 
 class TestFeatureDiagnostics:
@@ -135,13 +145,13 @@ class TestFeatureDiagnostics:
         """Test initialization with default config."""
         diagnostics = FeatureDiagnostics()
         assert diagnostics.config is not None
-        assert diagnostics.config.run_stationarity is True
+        assert diagnostics.config.stationarity.enabled is True
 
     def test_init_custom_config(self):
         """Test initialization with custom config."""
-        config = FeatureDiagnosticsConfig(alpha=0.01)
+        config = DiagnosticConfig(stationarity=StationaritySettings(significance_level=0.01))
         diagnostics = FeatureDiagnostics(config)
-        assert diagnostics.config.alpha == 0.01
+        assert diagnostics.config.stationarity.significance_level == 0.01
 
     def test_run_diagnostics_white_noise(self, white_noise):
         """Test diagnostics on white noise (ideal feature)."""
@@ -275,11 +285,11 @@ class TestFeatureDiagnostics:
     def test_run_diagnostics_selective_modules(self, white_noise):
         """Test running only selected modules."""
         # Only stationarity
-        config = FeatureDiagnosticsConfig(
-            run_stationarity=True,
-            run_autocorrelation=False,
-            run_volatility=False,
-            run_distribution=False,
+        config = DiagnosticConfig(
+            stationarity=StationaritySettings(enabled=True),
+            acf=ACFSettings(enabled=False),
+            volatility=VolatilitySettings(enabled=False),
+            distribution=DistributionSettings(enabled=False),
         )
 
         diagnostics = FeatureDiagnostics(config)
@@ -497,11 +507,11 @@ class TestFeatureDiagnosticsResult:
 
     def test_result_with_partial_modules(self):
         """Test result with only some modules run."""
-        config = FeatureDiagnosticsConfig(
-            run_stationarity=True,
-            run_autocorrelation=False,
-            run_volatility=False,
-            run_distribution=True,
+        config = DiagnosticConfig(
+            stationarity=StationaritySettings(enabled=True),
+            acf=ACFSettings(enabled=False),
+            volatility=VolatilitySettings(enabled=False),
+            distribution=DistributionSettings(enabled=True),
         )
 
         diagnostics = FeatureDiagnostics(config)
@@ -579,7 +589,7 @@ class TestVerboseMode:
 
         caplog.set_level(logging.INFO)
 
-        config = FeatureDiagnosticsConfig(verbose=True)
+        config = DiagnosticConfig(verbose=True)
         diagnostics = FeatureDiagnostics(config)
 
         np.random.seed(42)

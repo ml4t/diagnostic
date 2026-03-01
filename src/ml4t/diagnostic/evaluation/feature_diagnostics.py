@@ -18,7 +18,7 @@ Key Concept:
     a comprehensive health check of feature quality.
 
 Typical Workflow:
-    1. Create FeatureDiagnosticsConfig specifying which tests to run
+    1. Create DiagnosticConfig specifying which tests to run
     2. Initialize FeatureDiagnostics with config
     3. Call run_diagnostics() on feature time series
     4. Review FeatureDiagnosticsResult for insights
@@ -27,21 +27,14 @@ Typical Workflow:
 
 Example:
     >>> import numpy as np
-    >>> from ml4t.diagnostic.evaluation.feature_diagnostics import (
-    ...     FeatureDiagnostics,
-    ...     FeatureDiagnosticsConfig
-    ... )
+    >>> from ml4t.diagnostic.config import DiagnosticConfig
+    >>> from ml4t.diagnostic.evaluation.feature_diagnostics import FeatureDiagnostics
     >>>
     >>> # Create feature (e.g., returns signal)
     >>> feature = np.random.randn(1000) * 0.02  # ~2% volatility white noise
     >>>
     >>> # Configure diagnostics
-    >>> config = FeatureDiagnosticsConfig(
-    ...     run_stationarity=True,
-    ...     run_autocorrelation=True,
-    ...     run_volatility=True,
-    ...     run_distribution=True
-    ... )
+    >>> config = DiagnosticConfig()
     >>>
     >>> # Run diagnostics
     >>> diagnostics = FeatureDiagnostics(config)
@@ -61,13 +54,13 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
+from ml4t.diagnostic.config.feature_config import DiagnosticConfig
 from ml4t.diagnostic.errors import ValidationError
 from ml4t.diagnostic.logging import get_logger
 
@@ -78,66 +71,6 @@ from .stationarity import StationarityAnalysisResult, analyze_stationarity
 from .volatility import VolatilityAnalysisResult, analyze_volatility
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class FeatureDiagnosticsConfig:
-    """Configuration for feature diagnostic analysis.
-
-    Controls which diagnostic tests are run and their parameters.
-
-    Attributes:
-        run_stationarity: Whether to run stationarity tests (ADF, KPSS, PP)
-        run_autocorrelation: Whether to run autocorrelation analysis (ACF, PACF)
-        run_volatility: Whether to run volatility clustering tests (ARCH-LM, GARCH)
-        run_distribution: Whether to run distribution diagnostics (moments, normality, tails)
-        alpha: Significance level for statistical tests (default: 0.05)
-        stationarity_tests: Which stationarity tests to run
-        max_acf_lags: Maximum lags for ACF/PACF (None = auto-determine)
-        arch_lm_lags: Lags for ARCH-LM test (None = auto-determine)
-        fit_garch: Whether to fit GARCH model when ARCH effects detected
-        normality_tests: Which normality tests to run
-        tail_analysis: Whether to perform heavy tail analysis
-        verbose: Whether to log detailed progress information
-    """
-
-    run_stationarity: bool = True
-    run_autocorrelation: bool = True
-    run_volatility: bool = True
-    run_distribution: bool = True
-
-    alpha: float = 0.05
-
-    # Stationarity options
-    stationarity_tests: list[Literal["adf", "kpss", "pp"]] | None = None
-
-    # Autocorrelation options
-    max_acf_lags: int | None = None
-
-    # Volatility options
-    arch_lags: int = 12
-    fit_garch: bool = True
-
-    # Distribution options
-    compute_tails: bool = True
-
-    # Logging
-    verbose: bool = False
-
-    def __post_init__(self):
-        """Validate configuration."""
-        if not (0 < self.alpha < 1):
-            raise ValidationError(f"alpha must be in (0, 1), got {self.alpha}")
-
-        if not any(
-            [
-                self.run_stationarity,
-                self.run_autocorrelation,
-                self.run_volatility,
-                self.run_distribution,
-            ]
-        ):
-            raise ValidationError("At least one diagnostic module must be enabled")
 
 
 @dataclass
@@ -675,13 +608,11 @@ class FeatureDiagnostics:
 
     Example:
         >>> import numpy as np
-        >>> from ml4t.diagnostic.evaluation.feature_diagnostics import (
-        ...     FeatureDiagnostics,
-        ...     FeatureDiagnosticsConfig
-        ... )
+        >>> from ml4t.diagnostic.config import DiagnosticConfig
+        >>> from ml4t.diagnostic.evaluation.feature_diagnostics import FeatureDiagnostics
         >>>
         >>> # Configure and run diagnostics
-        >>> config = FeatureDiagnosticsConfig()
+        >>> config = DiagnosticConfig()
         >>> diagnostics = FeatureDiagnostics(config)
         >>>
         >>> feature = np.random.randn(1000)
@@ -691,13 +622,22 @@ class FeatureDiagnostics:
         >>> print(f"Health Score: {result.health_score:.2f}")
     """
 
-    def __init__(self, config: FeatureDiagnosticsConfig | None = None):
+    def __init__(self, config: DiagnosticConfig | None = None):
         """Initialize FeatureDiagnostics with configuration.
 
         Args:
             config: Configuration object. If None, uses defaults (all tests enabled).
         """
-        self.config = config or FeatureDiagnosticsConfig()
+        self.config = config or DiagnosticConfig()
+        if not any(
+            [
+                self.config.stationarity.enabled,
+                self.config.acf.enabled,
+                self.config.volatility.enabled,
+                self.config.distribution.enabled,
+            ]
+        ):
+            raise ValidationError("At least one diagnostic module must be enabled")
 
     def run_diagnostics(
         self,
@@ -751,58 +691,69 @@ class FeatureDiagnostics:
         distribution_result = None
 
         # Run stationarity tests
-        if self.config.run_stationarity:
+        if self.config.stationarity.enabled:
             if self.config.verbose:
                 logger.info("  Running stationarity tests...")
 
             try:
+                include_tests = [
+                    name
+                    for name, enabled in (
+                        ("adf", self.config.stationarity.adf_enabled),
+                        ("kpss", self.config.stationarity.kpss_enabled),
+                        ("pp", self.config.stationarity.pp_enabled),
+                    )
+                    if enabled
+                ]
                 stationarity_result = analyze_stationarity(
                     data_array,
-                    alpha=self.config.alpha,
-                    include_tests=self.config.stationarity_tests,
+                    alpha=self.config.stationarity.significance_level,
+                    include_tests=include_tests,
                 )
             except Exception as e:
                 logger.warning(f"Stationarity analysis failed: {e}")
 
         # Run autocorrelation analysis
-        if self.config.run_autocorrelation:
+        if self.config.acf.enabled:
             if self.config.verbose:
                 logger.info("  Running autocorrelation analysis...")
 
             try:
                 autocorrelation_result = analyze_autocorrelation(
                     data_array,
-                    alpha=self.config.alpha,
-                    max_lags=self.config.max_acf_lags,
+                    alpha=self.config.acf.alpha,
+                    max_lags=(
+                        None if self.config.acf.n_lags == "auto" else int(self.config.acf.n_lags)
+                    ),
                 )
             except Exception as e:
                 logger.warning(f"Autocorrelation analysis failed: {e}")
 
         # Run volatility clustering tests
-        if self.config.run_volatility:
+        if self.config.volatility.enabled:
             if self.config.verbose:
                 logger.info("  Running volatility clustering tests...")
 
             try:
                 volatility_result = analyze_volatility(
                     data_array,
-                    arch_lags=self.config.arch_lags,
-                    fit_garch_model=self.config.fit_garch,
-                    alpha=self.config.alpha,
+                    arch_lags=self.config.volatility.arch_lags,
+                    fit_garch_model=self.config.volatility.fit_garch_model,
+                    alpha=self.config.volatility.significance_level,
                 )
             except Exception as e:
                 logger.warning(f"Volatility analysis failed: {e}")
 
         # Run distribution diagnostics
-        if self.config.run_distribution:
+        if self.config.distribution.enabled:
             if self.config.verbose:
                 logger.info("  Running distribution diagnostics...")
 
             try:
                 distribution_result = analyze_distribution(
                     data_array,
-                    alpha=self.config.alpha,
-                    compute_tails=self.config.compute_tails,
+                    alpha=self.config.distribution.alpha,
+                    compute_tails=self.config.distribution.compute_tails,
                 )
             except Exception as e:
                 logger.warning(f"Distribution analysis failed: {e}")

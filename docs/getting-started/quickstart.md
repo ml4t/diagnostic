@@ -58,9 +58,10 @@ print(f"IC t-stat (1D): {result.ic_t_stat['1D']:.2f}")
 Analyze feature importance and interactions:
 
 ```python
-from ml4t.diagnostic.evaluation import FeatureDiagnostics, FeatureDiagnosticsConfig
+from ml4t.diagnostic.config import DiagnosticConfig
+from ml4t.diagnostic.evaluation import FeatureDiagnostics
 
-config = FeatureDiagnosticsConfig(run_stationarity=True, run_distribution=True)
+config = DiagnosticConfig()
 fd = FeatureDiagnostics(config=config)
 result = fd.run_diagnostics(features_df["feature_1"], name="feature_1")
 print(result.summary())

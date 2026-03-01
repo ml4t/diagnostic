@@ -92,7 +92,6 @@ from .excursion import (
 from .feature_diagnostics import (
     FeatureDiagnostics,
     FeatureDiagnosticsAnalysisResult,
-    FeatureDiagnosticsConfig,
     FeatureDiagnosticsResult,
 )
 from .framework import EvaluationResult, Evaluator, get_metric_directionality
@@ -252,7 +251,6 @@ __all__: list[str] = [
     "ValidationFoldResult",
     "ValidationResult",
     "FeatureDiagnostics",
-    "FeatureDiagnosticsConfig",
     "FeatureDiagnosticsAnalysisResult",
     "FeatureDiagnosticsResult",
     "TradeAnalysis",
