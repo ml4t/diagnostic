@@ -11,6 +11,7 @@ import pytest
 
 from ml4t.diagnostic.config.trade_analysis_config import (
     AlignmentSettings,
+    CharacterizationSettings,
     ClusteringSettings,
     ExtractionSettings,
     FilterSettings,
@@ -194,12 +195,25 @@ class TestHypothesisSettings:
             assert settings.template_library == lib
 
 
+class TestCharacterizationSettings:
+    """Tests for CharacterizationSettings."""
+
+    def test_default_values(self):
+        """Test default values."""
+        settings = CharacterizationSettings()
+        assert settings.alpha == 0.05
+        assert settings.top_n_features == 5
+        assert settings.use_fdr_correction is True
+        assert settings.min_samples_per_test == 3
+
+
 class TestTradeConfig:
     """Tests for TradeConfig consolidated configuration."""
 
     def test_default_values(self):
         """Test default values."""
         config = TradeConfig()
+        assert config.characterization.top_n_features == 5
         assert config.min_trades_for_clustering == 20
         assert config.generate_visualizations is True
         assert config.cache_shap_vectors is True

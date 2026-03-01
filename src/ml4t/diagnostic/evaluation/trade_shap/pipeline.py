@@ -16,16 +16,13 @@ import numpy as np
 
 from ml4t.diagnostic.config import TradeConfig
 from ml4t.diagnostic.evaluation.trade_shap.characterize import (
-    CharacterizationConfig,
     PatternCharacterizer,
 )
 from ml4t.diagnostic.evaluation.trade_shap.cluster import (
-    ClusteringConfig,
     HierarchicalClusterer,
 )
 from ml4t.diagnostic.evaluation.trade_shap.explain import TradeShapExplainer
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses import (
-    HypothesisConfig,
     HypothesisGenerator,
 )
 from ml4t.diagnostic.evaluation.trade_shap.models import (
@@ -100,27 +97,19 @@ class TradeShapPipeline:
 
         # Initialize clusterer
         self.clusterer = HierarchicalClusterer(
-            config=ClusteringConfig(
-                distance_metric=self.config.clustering.distance_metric,
-                linkage_method=self.config.clustering.linkage,
-                min_cluster_size=self.config.clustering.min_cluster_size,
-                min_trades_for_clustering=self.config.min_trades_for_clustering,
-            )
+            config=self.config.clustering,
+            min_trades_for_clustering=self.config.min_trades_for_clustering,
         )
 
         # Initialize characterizer
         self.characterizer = PatternCharacterizer(
             feature_names=feature_names,
-            config=CharacterizationConfig(),
+            config=self.config.characterization,
         )
 
         # Initialize hypothesis generator
         self.hypothesis_generator = HypothesisGenerator(
-            config=HypothesisConfig(
-                template_library=self.config.hypothesis.template_library,
-                min_confidence=self.config.hypothesis.min_confidence,
-                max_actions=self.config.hypothesis.max_per_cluster,
-            )
+            config=self.config.hypothesis
         )
 
     def explain_trade(

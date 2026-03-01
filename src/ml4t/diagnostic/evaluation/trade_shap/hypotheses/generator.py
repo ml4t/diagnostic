@@ -6,9 +6,9 @@ template matching against error pattern features.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ml4t.diagnostic.config import TradeHypothesisSettings
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses.matcher import (
     TemplateMatcher,
     load_templates,
@@ -16,21 +16,6 @@ from ml4t.diagnostic.evaluation.trade_shap.hypotheses.matcher import (
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_shap.models import ErrorPattern
-
-
-@dataclass
-class HypothesisConfig:
-    """Configuration for hypothesis generation.
-
-    Attributes:
-        template_library: Which template library to use ('comprehensive' or 'minimal')
-        min_confidence: Minimum confidence threshold for generating hypothesis
-        max_actions: Maximum number of actions to include
-    """
-
-    template_library: str = "comprehensive"
-    min_confidence: float = 0.5
-    max_actions: int = 4
 
 
 class HypothesisGenerator:
@@ -50,37 +35,17 @@ class HypothesisGenerator:
         >>> print(enriched.actions)
     """
 
-    def __init__(self, config: HypothesisConfig | Any | None = None) -> None:
+    def __init__(self, config: TradeHypothesisSettings | None = None) -> None:
         """Initialize generator.
 
         Args:
-            config: Hypothesis configuration (uses defaults if None).
-                   Accepts HypothesisConfig dataclass or HypothesisGenerationConfig Pydantic model.
+            config: Trade hypothesis settings (uses defaults if None)
         """
-        # Normalize config to HypothesisConfig dataclass
-        self.config = self._normalize_config(config)
+        self.config = config or TradeHypothesisSettings()
 
         # Load templates and create matcher
         templates = load_templates(self.config.template_library)
         self.matcher = TemplateMatcher(templates)
-
-    def _normalize_config(self, config: Any) -> HypothesisConfig:
-        """Normalize config to HypothesisConfig dataclass.
-
-        Supports both HypothesisConfig dataclass and HypothesisGenerationConfig Pydantic model.
-        """
-        if config is None:
-            return HypothesisConfig()
-
-        if isinstance(config, HypothesisConfig):
-            return config
-
-        # Handle Pydantic HypothesisGenerationConfig or similar
-        return HypothesisConfig(
-            template_library=getattr(config, "template_library", "comprehensive"),
-            min_confidence=getattr(config, "min_confidence", 0.5),
-            max_actions=getattr(config, "max_actions", 4),
-        )
 
     def generate_hypothesis(
         self,
@@ -124,7 +89,7 @@ class HypothesisGenerator:
         )
 
         # Get actions (limit to max)
-        actions = match_result.template.actions[: self.config.max_actions]
+        actions = match_result.template.actions[: self.config.max_per_cluster]
 
         # Adjust confidence based on pattern characteristics
         adjusted_confidence = self._adjust_confidence(
@@ -225,7 +190,7 @@ class HypothesisGenerator:
             List of action dictionaries with category, description, priority, etc.
         """
         if max_actions is None:
-            max_actions = self.config.max_actions
+            max_actions = self.config.max_per_cluster
 
         if not error_pattern.actions:
             return []

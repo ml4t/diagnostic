@@ -6,11 +6,11 @@ with proper handling of small sample sizes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
+from ml4t.diagnostic.config import TradeClusteringSettings
 from ml4t.diagnostic.evaluation.trade_shap.models import ClusteringResult
 
 if TYPE_CHECKING:
@@ -21,21 +21,15 @@ DistanceMetric = Literal["euclidean", "cosine", "correlation", "cityblock"]
 LinkageMethod = Literal["ward", "average", "complete", "single"]
 
 
-@dataclass
-class ClusteringConfig:
-    """Configuration for hierarchical clustering.
+def _to_distance_metric(value: Any) -> DistanceMetric:
+    metric = str(getattr(value, "value", value))
+    if metric == "manhattan":
+        return "cityblock"
+    return metric  # type: ignore[return-value]
 
-    Attributes:
-        distance_metric: Distance metric for pdist ('euclidean', 'cosine', etc.)
-        linkage_method: Linkage method for hierarchical clustering
-        min_cluster_size: Minimum trades per cluster
-        min_trades_for_clustering: Minimum trades required to attempt clustering
-    """
 
-    distance_metric: DistanceMetric = "euclidean"
-    linkage_method: LinkageMethod = "ward"
-    min_cluster_size: int = 5
-    min_trades_for_clustering: int = 10
+def _to_linkage_method(value: Any) -> LinkageMethod:
+    return str(getattr(value, "value", value))  # type: ignore[return-value]
 
 
 def find_optimal_clusters(
@@ -154,13 +148,20 @@ class HierarchicalClusterer:
         >>> print(f"Silhouette: {result.silhouette_score:.3f}")
     """
 
-    def __init__(self, config: ClusteringConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: TradeClusteringSettings | None = None,
+        *,
+        min_trades_for_clustering: int = 10,
+    ) -> None:
         """Initialize clusterer.
 
         Args:
-            config: Clustering configuration (uses defaults if None)
+            config: Trade clustering settings (uses defaults if None)
+            min_trades_for_clustering: Minimum trades required to run clustering
         """
-        self.config = config or ClusteringConfig()
+        self.config = config or TradeClusteringSettings()
+        self.min_trades_for_clustering = min_trades_for_clustering
 
     def cluster(
         self,
@@ -191,10 +192,10 @@ class HierarchicalClusterer:
 
         n_samples, n_features = vectors.shape
 
-        if n_samples < self.config.min_trades_for_clustering:
+        if n_samples < self.min_trades_for_clustering:
             raise ValueError(
                 f"Insufficient samples for clustering: {n_samples} < "
-                f"{self.config.min_trades_for_clustering}"
+                f"{self.min_trades_for_clustering}"
             )
 
         # Import scipy
@@ -207,10 +208,12 @@ class HierarchicalClusterer:
             ) from e
 
         # Compute pairwise distances
-        distances = pdist(vectors, metric=self.config.distance_metric)
+        distance_metric = _to_distance_metric(self.config.distance_metric)
+        linkage_method = _to_linkage_method(self.config.linkage)
+        distances = pdist(vectors, metric=distance_metric)
 
         # Perform hierarchical clustering
-        linkage_matrix = sch.linkage(distances, method=self.config.linkage_method)
+        linkage_matrix = sch.linkage(distances, method=linkage_method)
 
         # Determine number of clusters
         if n_clusters is None:
@@ -241,8 +244,8 @@ class HierarchicalClusterer:
             davies_bouldin_score=davies_bouldin,
             calinski_harabasz_score=calinski_harabasz,
             cluster_sizes=cluster_sizes,
-            distance_metric=self.config.distance_metric,
-            linkage_method=self.config.linkage_method,
+            distance_metric=distance_metric,
+            linkage_method=linkage_method,
         )
 
     def _compute_silhouette(

@@ -18,7 +18,7 @@ from unittest.mock import Mock
 import numpy as np
 import polars as pl
 
-from ml4t.diagnostic.config import TradeConfig
+from ml4t.diagnostic.config import TradeClusteringSettings, TradeConfig
 from ml4t.diagnostic.evaluation.trade_shap_diagnostics import (
     ErrorPattern,
     TradeShapAnalyzer,
@@ -762,7 +762,6 @@ class TestClusterQualityMetrics:
 import pytest
 
 from ml4t.diagnostic.evaluation.trade_shap.cluster import (
-    ClusteringConfig,
     HierarchicalClusterer,
     compute_centroids,
     compute_cluster_sizes,
@@ -939,22 +938,21 @@ class TestHierarchicalClustererInit:
         clusterer = HierarchicalClusterer()
 
         assert clusterer.config.distance_metric == "euclidean"
-        assert clusterer.config.linkage_method == "ward"
+        assert clusterer.config.linkage == "ward"
         assert clusterer.config.min_cluster_size == 5
-        assert clusterer.config.min_trades_for_clustering == 10
+        assert clusterer.min_trades_for_clustering == 10
 
     def test_custom_config(self):
         """Custom config is stored."""
-        config = ClusteringConfig(
+        config = TradeClusteringSettings(
             distance_metric="cosine",
-            linkage_method="average",
+            linkage="average",
             min_cluster_size=3,
-            min_trades_for_clustering=5,
         )
-        clusterer = HierarchicalClusterer(config)
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=5)
 
         assert clusterer.config.distance_metric == "cosine"
-        assert clusterer.config.linkage_method == "average"
+        assert clusterer.config.linkage == "average"
 
 
 class TestHierarchicalClustererCluster:
@@ -976,8 +974,8 @@ class TestHierarchicalClustererCluster:
 
     def test_insufficient_samples_raises_value_error(self):
         """Insufficient samples raises ValueError."""
-        config = ClusteringConfig(min_trades_for_clustering=10)
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings()
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         # Only 5 samples, need 10
         vectors = np.random.randn(5, 3)
@@ -987,11 +985,10 @@ class TestHierarchicalClustererCluster:
 
     def test_distance_metric_euclidean(self):
         """Euclidean distance metric works."""
-        config = ClusteringConfig(
+        config = TradeClusteringSettings(
             distance_metric="euclidean",
-            min_trades_for_clustering=10,
         )
-        clusterer = HierarchicalClusterer(config)
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=3)
@@ -1001,12 +998,11 @@ class TestHierarchicalClustererCluster:
 
     def test_distance_metric_cosine(self):
         """Cosine distance metric works."""
-        config = ClusteringConfig(
+        config = TradeClusteringSettings(
             distance_metric="cosine",
-            linkage_method="average",  # cosine requires non-ward
-            min_trades_for_clustering=10,
+            linkage="average",  # cosine requires non-ward
         )
-        clusterer = HierarchicalClusterer(config)
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=3)
@@ -1015,11 +1011,8 @@ class TestHierarchicalClustererCluster:
 
     def test_linkage_method_ward(self):
         """Ward linkage method works."""
-        config = ClusteringConfig(
-            linkage_method="ward",
-            min_trades_for_clustering=10,
-        )
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings(linkage="ward")
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=3)
@@ -1028,11 +1021,8 @@ class TestHierarchicalClustererCluster:
 
     def test_linkage_method_average(self):
         """Average linkage method works."""
-        config = ClusteringConfig(
-            linkage_method="average",
-            min_trades_for_clustering=10,
-        )
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings(linkage="average")
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=3)
@@ -1041,11 +1031,8 @@ class TestHierarchicalClustererCluster:
 
     def test_linkage_method_complete(self):
         """Complete linkage method works."""
-        config = ClusteringConfig(
-            linkage_method="complete",
-            min_trades_for_clustering=10,
-        )
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings(linkage="complete")
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=3)
@@ -1054,8 +1041,8 @@ class TestHierarchicalClustererCluster:
 
     def test_auto_n_clusters(self):
         """Auto-determined number of clusters works."""
-        config = ClusteringConfig(min_trades_for_clustering=10)
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings()
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(30, 5)
         result = clusterer.cluster(vectors)  # n_clusters=None
@@ -1069,11 +1056,8 @@ class TestQualityMetricsUnit:
 
     def test_single_cluster_silhouette_is_zero(self):
         """Silhouette is 0 for single cluster."""
-        config = ClusteringConfig(
-            min_trades_for_clustering=10,
-            min_cluster_size=20,  # Force single cluster
-        )
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings(min_cluster_size=20)
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=1)
@@ -1082,11 +1066,8 @@ class TestQualityMetricsUnit:
 
     def test_single_cluster_davies_bouldin_is_none(self):
         """Davies-Bouldin is None for single cluster."""
-        config = ClusteringConfig(
-            min_trades_for_clustering=10,
-            min_cluster_size=20,
-        )
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings(min_cluster_size=20)
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=1)
@@ -1095,11 +1076,8 @@ class TestQualityMetricsUnit:
 
     def test_single_cluster_calinski_harabasz_is_none(self):
         """Calinski-Harabasz is None for single cluster."""
-        config = ClusteringConfig(
-            min_trades_for_clustering=10,
-            min_cluster_size=20,
-        )
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings(min_cluster_size=20)
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         vectors = np.random.randn(20, 5)
         result = clusterer.cluster(vectors, n_clusters=1)
@@ -1108,8 +1086,8 @@ class TestQualityMetricsUnit:
 
     def test_two_clusters_have_valid_metrics(self):
         """Two clusters produce valid quality scores."""
-        config = ClusteringConfig(min_trades_for_clustering=10)
-        clusterer = HierarchicalClusterer(config)
+        config = TradeClusteringSettings()
+        clusterer = HierarchicalClusterer(config, min_trades_for_clustering=10)
 
         # Create clearly separable clusters
         vectors = np.vstack(

@@ -5,7 +5,6 @@ why trading patterns cause losses, with templates stored as YAML data.
 """
 
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses.generator import (
-    HypothesisConfig,
     HypothesisGenerator,
 )
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses.matcher import (
@@ -16,7 +15,6 @@ from ml4t.diagnostic.evaluation.trade_shap.hypotheses.matcher import (
 
 __all__ = [
     "HypothesisGenerator",
-    "HypothesisConfig",
     "TemplateMatcher",
     "Template",
     "load_templates",

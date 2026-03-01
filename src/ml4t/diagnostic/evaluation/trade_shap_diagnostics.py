@@ -28,6 +28,8 @@ import numpy as np
 import polars as pl
 from numpy.typing import NDArray
 
+from ml4t.diagnostic.config import TradeCharacterizationSettings
+
 # Re-export all models and components from modular package
 from ml4t.diagnostic.evaluation.trade_shap import (
     # Alignment
@@ -60,15 +62,6 @@ from ml4t.diagnostic.evaluation.trade_shap import (
     normalize_l1,
     normalize_l2,
     standardize,
-)
-from ml4t.diagnostic.evaluation.trade_shap.characterize import (
-    CharacterizationConfig as _CharacterizationConfig,
-)
-from ml4t.diagnostic.evaluation.trade_shap.cluster import (
-    ClusteringConfig as _ClusteringConfig,
-)
-from ml4t.diagnostic.evaluation.trade_shap.hypotheses import (
-    HypothesisConfig as _HypothesisConfig,
 )
 
 if TYPE_CHECKING:
@@ -351,16 +344,10 @@ class TradeShapAnalyzer:
             if n_clusters > n_trades:
                 raise ValueError(f"n_clusters ({n_clusters}) exceeds trade count ({n_trades})")
 
-        # Get clustering config
-        clustering_cfg = self.config.clustering
-        config = _ClusteringConfig(
-            min_cluster_size=clustering_cfg.min_cluster_size,
+        clusterer = HierarchicalClusterer(
+            config=self.config.clustering,
             min_trades_for_clustering=self.config.min_trades_for_clustering,
-            distance_metric=clustering_cfg.distance_metric,
-            linkage_method=clustering_cfg.linkage,
         )
-
-        clusterer = HierarchicalClusterer(config=config)
         return clusterer.cluster(shap_vectors, n_clusters=n_clusters)
 
     def characterize_pattern(
@@ -440,7 +427,12 @@ class TradeShapAnalyzer:
                     centroids[c] = shap_vectors[c_mask].mean(axis=0)
 
         # Use characterizer
-        config = _CharacterizationConfig(top_n_features=top_n)
+        config = TradeCharacterizationSettings(
+            alpha=self.config.characterization.alpha,
+            top_n_features=top_n,
+            use_fdr_correction=self.config.characterization.use_fdr_correction,
+            min_samples_per_test=self.config.characterization.min_samples_per_test,
+        )
 
         characterizer = PatternCharacterizer(
             feature_names=feature_names,
@@ -480,14 +472,7 @@ class TradeShapAnalyzer:
     def hypothesis_generator(self) -> HypothesisGenerator:
         """Get hypothesis generator for custom hypothesis generation."""
         if self._hypothesis_generator is None:
-            hypothesis_cfg = self.config.hypothesis
-            config = _HypothesisConfig(
-                template_library=hypothesis_cfg.template_library,
-                min_confidence=hypothesis_cfg.min_confidence,
-                max_actions=hypothesis_cfg.max_per_cluster,
-            )
-
-            self._hypothesis_generator = HypothesisGenerator(config=config)
+            self._hypothesis_generator = HypothesisGenerator(config=self.config.hypothesis)
         return self._hypothesis_generator
 
     def generate_hypothesis(

@@ -137,6 +137,9 @@ from ml4t.diagnostic.config.trade_analysis_config import (
     AlignmentSettings as TradeAlignmentSettings,
 )
 from ml4t.diagnostic.config.trade_analysis_config import (
+    CharacterizationSettings as TradeCharacterizationSettings,
+)
+from ml4t.diagnostic.config.trade_analysis_config import (
     ClusteringSettings as TradeClusteringSettings,
 )
 from ml4t.diagnostic.config.trade_analysis_config import (
@@ -198,6 +201,7 @@ __all__ = [
     "TradeFilterSettings",
     "TradeAlignmentSettings",
     "TradeClusteringSettings",
+    "TradeCharacterizationSettings",
     "TradeHypothesisSettings",
     # Validated cross-validation
     "ValidatedCrossValidationConfig",

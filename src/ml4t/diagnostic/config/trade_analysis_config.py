@@ -186,6 +186,15 @@ class HypothesisSettings(BaseConfig):
     )
 
 
+class CharacterizationSettings(BaseConfig):
+    """Settings for statistical characterization of clustered patterns."""
+
+    alpha: Probability = Field(0.05, description="Significance level for tests")
+    top_n_features: PositiveInt = Field(5, description="Top features per pattern")
+    use_fdr_correction: bool = Field(True, description="Apply Benjamini-Hochberg correction")
+    min_samples_per_test: PositiveInt = Field(3, description="Minimum samples per group")
+
+
 # =============================================================================
 # Consolidated Config
 # =============================================================================
@@ -217,6 +226,9 @@ class TradeConfig(BaseConfig):
     )
     clustering: ClusteringSettings = Field(
         default_factory=ClusteringSettings, description="Clustering settings"
+    )
+    characterization: CharacterizationSettings = Field(
+        default_factory=CharacterizationSettings, description="Pattern characterization settings"
     )
     hypothesis: HypothesisSettings = Field(
         default_factory=HypothesisSettings, description="Hypothesis generation"
@@ -307,4 +319,5 @@ ExtractionSettings.model_rebuild()
 AlignmentSettings.model_rebuild()
 ClusteringSettings.model_rebuild()
 HypothesisSettings.model_rebuild()
+CharacterizationSettings.model_rebuild()
 TradeConfig.model_rebuild()
