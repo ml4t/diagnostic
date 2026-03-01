@@ -130,7 +130,11 @@ def compute_forward_returns(
     if isinstance(periods, int):
         periods = [periods]
 
-    df = prices.clone() if isinstance(prices, pl.DataFrame) else pl.from_pandas(cast(pd.DataFrame, prices))
+    df = (
+        prices.clone()
+        if isinstance(prices, pl.DataFrame)
+        else pl.from_pandas(cast(pd.DataFrame, prices))
+    )
 
     if date_col is not None and date_col in df.columns:
         if group_col is not None and group_col in df.columns:
@@ -161,7 +165,10 @@ def compute_forward_returns(
 
     if nan_to_null:
         df = df.with_columns(
-            [pl.when(pl.col(c).is_nan()).then(None).otherwise(pl.col(c)).alias(c) for c in return_cols]
+            [
+                pl.when(pl.col(c).is_nan()).then(None).otherwise(pl.col(c)).alias(c)
+                for c in return_cols
+            ]
         )
 
     if output_as_pandas:

@@ -76,28 +76,20 @@ dependencies = [
     # Scientific computing
     "scipy>=1.10.0,<1.16.0",
     "scikit-learn>=1.3.0",
+    "joblib>=1.3.0",
     "statsmodels>=0.14.0",
     # Performance optimization
     "numba>=0.57.0",
+    "tqdm>=4.66.0",
     # Configuration management
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
-    # Utilities
-    "structlog>=23.0.0",
     # Trading calendars (for calendar-aware CV)
     "pandas_market_calendars>=4.0.0",
     # Templating (needed for dashboard module)
     "jinja2>=3.1.0",
     "arch>=7.2.0",
-    "lightgbm>=4.6.0",
-    "xgboost>=2.1.4",
-    "vectorbt>=0.28.2",
-    "sympy>=1.14.0",
-    "tabulate>=0.9.0",
-    "anywidget>=0.9.21",
-    "pandas-datareader>=0.10.0",
-    "setuptools>=80.9.0",
-    "riskfolio-lib>=7.0.0,<7.1.0",
+    "shap>=0.41.0,<0.50.0",
 ]
 
 [project.optional-dependencies]
@@ -127,18 +119,15 @@ advanced = [
     # "pyfolio>=0.9.0",  # Portfolio analytics (incompatible with Python 3.13+)
 ]
 
-# Machine learning models (feature importance, SHAP)
+# Additional ML model backends
 ml = [
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "shap>=0.41.0,<0.50.0",  # v1.1: Pin version range for stability
 ]
 
-# Deep learning models (neural networks with SHAP DeepExplainer)
-# v1.1: Optional support for TensorFlow/PyTorch models
+# Deep learning models (neural-network explainability workflows)
 deep = [
-    "tensorflow>=2.0.0",  # For TensorFlow models
-    "shap>=0.41.0,<0.50.0",  # Required for DeepExplainer
+    "tensorflow>=2.0.0",
 ]
 
 # GPU acceleration (SHAP TreeExplainer GPU mode)
@@ -153,7 +142,6 @@ gpu = [
 all-ml = [
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "shap>=0.41.0,<0.50.0",
     "tensorflow>=2.0.0",
     "cupy-cuda11x>=11.0.0",
 ]
@@ -161,6 +149,11 @@ all-ml = [
 # Dashboard and interactive visualization (Streamlit)
 dashboard = [
     "streamlit>=1.28.0",
+]
+
+# Experiment tracking integrations
+tracking = [
+    "wandb>=0.16.0",
 ]
 
 # Development tools (testing, linting, debugging)
@@ -201,11 +194,10 @@ all = [
     "seaborn>=0.12.0",
     "kaleido>=0.2.0",
     "pypdf>=5.0.0",
-    "arch>=6.0.0",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "shap>=0.41.0,<0.50.0",  # v1.1: Updated version pin
     "streamlit>=1.28.0",
+    "wandb>=0.16.0",
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.3.0",

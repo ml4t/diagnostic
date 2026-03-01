@@ -218,9 +218,15 @@ def compute_ic_series(
             join_on.extend(entity_col)
 
     predictions_pl = (
-        predictions if isinstance(predictions, pl.DataFrame) else pl.from_pandas(cast(pd.DataFrame, predictions))
+        predictions
+        if isinstance(predictions, pl.DataFrame)
+        else pl.from_pandas(cast(pd.DataFrame, predictions))
     )
-    returns_pl = returns if isinstance(returns, pl.DataFrame) else pl.from_pandas(cast(pd.DataFrame, returns))
+    returns_pl = (
+        returns
+        if isinstance(returns, pl.DataFrame)
+        else pl.from_pandas(cast(pd.DataFrame, returns))
+    )
 
     # Merge predictions and returns
     df = predictions_pl.join(returns_pl, on=join_on, how="inner")

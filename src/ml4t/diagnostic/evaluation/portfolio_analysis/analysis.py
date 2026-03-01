@@ -350,7 +350,9 @@ class PortfolioAnalysis:
         for window in windows:
             if "sharpe" in metrics:
                 rolling_sharpe = self._rolling_sharpe(returns, window, rf, ppy)
-                result.sharpe[window] = pl.Series(f"sharpe_{window}d", rolling_sharpe).fill_nan(None)
+                result.sharpe[window] = pl.Series(f"sharpe_{window}d", rolling_sharpe).fill_nan(
+                    None
+                )
 
             if "volatility" in metrics:
                 rolling_vol = self._rolling_volatility(returns, window, ppy)

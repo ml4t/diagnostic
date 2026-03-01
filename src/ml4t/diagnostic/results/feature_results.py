@@ -785,4 +785,3 @@ class FeatureOutcomeResultSchema(BaseResult):
                 lines.append(f"    {r.feature_name}: F1={r.f1_score:.2%}, Lift={r.lift:.2f}x")
 
         return "\n".join(lines)
-

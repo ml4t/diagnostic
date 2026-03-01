@@ -108,9 +108,7 @@ class TradeShapPipeline:
         )
 
         # Initialize hypothesis generator
-        self.hypothesis_generator = HypothesisGenerator(
-            config=self.config.hypothesis
-        )
+        self.hypothesis_generator = HypothesisGenerator(config=self.config.hypothesis)
 
     def explain_trade(
         self,

@@ -19,14 +19,7 @@ from ml4t.diagnostic.results.multi_signal_results import (
     MultiSignalSummary,
 )
 
-from . import (  # noqa: F401 (module re-export)
-    diagnostic_plots,
-    drift,
-    metrics,
-    report_generation,
-    stats,
-    visualization,
-)
+from . import drift, metrics, stats  # noqa: F401 (module re-export)
 from .autocorrelation import (
     ACFResult,
     AutocorrelationAnalysisResult,
@@ -54,13 +47,6 @@ from .binary_metrics import (
     recall,
     specificity,
     wilson_score_interval,
-)
-from .dashboard import create_evaluation_dashboard
-from .diagnostic_plots import (
-    plot_acf_pacf,
-    plot_distribution,
-    plot_qq,
-    plot_volatility_clustering,
 )
 from .distribution import (
     DistributionAnalysisResult,
@@ -141,13 +127,6 @@ from .portfolio_analysis import (
     up_down_capture,
     value_at_risk,
 )
-from .report_generation import (
-    generate_html_report,
-    generate_json_report,
-    generate_markdown_report,
-    generate_multi_feature_html_report,
-    save_report,
-)
 from .signal_selector import SignalSelector
 from .stat_registry import StatTestRegistry
 from .stationarity import (
@@ -209,6 +188,39 @@ from .volatility import (
     arch_lm_test,
     fit_garch,
 )
+
+# Optional visualization/report stack (plotly/matplotlib/seaborn).
+# Keep core evaluation importable without viz extras.
+try:
+    from . import diagnostic_plots, report_generation, visualization  # noqa: F401
+    from .dashboard import create_evaluation_dashboard
+    from .diagnostic_plots import (
+        plot_acf_pacf,
+        plot_distribution,
+        plot_qq,
+        plot_volatility_clustering,
+    )
+    from .report_generation import (
+        generate_html_report,
+        generate_json_report,
+        generate_markdown_report,
+        generate_multi_feature_html_report,
+        save_report,
+    )
+except ImportError:
+    diagnostic_plots = None
+    report_generation = None
+    visualization = None
+    create_evaluation_dashboard = None
+    plot_acf_pacf = None
+    plot_distribution = None
+    plot_qq = None
+    plot_volatility_clustering = None
+    generate_html_report = None
+    generate_json_report = None
+    generate_markdown_report = None
+    generate_multi_feature_html_report = None
+    save_report = None
 
 # Lazy import for dashboard functions to avoid slow Streamlit import at module load
 # This saves ~1.3 seconds on every import of ml4t.diagnostic

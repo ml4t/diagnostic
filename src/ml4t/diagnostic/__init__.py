@@ -31,7 +31,7 @@ This library follows semantic versioning. The public API consists of all symbols
 exported in __all__. Breaking changes will only occur in major version bumps.
 """
 
-__version__ = "0.1.0a8"
+__version__ = "0.1.0a9"
 
 # Sub-modules for advanced usage
 from . import (

@@ -27,13 +27,37 @@ from ml4t.diagnostic.splitters.base import BaseSplitter
 from ml4t.diagnostic.splitters.combinatorial import CombinatorialCV
 from ml4t.diagnostic.splitters.walk_forward import WalkForwardCV
 
-from .dashboard import create_evaluation_dashboard
 from .metric_registry import MetricRegistry
 from .stat_registry import StatTestRegistry
-from .visualization import plot_ic_heatmap, plot_quantile_returns
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+
+def _load_visualization_functions() -> tuple[Callable[..., Any], Callable[..., Any]]:
+    """Load visualization functions on demand to keep viz dependencies optional."""
+    try:
+        from .visualization import plot_ic_heatmap, plot_quantile_returns
+    except ImportError as exc:
+        raise ImportError(
+            "Visualization features require optional dependencies. "
+            "Install with: pip install ml4t-diagnostic[viz]"
+        ) from exc
+
+    return plot_ic_heatmap, plot_quantile_returns
+
+
+def _load_dashboard_function() -> Callable[..., Any]:
+    """Load dashboard function on demand to keep viz dependencies optional."""
+    try:
+        from .dashboard import create_evaluation_dashboard
+    except ImportError as exc:
+        raise ImportError(
+            "HTML dashboard export requires optional dependencies. "
+            "Install with: pip install ml4t-diagnostic[viz]"
+        ) from exc
+
+    return create_evaluation_dashboard
 
 
 def get_metric_directionality(metric_name: str) -> bool:
@@ -170,13 +194,21 @@ class EvaluationResult:
         plotly.graph_objects.Figure
             Interactive visualization
         """
+        plot_ic_heatmap, plot_quantile_returns = _load_visualization_functions()
+
         # Default plot based on available metrics
         if "ic" in self.metrics_results and predictions is not None and returns is not None:
             return plot_ic_heatmap(predictions, returns)
         if "sharpe" in self.metrics_results and returns is not None and predictions is not None:
             return plot_quantile_returns(predictions, returns)
         # Return a summary plot
-        import plotly.graph_objects as go
+        try:
+            import plotly.graph_objects as go
+        except ImportError as exc:
+            raise ImportError(
+                "Plot generation requires optional dependencies. "
+                "Install with: pip install ml4t-diagnostic[viz]"
+            ) from exc
 
         metric_names = list(self.metrics_results.keys())
         metric_values = [
@@ -221,6 +253,7 @@ class EvaluationResult:
         --------
         >>> result.to_html("evaluation_report.html", predictions=pred_df, returns=ret_df)
         """
+        create_evaluation_dashboard = _load_dashboard_function()
         create_evaluation_dashboard(
             self,
             filename,

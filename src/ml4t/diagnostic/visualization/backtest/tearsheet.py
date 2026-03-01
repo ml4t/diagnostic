@@ -470,27 +470,33 @@ def _create_section_figure(
 
         if section_name == "equity_curve":
             from ml4t.diagnostic.visualization.portfolio import plot_cumulative_returns
+
             return plot_cumulative_returns(pa, theme=theme)
 
         if section_name == "drawdowns":
             from ml4t.diagnostic.visualization.portfolio import plot_drawdown_underwater
+
             return plot_drawdown_underwater(pa, theme=theme)
 
         if section_name == "monthly_returns":
             from ml4t.diagnostic.visualization.portfolio import plot_monthly_returns_heatmap
+
             return plot_monthly_returns_heatmap(pa, theme=theme)
 
         if section_name == "annual_returns":
             from ml4t.diagnostic.visualization.portfolio import plot_annual_returns_bar
+
             return plot_annual_returns_bar(pa, theme=theme)
 
         if section_name == "rolling_metrics":
             from ml4t.diagnostic.visualization.portfolio import plot_rolling_sharpe
+
             rolling = pa.compute_rolling_metrics(windows=[63, 252], metrics=["sharpe"])
             return plot_rolling_sharpe(rolling_result=rolling, windows=[63, 252], theme=theme)
 
         if section_name == "distribution":
             from ml4t.diagnostic.visualization.portfolio import plot_returns_distribution
+
             return plot_returns_distribution(pa, theme=theme)
 
     if section_name == "tail_risk":

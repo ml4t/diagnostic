@@ -73,7 +73,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --extra ml --extra viz
 
       - name: Run tests
         run: |
@@ -94,7 +94,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --extra ml --extra viz
 
       - name: Run tests with coverage
         run: |
@@ -123,7 +123,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --extra viz
 
       - name: Run visualization tests with coverage gate
         run: |

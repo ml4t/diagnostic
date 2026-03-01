@@ -27,10 +27,10 @@ Example Issue (Dollar Bars):
 
 import re
 from typing import Any, cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 import pandas as pd
-import pytz
 
 try:
     import pandas_market_calendars as mcal
@@ -59,7 +59,7 @@ class TradingCalendar:
         Configuration for calendar and timezone handling
     calendar : mcal.MarketCalendar
         The underlying market calendar instance
-    tz : pytz.timezone
+    tz : zoneinfo.ZoneInfo
         Timezone object for conversions
     """
 
@@ -79,7 +79,13 @@ class TradingCalendar:
 
         self.config = config
         self.calendar = mcal.get_calendar(config.exchange)
-        self.tz = pytz.timezone(config.timezone)
+        try:
+            self.tz = ZoneInfo(config.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(
+                f"Invalid timezone '{config.timezone}'. Use an IANA timezone name "
+                "(e.g., 'UTC', 'America/New_York')."
+            ) from exc
 
     def _ensure_timezone_aware(self, timestamps: pd.DatetimeIndex) -> pd.DatetimeIndex:
         """Ensure timestamps are timezone-aware.

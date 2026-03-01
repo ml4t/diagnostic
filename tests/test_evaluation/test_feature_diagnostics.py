@@ -77,7 +77,9 @@ class TestDiagnosticConfigForFeatureDiagnostics:
     def test_specific_test_selection(self):
         """Test selecting specific tests within modules."""
         config = DiagnosticConfig(
-            stationarity=StationaritySettings(adf_enabled=True, kpss_enabled=True, pp_enabled=False),
+            stationarity=StationaritySettings(
+                adf_enabled=True, kpss_enabled=True, pp_enabled=False
+            ),
             distribution=DistributionSettings(compute_tails=False),
         )
 
