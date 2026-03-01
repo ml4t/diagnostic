@@ -15,6 +15,7 @@ from ml4t.diagnostic.evaluation.metrics.basic import compute_forward_returns
 from ml4t.diagnostic.evaluation.metrics.ic_statistics import (
     compute_ic_decay,
     compute_ic_hac_stats,
+    compute_ic_summary_stats,
 )
 from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_ir,
@@ -297,25 +298,16 @@ def analyze_feature_outcome(
     if include_hac:
         hac_stats = compute_ic_hac_stats(ic_series=ic_series, ic_col="ic")
     else:
-        # Fallback to simple statistics - explicitly convert to float array
-        if isinstance(ic_series, pl.DataFrame):
-            ic_array = np.asarray(ic_series["ic"].to_numpy(), dtype=np.float64)
-        elif isinstance(ic_series, pd.DataFrame):
-            ic_array = np.asarray(ic_series["ic"].to_numpy(), dtype=np.float64)
-        else:
-            raise TypeError(f"ic_series must be DataFrame, got {type(ic_series)}")
-        mean_ic = float(np.mean(ic_array))
-        std_ic = float(np.std(ic_array, ddof=1))
-        t_stat = mean_ic / (std_ic / np.sqrt(len(ic_array)))
-        from scipy.stats import t as t_dist
-
-        p_value = float(2 * (1 - t_dist.cdf(abs(t_stat), df=len(ic_array) - 1)))
+        # Fallback to canonical non-HAC summary statistics.
+        summary = compute_ic_summary_stats(ic_series=ic_series, ic_col="ic")
+        n_periods = int(summary["n_periods"])
+        hac_se = summary["std_ic"] / np.sqrt(n_periods) if n_periods >= 2 else np.nan
         hac_stats = {
-            "mean_ic": mean_ic,
-            "hac_se": std_ic / np.sqrt(len(ic_array)),
-            "t_stat": t_stat,
-            "p_value": p_value,
-            "n_periods": len(ic_array),
+            "mean_ic": summary["mean_ic"],
+            "hac_se": float(hac_se),
+            "t_stat": summary["t_stat"],
+            "p_value": summary["p_value"],
+            "n_periods": n_periods,
         }
 
     # 6. Compute IC decay analysis (if requested)

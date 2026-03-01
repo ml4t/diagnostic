@@ -19,6 +19,52 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+def compute_ic_summary_stats(
+    ic_series: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]", list[float]],
+    ic_col: str = "ic",
+) -> dict[str, float | int]:
+    """Compute naive summary stats for an IC time series.
+
+    This is the canonical non-HAC summary used by signal-level diagnostics and
+    simple fallback paths where robust autocorrelation adjustment is disabled.
+    """
+    ic_values: NDArray[Any]
+    if isinstance(ic_series, pl.DataFrame | pd.DataFrame):
+        if isinstance(ic_series, pl.DataFrame):
+            ic_values = ic_series[ic_col].to_numpy()
+        else:
+            ic_values = ic_series[ic_col].to_numpy()
+    else:
+        ic_values = np.asarray(ic_series).flatten()
+
+    ic_clean: NDArray[Any] = ic_values[~np.isnan(ic_values)]
+    n = len(ic_clean)
+
+    if n < 2:
+        return {
+            "mean_ic": np.nan,
+            "std_ic": np.nan,
+            "t_stat": np.nan,
+            "p_value": np.nan,
+            "pct_positive": np.nan,
+            "n_periods": n,
+        }
+
+    mean_ic = float(np.mean(ic_clean))
+    std_ic = float(np.std(ic_clean, ddof=1))
+    t_stat = mean_ic / (std_ic / np.sqrt(n)) if std_ic > 0 else np.nan
+    p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df=n - 1)) if not np.isnan(t_stat) else np.nan
+
+    return {
+        "mean_ic": mean_ic,
+        "std_ic": std_ic,
+        "t_stat": float(t_stat),
+        "p_value": float(p_value),
+        "pct_positive": float(np.mean(ic_clean > 0)),
+        "n_periods": n,
+    }
+
+
 def compute_ic_hac_stats(
     ic_series: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
     ic_col: str = "ic",

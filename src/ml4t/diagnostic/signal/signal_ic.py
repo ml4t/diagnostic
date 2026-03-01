@@ -7,10 +7,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import polars as pl
-from scipy.stats import t as t_dist
 
+from ml4t.diagnostic.evaluation.metrics.ic_statistics import compute_ic_summary_stats
 from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_series as compute_ic_series_core,
 )
@@ -91,35 +90,13 @@ def compute_ic_summary(
     dict[str, float]
         mean, std, t_stat, p_value, pct_positive
     """
-    n = len(ic_series)
-    if n < 2:
-        return {
-            "mean": float("nan"),
-            "std": float("nan"),
-            "t_stat": float("nan"),
-            "p_value": float("nan"),
-            "pct_positive": float("nan"),
-        }
-
-    arr = np.array(ic_series)
-    mean_ic = float(np.nanmean(arr))
-    std_ic = float(np.nanstd(arr, ddof=1))
-
-    if std_ic > 0:
-        t_stat = mean_ic / (std_ic / np.sqrt(n))
-        p_value = float(2 * (1 - t_dist.cdf(abs(t_stat), df=n - 1)))
-    else:
-        t_stat = float("nan")
-        p_value = float("nan")
-
-    pct_positive = float(np.mean(arr > 0))
-
+    summary = compute_ic_summary_stats(ic_series)
     return {
-        "mean": mean_ic,
-        "std": std_ic,
-        "t_stat": float(t_stat),
-        "p_value": p_value,
-        "pct_positive": pct_positive,
+        "mean": float(summary["mean_ic"]),
+        "std": float(summary["std_ic"]),
+        "t_stat": float(summary["t_stat"]),
+        "p_value": float(summary["p_value"]),
+        "pct_positive": float(summary["pct_positive"]),
     }
 
 
