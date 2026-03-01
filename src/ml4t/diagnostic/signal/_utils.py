@@ -184,11 +184,6 @@ def compute_forward_returns(
     pl.DataFrame
         Data with forward return columns (e.g., "1D_fwd_return").
     """
-    if data.is_empty():
-        for p in periods:
-            data = data.with_columns(pl.lit(None).cast(pl.Float64).alias(f"{p}D_fwd_return"))
-        return data
-
     # Compute forward returns on full price history for each asset/date.
     price_with_returns = compute_forward_returns_core(
         prices,
@@ -196,27 +191,16 @@ def compute_forward_returns(
         price_col=price_col,
         group_col=asset_col,
         date_col=date_col,
+        output_col_template="{period}D_fwd_return",
+        nan_to_null=True,
     )
 
     # Keep only keys + forward-return columns, then join onto factor rows.
     join_cols = [date_col, asset_col]
-    ret_cols = [f"fwd_ret_{p}" for p in periods]
+    ret_cols = [f"{p}D_fwd_return" for p in periods]
     returns_lookup = price_with_returns.select(join_cols + ret_cols)
 
-    result = data.join(returns_lookup, on=join_cols, how="left")
-
-    # Match signal naming convention.
-    rename_map = {f"fwd_ret_{p}": f"{p}D_fwd_return" for p in periods}
-    result = result.rename(rename_map)
-
-    # Preserve signal API semantics: invalid numeric returns are null, not NaN.
-    return_cols = list(rename_map.values())
-    for col in return_cols:
-        result = result.with_columns(
-            pl.when(pl.col(col).is_nan()).then(None).otherwise(pl.col(col)).alias(col)
-        )
-
-    return result
+    return data.join(returns_lookup, on=join_cols, how="left")
 
 
 __all__ = [

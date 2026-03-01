@@ -82,6 +82,8 @@ def compute_forward_returns(
     price_col: str = "close",
     group_col: str | None = None,
     date_col: str | None = "date",
+    output_col_template: str = "fwd_ret_{period}",
+    nan_to_null: bool = False,
 ) -> pl.DataFrame | pd.DataFrame:
     """Compute forward returns for given periods.
 
@@ -101,6 +103,11 @@ def compute_forward_returns(
     date_col : str | None, default "date"
         Optional date/timestamp column used to sort before computing
         forward returns. Set to None to skip sorting.
+    output_col_template : str, default "fwd_ret_{period}"
+        Template for generated forward return column names.
+        Use ``{period}`` placeholder for the horizon integer.
+    nan_to_null : bool, default False
+        Convert NaN forward return values to null/None in Polars output.
 
     Returns
     -------
@@ -133,8 +140,10 @@ def compute_forward_returns(
 
     if group_col is not None:
         # Group-wise forward returns
+        return_cols = []
         for period in periods:
-            col_name = f"fwd_ret_{period}"
+            col_name = output_col_template.format(period=period)
+            return_cols.append(col_name)
             df = df.with_columns(
                 ((pl.col(price_col).shift(-period).over(group_col) / pl.col(price_col)) - 1).alias(
                     col_name
@@ -142,11 +151,18 @@ def compute_forward_returns(
             )
     else:
         # Simple forward returns
+        return_cols = []
         for period in periods:
-            col_name = f"fwd_ret_{period}"
+            col_name = output_col_template.format(period=period)
+            return_cols.append(col_name)
             df = df.with_columns(
                 ((pl.col(price_col).shift(-period) / pl.col(price_col)) - 1).alias(col_name)
             )
+
+    if nan_to_null:
+        df = df.with_columns(
+            [pl.when(pl.col(c).is_nan()).then(None).otherwise(pl.col(c)).alias(c) for c in return_cols]
+        )
 
     if output_as_pandas:
         return df.to_pandas()

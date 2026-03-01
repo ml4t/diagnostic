@@ -640,6 +640,35 @@ class TestComputeForwardReturns:
 
         assert isinstance(result, pl.DataFrame | pd.DataFrame)
 
+    def test_forward_returns_custom_output_template(self, price_data):
+        """Test custom output column naming template."""
+        result = compute_forward_returns(
+            price_data,
+            periods=[1, 3],
+            output_col_template="{period}D_fwd_return",
+        )
+
+        assert "1D_fwd_return" in result.columns
+        assert "3D_fwd_return" in result.columns
+
+    def test_forward_returns_nan_to_null(self):
+        """Test optional NaN->null conversion on generated forward returns."""
+        prices = pl.DataFrame(
+            {
+                "date": pd.date_range("2020-01-01", periods=3, freq="D"),
+                "close": [100.0, float("nan"), 102.0],
+            }
+        )
+
+        result = compute_forward_returns(
+            prices,
+            periods=1,
+            nan_to_null=True,
+        )
+
+        # Day 1 return references day 2 NaN, so should be null (not NaN)
+        assert result["fwd_ret_1"][0] is None
+
 
 class TestComputeMonotonicity:
     """Tests for monotonicity calculation."""
