@@ -453,10 +453,6 @@ class FeatureDiagnosticsResultSchema(BaseResult):
         )
 
 
-# Backward-compatible alias retained for existing imports.
-FeatureDiagnosticsResult = FeatureDiagnosticsResultSchema
-
-
 # =============================================================================
 # Module B: Cross-Feature Analysis
 # =============================================================================
@@ -790,6 +786,3 @@ class FeatureOutcomeResultSchema(BaseResult):
 
         return "\n".join(lines)
 
-
-# Backward-compatible alias retained for existing imports.
-FeatureOutcomeResult = FeatureOutcomeResultSchema

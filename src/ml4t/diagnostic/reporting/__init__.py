@@ -7,7 +7,7 @@ Provides flexible report generation in multiple formats:
 
 Examples:
     >>> from ml4t.diagnostic.reporting import ReportFactory, ReportFormat
-    >>> from ml4t.diagnostic.results import FeatureDiagnosticsResult
+    >>> from ml4t.diagnostic.results import FeatureDiagnosticsResultSchema
     >>>
     >>> # Generate HTML report
     >>> html_report = ReportFactory.render(result, ReportFormat.HTML)

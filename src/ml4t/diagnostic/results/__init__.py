@@ -29,9 +29,7 @@ from ml4t.diagnostic.results.event_results import (
 from ml4t.diagnostic.results.feature_results import (
     ACFResult,
     CrossFeatureResult,
-    FeatureDiagnosticsResult,
     FeatureDiagnosticsResultSchema,
-    FeatureOutcomeResult,
     FeatureOutcomeResultSchema,
     ICAnalysisResult,
     StationarityTestResult,
@@ -69,14 +67,12 @@ __all__ = [
     "StationarityTestResult",
     "ACFResult",
     "FeatureDiagnosticsResultSchema",
-    "FeatureDiagnosticsResult",
     # Cross-feature (Module B)
     "CrossFeatureResult",
     # Feature-outcome (Module C)
     "ICAnalysisResult",
     "ThresholdAnalysisResult",
     "FeatureOutcomeResultSchema",
-    "FeatureOutcomeResult",
     # Portfolio (Module D)
     "PortfolioMetrics",
     "BayesianComparisonResult",

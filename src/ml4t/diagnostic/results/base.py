@@ -22,7 +22,7 @@ class BaseResult(BaseModel):
     All result schemas inherit from this class to ensure consistent behavior.
 
     Examples:
-        >>> result = FeatureDiagnosticsResult(...)
+        >>> result = FeatureDiagnosticsResultSchema(...)
         >>> json_str = result.model_dump_json(indent=2)
         >>> df = result.get_dataframe()
         >>> available = result.list_available_dataframes()
@@ -92,7 +92,7 @@ class BaseResult(BaseModel):
             ValueError: If requested DataFrame name not available
 
         Examples:
-            >>> result = FeatureDiagnosticsResult(...)
+            >>> result = FeatureDiagnosticsResultSchema(...)
             >>> df = result.get_dataframe()  # Primary DataFrame
             >>> df = result.get_dataframe("stationarity")  # Specific view
             >>> available = result.list_available_dataframes()
