@@ -95,13 +95,6 @@ from .feature_diagnostics import (
     FeatureDiagnosticsConfig,
     FeatureDiagnosticsResult,
 )
-from .feature_outcome import (
-    FeatureICResults,
-    FeatureImportanceResults,
-    FeatureOutcome,
-    FeatureOutcomeAnalysisResult,
-    FeatureOutcomeResult,
-)
 from .framework import EvaluationResult, Evaluator, get_metric_directionality
 from .metric_registry import MetricRegistry
 from .metrics import (
@@ -262,11 +255,6 @@ __all__: list[str] = [
     "FeatureDiagnosticsConfig",
     "FeatureDiagnosticsAnalysisResult",
     "FeatureDiagnosticsResult",
-    "FeatureOutcome",
-    "FeatureOutcomeAnalysisResult",
-    "FeatureOutcomeResult",
-    "FeatureICResults",
-    "FeatureImportanceResults",
     "TradeAnalysis",
     "TradeAnalysisResult",
     "TradeMetrics",

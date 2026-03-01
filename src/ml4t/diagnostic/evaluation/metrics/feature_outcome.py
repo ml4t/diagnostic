@@ -37,9 +37,8 @@ def analyze_feature_outcome_series(
 ) -> dict[str, Any]:
     """Analyze single-series feature-outcome relationship.
 
-    This helper is the canonical metrics-layer engine for feature-vs-outcome
-    series analysis (one feature aligned to one outcome series). It is used by
-    `FeatureOutcome` as a compatibility adapter.
+    This helper is the canonical metrics-layer engine for one feature aligned
+    to one outcome series.
     """
     pred_array = np.asarray(predictions, dtype=np.float64).reshape(-1)
     out_array = np.asarray(outcomes, dtype=np.float64).reshape(-1)

@@ -354,69 +354,19 @@ class TestModuleFunctions:
         assert "LightGBM" in summary
 
 
-class TestIntegrationWithFeatureOutcome:
-    """Test integration with FeatureOutcome class."""
+class TestIntegrationWithEvaluationMetrics:
+    """Test dependency metadata against canonical evaluation entry points."""
 
-    def test_feature_outcome_with_dependencies(self):
-        """Test that FeatureOutcome can import with dependency checks."""
-        from ml4t.diagnostic.evaluation.feature_outcome import FeatureOutcome
+    def test_evaluation_exports_feature_outcome_metrics_api(self):
+        """The evaluation package should export the canonical metrics function."""
+        from ml4t.diagnostic import evaluation
 
-        # Should import successfully
-        analyzer = FeatureOutcome()
-        assert analyzer is not None
+        assert hasattr(evaluation, "analyze_feature_outcome")
+        assert callable(evaluation.analyze_feature_outcome)
 
-    def test_feature_outcome_warns_on_missing_lightgbm(self, monkeypatch):
-        """Test that FeatureOutcome warns when LightGBM is missing."""
-        # Mock warn_if_missing to simulate missing LightGBM
-        from ml4t.diagnostic.config.feature_config import DiagnosticConfig, MLDiagnosticsSettings
-        from ml4t.diagnostic.evaluation.feature_outcome import FeatureOutcome
+    def test_lightgbm_features_reference_metrics_layer(self):
+        """LightGBM dependency metadata should reference current API names."""
+        features = DEPS.lightgbm.features
 
-        # Mock at the module level
-        original_warn = warn_if_missing
-
-        def mock_warn(name, *args, **kwargs):
-            if name == "lightgbm":
-                import warnings
-
-                warnings.warn(
-                    "LightGBM not available - skipping feature importance",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                return False  # Pretend it's missing
-            return original_warn(name, *args, **kwargs)
-
-        # Patch in the feature_outcome module
-        import ml4t.diagnostic.evaluation.feature_outcome as fo_module
-
-        monkeypatch.setattr(fo_module, "warn_if_missing", mock_warn)
-
-        config = DiagnosticConfig(ml_diagnostics=MLDiagnosticsSettings(feature_importance=True))
-
-        analyzer = FeatureOutcome(config=config)
-
-        # Create simple test data
-        import numpy as np
-        import pandas as pd
-
-        np.random.seed(42)
-        features = pd.DataFrame(
-            {
-                "f1": np.random.normal(0, 1, 100),
-                "f2": np.random.normal(0, 1, 100),
-            }
-        )
-        outcomes = pd.Series(np.random.normal(0, 1, 100))
-
-        # Should warn about missing LightGBM but not fail
-        with pytest.warns(UserWarning) as warning_list:
-            result = analyzer.run_analysis(
-                features, outcomes, verbose=False
-            )  # verbose=False to avoid prints
-
-        # Should have warned
-        assert len(warning_list) > 0
-        # Should complete despite missing dependency
-        assert result is not None
-        # Should have IC results even without importance
-        assert len(result.ic_results) > 0
+        assert "analyze_ml_importance" in features
+        assert all("FeatureOutcome.run_analysis" not in feature for feature in features)
