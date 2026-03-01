@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from ml4t.diagnostic.config import ValidatedCrossValidationConfig
 from ml4t.diagnostic.evaluation.validated_cv import (
     ModelProtocol,
     ValidatedCrossValidation,
-    ValidatedCrossValidationConfig,
     ValidationFoldResult,
     ValidationResult,
     validated_cross_val_score,

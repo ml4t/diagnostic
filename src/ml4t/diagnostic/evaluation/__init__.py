@@ -197,7 +197,6 @@ from .trade_shap_diagnostics import (
 )
 from .validated_cv import (
     ValidatedCrossValidation,
-    ValidatedCrossValidationConfig,
     ValidationFoldResult,
     ValidationResult,
     validated_cross_val_score,
@@ -246,7 +245,6 @@ __all__: list[str] = [
     "StatTestRegistry",
     # Main workflows
     "ValidatedCrossValidation",
-    "ValidatedCrossValidationConfig",
     "validated_cross_val_score",
     "ValidationFoldResult",
     "ValidationResult",

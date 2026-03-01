@@ -15,7 +15,7 @@ Main Features
 Quick Start
 -----------
 >>> from ml4t.diagnostic import ValidatedCrossValidation
->>> from ml4t.diagnostic.evaluation.validated_cv import ValidatedCrossValidationConfig
+>>> from ml4t.diagnostic.config import ValidatedCrossValidationConfig
 >>> from ml4t.diagnostic.splitters import CombinatorialCV
 >>>
 >>> # One-step validated cross-validation

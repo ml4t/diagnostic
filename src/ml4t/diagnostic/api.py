@@ -5,7 +5,7 @@ Use this module for integration-safe imports. The package-level and
 in a future release.
 """
 
-from ml4t.diagnostic.config import DiagnosticConfig
+from ml4t.diagnostic.config import DiagnosticConfig, ValidatedCrossValidationConfig
 from ml4t.diagnostic.evaluation.barrier_analysis import BarrierAnalysis
 from ml4t.diagnostic.evaluation.feature_diagnostics import (
     FeatureDiagnostics,
@@ -26,7 +26,6 @@ from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
 from ml4t.diagnostic.evaluation.trade_analysis import TradeAnalysis
 from ml4t.diagnostic.evaluation.validated_cv import (
     ValidatedCrossValidation,
-    ValidatedCrossValidationConfig,
     ValidationFoldResult,
     ValidationResult,
     validated_cross_val_score,

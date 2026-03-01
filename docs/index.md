@@ -18,7 +18,7 @@ ML4T Diagnostic is the **modern Alphalens + Pyfolio replacement** for the machin
 
 ```python
 from ml4t.diagnostic import ValidatedCrossValidation
-from ml4t.diagnostic.api import ValidatedCrossValidationConfig
+from ml4t.diagnostic.config import ValidatedCrossValidationConfig
 
 # One-step validated cross-validation with DSR
 config = ValidatedCrossValidationConfig(n_groups=10, n_test_groups=2)

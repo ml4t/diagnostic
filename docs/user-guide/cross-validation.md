@@ -101,7 +101,7 @@ Combine CPCV with DSR validation in one step:
 
 ```python
 from ml4t.diagnostic import ValidatedCrossValidation
-from ml4t.diagnostic.api import ValidatedCrossValidationConfig
+from ml4t.diagnostic.config import ValidatedCrossValidationConfig
 
 config = ValidatedCrossValidationConfig(n_groups=10, n_test_groups=2, embargo_pct=0.01)
 vcv = ValidatedCrossValidation(config=config)

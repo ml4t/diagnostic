@@ -10,7 +10,7 @@ The simplest way to validate a strategy with proper statistical testing:
 
 ```python
 from ml4t.diagnostic import ValidatedCrossValidation
-from ml4t.diagnostic.api import ValidatedCrossValidationConfig
+from ml4t.diagnostic.config import ValidatedCrossValidationConfig
 
 # Create validator with CPCV and DSR
 config = ValidatedCrossValidationConfig(

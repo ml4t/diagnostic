@@ -151,6 +151,9 @@ from ml4t.diagnostic.config.trade_analysis_config import (
 from ml4t.diagnostic.config.trade_analysis_config import (
     TradeConfig,
 )
+from ml4t.diagnostic.config.validated_cv_config import (
+    ValidatedCrossValidationConfig,
+)
 
 __all__ = [
     # Base configs
@@ -196,6 +199,8 @@ __all__ = [
     "TradeAlignmentSettings",
     "TradeClusteringSettings",
     "TradeHypothesisSettings",
+    # Validated cross-validation
+    "ValidatedCrossValidationConfig",
     # Signal analysis (consolidated)
     "SignalConfig",
     "SignalAnalysisSettings",
