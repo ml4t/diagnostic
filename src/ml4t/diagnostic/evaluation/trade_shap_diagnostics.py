@@ -56,7 +56,6 @@ from ml4t.diagnostic.evaluation.trade_shap import (
     TradeShapExplanation,
     # Pipeline
     TradeShapPipeline,
-    TradeShapPipelineConfig,
     TradeShapResult,
     benjamini_hochberg,
     compute_centroids,
@@ -214,36 +213,11 @@ class TradeShapAnalyzer:
             if self.shap_values is None:
                 self._compute_shap_values()
 
-            # Build pipeline config from TradeConfig
-            # Check for nested alignment config
-            alignment_cfg = getattr(self.config, "alignment", None)
-            if alignment_cfg is not None:
-                # AlignmentSettings has: tolerance, mode, missing_strategy, top_n_features
-                tolerance = getattr(alignment_cfg, "tolerance", 0.0)
-                mode = getattr(alignment_cfg, "mode", "entry")
-                missing_strategy = getattr(alignment_cfg, "missing_strategy", "skip")
-                top_n = getattr(alignment_cfg, "top_n_features", 10)
-                normalization = getattr(alignment_cfg, "normalization", "l2")
-            else:
-                tolerance = getattr(self.config, "alignment_tolerance_seconds", 0.0)
-                mode = getattr(self.config, "alignment_mode", "entry")
-                missing_strategy = getattr(self.config, "missing_value_strategy", "skip")
-                top_n = getattr(self.config, "top_n_features", 10)
-                normalization = getattr(self.config, "normalization", "l2")
-
-            pipeline_config = TradeShapPipelineConfig(
-                alignment_tolerance_seconds=tolerance,
-                alignment_mode=mode,
-                missing_value_strategy=missing_strategy,
-                top_n_features=top_n,
-                normalization=normalization,
-            )
-
             self._pipeline = TradeShapPipeline(
                 features_df=self.features_df,
                 shap_values=self.shap_values,
                 feature_names=self.feature_names,
-                config=pipeline_config,
+                config=self.config,
             )
 
         return self._pipeline
@@ -375,15 +349,13 @@ class TradeShapAnalyzer:
                 raise ValueError(f"n_clusters ({n_clusters}) exceeds trade count ({n_trades})")
 
         # Get clustering config
-        clustering_cfg = getattr(self.config, "clustering", None)
-        if clustering_cfg is not None:
-            config = ClusteringConfig(
-                min_cluster_size=getattr(clustering_cfg, "min_cluster_size", 3),
-                distance_metric=getattr(clustering_cfg, "distance_metric", "euclidean"),
-                linkage_method=getattr(clustering_cfg, "linkage_method", "ward"),
-            )
-        else:
-            config = ClusteringConfig()
+        clustering_cfg = self.config.clustering
+        config = ClusteringConfig(
+            min_cluster_size=clustering_cfg.min_cluster_size,
+            min_trades_for_clustering=self.config.min_trades_for_clustering,
+            distance_metric=clustering_cfg.distance_metric,
+            linkage_method=clustering_cfg.linkage,
+        )
 
         clusterer = HierarchicalClusterer(config=config)
         return clusterer.cluster(shap_vectors, n_clusters=n_clusters)
@@ -465,14 +437,7 @@ class TradeShapAnalyzer:
                     centroids[c] = shap_vectors[c_mask].mean(axis=0)
 
         # Use characterizer
-        char_cfg = getattr(self.config, "characterization", None)
-        if char_cfg is not None:
-            config = CharacterizationConfig(
-                top_n_features=top_n,
-                significance_level=getattr(char_cfg, "significance_level", 0.05),
-            )
-        else:
-            config = CharacterizationConfig(top_n_features=top_n)
+        config = CharacterizationConfig(top_n_features=top_n)
 
         characterizer = PatternCharacterizer(
             feature_names=feature_names,
@@ -512,21 +477,12 @@ class TradeShapAnalyzer:
     def hypothesis_generator(self) -> HypothesisGenerator:
         """Get hypothesis generator for custom hypothesis generation."""
         if self._hypothesis_generator is None:
-            # Get hypothesis config from TradeConfig
-            ext_config = getattr(self.config, "hypothesis", None)
-
-            # Convert HypothesisGenerationConfig to HypothesisConfig if needed
-            if ext_config is not None and hasattr(ext_config, "min_confidence"):
-                # It's a HypothesisGenerationConfig - convert to HypothesisConfig
-                config = HypothesisConfig(
-                    template_library=getattr(ext_config, "template_library", "comprehensive"),
-                    min_confidence=getattr(ext_config, "min_confidence", 0.5),
-                    max_actions=getattr(ext_config, "max_hypotheses_per_cluster", 4),
-                )
-            elif isinstance(ext_config, HypothesisConfig):
-                config = ext_config
-            else:
-                config = HypothesisConfig()
+            hypothesis_cfg = self.config.hypothesis
+            config = HypothesisConfig(
+                template_library=hypothesis_cfg.template_library,
+                min_confidence=hypothesis_cfg.min_confidence,
+                max_actions=hypothesis_cfg.max_per_cluster,
+            )
 
             self._hypothesis_generator = HypothesisGenerator(config=config)
         return self._hypothesis_generator
@@ -554,7 +510,6 @@ __all__ = [
     "TradeShapAnalyzer",
     # Pipeline (new recommended interface)
     "TradeShapPipeline",
-    "TradeShapPipelineConfig",
     # Result models
     "TradeShapResult",
     "TradeShapExplanation",

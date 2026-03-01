@@ -58,7 +58,6 @@ from ml4t.diagnostic.evaluation.trade_shap.normalize import (
 )
 from ml4t.diagnostic.evaluation.trade_shap.pipeline import (
     TradeShapPipeline,
-    TradeShapPipelineConfig,
 )
 
 __all__ = [
@@ -92,7 +91,6 @@ __all__ = [
     "load_templates",
     # Pipeline
     "TradeShapPipeline",
-    "TradeShapPipelineConfig",
     # Result models
     "TradeShapResult",
     "TradeShapExplanation",

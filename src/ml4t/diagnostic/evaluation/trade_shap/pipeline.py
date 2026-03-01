@@ -10,11 +10,11 @@ all components of trade SHAP analysis:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ml4t.diagnostic.config import TradeConfig
 from ml4t.diagnostic.evaluation.trade_shap.characterize import (
     CharacterizationConfig,
     PatternCharacterizer,
@@ -40,31 +40,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from ml4t.diagnostic.evaluation.trade_analysis import TradeMetrics
-
-
-@dataclass
-class TradeShapPipelineConfig:
-    """Configuration for the trade SHAP analysis pipeline.
-
-    Attributes:
-        alignment_tolerance_seconds: Tolerance for timestamp alignment
-        alignment_mode: 'entry' for exact match, 'nearest' for closest
-        missing_value_strategy: How to handle alignment failures ('error', 'skip', 'zero')
-        top_n_features: Number of top features in explanations
-        normalization: Normalization method for clustering ('l1', 'l2', 'standardize', None)
-        clustering: Clustering configuration
-        characterization: Characterization configuration
-        hypothesis: Hypothesis generation configuration
-    """
-
-    alignment_tolerance_seconds: float = 0.0
-    alignment_mode: str = "entry"
-    missing_value_strategy: str = "skip"
-    top_n_features: int = 10
-    normalization: str | None = "l2"
-    clustering: ClusteringConfig = field(default_factory=ClusteringConfig)
-    characterization: CharacterizationConfig = field(default_factory=CharacterizationConfig)
-    hypothesis: HypothesisConfig = field(default_factory=HypothesisConfig)
 
 
 class TradeShapPipeline:
@@ -96,7 +71,7 @@ class TradeShapPipeline:
         features_df: pl.DataFrame,
         shap_values: NDArray[np.floating[Any]],
         feature_names: list[str],
-        config: TradeShapPipelineConfig | None = None,
+        config: TradeConfig | None = None,
     ) -> None:
         """Initialize pipeline.
 
@@ -109,30 +84,44 @@ class TradeShapPipeline:
         self.features_df = features_df
         self.shap_values = shap_values
         self.feature_names = feature_names
-        self.config = config or TradeShapPipelineConfig()
+        self.config = config or TradeConfig()
 
         # Initialize explainer
+        alignment_cfg = self.config.alignment
         self.explainer = TradeShapExplainer(
             features_df=features_df,
             shap_values=shap_values,
             feature_names=feature_names,
-            tolerance_seconds=self.config.alignment_tolerance_seconds,
-            top_n_features=self.config.top_n_features,
-            alignment_mode=self.config.alignment_mode,
-            missing_value_strategy=self.config.missing_value_strategy,
+            tolerance_seconds=float(alignment_cfg.tolerance),
+            top_n_features=alignment_cfg.top_n_features,
+            alignment_mode=alignment_cfg.mode,
+            missing_value_strategy=alignment_cfg.missing_strategy,
         )
 
         # Initialize clusterer
-        self.clusterer = HierarchicalClusterer(config=self.config.clustering)
+        self.clusterer = HierarchicalClusterer(
+            config=ClusteringConfig(
+                distance_metric=self.config.clustering.distance_metric,
+                linkage_method=self.config.clustering.linkage,
+                min_cluster_size=self.config.clustering.min_cluster_size,
+                min_trades_for_clustering=self.config.min_trades_for_clustering,
+            )
+        )
 
         # Initialize characterizer
         self.characterizer = PatternCharacterizer(
             feature_names=feature_names,
-            config=self.config.characterization,
+            config=CharacterizationConfig(),
         )
 
         # Initialize hypothesis generator
-        self.hypothesis_generator = HypothesisGenerator(config=self.config.hypothesis)
+        self.hypothesis_generator = HypothesisGenerator(
+            config=HypothesisConfig(
+                template_library=self.config.hypothesis.template_library,
+                min_confidence=self.config.hypothesis.min_confidence,
+                max_actions=self.config.hypothesis.max_per_cluster,
+            )
+        )
 
     def explain_trade(
         self,
@@ -203,12 +192,12 @@ class TradeShapPipeline:
         shap_vectors = np.array([exp.shap_vector for exp in explanations])
 
         # Normalize if configured
-        if self.config.normalization:
-            shap_vectors = normalize(shap_vectors, method=self.config.normalization)
+        if self.config.clustering.normalization:
+            shap_vectors = normalize(shap_vectors, method=self.config.clustering.normalization)
 
         # Step 3: Cluster patterns (if enough trades)
         error_patterns = []
-        min_trades = self.config.clustering.min_trades_for_clustering
+        min_trades = self.config.min_trades_for_clustering
 
         if len(explanations) >= min_trades:
             try:
