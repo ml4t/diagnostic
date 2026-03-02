@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import plotly.graph_objects as go
-from ml4t.style import COLORS as _ML4T_COLORS
 from plotly.subplots import make_subplots
 
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
     get_color_scheme,

@@ -68,8 +68,6 @@ requires-python = ">=3.11"
 
 # Core dependencies
 dependencies = [
-    # ML4T shared style
-    "ml4t-style>=0.1.0",
     # Data processing
     "polars>=0.20.0",
     "pandas>=2.0.0",
@@ -225,9 +223,6 @@ Documentation = "https://ml4t-diagnostic.readthedocs.io"
 Repository = "https://github.com/ml4t/diagnostic"
 Issues = "https://github.com/ml4t/diagnostic/issues"
 Changelog = "https://github.com/ml4t/diagnostic/blob/main/CHANGELOG.md"
-
-[tool.uv.sources]
-ml4t-style = { path = "../ml4t-style", editable = true }
 
 [dependency-groups]
 dev = [

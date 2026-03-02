@@ -48,7 +48,7 @@ __all__ = ["plot_cv_folds"]
 
 
 # Color definitions for fold visualization — mapped from canonical ML4T palette
-from ml4t.style import COLORS as _ML4T_COLORS
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 
 COLORS = {
     "train": _ML4T_COLORS["slate"],

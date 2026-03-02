@@ -6,7 +6,7 @@ including color schemes, layout templates, and accessibility options.
 
 from typing import Any
 
-from ml4t.style import COLORS as _ML4T_COLORS
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 
 # Financial color schemes — derived from canonical ML4T palette
 FINANCIAL_COLORS = {

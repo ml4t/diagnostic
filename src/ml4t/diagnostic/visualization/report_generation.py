@@ -33,8 +33,8 @@ from pathlib import Path
 from typing import Any
 
 import plotly.graph_objects as go
-from ml4t.style import COLORS as _ML4T_COLORS
 
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 from ml4t.diagnostic.visualization.feature_plots import (
     plot_importance_bar,

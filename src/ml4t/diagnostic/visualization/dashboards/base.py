@@ -18,7 +18,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 import plotly.graph_objects as go
-from ml4t.style import COLORS as _ML4T_COLORS
+
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 
 from ...evaluation.themes import DARK_TEMPLATE, DEFAULT_TEMPLATE
 

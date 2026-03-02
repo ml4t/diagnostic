@@ -10,7 +10,8 @@ from typing import Any
 
 import plotly.express as px
 import plotly.graph_objects as go
-from ml4t.style import COLORS as _ML4T_COLORS
+
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 
 # =============================================================================
 # Global Theme State

@@ -1878,7 +1878,6 @@ dependencies = [
     { name = "arch" },
     { name = "jinja2" },
     { name = "joblib" },
-    { name = "ml4t-style" },
     { name = "numba" },
     { name = "numpy" },
     { name = "pandas" },
@@ -2022,7 +2021,6 @@ requires-dist = [
     { name = "mkdocs-literate-nav", marker = "extra == 'docs'", specifier = ">=0.6.0" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
-    { name = "ml4t-style", editable = "../ml4t-style" },
     { name = "myst-parser", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "nbsphinx", marker = "extra == 'all'", specifier = ">=0.9.0" },
     { name = "numba", specifier = ">=0.57.0" },
@@ -2092,28 +2090,6 @@ dev = [
     { name = "seaborn", specifier = ">=0.12.0" },
     { name = "twine", specifier = ">=6.0.0" },
     { name = "ty" },
-]
-
-[[package]]
-name = "ml4t-style"
-source = { editable = "../ml4t-style" }
-dependencies = [
-    { name = "matplotlib" },
-    { name = "numpy" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "matplotlib", specifier = ">=3.7.0" },
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "plotly", marker = "extra == 'plotly'", specifier = ">=5.15.0" },
-]
-provides-extras = ["plotly"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=7.4.0" },
-    { name = "ruff", specifier = ">=0.8.0" },
 ]
 
 [[package]]

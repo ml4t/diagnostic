@@ -9,7 +9,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
-from ml4t.style import COLORS as _ML4T_COLORS
+
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_dashboard.types import DashboardBundle

@@ -13,9 +13,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
-from ml4t.style import COLORS as _ML4T_COLORS
 from plotly.subplots import make_subplots
 
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config as get_theme
 
 if TYPE_CHECKING:

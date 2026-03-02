@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 # Colors from canonical ML4T palette + local semantic aliases
-from ml4t.style import COLORS as _ML4T_COLORS
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 
 COLORS = {
     "primary": _ML4T_COLORS["slate"],

@@ -5,7 +5,7 @@ CSS styling for the Trade SHAP diagnostics dashboard.
 
 from __future__ import annotations
 
-from ml4t.style import COLORS as _ML4T_COLORS
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 
 # Build CSS with ML4T palette colors injected into CSS custom properties.
 # The rest of the CSS references var(--primary-color) etc.
