@@ -2,6 +2,7 @@
 *~
 *$py.class
 *.bak
+artifacts/
 benchmark_results/
 .benchmarks/
 # Benchmarks
