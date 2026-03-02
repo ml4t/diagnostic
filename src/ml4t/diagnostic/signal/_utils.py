@@ -5,24 +5,17 @@ Simple, pure functions for data preparation.
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import TYPE_CHECKING
 
 import polars as pl
 
+from ml4t.diagnostic.config.signal_config import QuantileMethod
 from ml4t.diagnostic.evaluation.metrics.basic import (
     compute_forward_returns as compute_forward_returns_core,
 )
 
 if TYPE_CHECKING:
     import pandas as pd
-
-
-class QuantileMethod(str, Enum):
-    """Method for quantile assignment."""
-
-    QUANTILE = "quantile"  # Equal frequency (rank-based)
-    UNIFORM = "uniform"  # Equal width
 
 
 def ensure_polars(df: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
