@@ -277,7 +277,7 @@ class TestPlotHitRateHeatmap:
     def test_theme_parameter(self, mock_hit_rate_result: HitRateResult) -> None:
         """Test theme customization."""
         fig = plot_hit_rate_heatmap(mock_hit_rate_result, theme="dark")
-        assert fig.layout.paper_bgcolor.lower() in ["#1e1e1e", "#2d2d2d"]
+        assert fig.layout.paper_bgcolor.lower() in ["#0a1628", "#152238"]
 
     def test_custom_dimensions(self, mock_hit_rate_result: HitRateResult) -> None:
         """Test custom width and height."""
@@ -416,7 +416,7 @@ class TestPlotPrecisionRecallCurve:
     def test_theme_parameter(self, mock_precision_recall_result: PrecisionRecallResult) -> None:
         """Test theme customization."""
         fig = plot_precision_recall_curve(mock_precision_recall_result, theme="dark")
-        assert fig.layout.paper_bgcolor.lower() in ["#1e1e1e", "#2d2d2d"]
+        assert fig.layout.paper_bgcolor.lower() in ["#0a1628", "#152238"]
 
 
 # =============================================================================

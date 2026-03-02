@@ -417,18 +417,18 @@ class BaseDashboard(ABC):
             }}
 
             .badge-high {{
-                background-color: rgba(40, 167, 69, 0.2);
-                color: #28a745;
+                background-color: rgba(16, 185, 129, 0.2);
+                color: #10b981;
             }}
 
             .badge-medium {{
-                background-color: rgba(255, 193, 7, 0.2);
-                color: #ffc107;
+                background-color: rgba(212, 168, 75, 0.2);
+                color: #D4A84B;
             }}
 
             .badge-low {{
-                background-color: rgba(220, 53, 69, 0.2);
-                color: #dc3545;
+                background-color: rgba(239, 68, 68, 0.2);
+                color: #ef4444;
             }}
 
             .badge-n\\/a {{

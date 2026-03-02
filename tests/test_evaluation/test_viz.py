@@ -234,7 +234,7 @@ class TestThemeApplication:
         assert fig_default is not None
 
         fig_dark = apply_theme(fig, "dark")
-        assert fig_dark.layout.plot_bgcolor == "#1E1E1E"
+        assert fig_dark.layout.plot_bgcolor == "#152238"
 
         fig_print = apply_theme(fig, "print")
         assert fig_print.layout.plot_bgcolor == "white"

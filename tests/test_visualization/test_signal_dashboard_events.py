@@ -265,8 +265,8 @@ class TestSignalDashboardEventsTab:
 
         table_html = dashboard._create_events_table(sample_event_study_result)
 
-        # Should have color styling for positive/negative CARs
-        assert "#28a745" in table_html or "#dc3545" in table_html  # green or red
+        # Should have color styling for positive/negative CARs (ml4t-style)
+        assert "#10b981" in table_html or "#ef4444" in table_html  # positive or negative
 
     def test_events_tab_without_individual_results(self) -> None:
         """Test that Events tab handles missing individual results gracefully."""

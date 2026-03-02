@@ -6,29 +6,31 @@ including color schemes, layout templates, and accessibility options.
 
 from typing import Any
 
-# Financial color schemes
+from ml4t.style import COLORS as _ML4T_COLORS
+
+# Financial color schemes — derived from canonical ML4T palette
 FINANCIAL_COLORS = {
     # Returns and performance
-    "positive": "#00CC88",  # Green for gains
-    "negative": "#FF4444",  # Red for losses
-    "neutral": "#888888",  # Gray for neutral
+    "positive": _ML4T_COLORS["positive"],
+    "negative": _ML4T_COLORS["negative"],
+    "neutral": _ML4T_COLORS["neutral"],
     # Data series
-    "primary": "#3366CC",  # Blue
-    "secondary": "#FF9900",  # Orange
-    "tertiary": "#109618",  # Dark green
-    "quaternary": "#990099",  # Purple
+    "primary": _ML4T_COLORS["slate"],
+    "secondary": _ML4T_COLORS["amber"],
+    "tertiary": _ML4T_COLORS["positive"],
+    "quaternary": _ML4T_COLORS["copper"],
     # UI elements
-    "background": "#F8F9FA",  # Light gray
-    "paper": "#FFFFFF",  # White
-    "grid": "#E0E0E0",  # Grid lines
-    "text": "#333333",  # Dark gray text
-    "subtitle": "#666666",  # Medium gray
-    # Quantiles (5-level)
-    "q1": "#D32F2F",  # Dark red (lowest)
-    "q2": "#F57C00",  # Orange
-    "q3": "#FBC02D",  # Yellow
-    "q4": "#689F38",  # Light green
-    "q5": "#388E3C",  # Dark green (highest)
+    "background": _ML4T_COLORS["bg_light"],
+    "paper": "#FFFFFF",
+    "grid": _ML4T_COLORS["silver_muted"],
+    "text": _ML4T_COLORS["neutral"],
+    "subtitle": _ML4T_COLORS["silver_muted"],
+    # Quantiles (5-level) — kept as-is for diverging scale
+    "q1": "#D32F2F",
+    "q2": "#F57C00",
+    "q3": "#FBC02D",
+    "q4": "#689F38",
+    "q5": "#388E3C",
 }
 
 # Colorblind-friendly palette
@@ -48,7 +50,7 @@ DEFAULT_TEMPLATE = {
     "layout": {
         # Typography
         "font": {
-            "family": "Arial, Helvetica, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
             "size": 12,
             "color": FINANCIAL_COLORS["text"],
         },
@@ -96,35 +98,43 @@ DEFAULT_TEMPLATE = {
 DARK_TEMPLATE = {
     "layout": {
         # Typography
-        "font": {"family": "Arial, Helvetica, sans-serif", "size": 12, "color": "#E0E0E0"},
-        "title": {"font": {"size": 16, "color": "#FFFFFF"}, "x": 0.5, "xanchor": "center"},
+        "font": {
+            "family": "DM Sans, DejaVu Sans, sans-serif",
+            "size": 12,
+            "color": _ML4T_COLORS["silver"],
+        },
+        "title": {
+            "font": {"size": 16, "color": "#FFFFFF"},
+            "x": 0.5,
+            "xanchor": "center",
+        },
         # Colors
-        "plot_bgcolor": "#1E1E1E",
-        "paper_bgcolor": "#121212",
+        "plot_bgcolor": _ML4T_COLORS["blue_light"],
+        "paper_bgcolor": _ML4T_COLORS["blue"],
         # Grid and axes
         "xaxis": {
-            "gridcolor": "#333333",
+            "gridcolor": _ML4T_COLORS["slate"],
             "zeroline": False,
             "showgrid": True,
             "showline": True,
-            "linecolor": "#444444",
-            "tickfont": {"color": "#B0B0B0"},
+            "linecolor": _ML4T_COLORS["slate"],
+            "tickfont": {"color": _ML4T_COLORS["silver_muted"]},
         },
         "yaxis": {
-            "gridcolor": "#333333",
+            "gridcolor": _ML4T_COLORS["slate"],
             "zeroline": True,
-            "zerolinecolor": "#444444",
+            "zerolinecolor": _ML4T_COLORS["slate"],
             "showgrid": True,
             "showline": True,
-            "linecolor": "#444444",
-            "tickfont": {"color": "#B0B0B0"},
+            "linecolor": _ML4T_COLORS["slate"],
+            "tickfont": {"color": _ML4T_COLORS["silver_muted"]},
         },
         # Legend
         "legend": {
-            "bgcolor": "rgba(30,30,30,0.9)",
-            "bordercolor": "#444444",
+            "bgcolor": "rgba(10, 22, 40, 0.9)",
+            "bordercolor": _ML4T_COLORS["slate"],
             "borderwidth": 1,
-            "font": {"color": "#E0E0E0"},
+            "font": {"color": _ML4T_COLORS["silver"]},
         },
     },
 }

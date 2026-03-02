@@ -822,13 +822,13 @@ class MultiSignalDashboard(BaseDashboard):
             }}
 
             .badge-high {{
-                background-color: rgba(40, 167, 69, 0.2);
-                color: #28a745;
+                background-color: rgba(16, 185, 129, 0.2);
+                color: #10b981;
             }}
 
             .badge-low {{
-                background-color: rgba(220, 53, 69, 0.2);
-                color: #dc3545;
+                background-color: rgba(239, 68, 68, 0.2);
+                color: #ef4444;
             }}
 
             #signal-search {{
@@ -849,16 +849,16 @@ class MultiSignalDashboard(BaseDashboard):
             }}
 
             .error {{
-                color: #dc3545;
+                color: #ef4444;
                 padding: 10px;
-                background-color: rgba(220, 53, 69, 0.1);
+                background-color: rgba(239, 68, 68, 0.1);
                 border-radius: 4px;
             }}
 
             .warning {{
-                color: #ffc107;
+                color: #D4A84B;
                 padding: 10px;
-                background-color: rgba(255, 193, 7, 0.1);
+                background-color: rgba(212, 168, 75, 0.1);
                 border-radius: 4px;
             }}
         </style>

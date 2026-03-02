@@ -170,8 +170,8 @@ class TestTearSheetWithFigures:
             data = json.loads(fig_json)
             layout = data.get("layout", {})
             paper_bgcolor = layout.get("paper_bgcolor", "").lower()
-            # Dark theme uses dark backgrounds
-            assert paper_bgcolor in ["#1e1e1e", "#2d2d2d", ""], (
+            # Dark theme uses ml4t-style deep blue backgrounds
+            assert paper_bgcolor in ["#0a1628", "#152238", ""], (
                 f"Unexpected bgcolor: {paper_bgcolor}"
             )
             break  # Check just one figure

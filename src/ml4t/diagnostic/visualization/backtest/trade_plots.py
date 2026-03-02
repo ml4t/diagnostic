@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import plotly.graph_objects as go
+from ml4t.style import COLORS as _ML4T_COLORS
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization.core import (
@@ -206,7 +207,7 @@ def plot_mfe_mae_scatter(
         # Long vs Short
         for direction in ["long", "short"]:
             mask = [d == direction for d in directions]
-            color = "#28A745" if direction == "long" else "#DC3545"
+            color = _ML4T_COLORS["positive"] if direction == "long" else _ML4T_COLORS["negative"]
             fig.add_trace(
                 go.Scatter(
                     x=mae[mask],
@@ -265,25 +266,25 @@ def plot_mfe_mae_scatter(
                 "x": mae.max() * 0.8,
                 "y": mfe.max() * 0.9,
                 "text": "Q1: Healthy Winners",
-                "color": "#28A745",
+                "color": _ML4T_COLORS["positive"],
             },
             {
                 "x": mae.max() * 0.2,
                 "y": mfe.max() * 0.9,
                 "text": "Q2: Lucky Recovery",
-                "color": "#FFC107",
+                "color": _ML4T_COLORS["amber"],
             },
             {
                 "x": mae.max() * 0.2,
                 "y": mfe.max() * 0.1,
                 "text": "Q3: No Opportunity",
-                "color": "#DC3545",
+                "color": _ML4T_COLORS["negative"],
             },
             {
                 "x": mae.max() * 0.8,
                 "y": mfe.max() * 0.1,
                 "text": "Q4: Poor Exit",
-                "color": "#DC3545",
+                "color": _ML4T_COLORS["negative"],
             },
         ]
 
@@ -408,7 +409,7 @@ def plot_exit_reason_breakdown(
         total_pnl = trades_df[pnl_col].sum()
 
         values.append(total_trades if not show_pnl_contribution else abs(total_pnl))
-        colors.append("#6C757D")
+        colors.append(_ML4T_COLORS["neutral"])
 
         # Add exit reasons
         for reason in grouped[exit_reason_col].unique().to_list():
@@ -419,7 +420,7 @@ def plot_exit_reason_breakdown(
             labels.append(reason)
             parents.append("All Trades")
             values.append(reason_count if not show_pnl_contribution else abs(reason_pnl))
-            colors.append("#3498DB" if reason_pnl > 0 else "#E74C3C")
+            colors.append(_ML4T_COLORS["blue"] if reason_pnl > 0 else _ML4T_COLORS["negative"])
 
             # Add win/loss under each reason
             for outcome in ["Winner", "Loser"]:
@@ -431,7 +432,11 @@ def plot_exit_reason_breakdown(
                     labels.append(f"{reason} - {outcome}")
                     parents.append(reason)
                     values.append(outcome_count if not show_pnl_contribution else abs(outcome_pnl))
-                    colors.append("#28A745" if outcome == "Winner" else "#DC3545")
+                    colors.append(
+                        _ML4T_COLORS["positive"]
+                        if outcome == "Winner"
+                        else _ML4T_COLORS["negative"]
+                    )
     else:
         # Simple grouping
         grouped = trades_df.group_by(exit_reason_col).agg(
@@ -447,7 +452,10 @@ def plot_exit_reason_breakdown(
             if not show_pnl_contribution
             else [abs(p) for p in grouped["total_pnl"].to_list()]
         )
-        colors = ["#28A745" if p > 0 else "#DC3545" for p in grouped["total_pnl"].to_list()]
+        colors = [
+            _ML4T_COLORS["positive"] if p > 0 else _ML4T_COLORS["negative"]
+            for p in grouped["total_pnl"].to_list()
+        ]
         parents = None
 
     # Create chart
@@ -487,7 +495,7 @@ def plot_exit_reason_breakdown(
         exit_reasons = grouped[exit_reason_col].to_list()
         counts = grouped["count"].to_list()
         pnls = grouped["total_pnl"].to_list()
-        bar_colors = ["#28A745" if p > 0 else "#DC3545" for p in pnls]
+        bar_colors = [_ML4T_COLORS["positive"] if p > 0 else _ML4T_COLORS["negative"] for p in pnls]
 
         fig = go.Figure()
 
@@ -629,7 +637,7 @@ def plot_trade_waterfall(
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     # Waterfall bars
-    colors = ["#28A745" if p > 0 else "#DC3545" for p in pnl_values]
+    colors = [_ML4T_COLORS["positive"] if p > 0 else _ML4T_COLORS["negative"] for p in pnl_values]
 
     fig.add_trace(
         go.Bar(
@@ -651,7 +659,7 @@ def plot_trade_waterfall(
                 y=initial_equity + cumulative,
                 mode="lines+markers",
                 name="Cumulative Equity",
-                line={"color": "#2E86AB", "width": 2},
+                line={"color": _ML4T_COLORS["slate"], "width": 2},
                 marker={"size": 4},
                 hovertemplate="<b>%{x}</b><br>Equity: $%{y:,.2f}<extra></extra>",
             ),
@@ -754,7 +762,7 @@ def plot_trade_duration_distribution(
             go.Histogram(
                 x=winners,
                 name="Winners",
-                marker_color="#28A745",
+                marker_color=_ML4T_COLORS["positive"],
                 opacity=0.7,
                 nbinsx=bin_count,
             )
@@ -763,7 +771,7 @@ def plot_trade_duration_distribution(
             go.Histogram(
                 x=losers,
                 name="Losers",
-                marker_color="#DC3545",
+                marker_color=_ML4T_COLORS["negative"],
                 opacity=0.7,
                 nbinsx=bin_count,
             )
@@ -790,7 +798,7 @@ def plot_trade_duration_distribution(
     elif split_by == "direction" and "direction" in trades_df.columns:
         for direction in ["long", "short"]:
             mask = trades_df["direction"].to_numpy() == direction
-            color = "#28A745" if direction == "long" else "#DC3545"
+            color = _ML4T_COLORS["positive"] if direction == "long" else _ML4T_COLORS["negative"]
             fig.add_trace(
                 go.Histogram(
                     x=durations[mask],
@@ -821,14 +829,14 @@ def plot_trade_duration_distribution(
         fig.add_vline(
             x=mean_dur,
             line_dash="dash",
-            line_color="#2E86AB",
+            line_color=_ML4T_COLORS["slate"],
             annotation_text=f"Mean: {mean_dur:.1f}",
             annotation_position="top",
         )
         fig.add_vline(
             x=median_dur,
             line_dash="dot",
-            line_color="#E74C3C",
+            line_color=_ML4T_COLORS["negative"],
             annotation_text=f"Median: {median_dur:.1f}",
             annotation_position="bottom",
         )
@@ -940,7 +948,7 @@ def plot_trade_size_vs_return(
                 y=returns[winners],
                 mode="markers",
                 name="Winners",
-                marker={"color": "#28A745", "size": 8, "opacity": 0.6},
+                marker={"color": _ML4T_COLORS["positive"], "size": 8, "opacity": 0.6},
             )
         )
         fig.add_trace(
@@ -949,7 +957,7 @@ def plot_trade_size_vs_return(
                 y=returns[~winners],
                 mode="markers",
                 name="Losers",
-                marker={"color": "#DC3545", "size": 8, "opacity": 0.6},
+                marker={"color": _ML4T_COLORS["negative"], "size": 8, "opacity": 0.6},
             )
         )
     elif color_by == "exit_reason" and "exit_reason" in trades_df.columns:
@@ -1108,7 +1116,7 @@ def plot_consecutive_analysis(
             go.Histogram(
                 x=win_streaks,
                 name="Win Streaks",
-                marker_color="#28A745",
+                marker_color=_ML4T_COLORS["positive"],
                 opacity=0.7,
                 nbinsx=max(win_streaks) if win_streaks else 10,
             ),
@@ -1122,7 +1130,7 @@ def plot_consecutive_analysis(
             go.Histogram(
                 x=loss_streaks,
                 name="Loss Streaks",
-                marker_color="#DC3545",
+                marker_color=_ML4T_COLORS["negative"],
                 opacity=0.7,
                 nbinsx=max(loss_streaks) if loss_streaks else 10,
             ),
@@ -1143,7 +1151,7 @@ def plot_consecutive_analysis(
         yref="paper",
         text=f"Max: {max_win_streak} | Avg: {avg_win_streak:.1f}",
         showarrow=False,
-        font={"size": 11, "color": "#28A745"},
+        font={"size": 11, "color": _ML4T_COLORS["positive"]},
     )
 
     fig.add_annotation(
@@ -1153,7 +1161,7 @@ def plot_consecutive_analysis(
         yref="paper",
         text=f"Max: {max_loss_streak} | Avg: {avg_loss_streak:.1f}",
         showarrow=False,
-        font={"size": 11, "color": "#DC3545"},
+        font={"size": 11, "color": _ML4T_COLORS["negative"]},
     )
 
     fig.update_layout(

@@ -106,6 +106,7 @@ class TestAnalyzeDriftBasic:
 
     def test_domain_classifier_only(self):
         """Test analyze_drift with only domain classifier method."""
+        pytest.importorskip("lightgbm")
         np.random.seed(42)
         reference = pd.DataFrame(
             {
@@ -282,6 +283,7 @@ class TestDriftScenarios:
 
     def test_multivariate_drift_only(self):
         """Test multivariate drift detected but not univariate."""
+        pytest.importorskip("lightgbm")
         np.random.seed(42)
         # Create correlated features where individual features may not drift
         # but their joint distribution does

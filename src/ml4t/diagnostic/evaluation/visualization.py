@@ -19,15 +19,17 @@ from ml4t.diagnostic.backends.polars_backend import PolarsBackend
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-# Color schemes for financial data
+# Colors from canonical ML4T palette + local semantic aliases
+from ml4t.style import COLORS as _ML4T_COLORS
+
 COLORS = {
-    "positive": "#00CC88",  # Green for positive returns
-    "negative": "#FF4444",  # Red for negative returns
-    "neutral": "#888888",  # Gray for neutral
-    "primary": "#3366CC",  # Blue for primary data
-    "secondary": "#FF9900",  # Orange for secondary data
-    "background": "#F8F9FA",
-    "grid": "#E0E0E0",
+    "positive": _ML4T_COLORS["positive"],
+    "negative": _ML4T_COLORS["negative"],
+    "neutral": _ML4T_COLORS["neutral"],
+    "primary": _ML4T_COLORS["slate"],
+    "secondary": _ML4T_COLORS["amber"],
+    "background": _ML4T_COLORS["bg_light"],
+    "grid": _ML4T_COLORS["silver_muted"],
 }
 
 # Plotly theme configuration

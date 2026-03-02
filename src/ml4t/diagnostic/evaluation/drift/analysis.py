@@ -389,7 +389,7 @@ def analyze_drift(
     if "domain_classifier" in methods:
         try:
             domain_classifier_result = compute_domain_classifier_drift(
-                reference[features], test[features], **domain_classifier_config
+                reference_pd[features], test_pd[features], **domain_classifier_config
             )
         except Exception as e:
             # Log warning but continue

@@ -283,9 +283,9 @@ class TestLayoutHelpers:
         """Test base figure applies theme correctly."""
         fig = create_base_figure(theme="dark")
 
-        # Dark theme should have dark background (case-insensitive)
-        assert fig.layout.paper_bgcolor.lower() == "#1e1e1e"
-        assert fig.layout.plot_bgcolor.lower() == "#2d2d2d"
+        # Dark theme should have dark background (ml4t-style deep blue)
+        assert fig.layout.paper_bgcolor.lower() == "#0a1628"
+        assert fig.layout.plot_bgcolor.lower() == "#152238"
 
     def test_create_base_figure_custom_dimensions(self):
         """Test custom width and height."""
@@ -373,8 +373,8 @@ class TestIntegration:
         # Create figure with theme
         fig = create_base_figure(title="Test", theme=None)  # Should use global
 
-        # Verify theme applied (case-insensitive)
-        assert fig.layout.paper_bgcolor.lower() == "#1e1e1e"
+        # Verify theme applied (ml4t-style deep blue)
+        assert fig.layout.paper_bgcolor.lower() == "#0a1628"
 
         # Reset
         set_plot_theme("default")

@@ -10,6 +10,14 @@ import polars as pl
 import pytest
 from hypothesis import settings
 
+# Prevent plotly from opening browser windows during tests
+try:
+    import plotly.io as pio
+
+    pio.renderers.default = "json"
+except ImportError:
+    pass
+
 # Configure Hypothesis for CI
 settings.register_profile("ci", max_examples=50, deadline=5000)
 settings.register_profile("dev", max_examples=10, deadline=2000)  # Fast local dev

@@ -21,10 +21,11 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 
-import lightgbm as lgb
 import numpy as np
 import polars as pl
 import pytest
+
+lgb = pytest.importorskip("lightgbm")
 
 from ml4t.diagnostic.evaluation import (
     TradeAnalysis,

@@ -1229,7 +1229,7 @@ class TestKernelExplainerIntegration:
 
     def test_kernel_explainer_explicit_selection(self, simple_classification_data):
         """Test explicit KernelExplainer selection even for tree models."""
-        import lightgbm as lgb
+        lgb = pytest.importorskip("lightgbm")
 
         from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
 

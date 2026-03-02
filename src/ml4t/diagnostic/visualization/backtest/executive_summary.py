@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import plotly.graph_objects as go
+from ml4t.style import COLORS as _ML4T_COLORS
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization.core import (
@@ -125,12 +126,11 @@ DEFAULT_THRESHOLDS: dict[str, dict[str, Any]] = {
     },
 }
 
-# Color definitions
 TRAFFIC_LIGHT_COLORS = {
-    "green": "#28A745",
-    "yellow": "#FFC107",
-    "red": "#DC3545",
-    "neutral": "#6C757D",
+    "green": _ML4T_COLORS["positive"],
+    "yellow": _ML4T_COLORS["amber"],
+    "red": _ML4T_COLORS["negative"],
+    "neutral": _ML4T_COLORS["neutral"],
 }
 
 
@@ -547,8 +547,8 @@ def create_executive_summary(
                     "reference": value - delta if delta is not None else 0,
                     "relative": False,
                     "valueformat": ".2f",
-                    "increasing": {"color": "#28A745"},
-                    "decreasing": {"color": "#DC3545"},
+                    "increasing": {"color": _ML4T_COLORS["positive"]},
+                    "decreasing": {"color": _ML4T_COLORS["negative"]},
                 }
                 if delta is not None
                 else None,
@@ -864,9 +864,9 @@ def format_insights_html(insights: list[Insight]) -> str:
         HTML string with styled insight cards
     """
     category_icons = {
-        "strength": '<span style="color: #28A745; font-size: 18px;">&#10004;</span>',  # Checkmark
-        "weakness": '<span style="color: #DC3545; font-size: 18px;">&#10006;</span>',  # X
-        "warning": '<span style="color: #FFC107; font-size: 18px;">&#9888;</span>',  # Warning
+        "strength": f'<span style="color: {_ML4T_COLORS["positive"]}; font-size: 18px;">&#10004;</span>',
+        "weakness": f'<span style="color: {_ML4T_COLORS["negative"]}; font-size: 18px;">&#10006;</span>',
+        "warning": f'<span style="color: {_ML4T_COLORS["amber"]}; font-size: 18px;">&#9888;</span>',
         "info": '<span style="color: #17A2B8; font-size: 18px;">&#8505;</span>',  # Info
     }
 

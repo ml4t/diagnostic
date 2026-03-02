@@ -10,6 +10,7 @@ from typing import Any
 
 import plotly.express as px
 import plotly.graph_objects as go
+from ml4t.style import COLORS as _ML4T_COLORS
 
 # =============================================================================
 # Global Theme State
@@ -74,30 +75,34 @@ THEME_DEFAULT = {
     "description": "Clean, modern light theme for general use",
     "layout": {
         "paper_bgcolor": "#FFFFFF",
-        "plot_bgcolor": "#F8F9FA",
+        "plot_bgcolor": _ML4T_COLORS["bg_light"],
         "font": {
-            "family": "Inter, -apple-system, system-ui, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
             "size": 12,
-            "color": "#2C3E50",
+            "color": _ML4T_COLORS["neutral"],
         },
         "title_font": {
             "size": 18,
-            "color": "#2C3E50",
-            "family": "Inter, -apple-system, system-ui, sans-serif",
+            "color": _ML4T_COLORS["neutral"],
+            "family": "DM Sans, DejaVu Sans, sans-serif",
         },
         "margin": {"l": 80, "r": 20, "t": 100, "b": 80},
         "hovermode": "closest",
-        "hoverlabel": {"bgcolor": "white", "font_size": 13, "font_family": "Inter, sans-serif"},
+        "hoverlabel": {
+            "bgcolor": "white",
+            "font_size": 13,
+            "font_family": "DM Sans, DejaVu Sans, sans-serif",
+        },
     },
     "colorway": [
-        "#3498DB",  # Blue
-        "#E74C3C",  # Red
-        "#2ECC71",  # Green
-        "#F39C12",  # Orange
-        "#9B59B6",  # Purple
-        "#1ABC9C",  # Teal
-        "#E67E22",  # Dark orange
-        "#95A5A6",  # Gray
+        _ML4T_COLORS["blue"],
+        _ML4T_COLORS["amber"],
+        _ML4T_COLORS["positive"],
+        _ML4T_COLORS["slate"],
+        _ML4T_COLORS["copper"],
+        _ML4T_COLORS["negative"],
+        _ML4T_COLORS["blue_light"],
+        _ML4T_COLORS["neutral"],
     ],
     "color_schemes": {
         "sequential": "Blues",
@@ -117,36 +122,36 @@ THEME_DARK = {
     "name": "dark",
     "description": "Dark mode theme for dashboards and presentations",
     "layout": {
-        "paper_bgcolor": "#1E1E1E",
-        "plot_bgcolor": "#2D2D2D",
+        "paper_bgcolor": _ML4T_COLORS["blue"],
+        "plot_bgcolor": _ML4T_COLORS["blue_light"],
         "font": {
-            "family": "Inter, -apple-system, system-ui, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
             "size": 12,
-            "color": "#E0E0E0",
+            "color": _ML4T_COLORS["silver"],
         },
         "title_font": {
             "size": 18,
             "color": "#FFFFFF",
-            "family": "Inter, -apple-system, system-ui, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
         },
         "margin": {"l": 80, "r": 20, "t": 100, "b": 80},
         "hovermode": "closest",
         "hoverlabel": {
-            "bgcolor": "#3D3D3D",
+            "bgcolor": _ML4T_COLORS["slate"],
             "font_size": 13,
-            "font_family": "Inter, sans-serif",
+            "font_family": "DM Sans, DejaVu Sans, sans-serif",
             "font_color": "#FFFFFF",
         },
     },
     "colorway": [
-        "#5DADE2",  # Light blue
-        "#EC7063",  # Light red
-        "#58D68D",  # Light green
-        "#F5B041",  # Light orange
-        "#AF7AC5",  # Light purple
-        "#48C9B0",  # Light teal
-        "#EB984E",  # Light dark orange
-        "#AAB7B8",  # Light gray
+        _ML4T_COLORS["amber"],
+        _ML4T_COLORS["positive"],
+        _ML4T_COLORS["negative"],
+        _ML4T_COLORS["copper"],
+        _ML4T_COLORS["amber_light"],
+        _ML4T_COLORS["silver"],
+        _ML4T_COLORS["silver_muted"],
+        _ML4T_COLORS["neutral"],
     ],
     "color_schemes": {
         "sequential": "Blues",
@@ -203,28 +208,32 @@ THEME_PRESENTATION = {
     "description": "High-contrast theme for slides and presentations",
     "layout": {
         "paper_bgcolor": "#FFFFFF",
-        "plot_bgcolor": "#F0F0F0",
+        "plot_bgcolor": _ML4T_COLORS["bg_light"],
         "font": {
-            "family": "Inter, -apple-system, system-ui, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
             "size": 16,  # Larger fonts
             "color": "#000000",
         },
         "title_font": {
             "size": 24,  # Much larger title
             "color": "#000000",
-            "family": "Inter, -apple-system, system-ui, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
         },
         "margin": {"l": 100, "r": 40, "t": 120, "b": 100},
         "hovermode": "closest",
-        "hoverlabel": {"bgcolor": "white", "font_size": 16, "font_family": "Inter, sans-serif"},
+        "hoverlabel": {
+            "bgcolor": "white",
+            "font_size": 16,
+            "font_family": "DM Sans, DejaVu Sans, sans-serif",
+        },
     },
     "colorway": [
-        "#0066CC",  # Strong blue
-        "#FF3333",  # Strong red
-        "#00CC66",  # Strong green
-        "#FF9900",  # Strong orange
-        "#9933CC",  # Strong purple
-        "#00CCCC",  # Strong teal
+        _ML4T_COLORS["blue"],
+        _ML4T_COLORS["amber"],
+        _ML4T_COLORS["positive"],
+        _ML4T_COLORS["copper"],
+        _ML4T_COLORS["negative"],
+        _ML4T_COLORS["slate"],
     ],
     "color_schemes": {
         "sequential": "Blues",
@@ -309,7 +318,11 @@ COLOR_SCHEMES = {
     "dark2": px.colors.qualitative.Dark2,
     "bold": px.colors.qualitative.Bold,
     # Financial
-    "gains_losses": ["#FF4444", "#CCCCCC", "#00CC88"],  # Red, gray, green
+    "gains_losses": [
+        _ML4T_COLORS["negative"],
+        _ML4T_COLORS["silver_muted"],
+        _ML4T_COLORS["positive"],
+    ],
     "quantiles": ["#D32F2F", "#F57C00", "#FBC02D", "#689F38", "#388E3C"],
     # Color-blind safe
     "colorblind_safe": [
@@ -970,13 +983,17 @@ def add_confidence_band(
         # Already rgb format, add alpha
         fillcolor = color.replace("rgb", "rgba").replace(")", f", {opacity})")
     else:
-        # Named color - use a default mapping
+        # Named color - use ml4t-style derived mapping
+        def _hex_to_rgb(h: str) -> tuple[int, int, int]:
+            return (int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16))
+
         color_map = {
-            "blue": (52, 152, 219),
-            "red": (231, 76, 60),
-            "green": (46, 204, 113),
-            "orange": (243, 156, 18),
-            "purple": (155, 89, 182),
+            "blue": _hex_to_rgb(_ML4T_COLORS["blue"]),
+            "red": _hex_to_rgb(_ML4T_COLORS["negative"]),
+            "green": _hex_to_rgb(_ML4T_COLORS["positive"]),
+            "orange": _hex_to_rgb(_ML4T_COLORS["amber"]),
+            "amber": _hex_to_rgb(_ML4T_COLORS["amber"]),
+            "copper": _hex_to_rgb(_ML4T_COLORS["copper"]),
             "gray": (128, 128, 128),
         }
         rgb = color_map.get(color.lower(), (128, 128, 128))
@@ -1048,13 +1065,3 @@ def require_kaleido() -> None:
             "Or install ML4T Diagnostic with viz extras:\n"
             "  pip install ml4t-diagnostic[viz]"
         )
-
-
-# Fix: Import plotly.express for color schemes
-try:
-    import plotly.express as px
-except ImportError:
-    # Plotly should be available if this module is imported
-    raise ImportError(  # noqa: B904
-        "Plotly is required for visualization. Install with:\n  pip install plotly"
-    )

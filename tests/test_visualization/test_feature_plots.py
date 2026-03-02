@@ -158,7 +158,7 @@ class TestPlotImportanceBar:
         fig = plot_importance_bar(mock_importance_results, theme="dark")
 
         # Dark theme should have dark background (case-insensitive)
-        assert fig.layout.paper_bgcolor.lower() in ["#1e1e1e", "#2d2d2d", "#000000"]
+        assert fig.layout.paper_bgcolor.lower() in ["#0a1628", "#152238", "#000000"]
 
     def test_color_scheme(self, mock_importance_results):
         """Test color scheme parameter."""
@@ -414,7 +414,7 @@ class TestPlotImportanceDistribution:
         fig = plot_importance_distribution(mock_importance_results, theme="dark")
 
         # Dark theme should have dark background (case-insensitive)
-        assert fig.layout.paper_bgcolor.lower() in ["#1e1e1e", "#2d2d2d", "#000000"]
+        assert fig.layout.paper_bgcolor.lower() in ["#0a1628", "#152238", "#000000"]
 
     def test_custom_dimensions(self, mock_importance_results):
         """Test custom width and height."""
@@ -580,7 +580,7 @@ class TestFeaturePlotsIntegration:
 
         # All should have dark background (case-insensitive)
         for fig in [fig_bar, fig_heatmap, fig_dist, fig_summary]:
-            assert fig.layout.paper_bgcolor.lower() in ["#1e1e1e", "#2d2d2d", "#000000"]
+            assert fig.layout.paper_bgcolor.lower() in ["#0a1628", "#152238", "#000000"]
 
     def test_all_plots_return_valid_figures(self, mock_importance_results):
         """Test that all plots return valid Plotly figures."""

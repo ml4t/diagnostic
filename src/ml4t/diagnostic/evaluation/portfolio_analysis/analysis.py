@@ -746,7 +746,7 @@ class PortfolioAnalysis:
         theme : str, optional
             Plot theme ("default", "dark", "print", "presentation")
         cost_info : dict[str, str] | None
-            Trading cost labels for display
+            Deprecated legacy parameter. Retained for backward compatibility.
 
         Returns
         -------
@@ -755,7 +755,8 @@ class PortfolioAnalysis:
         """
         from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
 
-        return create_portfolio_dashboard(self, theme=theme, cost_info=cost_info)
+        _ = cost_info
+        return create_portfolio_dashboard(self, theme=theme)
 
 
 __all__ = ["PortfolioAnalysis"]

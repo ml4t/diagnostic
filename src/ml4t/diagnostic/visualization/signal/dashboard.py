@@ -334,7 +334,7 @@ class SignalDashboard(BaseDashboard):
                 ras_ic = ic.ras_adjusted_ic.get(first_period, 0)
                 ras_sig = ic.ras_significant.get(first_period, False)
                 sig_icon = "✓" if ras_sig else "✗"
-                sig_color = "#28a745" if ras_sig else "#dc3545"
+                sig_color = "#10b981" if ras_sig else "#ef4444"
 
                 html_parts.append(f"""
                 <div class="insights-panel">
@@ -675,7 +675,7 @@ class SignalDashboard(BaseDashboard):
 
         # Summary metrics section
         sig_status = "Significant" if event_analysis.is_significant else "Not Significant"
-        sig_color = "#28a745" if event_analysis.is_significant else "#dc3545"
+        sig_color = "#10b981" if event_analysis.is_significant else "#ef4444"
 
         html_parts.append(f"""
         <div class="metric-grid">
@@ -825,7 +825,7 @@ class SignalDashboard(BaseDashboard):
 
         rows = []
         for r in sorted_results[:20]:  # Limit to top 20
-            car_color = "#28a745" if r.car >= 0 else "#dc3545"
+            car_color = "#10b981" if r.car >= 0 else "#ef4444"
             ar_day0 = r.ar_by_day.get(0, 0.0)
             beta_str = f"{r.estimation_beta:.2f}" if r.estimation_beta is not None else "N/A"
             rows.append(f"""
