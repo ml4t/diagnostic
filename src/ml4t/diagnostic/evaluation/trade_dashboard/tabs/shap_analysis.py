@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
+from ml4t.style import COLORS as _ML4T_COLORS
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_dashboard.types import DashboardBundle
@@ -114,7 +115,10 @@ def _render_trade_shap(st: Any, explanation: dict[str, Any]) -> None:
     # Create bar chart
     import plotly.graph_objects as go
 
-    colors = ["#FF6B6B" if val < 0 else "#51CF66" for val in df_shap["SHAP Value"]]
+    colors = [
+        _ML4T_COLORS["negative"] if val < 0 else _ML4T_COLORS["positive"]
+        for val in df_shap["SHAP Value"]
+    ]
 
     fig = go.Figure()
 

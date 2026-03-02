@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
+from ml4t.style import COLORS as _ML4T_COLORS
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_dashboard.types import DashboardBundle
@@ -187,7 +188,9 @@ def _render_pattern_features(st: Any, top_features: list[Any]) -> None:
     # Create visualization
     import plotly.graph_objects as go
 
-    colors = ["#51CF66" if sig else "#ADB5BD" for sig in feature_sig]
+    colors = [
+        _ML4T_COLORS["positive"] if sig else _ML4T_COLORS["silver_muted"] for sig in feature_sig
+    ]
 
     fig = go.Figure()
 

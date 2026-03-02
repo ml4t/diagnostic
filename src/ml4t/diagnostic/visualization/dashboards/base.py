@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 import plotly.graph_objects as go
+from ml4t.style import COLORS as _ML4T_COLORS
 
 from ...evaluation.themes import DARK_TEMPLATE, DEFAULT_TEMPLATE
 
@@ -26,8 +27,16 @@ if TYPE_CHECKING:
 
 # Theme mapping for dashboard use
 THEMES = {
-    "light": {"template": DEFAULT_TEMPLATE, "plot_bgcolor": "#ffffff", "font_color": "#000000"},
-    "dark": {"template": DARK_TEMPLATE, "plot_bgcolor": "#1e1e1e", "font_color": "#ffffff"},
+    "light": {
+        "template": DEFAULT_TEMPLATE,
+        "plot_bgcolor": _ML4T_COLORS["bg_light"],
+        "font_color": "#000000",
+    },
+    "dark": {
+        "template": DARK_TEMPLATE,
+        "plot_bgcolor": _ML4T_COLORS["bg_dark"],
+        "font_color": _ML4T_COLORS["silver"],
+    },
 }
 
 

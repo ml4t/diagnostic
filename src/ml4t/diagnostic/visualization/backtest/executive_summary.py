@@ -881,7 +881,7 @@ def format_insights_html(insights: list[Insight]) -> str:
 
     for insight in insights:
         icon = category_icons.get(insight.category, "")
-        bg_color = category_colors.get(insight.category, "#f8f9fa")
+        bg_color = category_colors.get(insight.category, _ML4T_COLORS["bg_light"])
 
         html_parts.append(f"""
         <div style="background-color: {bg_color}; padding: 12px 16px; margin: 8px 0;

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import plotly.graph_objects as go
+from ml4t.style import COLORS as _ML4T_COLORS
 
 from ml4t.diagnostic.visualization.core import get_theme_config
 
@@ -103,11 +104,17 @@ def plot_dsr_gauge(
                 "borderwidth": 2,
                 "bordercolor": "gray",
                 "steps": [
-                    {"range": [0, 50], "color": "#EF553B"},  # Red - not significant
-                    {"range": [50, 90], "color": "#FFA15A"},  # Orange - weak
-                    {"range": [90, 95], "color": "#FECB52"},  # Yellow - marginal
-                    {"range": [95, 99], "color": "#00CC96"},  # Green - significant
-                    {"range": [99, 100], "color": "#19D3F3"},  # Cyan - highly significant
+                    {"range": [0, 50], "color": _ML4T_COLORS["negative"]},  # Red - not significant
+                    {"range": [50, 90], "color": _ML4T_COLORS["amber"]},  # Amber - weak
+                    {
+                        "range": [90, 95],
+                        "color": _ML4T_COLORS["amber_light"],
+                    },  # Light amber - marginal
+                    {"range": [95, 99], "color": _ML4T_COLORS["positive"]},  # Green - significant
+                    {
+                        "range": [99, 100],
+                        "color": _ML4T_COLORS["slate"],
+                    },  # Slate - highly significant
                 ],
                 "threshold": {
                     "line": {"color": "black", "width": 4},
@@ -447,9 +454,15 @@ def plot_ras_analysis(
             measure=measures,
             text=[f"{v:.4f}" for v in values],
             textposition="outside",
-            decreasing={"marker": {"color": "#EF553B"}},
+            decreasing={"marker": {"color": _ML4T_COLORS["negative"]}},
             increasing={"marker": {"color": colors[0]}},
-            totals={"marker": {"color": "#00CC96" if adjusted_ic > 0 else "#EF553B"}},
+            totals={
+                "marker": {
+                    "color": _ML4T_COLORS["positive"]
+                    if adjusted_ic > 0
+                    else _ML4T_COLORS["negative"]
+                }
+            },
             connector={"line": {"color": "rgba(128, 128, 128, 0.5)", "width": 2}},
         )
     )
@@ -473,10 +486,10 @@ def plot_ras_analysis(
     # Significance indicator
     if adjusted_ic > 0:
         sig_text = "Statistically significant after RAS adjustment"
-        sig_color = "#00CC96"
+        sig_color = _ML4T_COLORS["positive"]
     else:
         sig_text = "Not significant after RAS adjustment (IC ≤ 0)"
-        sig_color = "#EF553B"
+        sig_color = _ML4T_COLORS["negative"]
 
     annotations.append(
         {
@@ -641,7 +654,7 @@ def plot_minimum_track_record(
 
     # Current position marker
     is_significant = current_periods >= min_trl
-    marker_color = "#00CC96" if is_significant else "#EF553B"
+    marker_color = _ML4T_COLORS["positive"] if is_significant else _ML4T_COLORS["negative"]
 
     fig.add_trace(
         go.Scatter(
@@ -671,14 +684,14 @@ def plot_minimum_track_record(
         status_text = (
             f"Track record sufficient ({current_years:.1f}y ≥ MinTRL {min_trl_years:.1f}y)"
         )
-        status_color = "#00CC96"
+        status_color = _ML4T_COLORS["positive"]
     elif min_trl == float("inf"):
         status_text = "Cannot achieve significance (SR ≤ benchmark)"
-        status_color = "#EF553B"
+        status_color = _ML4T_COLORS["negative"]
     else:
         deficit = min_trl_years - current_years
         status_text = f"Need {deficit:.1f} more years (MinTRL: {min_trl_years:.1f}y)"
-        status_color = "#FFA15A"
+        status_color = _ML4T_COLORS["amber"]
 
     annotations.append(
         {
@@ -800,10 +813,10 @@ def plot_statistical_summary_card(
 
     # Color mapping
     color_map = {
-        "green": "#00CC96",
-        "yellow": "#FECB52",
-        "red": "#EF553B",
-        "gray": "#888888",
+        "green": _ML4T_COLORS["positive"],
+        "yellow": _ML4T_COLORS["amber_light"],
+        "red": _ML4T_COLORS["negative"],
+        "gray": _ML4T_COLORS["neutral"],
     }
 
     fig = go.Figure()

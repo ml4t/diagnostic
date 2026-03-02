@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 import plotly.graph_objects as go
+from ml4t.style import COLORS as _ML4T_COLORS
 
 from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 from ml4t.diagnostic.visualization.feature_plots import (
@@ -832,14 +833,14 @@ def _build_html_document(
         Complete HTML document
     """
     # Extract colors from theme
-    bg_color = theme_config.get("plot_bgcolor", "#FFFFFF")
-    text_color = theme_config.get("font_color", "#1F1F1F")
+    bg_color = theme_config.get("plot_bgcolor", _ML4T_COLORS["bg_light"])
+    text_color = theme_config.get("font_color", _ML4T_COLORS["blue"])
     grid_color = theme_config.get("gridcolor", "#E5E5E5")
 
     # Determine if dark theme
     is_dark = "dark" in theme_config.get("template", "").lower() or bg_color in [
-        "#1E1E1E",
-        "#0E0E0E",
+        _ML4T_COLORS["bg_dark"],
+        _ML4T_COLORS["blue_light"],
     ]
 
     # Generate CSS
@@ -895,15 +896,15 @@ def _generate_css(bg_color: str, text_color: str, grid_color: str, is_dark: bool
     """Generate CSS styles for report."""
     # Derive additional colors
     if is_dark:
-        header_bg = "#2A2A2A"
-        section_bg = "#252525"
-        border_color = "#404040"
-        link_color = "#6FA8DC"
+        header_bg = _ML4T_COLORS["blue_light"]
+        section_bg = _ML4T_COLORS["blue_light"]
+        border_color = _ML4T_COLORS["slate"]
+        link_color = _ML4T_COLORS["amber"]
     else:
-        header_bg = "#F5F5F5"
-        section_bg = "#FAFAFA"
+        header_bg = _ML4T_COLORS["bg_light"]
+        section_bg = _ML4T_COLORS["bg_light"]
         border_color = grid_color
-        link_color = "#1A73E8"
+        link_color = _ML4T_COLORS["slate"]
 
     css = f"""
         /* Reset and base styles */

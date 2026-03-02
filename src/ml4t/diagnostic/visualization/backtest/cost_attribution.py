@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import plotly.graph_objects as go
+from ml4t.style import COLORS as _ML4T_COLORS
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization.core import get_theme_config
@@ -126,8 +127,8 @@ def plot_cost_waterfall(
     # Determine colors
     colors = theme_config["colorway"]
     increasing_color = colors[0]  # Usually green/blue
-    decreasing_color = colors[1] if len(colors) > 1 else "#EF553B"  # Red for costs
-    totals_color = colors[2] if len(colors) > 2 else "#636EFA"  # Blue for totals
+    decreasing_color = colors[1] if len(colors) > 1 else _ML4T_COLORS["negative"]
+    totals_color = colors[2] if len(colors) > 2 else _ML4T_COLORS["blue"]
 
     fig = go.Figure(
         go.Waterfall(
