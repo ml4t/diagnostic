@@ -39,7 +39,7 @@ class CacheConfig(BaseModel):
     ttl_seconds: int | None = Field(default=3600, description="Cache TTL in seconds")
     max_memory_items: int = Field(default=100, description="Max memory cache size")
     disk_path: Path = Field(
-        default_factory=lambda: Path(".qeval_cache"),
+        default_factory=lambda: Path(".ml4t_diagnostic_cache"),
         description="Disk cache directory",
     )
     compression: bool = Field(default=False, description="Compress disk cache")

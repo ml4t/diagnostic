@@ -14,7 +14,7 @@ from ml4t.diagnostic.utils.config import (
     EvaluationConfigManager,
     EvaluatorConfig,
     LoggingConfig,
-    QEvalConfig,
+    LegacyConfig,
     SplitterConfig,
     VisualizationConfig,
     create_example_config,
@@ -176,20 +176,20 @@ class TestEvaluatorConfig:
             EvaluatorConfig(confidence_level=1.5)
 
 
-class TestQEvalConfig:
-    """Tests for complete QEvalConfig schema."""
+class TestLegacyConfig:
+    """Tests for complete LegacyConfig schema."""
 
     def test_tier_1_requires_combinatorial(self):
         """Test that tier 1 requires CombinatorialCV."""
         with pytest.raises(ValueError, match="Tier 1.*CombinatorialCV"):
-            QEvalConfig(
+            LegacyConfig(
                 evaluation=EvaluatorConfig(tier=1),
                 splitter=SplitterConfig(type="WalkForwardCV"),
             )
 
     def test_valid_tier_1_config(self):
         """Test valid tier 1 configuration."""
-        config = QEvalConfig(
+        config = LegacyConfig(
             evaluation=EvaluatorConfig(tier=1),
             splitter=SplitterConfig(type="CombinatorialCV"),
         )
@@ -199,7 +199,7 @@ class TestQEvalConfig:
     def test_metrics_non_empty(self):
         """Test that at least one metric is required."""
         with pytest.raises(ValueError):
-            QEvalConfig(
+            LegacyConfig(
                 splitter=SplitterConfig(type="WalkForwardCV"),
                 metrics=[],
             )

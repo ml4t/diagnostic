@@ -336,7 +336,7 @@ class DiagnosticConfig(BaseConfig):
 
     # Execution settings
     export_recommendations: bool = Field(True, description="Export recommendations")
-    export_to_qfeatures: bool = Field(False, description="Export in qfeatures format")
+    export_to_parquet: bool = Field(False, description="Export results to Parquet")
     return_dataframes: bool = Field(True, description="Return as DataFrames")
     n_jobs: int = Field(-1, ge=-1, description="Parallel jobs")
     cache_enabled: bool = Field(True, description="Enable caching")

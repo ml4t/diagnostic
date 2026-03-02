@@ -16,7 +16,7 @@ All plot functions follow consistent patterns:
 
 Examples
 --------
->>> from ml4t-diagnostic import analyze_ml_importance
+>>> from ml4t.diagnostic.evaluation import analyze_ml_importance
 >>> from ml4t.diagnostic.visualization import plot_importance_bar
 >>>
 >>> # Analyze

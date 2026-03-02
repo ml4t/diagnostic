@@ -75,7 +75,7 @@ class BaseResult(BaseModel):
     def get_dataframe(self, name: str | None = None) -> pl.DataFrame:
         """Get results as Polars DataFrame.
 
-        Provides programmatic access to underlying data for QEngine storage
+        Provides programmatic access to underlying data for downstream storage
         and further analysis. Subclasses should override to provide specific
         DataFrame views.
 
@@ -105,7 +105,7 @@ class BaseResult(BaseModel):
         """List available DataFrame views for this result.
 
         Returns names that can be passed to get_dataframe() to retrieve
-        specific data views. Useful for discovery and QEngine integration.
+        specific data views. Useful for discovery and downstream integration.
 
         Returns:
             List of available DataFrame names
