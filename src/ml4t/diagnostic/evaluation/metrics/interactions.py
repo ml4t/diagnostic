@@ -103,7 +103,7 @@ def compute_h_statistic(
 
     # Subsample if needed
     if n_total_samples > n_samples:
-        rng = np.random.RandomState(42)
+        rng = np.random.default_rng(42)
         indices = rng.choice(n_total_samples, size=n_samples, replace=False)
         X_sample = X_array[indices]
     else:
@@ -270,7 +270,7 @@ def compute_shap_interactions(
 
     # Subsample if needed
     if max_samples is not None and n_total_samples > max_samples:
-        rng = np.random.RandomState(42)
+        rng = np.random.default_rng(42)
         indices = rng.choice(n_total_samples, size=max_samples, replace=False)
         X_sample = X_array[indices]
         n_samples_used = max_samples

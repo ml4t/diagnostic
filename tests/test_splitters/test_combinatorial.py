@@ -590,19 +590,6 @@ class TestCombinatorialCV:
                 # Training set should not contain embargoed samples
                 assert len(set(train_idx) & embargoed_samples) == 0
 
-    def test_coverage_90_percent(self):
-        """Meta-test to verify we achieve 90%+ coverage target."""
-        # This test doesn't actually test functionality,
-        # but serves as a reminder to run coverage checks
-
-        # To verify coverage, run:
-        # pytest tests/test_splitters/test_combinatorial.py \
-        #     --cov=src/ml4t/evaluation/splitters/combinatorial \
-        #     --cov-report=term-missing
-
-        # Expected: Coverage >= 90%
-        assert True  # Placeholder - actual coverage verified by pytest-cov
-
 
 class TestBaseSplitterRegressions:
     """Regression tests for bugs found in code review (Jan 2026).

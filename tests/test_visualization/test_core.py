@@ -410,9 +410,6 @@ class TestIntegration:
         theme = validate_theme("dark")
         assert theme == "dark"
 
-        # All validations passed
-        assert True
-
 
 # =============================================================================
 # Edge Cases

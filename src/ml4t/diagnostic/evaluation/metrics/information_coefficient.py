@@ -487,7 +487,7 @@ def compute_ic_ir(
         }
 
     # Perform bootstrap
-    rng = np.random.RandomState(42)  # For reproducibility
+    rng = np.random.default_rng(42)  # For reproducibility
     bootstrap_ics = []
 
     for _ in range(n_bootstrap):

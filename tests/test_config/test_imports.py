@@ -15,8 +15,17 @@ import pytest
 
 def test_import_all_configs():
     """Test that all configs can be imported."""
+    from ml4t.diagnostic.config import (
+        DiagnosticConfig,
+        PortfolioConfig,
+        ReportConfig,
+        StatisticalConfig,
+    )
 
-    assert True  # If we get here, imports worked
+    assert DiagnosticConfig is not None
+    assert PortfolioConfig is not None
+    assert ReportConfig is not None
+    assert StatisticalConfig is not None
 
 
 def test_diagnostic_config_default():

@@ -6,6 +6,7 @@ Sharpe Ratio) which replaces the incorrectly-used DSR for single-strategy analys
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal, overload
 
 import numpy as np
@@ -14,6 +15,8 @@ from scipy import stats
 from scipy.stats import norm
 
 from ml4t.diagnostic.evaluation.trade_dashboard.types import ReturnSummary
+
+logger = logging.getLogger(__name__)
 
 
 def compute_return_summary(returns: np.ndarray) -> ReturnSummary:
@@ -236,7 +239,7 @@ def compute_distribution_tests(
                 }
             )
         except Exception:
-            pass
+            logger.debug("Shapiro-Wilk test failed", exc_info=True)
 
     # Anderson-Darling test
     if n >= 4:
@@ -258,7 +261,7 @@ def compute_distribution_tests(
                 }
             )
         except Exception:
-            pass
+            logger.debug("Anderson-Darling test failed", exc_info=True)
 
     # Jarque-Bera test
     if n >= 20:
@@ -275,7 +278,7 @@ def compute_distribution_tests(
                 }
             )
         except Exception:
-            pass
+            logger.debug("Jarque-Bera test failed", exc_info=True)
 
     if not results:
         return pd.DataFrame(columns=["test", "statistic", "p_value", "interpretation"])
@@ -329,7 +332,7 @@ def compute_time_series_tests(
                 }
             )
         except Exception:
-            pass
+            logger.debug("Ljung-Box autocorrelation test failed", exc_info=True)
 
     # ADF test for stationarity
     if n >= 20:
@@ -348,7 +351,7 @@ def compute_time_series_tests(
                 }
             )
         except Exception:
-            pass
+            logger.debug("ADF stationarity test failed", exc_info=True)
 
     if not results:
         return pd.DataFrame(columns=["test", "statistic", "p_value", "interpretation"])

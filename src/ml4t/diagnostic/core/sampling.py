@@ -123,7 +123,7 @@ def stratified_sample_time_series(
     ...     df, stratify_column='label', sample_frac=0.3
     ... )
     """
-    rng = np.random.RandomState(random_state)
+    rng = np.random.default_rng(random_state)
     output_as_pandas = isinstance(data, pd.DataFrame)
 
     if isinstance(data, pl.DataFrame):
@@ -315,7 +315,7 @@ def balanced_subsample(
     y_balanced : np.ndarray
         Balanced labels
     """
-    rng = np.random.RandomState(random_state)
+    rng = np.random.default_rng(random_state)
 
     # Get class counts
     unique_labels, counts = np.unique(y, return_counts=True)
@@ -409,7 +409,7 @@ def event_based_sample(
     if n_samples is None and sample_frac is None:
         raise ValueError("Either n_samples or sample_frac must be specified")
 
-    rng = np.random.RandomState(random_state)
+    rng = np.random.default_rng(random_state)
     output_as_pandas = isinstance(data, pd.DataFrame)
 
     if isinstance(data, pl.DataFrame):
