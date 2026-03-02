@@ -146,12 +146,8 @@ def monotonicity_score(
     return float(rho) if not np.isnan(rho) else float("nan")
 
 
-# Backward compatibility alias
-compute_monotonicity = monotonicity_score
-
 __all__ = [
     "compute_quantile_returns",
     "compute_spread",
     "monotonicity_score",
-    "compute_monotonicity",
 ]

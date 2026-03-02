@@ -22,7 +22,6 @@ Example:
     ...     print(f"Context: {e.context}")
 """
 
-import warnings
 from typing import Any
 
 
@@ -195,21 +194,9 @@ class IntegrationError(DiagnosticError):
     pass
 
 
-def __getattr__(name: str):
-    if name == "QEvalError":
-        warnings.warn(
-            "QEvalError is deprecated, use DiagnosticError instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return DiagnosticError
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 # Public API
 __all__ = [
     "DiagnosticError",
-    "QEvalError",  # Deprecated alias
     "ConfigurationError",
     "ValidationError",
     "ComputationError",

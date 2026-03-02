@@ -34,7 +34,6 @@ from ml4t.diagnostic.signal._utils import (
 )
 from ml4t.diagnostic.signal.core import analyze_signal, prepare_data
 from ml4t.diagnostic.signal.quantile import (
-    compute_monotonicity,
     compute_quantile_returns,
     compute_spread,
     monotonicity_score,
@@ -63,7 +62,6 @@ __all__ = [
     "compute_quantile_returns",
     "compute_spread",
     "monotonicity_score",
-    "compute_monotonicity",  # Backward compat alias
     # Turnover functions
     "compute_turnover",
     "compute_autocorrelation",

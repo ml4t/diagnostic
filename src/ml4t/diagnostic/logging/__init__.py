@@ -22,8 +22,6 @@ Example:
     ...     sharpe = compute_sharpe_ratio(returns)
 """
 
-import warnings
-
 # Structured logging
 from ml4t.diagnostic.logging.logger import (
     DiagnosticLogger,
@@ -54,22 +52,9 @@ from ml4t.diagnostic.logging.progress import (
 # Experiment tracking (Weights & Biases)
 from ml4t.diagnostic.logging.wandb import WandbLogger, log_experiment
 
-
-def __getattr__(name: str):
-    if name == "QEvalLogger":
-        warnings.warn(
-            "QEvalLogger is deprecated, use DiagnosticLogger instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return DiagnosticLogger
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 __all__: list[str] = [
     # Logger
     "DiagnosticLogger",
-    "QEvalLogger",  # Deprecated alias
     "get_logger",
     "set_log_level",
     "get_log_level",

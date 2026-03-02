@@ -208,9 +208,7 @@ class LegacyConfig(BaseModel):
 
 
 # Explicit legacy alias to distinguish from `ml4t.diagnostic.config` models.
-# Backward compatibility aliases
 LegacyEvaluationConfig = LegacyConfig
-QEvalConfig = LegacyConfig  # Deprecated: use ml4t.diagnostic.config models
 
 
 class EvaluationConfigManager:

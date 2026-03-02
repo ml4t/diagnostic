@@ -1,6 +1,6 @@
 """Tests for quantile analysis functions.
 
-Tests quantile.py: compute_quantile_returns, compute_spread, compute_monotonicity.
+Tests quantile.py: compute_quantile_returns, compute_spread, monotonicity_score.
 """
 
 from datetime import date
@@ -10,9 +10,9 @@ import polars as pl
 import pytest
 
 from ml4t.diagnostic.signal.quantile import (
-    compute_monotonicity,
     compute_quantile_returns,
     compute_spread,
+    monotonicity_score,
 )
 
 # =============================================================================
@@ -253,18 +253,18 @@ class TestComputeSpread:
 
 
 # =============================================================================
-# Tests: compute_monotonicity
+# Tests: monotonicity_score
 # =============================================================================
 
 
 class TestComputeMonotonicity:
-    """Tests for compute_monotonicity function."""
+    """Tests for monotonicity_score function."""
 
     def test_perfectly_monotonic_increasing(self):
         """Test perfectly monotonically increasing returns."""
         q_returns = {1: 0.01, 2: 0.02, 3: 0.03, 4: 0.04, 5: 0.05}
 
-        mono = compute_monotonicity(q_returns)
+        mono = monotonicity_score(q_returns)
 
         # Perfect positive correlation (allow floating-point tolerance)
         assert abs(mono - 1.0) < 1e-10
@@ -273,7 +273,7 @@ class TestComputeMonotonicity:
         """Test perfectly monotonically decreasing returns."""
         q_returns = {1: 0.05, 2: 0.04, 3: 0.03, 4: 0.02, 5: 0.01}
 
-        mono = compute_monotonicity(q_returns)
+        mono = monotonicity_score(q_returns)
 
         # Perfect negative correlation (allow floating-point tolerance)
         assert abs(mono - (-1.0)) < 1e-10
@@ -282,7 +282,7 @@ class TestComputeMonotonicity:
         """Test non-monotonic returns (V-shape)."""
         q_returns = {1: 0.02, 2: 0.01, 3: 0.02}  # V-shape
 
-        mono = compute_monotonicity(q_returns)
+        mono = monotonicity_score(q_returns)
 
         # Low monotonicity (close to 0)
         assert -0.5 < mono < 0.5
@@ -291,7 +291,7 @@ class TestComputeMonotonicity:
         """Test when fewer than 3 quantiles."""
         q_returns = {1: 0.01, 2: 0.02}
 
-        mono = compute_monotonicity(q_returns)
+        mono = monotonicity_score(q_returns)
 
         # Need at least 3 points for rank correlation
         assert np.isnan(mono)
@@ -300,7 +300,7 @@ class TestComputeMonotonicity:
         """Test when all returns are NaN."""
         q_returns = {1: float("nan"), 2: float("nan"), 3: float("nan")}
 
-        mono = compute_monotonicity(q_returns)
+        mono = monotonicity_score(q_returns)
 
         # Empty after filtering NaN
         assert np.isnan(mono)
@@ -315,7 +315,7 @@ class TestComputeMonotonicity:
             5: 0.03,
         }
 
-        mono = compute_monotonicity(q_returns)
+        mono = monotonicity_score(q_returns)
 
         # 3 valid values remain: 1->0.01, 3->0.02, 5->0.03
         # Should be perfectly monotonic

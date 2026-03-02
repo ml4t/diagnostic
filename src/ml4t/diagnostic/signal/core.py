@@ -18,9 +18,9 @@ from ml4t.diagnostic.signal._utils import (
     quantize_factor,
 )
 from ml4t.diagnostic.signal.quantile import (
-    compute_monotonicity,
     compute_quantile_returns,
     compute_spread,
+    monotonicity_score,
 )
 from ml4t.diagnostic.signal.result import SignalResult
 from ml4t.diagnostic.signal.signal_ic import compute_ic_series, compute_ic_summary
@@ -233,7 +233,7 @@ def analyze_signal(
         spread_p_value[period_key] = spread_stats["p_value"]
 
         # Monotonicity
-        monotonicity[period_key] = compute_monotonicity(q_returns)
+        monotonicity[period_key] = monotonicity_score(q_returns)
 
     # Turnover (optional)
     turnover_dict: dict[str, float] | None = None
