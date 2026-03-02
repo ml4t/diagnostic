@@ -120,7 +120,7 @@ class OptionalDependencies:
             install_cmd="pip install lightgbm",
             purpose="Feature importance (MDI, permutation), boosting models",
             features=[
-                "FeatureOutcome.run_analysis (ML importance)",
+                "analyze_ml_importance",
                 "MDI feature importance",
                 "Permutation importance",
             ],

@@ -805,9 +805,8 @@ class WalkForwardCV(BaseSplitter):
         n_samples: int,
     ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
         """Generate splits using session boundaries (session-aware)."""
-        # Get unique sessions in chronological order
-        unique_sessions = self._get_unique_sessions(X, self.session_col)
-        n_sessions = len(unique_sessions)
+        ordered_sessions, session_to_indices = self._session_to_indices(X, self.session_col)
+        n_sessions = len(ordered_sessions)
 
         # Extract timestamps if available (for purging/embargo)
         timestamps = self._extract_timestamps(X, self.timestamp_col)
@@ -890,30 +889,21 @@ class WalkForwardCV(BaseSplitter):
             train_end_session = test_start_session - self.gap
 
             # Get session IDs for train and test
-            if isinstance(unique_sessions, pl.Series):
-                train_sessions = unique_sessions[train_start_session:train_end_session].to_list()
-                test_sessions = unique_sessions[test_start_session:test_end_session].to_list()
-                session_col_values = X[self.session_col]
-            else:  # pandas Series
-                train_sessions = unique_sessions.iloc[
-                    train_start_session:train_end_session
-                ].tolist()
-                test_sessions = unique_sessions.iloc[test_start_session:test_end_session].tolist()
-                session_col_values = X[self.session_col]
+            train_sessions = ordered_sessions[train_start_session:train_end_session]
+            test_sessions = ordered_sessions[test_start_session:test_end_session]
 
-            # Map sessions to row indices
-            if isinstance(X, pl.DataFrame):
-                train_mask = session_col_values.is_in(train_sessions)
-                test_mask = session_col_values.is_in(test_sessions)
-                train_indices = np.where(train_mask.to_numpy())[0]
-                test_indices = np.where(test_mask.to_numpy())[0]
-            else:  # pandas DataFrame
-                # Cast to pd.Series since X is pd.DataFrame here
-                session_col_pd = cast(pd.Series, session_col_values)
-                train_mask = session_col_pd.isin(train_sessions)
-                test_mask = session_col_pd.isin(test_sessions)
-                train_indices = np.where(train_mask.to_numpy())[0]
-                test_indices = np.where(test_mask.to_numpy())[0]
+            train_indices = (
+                np.concatenate([session_to_indices[s] for s in train_sessions])
+                if len(train_sessions) > 0
+                else np.array([], dtype=np.intp)
+            )
+            test_indices = (
+                np.concatenate([session_to_indices[s] for s in test_sessions])
+                if len(test_sessions) > 0
+                else np.array([], dtype=np.intp)
+            )
+            train_indices = np.sort(train_indices)
+            test_indices = np.sort(test_indices)
 
             # Apply purging and embargo if configured
             if self._has_purging_or_embargo():
@@ -1043,10 +1033,19 @@ class WalkForwardCV(BaseSplitter):
             trading_indices = np.arange(n_samples)
             trading_sessions = sessions
 
-        # Get unique sessions in order
-        unique_sessions_raw = trading_sessions.unique()
-        unique_sessions_raw = unique_sessions_raw[~pd.isna(unique_sessions_raw)]
-        unique_sessions = np.sort(unique_sessions_raw)
+        # Build unique sessions and session->row index mapping in one pass.
+        trading_session_values = trading_sessions.to_numpy()
+        valid_session_mask = ~pd.isna(trading_session_values)
+        trading_session_values = trading_session_values[valid_session_mask]
+        trading_indices = trading_indices[valid_session_mask]
+
+        if len(trading_session_values) == 0:
+            raise ValueError(
+                "No trading sessions found in the data for calendar "
+                f"'{self.calendar.config.exchange}'."
+            )
+
+        unique_sessions, inverse = np.unique(trading_session_values, return_inverse=True)
         n_sessions = len(unique_sessions)
 
         if n_sessions == 0:
@@ -1055,11 +1054,12 @@ class WalkForwardCV(BaseSplitter):
                 f"'{self.calendar.config.exchange}'."
             )
 
-        # Build session -> row indices mapping (only trading rows)
-        session_to_indices: dict[Any, NDArray[np.intp]] = {}
-        for session_date in unique_sessions:
-            mask = (sessions.values == session_date) & trading_mask
-            session_to_indices[session_date] = np.where(mask)[0].astype(np.intp)
+        order = np.argsort(inverse, kind="mergesort")
+        split_points = np.flatnonzero(np.diff(inverse[order])) + 1
+        grouped_positions = np.split(order, split_points)
+        session_indices_by_pos = [
+            np.sort(trading_indices[group].astype(np.intp)) for group in grouped_positions
+        ]
 
         # Convert size specs to session counts
         if self.test_size is None:
@@ -1122,12 +1122,12 @@ class WalkForwardCV(BaseSplitter):
             test_sessions = unique_sessions[test_start_s:test_end_s]
 
             train_indices = (
-                np.concatenate([session_to_indices[s] for s in train_sessions])
+                np.concatenate(session_indices_by_pos[train_start_s:train_end_s])
                 if len(train_sessions) > 0
                 else np.array([], dtype=np.intp)
             )
             test_indices = (
-                np.concatenate([session_to_indices[s] for s in test_sessions])
+                np.concatenate(session_indices_by_pos[test_start_s:test_end_s])
                 if len(test_sessions) > 0
                 else np.array([], dtype=np.intp)
             )

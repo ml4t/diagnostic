@@ -186,7 +186,7 @@ def generate_markdown_report(
     if include_summary_table and not result.summary_df.empty:
         lines.append("## Test Summary")
         lines.append("")
-        lines.append(result.summary_df.to_markdown(index=False))
+        lines.append(_dataframe_to_markdown(result.summary_df))
         lines.append("")
 
     # Module-specific results
@@ -275,6 +275,24 @@ def generate_markdown_report(
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _dataframe_to_markdown(df: Any) -> str:
+    """Render a DataFrame to markdown without hard-requiring tabulate."""
+    try:
+        return df.to_markdown(index=False)
+    except ImportError:
+        pass
+
+    columns = [str(col) for col in df.columns]
+    header = "| " + " | ".join(columns) + " |"
+    separator = "| " + " | ".join(["---"] * len(columns)) + " |"
+    rows = []
+    for row in df.itertuples(index=False, name=None):
+        cells = [str(cell).replace("|", "\\|").replace("\n", " ") for cell in row]
+        rows.append("| " + " | ".join(cells) + " |")
+
+    return "\n".join([header, separator, *rows])
 
 
 def generate_multi_feature_html_report(

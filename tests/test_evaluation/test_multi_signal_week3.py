@@ -430,7 +430,7 @@ class TestMultiSignalDashboard:
         html = dashboard.generate(sample_summary)
 
         # Dark theme should have dark background colors
-        assert "#1e1e1e" in html or "dark" in html.lower()
+        assert "#0a1628" in html or "dark" in html.lower()
 
     def test_dashboard_save(self, sample_summary: MultiSignalSummary, tmp_path) -> None:
         """Test saving dashboard to file."""

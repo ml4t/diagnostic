@@ -4,7 +4,8 @@ This module provides the main entry point for evaluating feature predictive powe
 combining IC analysis, significance testing, monotonicity validation, and decay analysis.
 """
 
-from typing import TYPE_CHECKING, Any, cast
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from ml4t.diagnostic.evaluation.metrics.basic import compute_forward_returns
 from ml4t.diagnostic.evaluation.metrics.ic_statistics import (
     compute_ic_decay,
     compute_ic_hac_stats,
+    compute_ic_summary_stats,
 )
 from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_ir,
@@ -24,6 +26,87 @@ from ml4t.diagnostic.evaluation.metrics.monotonicity import compute_monotonicity
 
 if TYPE_CHECKING:
     pass
+
+
+def analyze_feature_outcome_series(
+    predictions: np.ndarray | pd.Series | pl.Series,
+    outcomes: np.ndarray | pd.Series | pl.Series,
+    *,
+    method: str = "spearman",
+    include_monotonicity: bool = False,
+    n_quantiles: int = 5,
+) -> dict[str, Any]:
+    """Analyze single-series feature-outcome relationship.
+
+    This helper is the canonical metrics-layer engine for one feature aligned
+    to one outcome series.
+    """
+    pred_array = np.asarray(predictions, dtype=np.float64).reshape(-1)
+    out_array = np.asarray(outcomes, dtype=np.float64).reshape(-1)
+
+    if len(pred_array) != len(out_array):
+        raise ValueError(
+            f"Predictions ({len(pred_array)}) and outcomes ({len(out_array)}) must have same length"
+        )
+
+    valid_mask = ~(np.isnan(pred_array) | np.isnan(out_array))
+    pred_clean = pred_array[valid_mask]
+    out_clean = out_array[valid_mask]
+    n_observations = int(len(pred_clean))
+
+    if n_observations == 0:
+        return {
+            "ic_mean": np.nan,
+            "ic_std": np.nan,
+            "ic_ir": np.nan,
+            "p_value": np.nan,
+            "n_observations": 0,
+            "monotonicity_analysis": None,
+        }
+
+    if n_observations < 3:
+        # Keep contract stable for small samples while signaling weak evidence.
+        ic_val = float(information_coefficient(pred_clean, out_clean, method=method))
+        return {
+            "ic_mean": ic_val,
+            "ic_std": float(np.std(pred_clean)),
+            "ic_ir": float(ic_val / (np.std(pred_clean) + 1e-10)),
+            "p_value": 1.0,
+            "n_observations": n_observations,
+            "monotonicity_analysis": None,
+        }
+
+    from scipy.stats import pearsonr, spearmanr
+
+    method_lower = method.lower()
+    if method_lower == "spearman":
+        ic_mean, p_value = spearmanr(pred_clean, out_clean)
+    elif method_lower == "pearson":
+        ic_mean, p_value = pearsonr(pred_clean, out_clean)
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'spearman' or 'pearson'.")
+
+    ic_mean_f = float(ic_mean)
+    ic_std_f = float(np.std(pred_clean))
+    ic_ir_f = float(ic_mean_f / (ic_std_f + 1e-10))
+
+    monotonicity_analysis: dict[str, Any] | None = None
+    if include_monotonicity:
+        monotonicity_analysis = compute_monotonicity(
+            features=pred_clean,
+            outcomes=out_clean,
+            n_quantiles=n_quantiles,
+            method=method_lower,
+        )
+
+    return {
+        "ic_mean": ic_mean_f,
+        "ic_std": ic_std_f,
+        "ic_ir": ic_ir_f,
+        "p_value": float(p_value),
+        "n_observations": n_observations,
+        "monotonicity_analysis": monotonicity_analysis,
+    }
 
 
 def analyze_feature_outcome(
@@ -152,69 +235,56 @@ def analyze_feature_outcome(
     - Monotonicity score: >0.8 for strong monotonicity
     - Half-life: Depends on strategy horizon (align with holding period)
     """
+    output_as_pandas = isinstance(predictions, pd.DataFrame)
+    predictions_pl = (
+        predictions if isinstance(predictions, pl.DataFrame) else pl.from_pandas(predictions)
+    )
+    prices_pl = prices if isinstance(prices, pl.DataFrame) else pl.from_pandas(prices)
+
     # 1. Compute forward returns from prices using compute_forward_returns
     prices_with_fwd = compute_forward_returns(
-        prices=prices,
+        prices=prices_pl,
         periods=1,  # 1-day forward returns for IC series
         price_col=price_col,
         group_col=group_col,
     )
+    prices_with_fwd_pl = (
+        prices_with_fwd
+        if isinstance(prices_with_fwd, pl.DataFrame)
+        else pl.from_pandas(prices_with_fwd)
+    )
 
     # 2. Merge predictions with returns
     merge_cols = [date_col, group_col] if group_col else [date_col]
-
-    merged: pl.DataFrame | pd.DataFrame
-    if isinstance(predictions, pl.DataFrame):
-        prices_fwd_pl = cast(pl.DataFrame, prices_with_fwd)
-        merged = predictions.join(prices_fwd_pl, on=merge_cols, how="inner")
-        # Drop NaN forward returns
-        merged = merged.filter(pl.col("fwd_ret_1").is_not_null())
-    else:
-        prices_fwd_pd = cast(pd.DataFrame, prices_with_fwd)
-        merged = pd.merge(predictions, prices_fwd_pd, on=merge_cols, how="inner")
-        # Drop NaN forward returns
-        merged = merged.dropna(subset=["fwd_ret_1"])
+    merged = predictions_pl.join(prices_with_fwd_pl, on=merge_cols, how="inner").filter(
+        pl.col("fwd_ret_1").is_not_null()
+    )
 
     # 3. Compute IC time series (cross-sectional IC per date)
     # For panel data, compute IC by grouping on date and correlating across assets
-    ic_series: pl.DataFrame | pd.DataFrame  # Declare type before branches
-
     if group_col:
-        # Panel data: group by date and compute IC within each date
-        def compute_date_ic(group: pd.DataFrame) -> pd.Series:
-            # Explicitly convert to float arrays to handle ExtensionArray types
-            pred_vals = np.asarray(group[pred_col].values, dtype=np.float64)
-            ret_vals = np.asarray(group["fwd_ret_1"].values, dtype=np.float64)
-
-            # Remove NaN pairs
-            valid_mask = ~(np.isnan(pred_vals) | np.isnan(ret_vals))
-            pred_clean = pred_vals[valid_mask]
-            ret_clean = ret_vals[valid_mask]
-
-            n_obs = len(pred_clean)
-
-            if n_obs >= 2:  # Need at least 2 observations for correlation
-                ic_val = information_coefficient(
-                    pred_clean, ret_clean, method=method, confidence_intervals=False
-                )
-            else:
-                ic_val = np.nan
-
-            return pd.Series({"ic": ic_val, "n_obs": n_obs})
-
-        # Convert to pandas for groupby.apply() operation
-        merged_pd: pd.DataFrame = merged.to_pandas() if isinstance(merged, pl.DataFrame) else merged
-        ic_series = merged_pd.groupby(date_col).apply(compute_date_ic).reset_index()
+        ic_series_pl = compute_ic_series(
+            predictions=merged.select([date_col, group_col, pred_col]),
+            returns=merged.select([date_col, group_col, "fwd_ret_1"]),
+            pred_col=pred_col,
+            ret_col="fwd_ret_1",
+            date_col=date_col,
+            entity_col=group_col,
+            method=method,
+            min_periods=2,
+        )
     else:
-        # Time series data: use standard compute_ic_series
-        ic_series = compute_ic_series(
-            predictions=merged[[date_col, pred_col]],
-            returns=merged[[date_col, "fwd_ret_1"]],
+        ic_series_pl = compute_ic_series(
+            predictions=merged.select([date_col, pred_col]),
+            returns=merged.select([date_col, "fwd_ret_1"]),
             pred_col=pred_col,
             ret_col="fwd_ret_1",
             date_col=date_col,
             method=method,
         )
+    ic_series: pl.DataFrame | pd.DataFrame = (
+        ic_series_pl.to_pandas() if output_as_pandas else ic_series_pl
+    )
 
     # 4. Compute IC-IR (Information Ratio)
     ic_ir_result = compute_ic_ir(
@@ -228,25 +298,16 @@ def analyze_feature_outcome(
     if include_hac:
         hac_stats = compute_ic_hac_stats(ic_series=ic_series, ic_col="ic")
     else:
-        # Fallback to simple statistics - explicitly convert to float array
-        if isinstance(ic_series, pl.DataFrame):
-            ic_array = np.asarray(ic_series["ic"].to_numpy(), dtype=np.float64)
-        elif isinstance(ic_series, pd.DataFrame):
-            ic_array = np.asarray(ic_series["ic"].to_numpy(), dtype=np.float64)
-        else:
-            raise TypeError(f"ic_series must be DataFrame, got {type(ic_series)}")
-        mean_ic = float(np.mean(ic_array))
-        std_ic = float(np.std(ic_array, ddof=1))
-        t_stat = mean_ic / (std_ic / np.sqrt(len(ic_array)))
-        from scipy.stats import t as t_dist
-
-        p_value = float(2 * (1 - t_dist.cdf(abs(t_stat), df=len(ic_array) - 1)))
+        # Fallback to canonical non-HAC summary statistics.
+        summary = compute_ic_summary_stats(ic_series=ic_series, ic_col="ic")
+        n_periods = int(summary["n_periods"])
+        hac_se = summary["std_ic"] / np.sqrt(n_periods) if n_periods >= 2 else np.nan
         hac_stats = {
-            "mean_ic": mean_ic,
-            "hac_se": std_ic / np.sqrt(len(ic_array)),
-            "t_stat": t_stat,
-            "p_value": p_value,
-            "n_periods": len(ic_array),
+            "mean_ic": summary["mean_ic"],
+            "hac_se": float(hac_se),
+            "t_stat": summary["t_stat"],
+            "p_value": summary["p_value"],
+            "n_periods": n_periods,
         }
 
     # 6. Compute IC decay analysis (if requested)
@@ -267,16 +328,9 @@ def analyze_feature_outcome(
     # 7. Compute monotonicity analysis (if requested)
     monotonicity_analysis = None
     if include_monotonicity:
-        # Use already-merged data with forward returns - convert to pandas for values access
-        merged_for_mono: pd.DataFrame
-        if isinstance(merged, pl.DataFrame):
-            merged_for_mono = merged.to_pandas()
-        else:
-            merged_for_mono = merged
-
         monotonicity_analysis = compute_monotonicity(
-            features=merged_for_mono[pred_col].to_numpy(),
-            outcomes=merged_for_mono["fwd_ret_1"].to_numpy(),
+            features=merged[pred_col].to_numpy(),
+            outcomes=merged["fwd_ret_1"].to_numpy(),
             n_quantiles=n_quantiles,
             method=method,
         )
@@ -316,7 +370,7 @@ def analyze_feature_outcome(
         "ic_series": ic_series,
         "interpretation": interpretation,
         "metadata": {
-            "analysis_date": pd.Timestamp.now().isoformat(),
+            "analysis_date": datetime.now(UTC).isoformat(),
             "method": method,
             "n_quantiles": n_quantiles,
             "horizons": horizons or [1, 2, 5, 10, 21],
@@ -436,40 +490,3 @@ def _generate_interpretation(
         )
 
     return "\n".join(lines)
-
-
-# Pydantic schema for analyze_feature_outcome() results
-try:
-    from pydantic import BaseModel, Field
-
-    class ICSummary(BaseModel):
-        """IC summary statistics."""
-
-        mean_ic: float = Field(description="Mean Information Coefficient")
-        std_ic: float = Field(description="Standard deviation of IC")
-        ic_ir: float = Field(description="IC Information Ratio")
-        ic_ir_lower_ci: float | None = Field(None, description="IC-IR lower confidence interval")
-        ic_ir_upper_ci: float | None = Field(None, description="IC-IR upper confidence interval")
-        t_stat: float = Field(description="HAC-adjusted t-statistic")
-        p_value: float = Field(description="HAC-adjusted p-value")
-        is_significant: bool = Field(description="Whether p-value < 0.05")
-        n_periods: int = Field(description="Number of periods analyzed")
-        fraction_positive: float = Field(description="Fraction of periods with positive IC")
-
-    class FeatureOutcomeAnalysis(BaseModel):
-        """Pydantic schema for analyze_feature_outcome() results."""
-
-        ic_summary: ICSummary = Field(description="Core IC statistics")
-        interpretation: str = Field(description="Human-readable interpretation")
-        metadata: dict[str, Any] = Field(description="Analysis metadata")
-        decay_analysis: dict[str, Any] | None = Field(None, description="IC decay analysis")
-        monotonicity_analysis: dict[str, Any] | None = Field(
-            None, description="Monotonicity analysis"
-        )
-
-        class Config:
-            extra = "allow"  # Allow ic_series and other fields
-
-except ImportError:
-    # Pydantic not available, skip schema definition
-    pass

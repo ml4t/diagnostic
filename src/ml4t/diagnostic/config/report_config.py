@@ -55,7 +55,7 @@ class OutputFormatConfig(BaseConfig):
         description="Output directory",
     )
     filename_template: str = Field(
-        "qeval_report_{date}",
+        "diagnostic_report_{date}",
         description="Filename template (placeholders: {date}, {strategy_name}, {timestamp})",
     )
     compress: bool = Field(False, description="Create .zip if multiple outputs")

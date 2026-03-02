@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config as get_theme
 
 if TYPE_CHECKING:
@@ -107,7 +108,7 @@ def plot_caar(
             y=y,
             mode="lines+markers",
             name="CAAR",
-            line={"color": colors.get("primary", "#1f77b4"), "width": 2},
+            line={"color": colors.get("primary", _ML4T_COLORS["blue"]), "width": 2},
             marker={"size": 6},
             hovertemplate="Day %{x}<br>CAAR: %{y:.4f}<extra></extra>",
         ),
@@ -141,7 +142,9 @@ def plot_caar(
         aar_y = list(result.aar_by_day.values())
 
         bar_colors = [
-            colors.get("positive", "#2ca02c") if v >= 0 else colors.get("negative", "#d62728")
+            colors.get("positive", _ML4T_COLORS["positive"])
+            if v >= 0
+            else colors.get("negative", _ML4T_COLORS["negative"])
             for v in aar_y
         ]
 
@@ -351,7 +354,7 @@ def plot_ar_distribution(
             x=ars_array,
             nbinsx=min(20, len(ars)),
             name="AR Distribution",
-            marker_color=colors.get("primary", "#1f77b4"),
+            marker_color=colors.get("primary", _ML4T_COLORS["blue"]),
             opacity=0.7,
             histnorm="probability density" if show_kde else None,
         )
@@ -371,7 +374,7 @@ def plot_ar_distribution(
                 y=kde_y,
                 mode="lines",
                 name="KDE",
-                line={"color": colors.get("secondary", "#ff7f0e"), "width": 2},
+                line={"color": colors.get("secondary", _ML4T_COLORS["amber"]), "width": 2},
             )
         )
 
@@ -481,7 +484,9 @@ def plot_car_by_event(
     labels = [f"{r.event_id} ({r.asset})" for r in sorted_results]
     cars = [r.car for r in sorted_results]
     bar_colors = [
-        colors.get("positive", "#2ca02c") if c >= 0 else colors.get("negative", "#d62728")
+        colors.get("positive", _ML4T_COLORS["positive"])
+        if c >= 0
+        else colors.get("negative", _ML4T_COLORS["negative"])
         for c in cars
     ]
 

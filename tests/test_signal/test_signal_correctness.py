@@ -17,9 +17,9 @@ import pytest
 from scipy.stats import spearmanr
 
 from ml4t.diagnostic.signal.quantile import (
-    compute_monotonicity,
     compute_quantile_returns,
     compute_spread,
+    monotonicity_score,
 )
 from ml4t.diagnostic.signal.signal_ic import compute_ic_series, compute_ic_summary
 from ml4t.diagnostic.signal.turnover import (
@@ -229,7 +229,7 @@ class TestQuantileReturnsCorrectness:
             5: 0.05,
         }
 
-        mono = compute_monotonicity(quantile_returns)
+        mono = monotonicity_score(quantile_returns)
 
         assert abs(mono - 1.0) < 1e-10, f"Perfect increase should give mono=1.0, got {mono}"
 
@@ -243,7 +243,7 @@ class TestQuantileReturnsCorrectness:
             5: 0.01,
         }
 
-        mono = compute_monotonicity(quantile_returns)
+        mono = monotonicity_score(quantile_returns)
 
         assert abs(mono - (-1.0)) < 1e-10, f"Perfect decrease should give mono=-1.0, got {mono}"
 
@@ -259,7 +259,7 @@ class TestQuantileReturnsCorrectness:
             5: 0.035 + np.random.randn() * 0.01,
         }
 
-        mono = compute_monotonicity(quantile_returns)
+        mono = monotonicity_score(quantile_returns)
 
         # Calculate expected Spearman manually
         quantiles = list(range(1, 6))

@@ -10,8 +10,8 @@ from ml4t.diagnostic.results import (
     ACFResult,
     BayesianComparisonResult,
     DSRResult,
-    FeatureDiagnosticsResult,
-    FeatureOutcomeResult,
+    FeatureDiagnosticsResultSchema,
+    FeatureOutcomeResultSchema,
     ICAnalysisResult,
     MinTRLResult,
     PortfolioEvaluationResult,
@@ -57,7 +57,7 @@ def demo_feature_diagnostics():
     print("\n" + acf_result.summary())
 
     # Combined diagnostics
-    diagnostics = FeatureDiagnosticsResult(
+    diagnostics = FeatureDiagnosticsResultSchema(
         stationarity_tests=[stat_result],
         acf_results=[acf_result],
         volatility_clustering={"garch_detected": True, "p": 1, "q": 1},
@@ -110,7 +110,7 @@ def demo_feature_outcome():
     print("\n" + threshold_result.summary())
 
     # Combined feature-outcome
-    feature_outcome = FeatureOutcomeResult(
+    feature_outcome = FeatureOutcomeResultSchema(
         ic_results=[ic_result],
         threshold_results=[threshold_result],
         ml_importance={"rsi": 0.75, "volatility": 0.18, "volume": 0.07},

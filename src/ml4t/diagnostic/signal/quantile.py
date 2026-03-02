@@ -115,23 +115,24 @@ def compute_spread(
     }
 
 
-def compute_monotonicity(
+def monotonicity_score(
     quantile_returns: dict[int, float],
 ) -> float:
-    """Compute monotonicity of quantile returns.
+    """Compute monotonicity score from pre-computed quantile returns.
 
-    Measures how well returns increase monotonically across quantiles.
-    Uses Spearman correlation: 1.0 = perfect increase, -1.0 = perfect decrease.
+    A simple Spearman correlation between quantile ranks and their mean returns.
+    For the full-featured version that accepts raw DataFrames, use
+    ``ml4t.diagnostic.evaluation.metrics.compute_monotonicity``.
 
     Parameters
     ----------
     quantile_returns : dict[int, float]
-        Mean return by quantile.
+        Mean return by quantile (from ``compute_quantile_returns``).
 
     Returns
     -------
     float
-        Monotonicity score (-1 to 1).
+        Spearman rho (-1 to 1). 1.0 = perfect monotonic increase.
     """
     # Sort by quantile
     sorted_items = sorted(quantile_returns.items())
@@ -145,4 +146,8 @@ def compute_monotonicity(
     return float(rho) if not np.isnan(rho) else float("nan")
 
 
-__all__ = ["compute_quantile_returns", "compute_spread", "compute_monotonicity"]
+__all__ = [
+    "compute_quantile_returns",
+    "compute_spread",
+    "monotonicity_score",
+]

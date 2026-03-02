@@ -221,8 +221,8 @@ class TestGenerateImportanceReport:
             )
 
             content = Path(result).read_text()
-            # Should contain dark theme colors
-            assert "#1E1E1E" in content or "#1e1e1e" in content.lower()
+            # Should contain dark theme colors (ml4t-style deep blue)
+            assert "#0a1628" in content.lower() or "#152238" in content.lower()
 
     def test_top_n_parameter(self, mock_importance_results):
         """Test top_n parameter controls number of features shown."""

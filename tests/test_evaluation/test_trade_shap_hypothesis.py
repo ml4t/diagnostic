@@ -53,9 +53,7 @@ class TestTemplateLibrary:
 
     def test_minimal_template_library(self):
         """Test minimal template library configuration."""
-        from ml4t.diagnostic.evaluation.trade_shap.hypotheses import HypothesisConfig
-
-        config = HypothesisConfig(template_library="minimal")
+        config = TradeHypothesisSettings(template_library="minimal")
         generator = HypothesisGenerator(config)
 
         # Minimal library should have fewer templates
@@ -640,22 +638,20 @@ class TestTemplateLoading:
 
 
 class TestConfigNormalization:
-    """Tests for HypothesisConfig normalization."""
+    """Tests for TradeHypothesisSettings wiring."""
 
     def test_dataclass_config_passed_through(self):
-        """HypothesisConfig dataclass should be used directly."""
-        from ml4t.diagnostic.evaluation.trade_shap.hypotheses import HypothesisConfig
-
-        config = HypothesisConfig(
+        """TradeHypothesisSettings should be used directly."""
+        config = TradeHypothesisSettings(
             template_library="minimal",
             min_confidence=0.3,
-            max_actions=2,
+            max_per_cluster=2,
         )
         generator = HypothesisGenerator(config)
 
         assert generator.config.template_library == "minimal"
         assert generator.config.min_confidence == 0.3
-        assert generator.config.max_actions == 2
+        assert generator.config.max_per_cluster == 2
 
     def test_pydantic_config_normalized(self):
         """TradeHypothesisSettings Pydantic model should be normalized."""
@@ -673,8 +669,8 @@ class TestConfigNormalization:
         generator = HypothesisGenerator(None)
 
         assert generator.config.template_library == "comprehensive"
-        assert generator.config.min_confidence == 0.5
-        assert generator.config.max_actions == 4
+        assert generator.config.min_confidence == 0.6
+        assert generator.config.max_per_cluster == 5
 
 
 class TestTemplateMatching:

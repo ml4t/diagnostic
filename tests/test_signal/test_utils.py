@@ -285,6 +285,22 @@ class TestComputeForwardReturns:
         # Day 1: (110-100)/100 = 0.10
         assert abs(result["1D_fwd_return"][0] - 0.10) < 1e-10
 
+    def test_empty_factor_preserves_return_columns(self, simple_price_data):
+        """Test empty factor input still returns expected forward-return columns."""
+        factor_empty = pl.DataFrame(
+            {
+                "date": pl.Series([], dtype=pl.Date),
+                "asset": pl.Series([], dtype=pl.Utf8),
+                "factor": pl.Series([], dtype=pl.Float64),
+            }
+        )
+
+        result = compute_forward_returns(factor_empty, simple_price_data, periods=(1, 2))
+
+        assert result.height == 0
+        assert "1D_fwd_return" in result.columns
+        assert "2D_fwd_return" in result.columns
+
 
 # =============================================================================
 # Tests: quantize_factor

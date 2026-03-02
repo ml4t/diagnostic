@@ -9,11 +9,15 @@ Reference: empyrical-reloaded (https://github.com/stefan-jansen/empyrical-reload
 
 from __future__ import annotations
 
-# Reference implementation
-import empyrical
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
+
+# Reference implementation (optional dependency for validation parity tests)
+empyrical = pytest.importorskip(
+    "empyrical",
+    reason="empyrical is required for validation-against-empyrical tests",
+)
 
 # ML4T implementation
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (

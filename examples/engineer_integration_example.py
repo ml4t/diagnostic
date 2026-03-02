@@ -12,7 +12,7 @@ Workflow:
 
 from ml4t.diagnostic.integration import TransformType
 from ml4t.diagnostic.results.feature_results import (
-    FeatureDiagnosticsResult,
+    FeatureDiagnosticsResultSchema,
     StationarityTestResult,
 )
 
@@ -92,11 +92,11 @@ model.fit(transformed_features, targets)
     """)
 
 
-def create_example_diagnostics() -> FeatureDiagnosticsResult:
+def create_example_diagnostics() -> FeatureDiagnosticsResultSchema:
     """Create example diagnostics with various scenarios.
 
     Returns:
-        FeatureDiagnosticsResult with stationarity tests
+        FeatureDiagnosticsResultSchema with stationarity tests
     """
     # Feature 1: Clearly non-stationary (all tests agree)
     price = StationarityTestResult(
@@ -168,7 +168,7 @@ def create_example_diagnostics() -> FeatureDiagnosticsResult:
         pp_is_stationary=True,
     )
 
-    return FeatureDiagnosticsResult(
+    return FeatureDiagnosticsResultSchema(
         stationarity_tests=[price, log_returns, volume, market_cap, rsi_14]
     )
 

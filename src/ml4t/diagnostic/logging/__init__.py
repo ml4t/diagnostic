@@ -24,8 +24,8 @@ Example:
 
 # Structured logging
 from ml4t.diagnostic.logging.logger import (
+    DiagnosticLogger,
     LogLevel,
-    QEvalLogger,
     configure_logging,
     get_log_level,
     get_logger,
@@ -54,7 +54,7 @@ from ml4t.diagnostic.logging.wandb import WandbLogger, log_experiment
 
 __all__: list[str] = [
     # Logger
-    "QEvalLogger",
+    "DiagnosticLogger",
     "get_logger",
     "set_log_level",
     "get_log_level",

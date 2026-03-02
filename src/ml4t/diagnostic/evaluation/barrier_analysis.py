@@ -1005,7 +1005,13 @@ class BarrierAnalysis:
         dict[str, str]
             Dict mapping figure names to JSON-serialized Plotly figures.
         """
-        import plotly.io as pio
+        try:
+            import plotly.io as pio
+        except ImportError:
+            raise ImportError(
+                "Plotly is required for tear sheet visualization. "
+                "Install with: pip install ml4t-diagnostic[viz]"
+            ) from None
 
         from ml4t.diagnostic.visualization.barrier_plots import (
             plot_hit_rate_heatmap,

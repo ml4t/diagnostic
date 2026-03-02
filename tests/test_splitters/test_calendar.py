@@ -225,6 +225,23 @@ class TestParseTimeSizeNaive:
         # ~30 days per month
         assert 25 <= n_samples <= 35
 
+    def test_months_spec_no_futurewarning(self):
+        """Test deprecated month alias is normalized without FutureWarning."""
+        import warnings
+
+        timestamps = pd.date_range("2024-01-01", periods=365, freq="1D")
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            _parse_time_size_naive("1M", timestamps)
+        month_alias_warnings = [
+            w
+            for w in captured
+            if issubclass(w.category, FutureWarning)
+            and "deprecated" in str(w.message).lower()
+            and "'m'" in str(w.message).lower()
+        ]
+        assert not month_alias_warnings
+
 
 class TestCalendarWeeklyPeriods:
     """Tests for weekly period handling in calendar module."""

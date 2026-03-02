@@ -13,16 +13,20 @@ import pandas as pd
 import polars as pl
 import pytest
 
-# Alphalens imports
-from alphalens.performance import (
-    factor_information_coefficient,
-    factor_rank_autocorrelation,
-    quantile_turnover,
+# Alphalens imports (optional dependency for parity validation)
+alphalens_performance = pytest.importorskip(
+    "alphalens.performance",
+    reason="alphalens is required for correctness-vs-alphalens parity tests",
 )
-from alphalens.utils import (
-    compute_forward_returns,
-    get_clean_factor,
+alphalens_utils = pytest.importorskip(
+    "alphalens.utils",
+    reason="alphalens is required for correctness-vs-alphalens parity tests",
 )
+factor_information_coefficient = alphalens_performance.factor_information_coefficient
+factor_rank_autocorrelation = alphalens_performance.factor_rank_autocorrelation
+quantile_turnover = alphalens_performance.quantile_turnover
+compute_forward_returns = alphalens_utils.compute_forward_returns
+get_clean_factor = alphalens_utils.get_clean_factor
 from numpy.testing import assert_allclose
 from scipy import stats
 

@@ -29,7 +29,7 @@ class CalendarConfig(BaseModel):
         - 'America/New_York': US Eastern (NYSE, NASDAQ)
         - 'America/Chicago': US Central (CME futures)
         - 'Europe/London': UK (LSE)
-        - See pytz documentation for full list
+        - Use standard IANA timezone names
 
     localize_naive : bool, default=True
         If True, tz-naive data will be localized to the specified timezone.
@@ -60,7 +60,7 @@ class CalendarConfig(BaseModel):
     exchange: str = Field(..., description="Exchange calendar name from pandas_market_calendars")
 
     timezone: str = Field(
-        default="UTC", description="Timezone for calendar operations (pytz timezone name)"
+        default="UTC", description="Timezone for calendar operations (IANA timezone name)"
     )
 
     localize_naive: bool = Field(

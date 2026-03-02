@@ -363,8 +363,8 @@ class TestPlotCvFoldsTheme:
             theme="dark",
         )
 
-        # Dark theme has dark background
-        assert fig.layout.paper_bgcolor.lower() in ["#1e1e1e", "#2d2d2d"]
+        # Dark theme has ml4t-style deep blue background
+        assert fig.layout.paper_bgcolor.lower() in ["#0a1628", "#152238"]
 
     def test_print_theme(
         self,
@@ -579,8 +579,8 @@ class TestPlotCvFoldsColors:
         # Find training traces
         train_traces = [t for t in fig.data if t.name == "Training"]
         assert len(train_traces) == 1
-        # Blue color
-        assert train_traces[0].marker.color == "#3498DB"
+        # ML4T slate color
+        assert train_traces[0].marker.color == "#1a2d4a"
 
     def test_validation_bar_color(
         self,
@@ -593,8 +593,8 @@ class TestPlotCvFoldsColors:
         # Find validation traces
         val_traces = [t for t in fig.data if t.name == "Validation"]
         assert len(val_traces) == 1
-        # Green color
-        assert val_traces[0].marker.color == "#2ECC71"
+        # ML4T amber color
+        assert val_traces[0].marker.color == "#D4A84B"
 
 
 class TestPlotCvFoldsXAxis:

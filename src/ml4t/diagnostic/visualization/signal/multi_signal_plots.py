@@ -25,6 +25,7 @@ import plotly.graph_objects as go
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.spatial.distance import squareform
 
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
     get_colorscale,
@@ -122,7 +123,9 @@ def plot_ic_ridge(
         fdr_significant = [False] * n_signals
 
     # Colors: significant=green, not significant=gray
-    colors = [theme_config["colorway"][0] if sig else "#888888" for sig in fdr_significant]
+    colors = [
+        theme_config["colorway"][0] if sig else _ML4T_COLORS["neutral"] for sig in fdr_significant
+    ]
 
     # Calculate height based on number of signals
     if height is None:
@@ -245,7 +248,10 @@ def plot_signal_ranking_bar(
     # Determine colors
     if color_by and color_by in df.columns:
         significant = df[color_by].to_list()
-        colors = [theme_config["colorway"][0] if sig else "#CCCCCC" for sig in significant]
+        colors = [
+            theme_config["colorway"][0] if sig else _ML4T_COLORS["silver_muted"]
+            for sig in significant
+        ]
     else:
         colors = [theme_config["colorway"][0]] * len(signal_names)
 
@@ -482,7 +488,9 @@ def plot_pareto_frontier(
     pareto_signals = [n for n, p in zip(signal_names, pareto_mask) if p]
 
     # Colors: Pareto=primary color, others=gray
-    colors = [theme_config["colorway"][0] if p else "#CCCCCC" for p in pareto_mask]
+    colors = [
+        theme_config["colorway"][0] if p else _ML4T_COLORS["silver_muted"] for p in pareto_mask
+    ]
 
     # Create figure
     fig = create_base_figure(

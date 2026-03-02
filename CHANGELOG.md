@@ -41,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Validation modules: 99%+ test coverage (dataframe 100%, returns 100%, timeseries 98%)
 - Reporting modules: 96-100% test coverage (base 100%, JSON 100%, HTML 100%, Markdown 96%)
+- Added canonical integration surface at `ml4t.diagnostic.api` and a machine-readable API contract
+  (`tests/contracts/public_api_contract.json`) to anchor export-boundary refactors.
+
+### Breaking (Planned for next alpha)
+- `ml4t.diagnostic.evaluation` and package-level mega re-exports will be reduced to a smaller
+  stable surface. Integrations should migrate to `ml4t.diagnostic.api` or direct submodule imports.
+- Stale names such as `fit_validate`, `SignalAnalysis`, and `TradeShapAnalyzer` will be removed
+  from canonical usage paths.
 
 ## [1.1.0] - 2025-11-15
 

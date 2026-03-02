@@ -90,6 +90,8 @@ class VolatilitySettings(BaseConfig):
         default_factory=lambda: [21], description="Rolling windows"
     )
     detect_clustering: bool = Field(True, description="Test for GARCH effects")
+    arch_lags: PositiveInt = Field(12, description="Lags for ARCH-LM test")
+    fit_garch_model: bool = Field(True, description="Fit GARCH model when clustering detected")
     cluster_method: VolatilityClusterMethod = Field(
         VolatilityClusterMethod.LJUNG_BOX, description="Detection method"
     )
@@ -111,11 +113,13 @@ class DistributionSettings(BaseConfig):
     """Settings for distribution analysis."""
 
     enabled: bool = Field(True, description="Run distribution analysis")
+    alpha: float = Field(0.05, gt=0.0, lt=1.0, description="Significance level")
     test_normality: bool = Field(True, description="Test for normality")
     normality_tests: list[NormalityTest] = Field(
         default_factory=lambda: [NormalityTest.JARQUE_BERA], description="Normality tests"
     )
     compute_moments: bool = Field(True, description="Compute skew/kurtosis")
+    compute_tails: bool = Field(True, description="Analyze tail behavior")
     detect_outliers: bool = Field(False, description="Detect outliers")
     outlier_method: OutlierMethod = Field(OutlierMethod.ZSCORE, description="Outlier method")
     outlier_threshold: PositiveFloat = Field(3.0, description="Z-score threshold")
@@ -332,7 +336,7 @@ class DiagnosticConfig(BaseConfig):
 
     # Execution settings
     export_recommendations: bool = Field(True, description="Export recommendations")
-    export_to_qfeatures: bool = Field(False, description="Export in qfeatures format")
+    export_to_parquet: bool = Field(False, description="Export results to Parquet")
     return_dataframes: bool = Field(True, description="Return as DataFrames")
     n_jobs: int = Field(-1, ge=-1, description="Parallel jobs")
     cache_enabled: bool = Field(True, description="Enable caching")

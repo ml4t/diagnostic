@@ -30,14 +30,16 @@ from scipy import stats
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-# Color scheme for financial diagnostics (consistent with viz.py)
+# Colors from canonical ML4T palette + local semantic aliases
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
+
 COLORS = {
-    "primary": "#3366CC",  # Blue
-    "secondary": "#FF9900",  # Orange
-    "positive": "#00CC88",  # Green
-    "negative": "#FF4444",  # Red
-    "neutral": "#888888",  # Gray
-    "confidence": "rgba(255, 68, 68, 0.2)",  # Light red fill
+    "primary": _ML4T_COLORS["slate"],
+    "secondary": _ML4T_COLORS["amber"],
+    "positive": _ML4T_COLORS["positive"],
+    "negative": _ML4T_COLORS["negative"],
+    "neutral": _ML4T_COLORS["neutral"],
+    "confidence": "rgba(239, 68, 68, 0.2)",  # Light red fill (from COLORS['negative'])
 }
 
 

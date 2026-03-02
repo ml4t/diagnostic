@@ -22,8 +22,8 @@ from ml4t.diagnostic.results import (
     CrossFeatureResult,
     DSRResult,
     FDRResult,
-    FeatureDiagnosticsResult,
-    FeatureOutcomeResult,
+    FeatureDiagnosticsResultSchema,
+    FeatureOutcomeResultSchema,
     ICAnalysisResult,
     MinTRLResult,
     PortfolioEvaluationResult,
@@ -183,7 +183,7 @@ def test_feature_diagnostics_result():
         pacf_values=[1.0, 0.5, 0.1],
     )
 
-    result = FeatureDiagnosticsResult(
+    result = FeatureDiagnosticsResultSchema(
         stationarity_tests=[stat_test],
         acf_results=[acf],
         volatility_clustering={"garch_detected": True},
@@ -324,7 +324,7 @@ def test_feature_outcome_result():
         coverage=0.20,
     )
 
-    result = FeatureOutcomeResult(
+    result = FeatureOutcomeResultSchema(
         ic_results=[ic],
         threshold_results=[threshold],
         ml_importance={"momentum": 0.85, "volatility": 0.15},
@@ -703,7 +703,7 @@ def test_validation_extra_fields_forbidden():
 
 def test_empty_feature_diagnostics():
     """Test FeatureDiagnosticsResult with empty lists."""
-    result = FeatureDiagnosticsResult()
+    result = FeatureDiagnosticsResultSchema()
 
     df = result.get_stationarity_dataframe()
     assert len(df) == 0

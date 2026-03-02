@@ -36,8 +36,6 @@ Complete API documentation for ML4T Diagnostic.
       members:
         - CombinatorialCV
         - WalkForwardCV
-        - CalendarSplitter
-        - GroupIsolationSplitter
 
 ## Statistical Tests
 
@@ -49,9 +47,10 @@ Complete API documentation for ML4T Diagnostic.
         - deflated_sharpe_ratio_from_statistics
         - compute_min_trl
         - min_trl_fwer
-        - compute_ras
-        - fdr_correction
-        - compute_hac_stats
+        - ras_ic_adjustment
+        - benjamini_hochberg_fdr
+        - hac_adjusted_ic
+        - compute_pbo
 
 ## Feature Diagnostics
 
@@ -72,7 +71,7 @@ Complete API documentation for ML4T Diagnostic.
       members:
         - compute_ic_series
         - compute_mdi_importance
-        - compute_pfi_importance
+        - compute_permutation_importance
         - compute_shap_importance
         - compute_h_statistic
 

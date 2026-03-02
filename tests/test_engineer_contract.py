@@ -9,7 +9,7 @@ from ml4t.diagnostic.integration import (
     TransformType,
 )
 from ml4t.diagnostic.results.feature_results import (
-    FeatureDiagnosticsResult,
+    FeatureDiagnosticsResultSchema,
     StationarityTestResult,
 )
 
@@ -263,7 +263,7 @@ class TestFeatureDiagnosticsIntegration:
             pp_is_stationary=False,
         )
 
-        diagnostics = FeatureDiagnosticsResult(stationarity_tests=[stationarity])
+        diagnostics = FeatureDiagnosticsResultSchema(stationarity_tests=[stationarity])
         config = diagnostics.to_engineer_config()
 
         assert len(config.recommendations) == 1
@@ -285,7 +285,7 @@ class TestFeatureDiagnosticsIntegration:
             kpss_is_stationary=True,
         )
 
-        diagnostics = FeatureDiagnosticsResult(stationarity_tests=[stationarity])
+        diagnostics = FeatureDiagnosticsResultSchema(stationarity_tests=[stationarity])
         config = diagnostics.to_engineer_config()
 
         assert len(config.recommendations) == 1
@@ -307,7 +307,7 @@ class TestFeatureDiagnosticsIntegration:
             kpss_is_stationary=True,
         )
 
-        diagnostics = FeatureDiagnosticsResult(stationarity_tests=[stationarity])
+        diagnostics = FeatureDiagnosticsResultSchema(stationarity_tests=[stationarity])
         config = diagnostics.to_engineer_config()
 
         assert len(config.recommendations) == 1
@@ -336,7 +336,7 @@ class TestFeatureDiagnosticsIntegration:
             ),
         ]
 
-        diagnostics = FeatureDiagnosticsResult(stationarity_tests=tests)
+        diagnostics = FeatureDiagnosticsResultSchema(stationarity_tests=tests)
         config = diagnostics.to_engineer_config()
 
         assert len(config.recommendations) == 3
@@ -355,7 +355,7 @@ class TestFeatureDiagnosticsIntegration:
             kpss_is_stationary=False,
         )
 
-        diagnostics = FeatureDiagnosticsResult(stationarity_tests=[stationarity])
+        diagnostics = FeatureDiagnosticsResultSchema(stationarity_tests=[stationarity])
         config = diagnostics.to_engineer_config()
         eng_dict = config.to_dict()
 
@@ -369,7 +369,7 @@ class TestFeatureDiagnosticsIntegration:
     def test_metadata_included(self):
         """Test metadata is included in config."""
         stationarity = StationarityTestResult(feature_name="test", adf_is_stationary=True)
-        diagnostics = FeatureDiagnosticsResult(stationarity_tests=[stationarity])
+        diagnostics = FeatureDiagnosticsResultSchema(stationarity_tests=[stationarity])
         config = diagnostics.to_engineer_config()
 
         assert config.metadata is not None
@@ -383,7 +383,7 @@ class TestEndToEndWorkflow:
     def test_example_workflow(self):
         """Test the workflow shown in docstrings."""
         # Simulate evaluation results
-        diagnostics = FeatureDiagnosticsResult(
+        diagnostics = FeatureDiagnosticsResultSchema(
             stationarity_tests=[
                 StationarityTestResult(
                     feature_name="rsi_14",

@@ -62,7 +62,7 @@ def plot_quantile_returns_bar(
     Parameters
     ----------
     quantile_result : QuantileAnalysisResult
-        Quantile analysis result from SignalAnalysis.compute_quantile_analysis()
+        Quantile analysis result from a signal analysis workflow.
     period : str | None
         Period to plot (e.g., "1D", "5D"). If None, uses first period.
     show_error_bars : bool, default True
@@ -199,7 +199,7 @@ def plot_quantile_returns_violin(
     Parameters
     ----------
     quantile_result : QuantileAnalysisResult
-        Quantile analysis result from SignalAnalysis.compute_quantile_analysis()
+        Quantile analysis result from a signal analysis workflow.
     factor_data : dict | None
         Raw factor data dict with 'quantile' and return columns.
         If None, uses synthetic data from result statistics.

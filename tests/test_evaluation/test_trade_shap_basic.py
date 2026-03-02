@@ -1161,9 +1161,6 @@ class TestPerformanceBenchmarks:
     They pass when run in isolation but can fail in parallel test runs.
     """
 
-    @pytest.mark.xfail(
-        strict=False, reason="Timing-sensitive benchmark - may fail under parallel load"
-    )
     def test_explain_trade_performance(self):
         """Benchmark single trade explanation performance."""
         # Arrange
@@ -1202,8 +1199,8 @@ class TestPerformanceBenchmarks:
         explanation = analyzer.explain_trade(trade)
         elapsed = time.perf_counter() - start
 
-        # Assert - should complete in <300ms for single trade
-        assert elapsed < 0.3, f"Single trade explanation took {elapsed:.3f}s (expected <0.3s)"
+        # CI-stable sanity threshold: catches major regressions without load flakiness
+        assert elapsed < 1.5, f"Single trade explanation took {elapsed:.3f}s (expected <1.5s)"
         assert explanation is not None
 
     def test_explain_worst_trades_batch_performance(self):
@@ -1258,9 +1255,6 @@ class TestPerformanceBenchmarks:
             f"\n  Batch processing performance: {elapsed:.3f}s for 9 trades ({elapsed / 9:.3f}s per trade)"
         )
 
-    @pytest.mark.xfail(
-        strict=False, reason="Timing-sensitive benchmark - may fail under parallel load"
-    )
     def test_large_dataset_scalability(self):
         """Test performance with large feature set."""
         # Arrange
@@ -1288,8 +1282,8 @@ class TestPerformanceBenchmarks:
         )
         init_elapsed = time.perf_counter() - start
 
-        # Assert initialization is fast
-        assert init_elapsed < 1.0, f"Initialization took {init_elapsed:.3f}s (expected <1s)"
+        # CI-stable sanity threshold: catches large slowdowns while avoiding flaky failures
+        assert init_elapsed < 3.0, f"Initialization took {init_elapsed:.3f}s (expected <3s)"
 
         # Test single explanation
         trade = TradeMetrics(
@@ -1305,8 +1299,8 @@ class TestPerformanceBenchmarks:
         explanation = analyzer.explain_trade(trade)
         explain_elapsed = time.perf_counter() - start
 
-        # Assert explanation is still fast even with large dataset
-        assert explain_elapsed < 0.5, f"Explanation took {explain_elapsed:.3f}s (expected <0.5s)"
+        # CI-stable sanity threshold for large dataset explanation
+        assert explain_elapsed < 2.0, f"Explanation took {explain_elapsed:.3f}s (expected <2s)"
         assert explanation.shap_vector.shape == (n_features,)
 
 

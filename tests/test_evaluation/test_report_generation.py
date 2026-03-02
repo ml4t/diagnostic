@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from ml4t.diagnostic.evaluation import FeatureDiagnostics, FeatureDiagnosticsConfig
+from ml4t.diagnostic.config import DiagnosticConfig
+from ml4t.diagnostic.evaluation import FeatureDiagnostics
 from ml4t.diagnostic.evaluation.report_generation import (
     generate_html_report,
     generate_multi_feature_html_report,
@@ -18,12 +19,7 @@ def sample_diagnostic_result():
     data = np.random.randn(500)
 
     # Run diagnostics
-    config = FeatureDiagnosticsConfig(
-        run_stationarity=True,
-        run_autocorrelation=True,
-        run_volatility=True,
-        run_distribution=True,
-    )
+    config = DiagnosticConfig()
     diagnostics = FeatureDiagnostics(config)
     result = diagnostics.run_diagnostics(data, name="test_feature")
 
@@ -38,7 +34,7 @@ def multiple_diagnostic_results():
 
     # White noise
     data1 = np.random.randn(500)
-    config = FeatureDiagnosticsConfig()
+    config = DiagnosticConfig()
     diagnostics = FeatureDiagnostics(config)
     result1 = diagnostics.run_diagnostics(data1, name="white_noise")
     results.append(result1)

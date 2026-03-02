@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
     get_colorscale,
@@ -57,9 +58,9 @@ def _get_quantile_colors(n_quantiles: int, theme_config: dict) -> list[str]:
 def _get_outcome_colors() -> dict[str, str]:
     """Get colors for barrier outcomes."""
     return {
-        "tp": "#2ECC71",  # Green for take-profit
-        "sl": "#E74C3C",  # Red for stop-loss
-        "timeout": "#95A5A6",  # Gray for timeout
+        "tp": _ML4T_COLORS["positive"],
+        "sl": _ML4T_COLORS["negative"],
+        "timeout": _ML4T_COLORS["silver_muted"],
     }
 
 
@@ -414,7 +415,7 @@ def plot_precision_recall_curve(
             y=cum_precision,
             mode="lines+markers",
             name="Cumulative Precision",
-            line={"color": "#3498DB", "width": 2},
+            line={"color": _ML4T_COLORS["blue"], "width": 2},
             marker={"size": 8},
             hovertemplate=("Threshold: %{x}<br>Precision: %{y:.2%}<br><extra></extra>"),
         )
@@ -427,7 +428,7 @@ def plot_precision_recall_curve(
             y=cum_recall,
             mode="lines+markers",
             name="Cumulative Recall",
-            line={"color": "#E74C3C", "width": 2},
+            line={"color": _ML4T_COLORS["negative"], "width": 2},
             marker={"size": 8},
             hovertemplate=("Threshold: %{x}<br>Recall: %{y:.2%}<br><extra></extra>"),
         )
@@ -440,7 +441,7 @@ def plot_precision_recall_curve(
             y=cum_f1,
             mode="lines+markers",
             name="Cumulative F1",
-            line={"color": "#9B59B6", "width": 3, "dash": "dash"},
+            line={"color": _ML4T_COLORS["copper"], "width": 3, "dash": "dash"},
             marker={"size": 10, "symbol": "diamond"},
             hovertemplate=("Threshold: %{x}<br>F1 Score: %{y:.4f}<br><extra></extra>"),
         )
@@ -469,7 +470,7 @@ def plot_precision_recall_curve(
                 y=[best_f1],
                 mode="markers+text",
                 name=f"Best F1 ({best_q})",
-                marker={"size": 15, "color": "#F39C12", "symbol": "star"},
+                marker={"size": 15, "color": _ML4T_COLORS["amber"], "symbol": "star"},
                 text=[f"Best F1: {best_f1:.4f}"],
                 textposition="top center",
                 hovertemplate=(
@@ -490,7 +491,7 @@ def plot_precision_recall_curve(
                 mode="lines+markers",
                 name="Cumulative Lift",
                 yaxis="y2",
-                line={"color": "#2ECC71", "width": 2},
+                line={"color": _ML4T_COLORS["positive"], "width": 2},
                 marker={"size": 6, "symbol": "triangle-up"},
                 hovertemplate=("Threshold: %{x}<br>Lift: %{y:.2f}x<br><extra></extra>"),
             )

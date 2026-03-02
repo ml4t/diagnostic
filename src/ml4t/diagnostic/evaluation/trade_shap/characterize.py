@@ -15,27 +15,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from scipy import stats
 
+from ml4t.diagnostic.config import TradeCharacterizationSettings
 from ml4t.diagnostic.evaluation.trade_shap.models import ErrorPattern
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-
-
-@dataclass
-class CharacterizationConfig:
-    """Configuration for pattern characterization.
-
-    Attributes:
-        alpha: Significance level for statistical tests (default: 0.05)
-        top_n_features: Number of top features to include in characterization
-        use_fdr_correction: Whether to apply Benjamini-Hochberg FDR correction
-        min_samples_per_test: Minimum samples needed for each group in t-test
-    """
-
-    alpha: float = 0.05
-    top_n_features: int = 5
-    use_fdr_correction: bool = True
-    min_samples_per_test: int = 3
 
 
 @dataclass
@@ -135,16 +119,16 @@ class PatternCharacterizer:
     def __init__(
         self,
         feature_names: list[str],
-        config: CharacterizationConfig | None = None,
+        config: TradeCharacterizationSettings | None = None,
     ) -> None:
         """Initialize characterizer.
 
         Args:
             feature_names: List of all feature names
-            config: Characterization configuration (uses defaults if None)
+            config: Trade characterization settings (uses defaults if None)
         """
         self.feature_names = feature_names
-        self.config = config or CharacterizationConfig()
+        self.config = config or TradeCharacterizationSettings()
 
     def characterize_cluster(
         self,

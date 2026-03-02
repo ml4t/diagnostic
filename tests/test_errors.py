@@ -12,17 +12,17 @@ from ml4t.diagnostic.errors import (
     ConfigurationError,
     DataError,
     IntegrationError,
-    QEvalError,
+    DiagnosticError,
     ValidationError,
 )
 
 
-class TestQEvalError:
-    """Test base QEvalError exception."""
+class TestDiagnosticError:
+    """Test base DiagnosticError exception."""
 
     def test_basic_error(self):
         """Test basic error creation."""
-        error = QEvalError("Test error")
+        error = DiagnosticError("Test error")
         assert str(error) == "Test error"
         assert error.message == "Test error"
         assert error.context == {}
@@ -31,7 +31,7 @@ class TestQEvalError:
     def test_error_with_context(self):
         """Test error with context information."""
         context = {"operation": "compute_sharpe", "n_samples": 100}
-        error = QEvalError("Computation failed", context=context)
+        error = DiagnosticError("Computation failed", context=context)
 
         assert "Computation failed" in str(error)
         assert "operation: compute_sharpe" in str(error)
@@ -41,7 +41,7 @@ class TestQEvalError:
     def test_error_with_cause(self):
         """Test error chaining with cause."""
         cause = ValueError("Invalid value")
-        error = QEvalError("Operation failed", cause=cause)
+        error = DiagnosticError("Operation failed", cause=cause)
 
         assert "Operation failed" in str(error)
         assert "Caused by: ValueError: Invalid value" in str(error)
@@ -51,7 +51,7 @@ class TestQEvalError:
         """Test error with both context and cause."""
         cause = ZeroDivisionError("division by zero")
         context = {"numerator": 10, "denominator": 0}
-        error = QEvalError("Division failed", context=context, cause=cause)
+        error = DiagnosticError("Division failed", context=context, cause=cause)
 
         error_str = str(error)
         assert "Division failed" in error_str
@@ -61,32 +61,32 @@ class TestQEvalError:
 
     def test_error_repr(self):
         """Test error __repr__ method."""
-        error = QEvalError("Test", context={"key": "value"})
+        error = DiagnosticError("Test", context={"key": "value"})
         repr_str = repr(error)
 
-        assert "QEvalError" in repr_str
+        assert "DiagnosticError" in repr_str
         assert "Test" in repr_str
         assert "key" in repr_str
         assert "value" in repr_str
 
     def test_error_inheritance(self):
         """Test error inherits from Exception."""
-        error = QEvalError("Test")
+        error = DiagnosticError("Test")
         assert isinstance(error, Exception)
 
     def test_error_can_be_raised(self):
         """Test error can be raised and caught."""
-        with pytest.raises(QEvalError) as exc_info:
-            raise QEvalError("Test error")
+        with pytest.raises(DiagnosticError) as exc_info:
+            raise DiagnosticError("Test error")
 
         assert "Test error" in str(exc_info.value)
 
     def test_error_can_be_caught_as_exception(self):
         """Test error can be caught as general Exception."""
         with pytest.raises(Exception) as exc_info:
-            raise QEvalError("Test error")
+            raise DiagnosticError("Test error")
 
-        assert isinstance(exc_info.value, QEvalError)
+        assert isinstance(exc_info.value, DiagnosticError)
 
 
 class TestConfigurationError:
@@ -96,7 +96,7 @@ class TestConfigurationError:
         """Test basic configuration error."""
         error = ConfigurationError("Invalid n_splits value")
         assert "Invalid n_splits value" in str(error)
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
 
     def test_configuration_error_with_context(self):
         """Test configuration error with context."""
@@ -115,7 +115,7 @@ class TestConfigurationError:
     def test_configuration_error_inheritance(self):
         """Test ConfigurationError inherits correctly."""
         error = ConfigurationError("Test")
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
         assert isinstance(error, Exception)
 
     def test_configuration_error_can_be_caught(self):
@@ -124,8 +124,8 @@ class TestConfigurationError:
             raise ConfigurationError("Invalid config")
 
     def test_configuration_error_can_be_caught_as_base(self):
-        """Test configuration error can be caught as QEvalError."""
-        with pytest.raises(QEvalError):
+        """Test configuration error can be caught as DiagnosticError."""
+        with pytest.raises(DiagnosticError):
             raise ConfigurationError("Invalid config")
 
 
@@ -136,7 +136,7 @@ class TestValidationError:
         """Test basic validation error."""
         error = ValidationError("Missing required column")
         assert "Missing required column" in str(error)
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
 
     def test_validation_error_with_context(self):
         """Test validation error with context."""
@@ -155,7 +155,7 @@ class TestValidationError:
     def test_validation_error_inheritance(self):
         """Test ValidationError inherits correctly."""
         error = ValidationError("Test")
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
         assert isinstance(error, Exception)
 
 
@@ -166,7 +166,7 @@ class TestComputationError:
         """Test basic computation error."""
         error = ComputationError("Division by zero")
         assert "Division by zero" in str(error)
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
 
     def test_computation_error_with_context(self):
         """Test computation error with context."""
@@ -198,7 +198,7 @@ class TestComputationError:
     def test_computation_error_inheritance(self):
         """Test ComputationError inherits correctly."""
         error = ComputationError("Test")
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
         assert isinstance(error, Exception)
 
 
@@ -209,7 +209,7 @@ class TestDataError:
         """Test basic data error."""
         error = DataError("File not found")
         assert "File not found" in str(error)
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
 
     def test_data_error_with_context(self):
         """Test data error with context."""
@@ -228,7 +228,7 @@ class TestDataError:
     def test_data_error_inheritance(self):
         """Test DataError inherits correctly."""
         error = DataError("Test")
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
         assert isinstance(error, Exception)
 
 
@@ -239,7 +239,7 @@ class TestIntegrationError:
         """Test basic integration error."""
         error = IntegrationError("QFeatures import failed")
         assert "QFeatures import failed" in str(error)
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
 
     def test_integration_error_with_context(self):
         """Test integration error with context."""
@@ -271,7 +271,7 @@ class TestIntegrationError:
     def test_integration_error_inheritance(self):
         """Test IntegrationError inherits correctly."""
         error = IntegrationError("Test")
-        assert isinstance(error, QEvalError)
+        assert isinstance(error, DiagnosticError)
         assert isinstance(error, Exception)
 
 
@@ -279,7 +279,7 @@ class TestErrorHierarchy:
     """Test exception hierarchy and polymorphism."""
 
     def test_all_errors_are_qeval_errors(self):
-        """Test all custom errors inherit from QEvalError."""
+        """Test all custom errors inherit from DiagnosticError."""
         errors = [
             ConfigurationError("test"),
             ValidationError("test"),
@@ -289,7 +289,7 @@ class TestErrorHierarchy:
         ]
 
         for error in errors:
-            assert isinstance(error, QEvalError)
+            assert isinstance(error, DiagnosticError)
 
     def test_catch_any_qeval_error(self):
         """Test catching any ML4T Diagnostic error with base class."""
@@ -302,7 +302,7 @@ class TestErrorHierarchy:
         ]
 
         for error in errors:
-            with pytest.raises(QEvalError):
+            with pytest.raises(DiagnosticError):
                 raise error
 
     def test_catch_specific_error_type(self):
@@ -414,12 +414,12 @@ class TestErrorExports:
             ConfigurationError,
             DataError,
             IntegrationError,
-            QEvalError,
+            DiagnosticError,
             ValidationError,
         )
 
         # Verify they are classes
-        assert isinstance(QEvalError, type)
+        assert isinstance(DiagnosticError, type)
         assert isinstance(ConfigurationError, type)
         assert isinstance(ValidationError, type)
         assert isinstance(ComputationError, type)

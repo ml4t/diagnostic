@@ -28,7 +28,6 @@ from ml4t.diagnostic.config.validation import (
     ClusteringMethod,
     DistanceMetric,
     LinkageMethod,
-    NonNegativeInt,
     PositiveInt,
     Probability,
 )
@@ -68,47 +67,46 @@ class FilterSettings(BaseConfig):
 class ExtractionSettings(BaseConfig):
     """Settings for extracting worst/best trades."""
 
-    n_worst: PositiveInt = Field(20, description="Number of worst trades to extract")
-    n_best: NonNegativeInt = Field(10, description="Number of best trades for comparison")
     percentile_mode: bool = Field(False, description="Interpret n_worst/n_best as percentiles")
+    n_worst: int = Field(20, description="Number of worst trades to extract")
+    n_best: int = Field(10, description="Number of best trades for comparison")
     compute_statistics: bool = Field(True, description="Compute aggregate statistics")
     group_by_symbol: bool = Field(False, description="Group analysis by symbol")
     group_by_regime: bool = Field(False, description="Group analysis by regime")
 
-    @field_validator("n_worst")
-    @classmethod
-    def check_n_worst_reasonable(cls, v: int, info) -> int:
-        """Warn if n_worst is very small or very large."""
+    @model_validator(mode="after")
+    def validate_extraction_settings(self) -> ExtractionSettings:
+        """Validate extraction ranges and emit guidance warnings."""
         import warnings
 
-        percentile_mode = info.data.get("percentile_mode", False)
-        if percentile_mode:
-            if v > 50:
+        if self.percentile_mode:
+            for value in (self.n_worst, self.n_best):
+                if value < 1 or value > 100:
+                    raise ValueError(f"Percentile must be 1-100, got {value}")
+
+            if self.n_worst > 50:
                 warnings.warn(
-                    f"n_worst={v}% includes majority of trades. Consider 5-20%.",
+                    f"n_worst={self.n_worst}% includes majority of trades. Consider 5-20%.",
                     stacklevel=2,
                 )
         else:
-            if v < 10:
-                warnings.warn(
-                    f"n_worst={v} may be too few. Consider 20-50 for better signal.",
-                    stacklevel=2,
-                )
-            elif v > 100:
-                warnings.warn(
-                    f"n_worst={v} may dilute signal. Consider 20-50 for clearer patterns.",
-                    stacklevel=2,
-                )
-        return v
+            if self.n_worst <= 0:
+                raise ValueError(f"n_worst must be positive, got {self.n_worst}")
+            if self.n_best < 0:
+                raise ValueError(f"n_best must be non-negative, got {self.n_best}")
 
-    @field_validator("n_best", "n_worst")
-    @classmethod
-    def validate_percentile_range(cls, v: int, info) -> int:
-        """Ensure percentile values are in valid range."""
-        percentile_mode = info.data.get("percentile_mode", False)
-        if percentile_mode and (v < 1 or v > 100):
-            raise ValueError(f"Percentile must be 1-100, got {v}")
-        return v
+            if self.n_worst < 10:
+                warnings.warn(
+                    f"n_worst={self.n_worst} may be too few. Consider 20-50 for better signal.",
+                    stacklevel=2,
+                )
+            elif self.n_worst > 100:
+                warnings.warn(
+                    f"n_worst={self.n_worst} may dilute signal. Consider 20-50 for clearer patterns.",
+                    stacklevel=2,
+                )
+
+        return self
 
 
 class AlignmentSettings(BaseConfig):
@@ -186,6 +184,15 @@ class HypothesisSettings(BaseConfig):
     )
 
 
+class CharacterizationSettings(BaseConfig):
+    """Settings for statistical characterization of clustered patterns."""
+
+    alpha: Probability = Field(0.05, description="Significance level for tests")
+    top_n_features: PositiveInt = Field(5, description="Top features per pattern")
+    use_fdr_correction: bool = Field(True, description="Apply Benjamini-Hochberg correction")
+    min_samples_per_test: PositiveInt = Field(3, description="Minimum samples per group")
+
+
 # =============================================================================
 # Consolidated Config
 # =============================================================================
@@ -217,6 +224,9 @@ class TradeConfig(BaseConfig):
     )
     clustering: ClusteringSettings = Field(
         default_factory=ClusteringSettings, description="Clustering settings"
+    )
+    characterization: CharacterizationSettings = Field(
+        default_factory=CharacterizationSettings, description="Pattern characterization settings"
     )
     hypothesis: HypothesisSettings = Field(
         default_factory=HypothesisSettings, description="Hypothesis generation"
@@ -307,4 +317,5 @@ ExtractionSettings.model_rebuild()
 AlignmentSettings.model_rebuild()
 ClusteringSettings.model_rebuild()
 HypothesisSettings.model_rebuild()
+CharacterizationSettings.model_rebuild()
 TradeConfig.model_rebuild()

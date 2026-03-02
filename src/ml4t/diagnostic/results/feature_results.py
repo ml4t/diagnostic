@@ -203,7 +203,7 @@ class ACFResult(BaseResult):
         return "\n".join(lines)
 
 
-class FeatureDiagnosticsResult(BaseResult):
+class FeatureDiagnosticsResultSchema(BaseResult):
     """Complete results from Module A: Feature Diagnostics.
 
     Comprehensive analysis of individual feature properties:
@@ -683,7 +683,7 @@ class ThresholdAnalysisResult(BaseResult):
         return "\n".join(lines)
 
 
-class FeatureOutcomeResult(BaseResult):
+class FeatureOutcomeResultSchema(BaseResult):
     """Complete results from Module C: Feature-Outcome Relationships.
 
     Analysis of how features relate to outcomes:

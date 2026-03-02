@@ -240,6 +240,7 @@ class TestDomainClassifierModels:
 
     def test_lightgbm_model(self, simple_shift_data):
         """Test LightGBM model."""
+        pytest.importorskip("lightgbm")
         reference, test = simple_shift_data
 
         result = compute_domain_classifier_drift(
@@ -251,6 +252,7 @@ class TestDomainClassifierModels:
 
     def test_xgboost_model(self, simple_shift_data):
         """Test XGBoost model."""
+        pytest.importorskip("xgboost")
         reference, test = simple_shift_data
 
         result = compute_domain_classifier_drift(

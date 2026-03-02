@@ -253,10 +253,6 @@ class TestDeflatedSharpeRatio:
         assert 0 <= result.probability <= 1
         assert result.n_trials == 1
 
-    @pytest.mark.xfail(
-        reason="Skewness/kurtosis don't affect DSR when SR₀=0 (implementation uses SR₀=0 in variance "
-        "calculation). This is by design per reference code. Test expectations are incorrect."
-    )
     def test_non_normal_adjustments(self):
         """Test DSR with non-normal return distribution."""
         # Test with skewed returns
@@ -284,7 +280,7 @@ class TestDeflatedSharpeRatio:
             n_samples=252,
             n_trials=50,
             variance_trials=1.0,
-            kurtosis=6.0,
+            excess_kurtosis=3.0,  # Pearson kurtosis=6.0 -> excess kurtosis=3.0
         )
 
         # High kurtosis should affect the result

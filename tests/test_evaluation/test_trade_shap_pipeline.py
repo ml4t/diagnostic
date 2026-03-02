@@ -12,16 +12,17 @@ import numpy as np
 import polars as pl
 import pytest
 
-from ml4t.diagnostic.evaluation.trade_shap.cluster import ClusteringConfig
+from ml4t.diagnostic.config import (
+    TradeAlignmentSettings,
+    TradeClusteringSettings,
+    TradeConfig,
+)
 from ml4t.diagnostic.evaluation.trade_shap.models import (
     TradeExplainFailure,
     TradeShapExplanation,
     TradeShapResult,
 )
-from ml4t.diagnostic.evaluation.trade_shap.pipeline import (
-    TradeShapPipeline,
-    TradeShapPipelineConfig,
-)
+from ml4t.diagnostic.evaluation.trade_shap.pipeline import TradeShapPipeline
 
 
 class MockTradeMetrics:
@@ -80,35 +81,37 @@ def pipeline(sample_features, sample_shap_values, feature_names) -> TradeShapPip
     )
 
 
-class TestTradeShapPipelineConfig:
-    """Tests for TradeShapPipelineConfig dataclass."""
+class TestTradeConfigForPipeline:
+    """Tests for canonical pipeline config model."""
 
     def test_default_values(self):
         """Default config should have sensible defaults."""
-        config = TradeShapPipelineConfig()
+        config = TradeConfig()
 
-        assert config.alignment_tolerance_seconds == 0.0
-        assert config.alignment_mode == "entry"
-        assert config.missing_value_strategy == "skip"
-        assert config.top_n_features == 10
-        assert config.normalization == "l2"
-        assert isinstance(config.clustering, ClusteringConfig)
+        assert config.alignment.tolerance == 300
+        assert config.alignment.mode == "entry"
+        assert config.alignment.missing_strategy == "skip"
+        assert config.alignment.top_n_features is None
+        assert config.clustering.normalization == "l2"
+        assert config.clustering.min_cluster_size == 5
 
     def test_custom_values(self):
         """Custom config values should be stored."""
-        config = TradeShapPipelineConfig(
-            alignment_tolerance_seconds=60.0,
-            alignment_mode="nearest",
-            missing_value_strategy="zero",
-            top_n_features=5,
-            normalization="l1",
+        config = TradeConfig(
+            alignment=TradeAlignmentSettings(
+                tolerance=60,
+                mode="nearest",
+                missing_strategy="zero",
+                top_n_features=5,
+            ),
+            clustering=TradeClusteringSettings(normalization="l1"),
         )
 
-        assert config.alignment_tolerance_seconds == 60.0
-        assert config.alignment_mode == "nearest"
-        assert config.missing_value_strategy == "zero"
-        assert config.top_n_features == 5
-        assert config.normalization == "l1"
+        assert config.alignment.tolerance == 60
+        assert config.alignment.mode == "nearest"
+        assert config.alignment.missing_strategy == "zero"
+        assert config.alignment.top_n_features == 5
+        assert config.clustering.normalization == "l1"
 
 
 class TestTradeShapPipelineInit:
@@ -134,9 +137,9 @@ class TestTradeShapPipelineInit:
 
     def test_custom_config_applied(self, sample_features, sample_shap_values, feature_names):
         """Custom config should be applied to pipeline."""
-        config = TradeShapPipelineConfig(
-            top_n_features=3,
-            normalization="l1",
+        config = TradeConfig(
+            alignment=TradeAlignmentSettings(top_n_features=3),
+            clustering=TradeClusteringSettings(normalization="l1"),
         )
 
         pipeline = TradeShapPipeline(
@@ -146,8 +149,8 @@ class TestTradeShapPipelineInit:
             config=config,
         )
 
-        assert pipeline.config.top_n_features == 3
-        assert pipeline.config.normalization == "l1"
+        assert pipeline.config.alignment.top_n_features == 3
+        assert pipeline.config.clustering.normalization == "l1"
         assert pipeline.explainer.top_n_features == 3
 
 
@@ -231,9 +234,7 @@ class TestAnalyzeWorstTrades:
     ):
         """Successful analysis should produce patterns."""
         # Lower min_trades for testing
-        config = TradeShapPipelineConfig(
-            clustering=ClusteringConfig(min_trades_for_clustering=5),
-        )
+        config = TradeConfig(min_trades_for_clustering=5)
         pipeline = TradeShapPipeline(
             features_df=sample_features,
             shap_values=sample_shap_values,
@@ -270,9 +271,7 @@ class TestAnalyzeWorstTrades:
         self, sample_features, sample_shap_values, feature_names
     ):
         """Fewer trades than min_trades_for_clustering should skip clustering."""
-        config = TradeShapPipelineConfig(
-            clustering=ClusteringConfig(min_trades_for_clustering=50),
-        )
+        config = TradeConfig(min_trades_for_clustering=50)
         pipeline = TradeShapPipeline(
             features_df=sample_features,
             shap_values=sample_shap_values,
@@ -292,9 +291,9 @@ class TestAnalyzeWorstTrades:
 
     def test_normalization_applied(self, sample_features, sample_shap_values, feature_names):
         """Normalization should be applied when configured."""
-        config = TradeShapPipelineConfig(
-            normalization="l2",
-            clustering=ClusteringConfig(min_trades_for_clustering=5),
+        config = TradeConfig(
+            min_trades_for_clustering=5,
+            clustering=TradeClusteringSettings(normalization="l2"),
         )
         pipeline = TradeShapPipeline(
             features_df=sample_features,
@@ -313,9 +312,9 @@ class TestAnalyzeWorstTrades:
         self, sample_features, sample_shap_values, feature_names
     ):
         """Normalization should be skipped when None."""
-        config = TradeShapPipelineConfig(
-            normalization=None,
-            clustering=ClusteringConfig(min_trades_for_clustering=5),
+        config = TradeConfig(
+            min_trades_for_clustering=5,
+            clustering=TradeClusteringSettings(normalization=None),
         )
         pipeline = TradeShapPipeline(
             features_df=sample_features,
@@ -395,9 +394,9 @@ class TestEdgeCases:
     ):
         """Different normalization methods should work."""
         for method in ["l1", "l2", "standardize", None]:
-            config = TradeShapPipelineConfig(
-                normalization=method,
-                clustering=ClusteringConfig(min_trades_for_clustering=5),
+            config = TradeConfig(
+                min_trades_for_clustering=5,
+                clustering=TradeClusteringSettings(normalization=method),
             )
             pipeline = TradeShapPipeline(
                 features_df=sample_features,
@@ -417,9 +416,11 @@ class TestEdgeCases:
         self, sample_features, sample_shap_values, feature_names
     ):
         """Pipeline with nearest alignment should find nearby timestamps."""
-        config = TradeShapPipelineConfig(
-            alignment_tolerance_seconds=1800.0,  # 30 minutes
-            alignment_mode="nearest",
+        config = TradeConfig(
+            alignment=TradeAlignmentSettings(
+                tolerance=1800,  # 30 minutes
+                mode="nearest",
+            )
         )
         pipeline = TradeShapPipeline(
             features_df=sample_features,

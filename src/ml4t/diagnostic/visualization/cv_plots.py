@@ -47,19 +47,21 @@ if TYPE_CHECKING:
 __all__ = ["plot_cv_folds"]
 
 
-# Color definitions for fold visualization
+# Color definitions for fold visualization — mapped from canonical ML4T palette
+from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
+
 COLORS = {
-    "train": "#3498DB",  # Blue
-    "val": "#2ECC71",  # Green
-    "test": "#E74C3C",  # Red
-    "gap": "#95A5A6",  # Gray
+    "train": _ML4T_COLORS["slate"],
+    "val": _ML4T_COLORS["amber"],
+    "test": _ML4T_COLORS["copper"],
+    "gap": _ML4T_COLORS["silver_muted"],
 }
 
 COLORS_DARK = {
-    "train": "#5DADE2",  # Light blue
-    "val": "#58D68D",  # Light green
-    "test": "#EC7063",  # Light red
-    "gap": "#AAB7B8",  # Light gray
+    "train": _ML4T_COLORS["amber"],
+    "val": _ML4T_COLORS["positive"],
+    "test": _ML4T_COLORS["negative"],
+    "gap": _ML4T_COLORS["silver_muted"],
 }
 
 

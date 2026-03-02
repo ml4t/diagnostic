@@ -1,8 +1,8 @@
-"""Configuration management for ml4t-diagnostic with Pydantic schema validation.
+"""Legacy configuration management for ml4t-diagnostic evaluation workflows.
 
-This module provides YAML-based configuration loading and validation
-for evaluation workflows, allowing users to define complex evaluation
-pipelines in configuration files with comprehensive validation.
+This module provides the original YAML-based evaluator configuration manager.
+New code should prefer the canonical configuration schemas under
+`ml4t.diagnostic.config`.
 """
 
 import os
@@ -146,7 +146,7 @@ class EvaluatorConfig(BaseModel):
     )
 
 
-class QEvalConfig(BaseModel):
+class LegacyConfig(BaseModel):
     """Complete configuration schema for ml4t-diagnostic evaluation workflows."""
 
     evaluation: EvaluatorConfig = Field(
@@ -207,6 +207,10 @@ class QEvalConfig(BaseModel):
         return self
 
 
+# Explicit legacy alias to distinguish from `ml4t.diagnostic.config` models.
+LegacyEvaluationConfig = LegacyConfig
+
+
 class EvaluationConfigManager:
     """Enhanced configuration manager with Pydantic validation.
 
@@ -232,9 +236,9 @@ class EvaluationConfigManager:
         else:
             self.config = default_config
 
-    def _create_default_config(self) -> QEvalConfig:
+    def _create_default_config(self) -> LegacyConfig:
         """Create default configuration with all required fields."""
-        return QEvalConfig(
+        return LegacyConfig(
             splitter=SplitterConfig(
                 type="WalkForwardCV",
                 params={
@@ -282,21 +286,21 @@ class EvaluationConfigManager:
 
     def _merge_configs(
         self,
-        base_config: QEvalConfig,
+        base_config: LegacyConfig,
         user_config: dict[str, Any],
-    ) -> QEvalConfig:
+    ) -> LegacyConfig:
         """Merge user configuration with base configuration using Pydantic validation.
 
         Parameters
         ----------
-        base_config : QEvalConfig
+        base_config : LegacyConfig
             Base configuration schema
         user_config : dict
             User configuration from YAML
 
         Returns:
         -------
-        QEvalConfig
+        LegacyConfig
             Validated and merged configuration
 
         Raises:
@@ -312,7 +316,7 @@ class EvaluationConfigManager:
             merged_dict = self._deep_merge_dicts(base_dict, user_config)
 
             # Validate merged configuration with Pydantic
-            return QEvalConfig.model_validate(merged_dict)
+            return LegacyConfig.model_validate(merged_dict)
 
         except Exception as e:
             raise ConfigError(f"Configuration validation failed: {e}") from e
@@ -444,6 +448,9 @@ class EvaluationConfigManager:
         return f"EvaluationConfigManager(tier={self.config.evaluation.tier}, metrics={self.config.metrics})"
 
 
+# Explicit legacy alias to distinguish from `ml4t.diagnostic.config` managers.
+LegacyEvaluationConfigManager = EvaluationConfigManager
+
 # Backward compatibility alias
 EvaluationConfig = EvaluationConfigManager
 
@@ -456,7 +463,7 @@ def load_config(
     Parameters
     ----------
     config_path : str or Path, optional
-        Path to configuration file. If None, checks QEVAL_CONFIG
+        Path to configuration file. If None, checks ML4T_DIAGNOSTIC_CONFIG
         environment variable, then looks for ml4t-diagnostic.yaml in current
         directory.
 
@@ -467,11 +474,13 @@ def load_config(
     """
     if config_path is None:
         # Check environment variable
-        config_path = os.environ.get("QEVAL_CONFIG")
+        config_path = os.environ.get("ML4T_DIAGNOSTIC_CONFIG")
 
         if config_path is None:
-            # Check current directory
-            default_path = Path("mlquant.evaluation.yaml")
+            # Check current directory (try new name first, then legacy)
+            default_path = Path("ml4t-diagnostic.yaml")
+            if not default_path.exists():
+                default_path = Path("mlquant.evaluation.yaml")
             if default_path.exists():
                 config_path = default_path
 
@@ -530,7 +539,7 @@ logging:
 """
 
 
-def create_example_config(output_path: str | Path = "mlquant.evaluation.yaml") -> None:
+def create_example_config(output_path: str | Path = "ml4t-diagnostic.yaml") -> None:
     """Create an example configuration file.
 
     Parameters
@@ -541,3 +550,20 @@ def create_example_config(output_path: str | Path = "mlquant.evaluation.yaml") -
     with open(output_path, "w") as f:
         f.write(EXAMPLE_CONFIG)
     print(f"Example configuration created at: {output_path}")
+
+
+__all__ = [
+    "ConfigError",
+    "SplitterConfig",
+    "DataConfig",
+    "VisualizationConfig",
+    "LoggingConfig",
+    "EvaluatorConfig",
+    "LegacyConfig",
+    "LegacyEvaluationConfig",
+    "EvaluationConfigManager",
+    "LegacyEvaluationConfigManager",
+    "EvaluationConfig",
+    "load_config",
+    "create_example_config",
+]

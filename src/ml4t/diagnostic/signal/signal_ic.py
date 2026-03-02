@@ -7,10 +7,12 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import polars as pl
-from scipy.stats import spearmanr
-from scipy.stats import t as t_dist
+
+from ml4t.diagnostic.evaluation.metrics.ic_statistics import compute_ic_summary_stats
+from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+    compute_ic_series as compute_ic_series_core,
+)
 
 
 def compute_ic_series(
@@ -19,6 +21,7 @@ def compute_ic_series(
     method: str = "spearman",
     factor_col: str = "factor",
     date_col: str = "date",
+    asset_col: str = "asset",
     min_obs: int = 10,
 ) -> tuple[list[Any], list[float]]:
     """Compute IC time series for a single period.
@@ -35,6 +38,8 @@ def compute_ic_series(
         Factor column name.
     date_col : str, default "date"
         Date column name.
+    asset_col : str, default "asset"
+        Asset/entity column used for panel joins.
     min_obs : int, default 10
         Minimum observations per date.
 
@@ -45,37 +50,28 @@ def compute_ic_series(
     """
     return_col = f"{period}D_fwd_return"
 
-    valid_data = data.filter(pl.col(return_col).is_not_null())
-    unique_dates = valid_data.select(date_col).unique().sort(date_col).to_series().to_list()
+    pred_df = data.select([date_col, asset_col, factor_col])
+    ret_df = data.select([date_col, asset_col, return_col])
 
-    dates: list[Any] = []
-    ic_values: list[float] = []
+    ic_df = compute_ic_series_core(
+        predictions=pred_df,
+        returns=ret_df,
+        pred_col=factor_col,
+        ret_col=return_col,
+        date_col=date_col,
+        entity_col=asset_col,
+        method=method,
+        min_periods=min_obs,
+    )
 
-    for date in unique_dates:
-        date_data = valid_data.filter(pl.col(date_col) == date)
-        if date_data.height < min_obs:
-            continue
+    if ic_df.height == 0:
+        return [], []
 
-        factors = date_data[factor_col].to_numpy()
-        returns = date_data[return_col].to_numpy()
-
-        # Remove NaN pairs
-        mask = ~(np.isnan(factors) | np.isnan(returns))
-        if mask.sum() < min_obs:
-            continue
-
-        factors = factors[mask]
-        returns = returns[mask]
-
-        if method == "spearman":
-            ic, _ = spearmanr(factors, returns)
-        else:
-            ic = float(np.corrcoef(factors, returns)[0, 1])
-
-        if np.isfinite(ic):
-            dates.append(date)
-            ic_values.append(float(ic))
-
+    ic_clean = ic_df.filter(
+        (pl.col("n_obs") >= min_obs) & pl.col("ic").cast(pl.Float64).is_finite()
+    )
+    dates = ic_clean[date_col].to_list()
+    ic_values = ic_clean["ic"].cast(pl.Float64).to_list()
     return dates, ic_values
 
 
@@ -94,35 +90,13 @@ def compute_ic_summary(
     dict[str, float]
         mean, std, t_stat, p_value, pct_positive
     """
-    n = len(ic_series)
-    if n < 2:
-        return {
-            "mean": float("nan"),
-            "std": float("nan"),
-            "t_stat": float("nan"),
-            "p_value": float("nan"),
-            "pct_positive": float("nan"),
-        }
-
-    arr = np.array(ic_series)
-    mean_ic = float(np.nanmean(arr))
-    std_ic = float(np.nanstd(arr, ddof=1))
-
-    if std_ic > 0:
-        t_stat = mean_ic / (std_ic / np.sqrt(n))
-        p_value = float(2 * (1 - t_dist.cdf(abs(t_stat), df=n - 1)))
-    else:
-        t_stat = float("nan")
-        p_value = float("nan")
-
-    pct_positive = float(np.mean(arr > 0))
-
+    summary = compute_ic_summary_stats(ic_series)
     return {
-        "mean": mean_ic,
-        "std": std_ic,
-        "t_stat": float(t_stat),
-        "p_value": p_value,
-        "pct_positive": pct_positive,
+        "mean": float(summary["mean_ic"]),
+        "std": float(summary["std_ic"]),
+        "t_stat": float(summary["t_stat"]),
+        "p_value": float(summary["p_value"]),
+        "pct_positive": float(summary["pct_positive"]),
     }
 
 

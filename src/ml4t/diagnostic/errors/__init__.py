@@ -6,7 +6,7 @@ across the ML4T Diagnostic library. All exceptions preserve context information 
 provide actionable error messages.
 
 Exception Hierarchy:
-    QEvalError (base)
+    DiagnosticError (base)
     ├── ConfigurationError      # Configuration and setup errors
     ├── ValidationError         # Data validation failures
     ├── ComputationError        # Calculation and numerical errors
@@ -25,7 +25,7 @@ Example:
 from typing import Any
 
 
-class QEvalError(Exception):
+class DiagnosticError(Exception):
     """
     Base exception for all ML4T Diagnostic errors.
 
@@ -38,7 +38,7 @@ class QEvalError(Exception):
         cause: Original exception if error was wrapped
 
     Example:
-        >>> raise QEvalError(
+        >>> raise DiagnosticError(
         ...     "Operation failed",
         ...     context={"operation": "compute_sharpe", "reason": "insufficient_data"}
         ... )
@@ -82,7 +82,7 @@ class QEvalError(Exception):
         return f"{self.__class__.__name__}(message={self.message!r}, context={self.context!r}, cause={self.cause!r})"
 
 
-class ConfigurationError(QEvalError):
+class ConfigurationError(DiagnosticError):
     """
     Configuration and setup errors.
 
@@ -93,9 +93,9 @@ class ConfigurationError(QEvalError):
     - Setup/initialization failures
 
     Example:
-        >>> from ml4t.diagnostic.config import QEvalConfig
+        >>> from ml4t.diagnostic.config import DiagnosticConfig
         >>> try:
-        ...     config = QEvalConfig(n_splits=-1)  # Invalid
+        ...     config = DiagnosticConfig(n_splits=-1)  # Invalid
         ... except ConfigurationError as e:
         ...     print(f"Configuration error: {e}")
     """
@@ -103,7 +103,7 @@ class ConfigurationError(QEvalError):
     pass
 
 
-class ValidationError(QEvalError):
+class ValidationError(DiagnosticError):
     """
     Data validation failures.
 
@@ -129,7 +129,7 @@ class ValidationError(QEvalError):
     pass
 
 
-class ComputationError(QEvalError):
+class ComputationError(DiagnosticError):
     """
     Calculation and numerical errors.
 
@@ -150,7 +150,7 @@ class ComputationError(QEvalError):
     pass
 
 
-class DataError(QEvalError):
+class DataError(DiagnosticError):
     """
     Data access and format errors.
 
@@ -161,9 +161,10 @@ class DataError(QEvalError):
     - Data corruption
 
     Example:
-        >>> from ml4t.diagnostic.integration.qfeatures import load_features
+        >>> from ml4t.diagnostic.evaluation import FeatureDiagnostics
         >>> try:
-        ...     features = load_features("missing_file.parquet")
+        ...     diag = FeatureDiagnostics(config)
+        ...     results = diag.run(features)
         ... except DataError as e:
         ...     print(f"Data error: {e}")
     """
@@ -171,21 +172,20 @@ class DataError(QEvalError):
     pass
 
 
-class IntegrationError(QEvalError):
+class IntegrationError(DiagnosticError):
     """
     External library integration errors.
 
     Raised when:
-    - QFeatures integration fails
-    - QEngine integration fails
+    - External library integration fails
     - External API errors
     - Version compatibility issues
 
     Example:
-        >>> from ml4t.diagnostic.integration.qfeatures import FeaturesAdapter
+        >>> from ml4t.diagnostic.evaluation import TradeAnalysis
         >>> try:
-        ...     adapter = FeaturesAdapter()
-        ...     features = adapter.load("data.parquet")
+        ...     analysis = TradeAnalysis(config)
+        ...     results = analysis.run(trades)
         ... except IntegrationError as e:
         ...     print(f"Integration error: {e}")
         ...     print(f"Library: {e.context.get('library')}")
@@ -196,7 +196,7 @@ class IntegrationError(QEvalError):
 
 # Public API
 __all__ = [
-    "QEvalError",
+    "DiagnosticError",
     "ConfigurationError",
     "ValidationError",
     "ComputationError",

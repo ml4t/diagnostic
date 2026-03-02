@@ -4,6 +4,8 @@ This module provides the Evaluator class, metrics, statistical tests, and
 visualization tools for comprehensive model validation.
 """
 
+# ruff: noqa: F401
+
 from ml4t.diagnostic.caching.smart_cache import SmartCache
 from ml4t.diagnostic.results.barrier_results import (
     BarrierTearSheet,
@@ -17,14 +19,7 @@ from ml4t.diagnostic.results.multi_signal_results import (
     MultiSignalSummary,
 )
 
-from . import (  # noqa: F401 (module re-export)
-    diagnostic_plots,
-    drift,
-    metrics,
-    report_generation,
-    stats,
-    visualization,
-)
+from . import drift, metrics, stats  # noqa: F401 (module re-export)
 from .autocorrelation import (
     ACFResult,
     AutocorrelationAnalysisResult,
@@ -52,13 +47,6 @@ from .binary_metrics import (
     recall,
     specificity,
     wilson_score_interval,
-)
-from .dashboard import create_evaluation_dashboard
-from .diagnostic_plots import (
-    plot_acf_pacf,
-    plot_distribution,
-    plot_qq,
-    plot_volatility_clustering,
 )
 from .distribution import (
     DistributionAnalysisResult,
@@ -89,14 +77,8 @@ from .excursion import (
 )
 from .feature_diagnostics import (
     FeatureDiagnostics,
-    FeatureDiagnosticsConfig,
+    FeatureDiagnosticsAnalysisResult,
     FeatureDiagnosticsResult,
-)
-from .feature_outcome import (
-    FeatureICResults,
-    FeatureImportanceResults,
-    FeatureOutcome,
-    FeatureOutcomeResult,
 )
 from .framework import EvaluationResult, Evaluator, get_metric_directionality
 from .metric_registry import MetricRegistry
@@ -144,13 +126,6 @@ from .portfolio_analysis import (
     stability_of_timeseries,
     up_down_capture,
     value_at_risk,
-)
-from .report_generation import (
-    generate_html_report,
-    generate_json_report,
-    generate_markdown_report,
-    generate_multi_feature_html_report,
-    save_report,
 )
 from .signal_selector import SignalSelector
 from .stat_registry import StatTestRegistry
@@ -201,7 +176,6 @@ from .trade_shap_diagnostics import (
 )
 from .validated_cv import (
     ValidatedCrossValidation,
-    ValidatedCrossValidationConfig,
     ValidationFoldResult,
     ValidationResult,
     validated_cross_val_score,
@@ -214,6 +188,39 @@ from .volatility import (
     arch_lm_test,
     fit_garch,
 )
+
+# Optional visualization/report stack (plotly/matplotlib/seaborn).
+# Keep core evaluation importable without viz extras.
+try:
+    from . import diagnostic_plots, report_generation, visualization  # noqa: F401
+    from .dashboard import create_evaluation_dashboard
+    from .diagnostic_plots import (
+        plot_acf_pacf,
+        plot_distribution,
+        plot_qq,
+        plot_volatility_clustering,
+    )
+    from .report_generation import (
+        generate_html_report,
+        generate_json_report,
+        generate_markdown_report,
+        generate_multi_feature_html_report,
+        save_report,
+    )
+except ImportError:
+    diagnostic_plots = None
+    report_generation = None
+    visualization = None
+    create_evaluation_dashboard = None
+    plot_acf_pacf = None
+    plot_distribution = None
+    plot_qq = None
+    plot_volatility_clustering = None
+    generate_html_report = None
+    generate_json_report = None
+    generate_markdown_report = None
+    generate_multi_feature_html_report = None
+    save_report = None
 
 # Lazy import for dashboard functions to avoid slow Streamlit import at module load
 # This saves ~1.3 seconds on every import of ml4t.diagnostic
@@ -242,196 +249,50 @@ def __getattr__(name: str):
 
 
 __all__: list[str] = [
+    # Core framework
     "EvaluationResult",
     "Evaluator",
     "get_metric_directionality",
     "MetricRegistry",
     "StatTestRegistry",
-    "create_evaluation_dashboard",
-    "metrics",
-    "stats",
-    "visualization",
-    "diagnostic_plots",
-    # IC Time Series (Alphalens-style)
-    "information_coefficient",
-    "compute_forward_returns",
-    "compute_ic_series",
-    "compute_ic_by_horizon",
-    "compute_ic_ir",
-    "compute_ic_hac_stats",
-    "compute_ic_decay",
-    "compute_conditional_ic",
-    "compute_monotonicity",
-    "analyze_feature_outcome",
-    "compute_h_statistic",
-    "compute_shap_interactions",
-    "analyze_interactions",
-    "compute_permutation_importance",
-    "compute_mdi_importance",
-    "compute_mda_importance",
-    "compute_shap_importance",
-    "analyze_ml_importance",
-    # Diagnostic Plotting Functions
-    "plot_acf_pacf",
-    "plot_qq",
-    "plot_volatility_clustering",
-    "plot_distribution",
-    # Feature Diagnostics (Main API)
+    # Validation workflows
+    "ValidatedCrossValidation",
+    "validated_cross_val_score",
+    "ValidationFoldResult",
+    "ValidationResult",
+    # Analysis workflows
     "FeatureDiagnostics",
-    "FeatureDiagnosticsConfig",
+    "FeatureDiagnosticsAnalysisResult",
     "FeatureDiagnosticsResult",
-    # Stationarity tests
-    "adf_test",
-    "ADFResult",
-    "kpss_test",
-    "KPSSResult",
-    "pp_test",
-    "PPResult",
-    "analyze_stationarity",
-    "StationarityAnalysisResult",
-    # Autocorrelation
-    "compute_acf",
-    "ACFResult",
-    "compute_pacf",
-    "PACFResult",
-    "analyze_autocorrelation",
-    "AutocorrelationAnalysisResult",
-    # Volatility
-    "arch_lm_test",
-    "ARCHLMResult",
-    "fit_garch",
-    "GARCHResult",
-    "analyze_volatility",
-    "VolatilityAnalysisResult",
-    # Distribution
-    "compute_moments",
-    "MomentsResult",
-    "jarque_bera_test",
-    "JarqueBeraResult",
-    "shapiro_wilk_test",
-    "ShapiroWilkResult",
-    "hill_estimator",
-    "HillEstimatorResult",
-    "generate_qq_data",
-    "QQPlotData",
-    "analyze_tails",
-    "TailAnalysisResult",
-    "analyze_distribution",
-    "DistributionAnalysisResult",
-    # Report generation
-    "generate_html_report",
-    "generate_json_report",
-    "generate_markdown_report",
-    "generate_multi_feature_html_report",
-    "save_report",
-    # Drift detection
-    "compute_psi",
-    "PSIResult",
-    # Price Excursion Analysis (TP/SL parameter selection)
-    "analyze_excursions",
-    "compute_excursions",
-    "ExcursionAnalysisResult",
-    "ExcursionStats",
-    # Feature-Outcome Analysis (Module C Orchestration)
-    "FeatureOutcome",
-    "FeatureOutcomeResult",
-    "FeatureICResults",
-    "FeatureImportanceResults",
-    # Trade Analysis (ml4t-diagnostics v1.0)
     "TradeAnalysis",
     "TradeAnalysisResult",
     "TradeMetrics",
     "TradeStatistics",
-    # Trade-SHAP Diagnostics (ml4t-diagnostics v1.0 - KILLER FEATURE)
-    "ClusteringResult",
-    "ErrorPattern",
-    "TradeExplainFailure",
-    "TradeShapAnalyzer",
-    "TradeShapExplanation",
-    "TradeShapResult",
-    # Dashboard (optional - requires streamlit)
-    "run_diagnostics_dashboard",
-    # Event Study Analysis (Phase 2 - MacKinlay 1997)
+    "BarrierAnalysis",
+    "PortfolioAnalysis",
+    "PortfolioMetrics",
     "EventStudyAnalysis",
-    # Multiple Testing Corrections (Phase 3 - Multi-Signal)
-    "benjamini_hochberg_fdr",
-    "holm_bonferroni",
-    # Backtest Overfitting Detection
-    "compute_pbo",
-    "ras_ic_adjustment",
-    # Signal Selection Algorithms (Phase 3 - Multi-Signal)
     "SignalSelector",
-    # Multi-Signal Analysis (Phase 3)
     "MultiSignalAnalysis",
     "MultiSignalSummary",
     "ComparisonResult",
-    # Caching (Phase 3)
+    # Stable metrics facade
+    "analyze_feature_outcome",
+    "compute_ic_series",
+    "compute_ic_hac_stats",
+    "compute_permutation_importance",
+    "compute_mdi_importance",
+    "compute_shap_importance",
+    "analyze_ml_importance",
+    "compute_h_statistic",
+    "compute_shap_interactions",
+    "analyze_interactions",
+    # Namespaces and dashboard entry points
+    "create_evaluation_dashboard",
+    "metrics",
+    "stats",
+    "visualization",
+    "run_diagnostics_dashboard",
+    # Utilities
     "SmartCache",
-    # Barrier Analysis (Phase 4)
-    "BarrierAnalysis",
-    "HitRateResult",
-    "ProfitFactorResult",
-    "PrecisionRecallResult",
-    "TimeToTargetResult",
-    "BarrierTearSheet",
-    # Portfolio Analysis (pyfolio replacement)
-    "PortfolioAnalysis",
-    "PortfolioMetrics",
-    "RollingMetricsResult",
-    "DrawdownResult",
-    "DrawdownPeriod",
-    "DistributionResult",
-    # Portfolio metric functions
-    "sharpe_ratio",
-    "sortino_ratio",
-    "calmar_ratio",
-    "omega_ratio",
-    "max_drawdown",
-    "annual_return",
-    "annual_volatility",
-    "value_at_risk",
-    "conditional_var",
-    "stability_of_timeseries",
-    "alpha_beta",
-    "information_ratio",
-    "up_down_capture",
-    "compute_portfolio_turnover",
-    # Binary Classification Metrics (Phase 2 - Book Alignment)
-    "BinaryClassificationReport",
-    "ConfusionMatrix",
-    "balanced_accuracy",
-    "binary_classification_report",
-    "binomial_test_precision",
-    "compare_precisions_z_test",
-    "compute_all_metrics",
-    "compute_confusion_matrix",
-    "coverage",
-    "f1_score",
-    "format_classification_report",
-    "lift",
-    "precision",
-    "proportions_z_test",
-    "recall",
-    "specificity",
-    "wilson_score_interval",
-    # Threshold Analysis (Phase 2 - Book Alignment)
-    "MonotonicityResult",
-    "OptimalThresholdResult",
-    "SensitivityResult",
-    "ThresholdAnalysisSummary",
-    "analyze_all_metrics_monotonicity",
-    "analyze_threshold_sensitivity",
-    "check_monotonicity",
-    "create_threshold_analysis_summary",
-    "evaluate_percentile_thresholds",
-    "evaluate_threshold_sweep",
-    "find_optimal_threshold",
-    "find_threshold_for_target_coverage",
-    "format_threshold_analysis",
-    # Validated Cross-Validation (CPCV + DSR)
-    "ValidatedCrossValidation",
-    "ValidatedCrossValidationConfig",
-    "validated_cross_val_score",
-    "ValidationFoldResult",
-    "ValidationResult",
 ]

@@ -212,9 +212,9 @@ class TestValidatedCVBenchmarks:
 
     def test_vcv_full_workflow_small(self, benchmark, small_data):
         """Benchmark full VCV workflow on small data."""
+        from ml4t.diagnostic.config import ValidatedCrossValidationConfig
         from ml4t.diagnostic.evaluation.validated_cv import (
             ValidatedCrossValidation,
-            ValidatedCrossValidationConfig,
         )
 
         class SimpleModel:

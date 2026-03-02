@@ -18,7 +18,8 @@ try:
     from ml4t.engineer.labeling import BarrierConfig, triple_barrier_labels
 
     ENGINEER_AVAILABLE = True
-except ImportError:
+except Exception:
+    # Some environments expose ml4t.engineer but raise runtime errors at import time.
     ENGINEER_AVAILABLE = False
 
 from ml4t.diagnostic.splitters import WalkForwardCV

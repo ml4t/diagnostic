@@ -8,7 +8,7 @@ from ml4t.diagnostic.logging import (
     LogLevel,
     PerformanceMonitor,
     PerformanceTracker,
-    QEvalLogger,
+    DiagnosticLogger,
     configure_logging,
     get_log_level,
     get_logger,
@@ -42,28 +42,28 @@ class TestLogLevel:
         assert LogLevel.INFO == "INFO"
 
 
-class TestQEvalLogger:
-    """Tests for QEvalLogger class."""
+class TestDiagnosticLogger:
+    """Tests for DiagnosticLogger class."""
 
     def test_logger_creation(self):
         """Test logger can be created."""
-        logger = QEvalLogger("test_module")
+        logger = DiagnosticLogger("test_module")
         assert logger.name == "test_module"
         assert logger.level == LogLevel.INFO
 
     def test_logger_with_custom_level(self):
         """Test logger with custom log level."""
-        logger = QEvalLogger("test_module", level=LogLevel.DEBUG)
+        logger = DiagnosticLogger("test_module", level=LogLevel.DEBUG)
         assert logger.level == LogLevel.DEBUG
 
     def test_logger_with_json_output(self):
         """Test logger with JSON output enabled."""
-        logger = QEvalLogger("test_module", output_json=True)
+        logger = DiagnosticLogger("test_module", output_json=True)
         assert logger.output_json is True
 
     def test_should_log_respects_level(self):
         """Test that _should_log respects level hierarchy."""
-        logger = QEvalLogger("test", level=LogLevel.WARNING)
+        logger = DiagnosticLogger("test", level=LogLevel.WARNING)
 
         # Should not log DEBUG or INFO
         assert logger._should_log(LogLevel.DEBUG) is False
@@ -75,14 +75,14 @@ class TestQEvalLogger:
 
     def test_format_message_plain(self):
         """Test plain text message formatting."""
-        logger = QEvalLogger("test", output_json=False)
+        logger = DiagnosticLogger("test", output_json=False)
 
         msg = logger._format_message("INFO", "Test message")
         assert msg == "Test message"
 
     def test_format_message_with_context(self):
         """Test message formatting with context."""
-        logger = QEvalLogger("test", output_json=False)
+        logger = DiagnosticLogger("test", output_json=False)
 
         msg = logger._format_message("INFO", "Test message", key1="value1", key2=42)
         assert "Test message" in msg
@@ -93,7 +93,7 @@ class TestQEvalLogger:
         """Test JSON message formatting."""
         import json
 
-        logger = QEvalLogger("test", output_json=True)
+        logger = DiagnosticLogger("test", output_json=True)
 
         msg = logger._format_message("INFO", "Test message", key1="value1")
         parsed = json.loads(msg)
@@ -105,31 +105,31 @@ class TestQEvalLogger:
 
     def test_debug_method(self, capfd):
         """Test debug logging method."""
-        logger = QEvalLogger("test", level=LogLevel.DEBUG)
+        logger = DiagnosticLogger("test", level=LogLevel.DEBUG)
         logger.debug("Debug message", extra="data")
         # No assertion on output - just verify no exception
 
     def test_info_method(self, capfd):
         """Test info logging method."""
-        logger = QEvalLogger("test", level=LogLevel.INFO)
+        logger = DiagnosticLogger("test", level=LogLevel.INFO)
         logger.info("Info message", count=5)
         # No assertion on output - just verify no exception
 
     def test_warning_method(self, capfd):
         """Test warning logging method."""
-        logger = QEvalLogger("test", level=LogLevel.WARNING)
+        logger = DiagnosticLogger("test", level=LogLevel.WARNING)
         logger.warning("Warning message", issue="something")
         # No assertion on output - just verify no exception
 
     def test_error_method(self, capfd):
         """Test error logging method."""
-        logger = QEvalLogger("test", level=LogLevel.ERROR)
+        logger = DiagnosticLogger("test", level=LogLevel.ERROR)
         logger.error("Error message", error="failed")
         # No assertion on output - just verify no exception
 
     def test_timed_context_manager(self):
         """Test timed context manager returns tracker."""
-        logger = QEvalLogger("test", level=LogLevel.DEBUG)
+        logger = DiagnosticLogger("test", level=LogLevel.DEBUG)
 
         with logger.timed("test_operation") as tracker:
             time.sleep(0.01)
@@ -143,7 +143,7 @@ class TestLoggerFunctions:
     def test_get_logger_creates_logger(self):
         """Test get_logger creates a new logger."""
         logger = get_logger("test_module_unique")
-        assert isinstance(logger, QEvalLogger)
+        assert isinstance(logger, DiagnosticLogger)
         assert logger.name == "test_module_unique"
 
     def test_get_logger_returns_same_instance(self):
@@ -203,7 +203,7 @@ class TestPerformanceTracker:
 
     def test_tracker_with_logger(self):
         """Test tracker with logger integration."""
-        logger = QEvalLogger("test", level=LogLevel.DEBUG)
+        logger = DiagnosticLogger("test", level=LogLevel.DEBUG)
 
         with PerformanceTracker("logged_op", logger=logger):
             time.sleep(0.01)
@@ -212,7 +212,7 @@ class TestPerformanceTracker:
 
     def test_tracker_logs_error_on_exception(self):
         """Test tracker logs error when exception occurs."""
-        logger = QEvalLogger("test", level=LogLevel.DEBUG)
+        logger = DiagnosticLogger("test", level=LogLevel.DEBUG)
 
         with pytest.raises(ValueError):
             with PerformanceTracker("failing_op", logger=logger):

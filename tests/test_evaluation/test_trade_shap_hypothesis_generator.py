@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
+from ml4t.diagnostic.config import TradeHypothesisSettings
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses.generator import (
-    HypothesisConfig,
     HypothesisGenerator,
 )
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses.matcher import MatchResult, Template
@@ -41,17 +39,10 @@ class TestHypothesisGeneratorConfig:
 
     def test_normalize_config_defaults_when_none(self) -> None:
         generator = HypothesisGenerator(config=None)
-        assert isinstance(generator.config, HypothesisConfig)
+        assert isinstance(generator.config, TradeHypothesisSettings)
         assert generator.config.template_library == "comprehensive"
-        assert generator.config.min_confidence == 0.5
-        assert generator.config.max_actions == 4
-
-    def test_normalize_config_from_object_attributes(self) -> None:
-        config = SimpleNamespace(template_library="minimal", min_confidence=0.7, max_actions=2)
-        generator = HypothesisGenerator(config=config)
-        assert generator.config.template_library == "minimal"
-        assert generator.config.min_confidence == 0.7
-        assert generator.config.max_actions == 2
+        assert generator.config.min_confidence == 0.6
+        assert generator.config.max_per_cluster == 5
 
 
 class TestHypothesisGeneratorCore:
@@ -60,7 +51,7 @@ class TestHypothesisGeneratorCore:
     def test_generate_hypothesis_returns_unchanged_when_confidence_below_threshold(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        generator = HypothesisGenerator(HypothesisConfig(min_confidence=0.8))
+        generator = HypothesisGenerator(TradeHypothesisSettings(min_confidence=0.8))
         pattern = _error_pattern()
 
         template = Template(
@@ -84,7 +75,9 @@ class TestHypothesisGeneratorCore:
         assert result is pattern
 
     def test_generate_hypothesis_enriches_pattern(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        generator = HypothesisGenerator(HypothesisConfig(min_confidence=0.3, max_actions=1))
+        generator = HypothesisGenerator(
+            TradeHypothesisSettings(min_confidence=0.3, max_per_cluster=1)
+        )
         pattern = _error_pattern(n_trades=20, separation_score=1.6)
 
         template = Template(
@@ -141,7 +134,7 @@ class TestHypothesisGeneratorActions:
         assert generator.generate_actions(pattern) == []
 
     def test_generate_actions_limits_and_assigns_priority(self) -> None:
-        generator = HypothesisGenerator(HypothesisConfig(max_actions=3))
+        generator = HypothesisGenerator(TradeHypothesisSettings(max_per_cluster=3))
         pattern = _error_pattern(
             actions=[
                 "Add momentum feature",

@@ -20,7 +20,7 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
 
 
-class QEvalLogger:
+class DiagnosticLogger:
     """
     Structured logger for ML4T Diagnostic operations.
 
@@ -32,7 +32,7 @@ class QEvalLogger:
     - Debug mode support
 
     Example:
-        >>> logger = QEvalLogger("mlquant.evaluation.metrics")
+        >>> logger = DiagnosticLogger("ml4t.diagnostic.metrics")
         >>> logger.info("Computing metric", metric="sharpe_ratio", n_samples=100)
         >>> logger.debug("Intermediate result", value=0.5)
         >>> logger.error("Computation failed", error="division by zero")
@@ -170,12 +170,12 @@ class QEvalLogger:
 
 
 # Global logger registry
-_loggers: dict[str, QEvalLogger] = {}
+_loggers: dict[str, DiagnosticLogger] = {}
 _global_level: LogLevel = LogLevel.INFO
 _global_json_output: bool = False
 
 
-def get_logger(name: str) -> QEvalLogger:
+def get_logger(name: str) -> DiagnosticLogger:
     """
     Get or create logger for module.
 
@@ -183,14 +183,16 @@ def get_logger(name: str) -> QEvalLogger:
         name: Logger name (usually __name__)
 
     Returns:
-        QEvalLogger instance
+        DiagnosticLogger instance
 
     Example:
         >>> logger = get_logger(__name__)
         >>> logger.info("Processing data")
     """
     if name not in _loggers:
-        _loggers[name] = QEvalLogger(name, level=_global_level, output_json=_global_json_output)
+        _loggers[name] = DiagnosticLogger(
+            name, level=_global_level, output_json=_global_json_output
+        )
     return _loggers[name]
 
 

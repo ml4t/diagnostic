@@ -17,6 +17,42 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+def _empty_conditional_ic_result(
+    n_quantiles: int, interpretation: str, *, cannot_compute: bool = False
+) -> dict[str, Any]:
+    """Build a standardized empty result payload."""
+    if cannot_compute:
+        interpretation = f"Cannot compute quantiles: {interpretation}"
+    return {
+        "quantile_ics": np.full(n_quantiles, np.nan),
+        "quantile_labels": [f"Q{i + 1}" for i in range(n_quantiles)],
+        "quantile_bounds": {f"Q{i + 1}": np.nan for i in range(n_quantiles)},
+        "ic_variation": None,
+        "ic_range": None,
+        "significance_pvalue": None,
+        "test_statistic": None,
+        "n_quantiles": n_quantiles,
+        "n_obs_per_quantile": {f"Q{i + 1}": 0 for i in range(n_quantiles)},
+        "interpretation": interpretation,
+    }
+
+
+def _assign_quantile_labels(values: np.ndarray, n_quantiles: int) -> np.ndarray:
+    """Assign quantile labels (1..n_quantiles) with -1 for invalid/unassigned rows."""
+    labels = np.full(len(values), -1, dtype=np.int16)
+    valid_mask = np.isfinite(values)
+    if not np.any(valid_mask):
+        return labels
+
+    valid_values = values[valid_mask]
+    edges = np.quantile(valid_values, np.linspace(0, 1, n_quantiles + 1))
+    if np.unique(edges).size < 2:
+        return labels
+
+    labels[valid_mask] = np.digitize(valid_values, edges[1:-1], right=True) + 1
+    return labels
+
+
 def compute_conditional_ic(
     feature_a: Union[pl.DataFrame, pd.DataFrame, pl.Series, pd.Series, "NDArray[Any]"],
     feature_b: Union[pl.DataFrame, pd.DataFrame, pl.Series, pd.Series, "NDArray[Any]"],
@@ -127,8 +163,8 @@ def compute_conditional_ic(
     - Conditional independence testing
     - Interaction effect analysis from experimental design
     """
-    # Convert all inputs to pandas for consistent handling
     adapter = DataFrameAdapter()
+    quantile_labels = [f"Q{i + 1}" for i in range(n_quantiles)]
 
     # Handle Series/array inputs
     if isinstance(feature_a, pl.Series | pd.Series | np.ndarray):
@@ -156,52 +192,31 @@ def compute_conditional_ic(
         ret_clean = ret_arr[valid_mask]
 
         if len(feat_a_clean) < min_periods * n_quantiles:
-            return {
-                "quantile_ics": np.full(n_quantiles, np.nan),
-                "quantile_labels": [f"Q{i + 1}" for i in range(n_quantiles)],
-                "quantile_bounds": {f"Q{i + 1}": np.nan for i in range(n_quantiles)},
-                "ic_variation": None,
-                "ic_range": None,
-                "significance_pvalue": None,
-                "test_statistic": None,
-                "n_quantiles": n_quantiles,
-                "n_obs_per_quantile": {f"Q{i + 1}": 0 for i in range(n_quantiles)},
-                "interpretation": "Insufficient data for conditional IC analysis",
-            }
-
-        # Compute quantiles for feature_b
-        try:
-            quantile_labels = [f"Q{i + 1}" for i in range(n_quantiles)]
-            quantiles = pd.qcut(
-                feat_b_clean, q=n_quantiles, labels=quantile_labels, duplicates="drop"
+            return _empty_conditional_ic_result(
+                n_quantiles, "Insufficient data for conditional IC analysis"
             )
-        except ValueError as e:
-            # Handle case where feature_b has too many duplicates
-            return {
-                "quantile_ics": np.full(n_quantiles, np.nan),
-                "quantile_labels": [f"Q{i + 1}" for i in range(n_quantiles)],
-                "quantile_bounds": {f"Q{i + 1}": np.nan for i in range(n_quantiles)},
-                "ic_variation": None,
-                "ic_range": None,
-                "significance_pvalue": None,
-                "test_statistic": None,
-                "n_quantiles": n_quantiles,
-                "n_obs_per_quantile": {f"Q{i + 1}": 0 for i in range(n_quantiles)},
-                "interpretation": f"Cannot compute quantiles: {e!s}",
-            }
+
+        quantile_ids = _assign_quantile_labels(feat_b_clean, n_quantiles)
+        if np.all(quantile_ids == -1):
+            return _empty_conditional_ic_result(
+                n_quantiles,
+                "not enough unique values for requested quantiles",
+                cannot_compute=True,
+            )
 
         # Compute IC for each quantile
         ic_by_quantile: list[float] = []
         quantile_bounds: dict[Any, float] = {}
         n_obs_per_quantile: dict[Any, int] = {}
-        ic_series_list: list[float] = []  # For statistical test
+        ic_series_list: list[float] = []
 
-        for q_label in quantiles.unique():
-            mask = quantiles == q_label
-            if np.sum(mask) < min_periods:
+        for i, q_label in enumerate(quantile_labels, start=1):
+            mask = quantile_ids == i
+            n_obs = int(np.sum(mask))
+            if n_obs < min_periods:
                 ic_by_quantile.append(np.nan)
                 quantile_bounds[q_label] = np.nan
-                n_obs_per_quantile[q_label] = int(np.sum(mask))
+                n_obs_per_quantile[q_label] = n_obs
                 continue
 
             # Compute IC for this quantile (confidence_intervals=False returns float)
@@ -213,37 +228,32 @@ def compute_conditional_ic(
                 ic_val = float(ic_result)
             ic_by_quantile.append(ic_val)
             quantile_bounds[q_label] = float(np.mean(feat_b_clean[mask]))
-            n_obs_per_quantile[q_label] = int(np.sum(mask))
+            n_obs_per_quantile[q_label] = n_obs
 
             # Store individual IC values for statistical test
             # (approximation: use bootstrap or treat IC as single observation)
             ic_series_list.append(ic_val)
 
     else:
-        # DataFrame input with potential panel structure
-        # In this branch, inputs are DataFrames (Series/array handled above)
-        df_a: pd.DataFrame
-        df_b: pd.DataFrame
-        df_ret: pd.DataFrame
-
+        # DataFrame input with Polars-first internal path
         if isinstance(feature_a, pl.DataFrame):
-            df_a = feature_a.to_pandas()
+            df_a = feature_a.clone()
         elif isinstance(feature_a, pd.DataFrame):
-            df_a = feature_a.copy()
+            df_a = pl.from_pandas(feature_a)
         else:
             raise TypeError(f"feature_a must be DataFrame in this branch, got {type(feature_a)}")
 
         if isinstance(feature_b, pl.DataFrame):
-            df_b = feature_b.to_pandas()
+            df_b = feature_b.clone()
         elif isinstance(feature_b, pd.DataFrame):
-            df_b = feature_b.copy()
+            df_b = pl.from_pandas(feature_b)
         else:
             raise TypeError(f"feature_b must be DataFrame in this branch, got {type(feature_b)}")
 
         if isinstance(forward_returns, pl.DataFrame):
-            df_ret = forward_returns.to_pandas()
+            df_ret = forward_returns.clone()
         elif isinstance(forward_returns, pd.DataFrame):
-            df_ret = forward_returns.copy()
+            df_ret = pl.from_pandas(forward_returns)
         else:
             raise TypeError(
                 f"forward_returns must be DataFrame in this branch, got {type(forward_returns)}"
@@ -261,114 +271,73 @@ def compute_conditional_ic(
         feat_b_col = [c for c in df_b.columns if c not in meta_cols][0]
         ret_col = [c for c in df_ret.columns if c not in meta_cols][0]
 
-        # Merge all data
-        df = df_a.copy()
-        df[feat_b_col] = df_b[feat_b_col]
-        df[ret_col] = df_ret[ret_col]
+        # Assemble aligned arrays (same row order as current behavior)
+        feat_a_arr = np.asarray(df_a[feat_a_col].to_numpy(), dtype=np.float64)
+        feat_b_arr = np.asarray(df_b[feat_b_col].to_numpy(), dtype=np.float64)
+        ret_arr = np.asarray(df_ret[ret_col].to_numpy(), dtype=np.float64)
 
-        # Drop NaN rows
-        df = df.dropna(subset=[feat_a_col, feat_b_col, ret_col])
+        valid_mask = ~(np.isnan(feat_a_arr) | np.isnan(feat_b_arr) | np.isnan(ret_arr))
+        feat_a_clean = feat_a_arr[valid_mask]
+        feat_b_clean = feat_b_arr[valid_mask]
+        ret_clean = ret_arr[valid_mask]
 
-        if len(df) < min_periods * n_quantiles:
-            return {
-                "quantile_ics": np.full(n_quantiles, np.nan),
-                "quantile_labels": [f"Q{i + 1}" for i in range(n_quantiles)],
-                "quantile_bounds": {f"Q{i + 1}": np.nan for i in range(n_quantiles)},
-                "ic_variation": None,
-                "ic_range": None,
-                "significance_pvalue": None,
-                "test_statistic": None,
-                "n_quantiles": n_quantiles,
-                "n_obs_per_quantile": {f"Q{i + 1}": 0 for i in range(n_quantiles)},
-                "interpretation": "Insufficient data for conditional IC analysis",
-            }
+        if len(feat_a_clean) < min_periods * n_quantiles:
+            return _empty_conditional_ic_result(
+                n_quantiles, "Insufficient data for conditional IC analysis"
+            )
+        if len(feat_a_clean) == 0:
+            return _empty_conditional_ic_result(n_quantiles, "No valid quantiles after filtering")
 
-        # Compute quantiles
         if date_col is not None:
-            # Panel data: compute quantiles cross-sectionally per date
-            def assign_quantiles(group):
-                try:
-                    quantile_labels = [f"Q{i + 1}" for i in range(n_quantiles)]
-                    return pd.qcut(
-                        group[feat_b_col],
-                        q=n_quantiles,
-                        labels=quantile_labels,
-                        duplicates="drop",
-                    )
-                except ValueError:
-                    # Not enough unique values
-                    return pd.Series([np.nan] * len(group), index=group.index)
+            date_arr = np.asarray(df_a[date_col].to_numpy())[valid_mask]
+            quantile_ids = np.full(len(feat_b_clean), -1, dtype=np.int16)
 
-            df["quantile"] = df.groupby(date_col, group_keys=False).apply(assign_quantiles)
+            # Cross-sectional quantiles per date group.
+            for date_value in np.unique(date_arr):
+                group_mask = date_arr == date_value
+                group_ids = _assign_quantile_labels(feat_b_clean[group_mask], n_quantiles)
+                quantile_ids[group_mask] = group_ids
         else:
-            # Simple case: compute quantiles on entire dataset
-            try:
-                quantile_labels = [f"Q{i + 1}" for i in range(n_quantiles)]
-                df["quantile"] = pd.qcut(
-                    df[feat_b_col], q=n_quantiles, labels=quantile_labels, duplicates="drop"
+            quantile_ids = _assign_quantile_labels(feat_b_clean, n_quantiles)
+            if np.all(quantile_ids == -1):
+                return _empty_conditional_ic_result(
+                    n_quantiles,
+                    "not enough unique values for requested quantiles",
+                    cannot_compute=True,
                 )
-            except ValueError as e:
-                return {
-                    "quantile_ics": np.full(n_quantiles, np.nan),
-                    "quantile_labels": [f"Q{i + 1}" for i in range(n_quantiles)],
-                    "quantile_bounds": {f"Q{i + 1}": np.nan for i in range(n_quantiles)},
-                    "ic_variation": None,
-                    "ic_range": None,
-                    "significance_pvalue": None,
-                    "test_statistic": None,
-                    "n_quantiles": n_quantiles,
-                    "n_obs_per_quantile": {f"Q{i + 1}": 0 for i in range(n_quantiles)},
-                    "interpretation": f"Cannot compute quantiles: {e!s}",
-                }
 
-        # Remove rows with NaN quantiles
-        df = df.dropna(subset=["quantile"])
+        valid_quantile_mask = quantile_ids > 0
+        if not np.any(valid_quantile_mask):
+            return _empty_conditional_ic_result(n_quantiles, "No valid quantiles after filtering")
 
-        if len(df) == 0:
-            return {
-                "quantile_ics": np.full(n_quantiles, np.nan),
-                "quantile_labels": [f"Q{i + 1}" for i in range(n_quantiles)],
-                "quantile_bounds": {f"Q{i + 1}": np.nan for i in range(n_quantiles)},
-                "ic_variation": None,
-                "ic_range": None,
-                "significance_pvalue": None,
-                "test_statistic": None,
-                "n_quantiles": n_quantiles,
-                "n_obs_per_quantile": {f"Q{i + 1}": 0 for i in range(n_quantiles)},
-                "interpretation": "No valid quantiles after filtering",
-            }
+        feat_a_quant = feat_a_clean[valid_quantile_mask]
+        feat_b_quant = feat_b_clean[valid_quantile_mask]
+        ret_quant = ret_clean[valid_quantile_mask]
+        quantile_ids = quantile_ids[valid_quantile_mask]
 
-        # Compute IC for each quantile (reusing variable names from if branch)
         ic_by_quantile = []
         quantile_bounds = {}
         n_obs_per_quantile = {}
         ic_series_list = []
 
-        for q_label in sorted(df["quantile"].unique()):
-            mask = df["quantile"] == q_label
-            subset = df[mask]
-
-            if len(subset) < min_periods:
+        for i, q_label in enumerate(quantile_labels, start=1):
+            mask = quantile_ids == i
+            n_obs = int(np.sum(mask))
+            if n_obs < min_periods:
                 ic_by_quantile.append(np.nan)
                 quantile_bounds[q_label] = np.nan
-                n_obs_per_quantile[q_label] = len(subset)
+                n_obs_per_quantile[q_label] = n_obs
                 continue
 
-            # Compute IC (confidence_intervals=False returns float)
-            ic_result = information_coefficient(
-                subset[feat_a_col].values, subset[ret_col].values, method=method
-            )
-            # When confidence_intervals=False, returns float; otherwise dict
+            ic_result = information_coefficient(feat_a_quant[mask], ret_quant[mask], method=method)
             if isinstance(ic_result, dict):
                 ic_val = float(ic_result.get("ic", np.nan))
             else:
                 ic_val = float(ic_result)
             ic_by_quantile.append(ic_val)
-            quantile_bounds[q_label] = float(subset[feat_b_col].mean())
-            n_obs_per_quantile[q_label] = len(subset)
+            quantile_bounds[q_label] = float(np.mean(feat_b_quant[mask]))
+            n_obs_per_quantile[q_label] = n_obs
             ic_series_list.append(ic_val)
-
-        quantile_labels = [f"Q{i + 1}" for i in range(n_quantiles)]
 
     # Convert to arrays
     ic_array = np.array(ic_by_quantile)

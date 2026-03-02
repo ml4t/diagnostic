@@ -13,6 +13,7 @@ The dashboard follows the BaseDashboard pattern with 5 tabs:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Literal
 
 from ml4t.diagnostic.visualization.dashboards import (
@@ -42,6 +43,8 @@ from ml4t.diagnostic.visualization.signal.turnover_plots import (
     plot_top_bottom_turnover,
 )
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from ml4t.diagnostic.results.event_results import EventStudyResult
     from ml4t.diagnostic.results.signal_results import SignalTearSheet
@@ -61,12 +64,7 @@ class SignalDashboard(BaseDashboard):
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import SignalAnalysis
     >>> from ml4t.diagnostic.visualization.signal import SignalDashboard
-    >>>
-    >>> # Run signal analysis
-    >>> analyzer = SignalAnalysis(factor_data, price_data)
-    >>> tear_sheet = analyzer.create_tear_sheet()
     >>>
     >>> # Create and save dashboard
     >>> dashboard = SignalDashboard(title="Momentum Factor Analysis")
@@ -87,7 +85,6 @@ class SignalDashboard(BaseDashboard):
 
     See Also
     --------
-    SignalAnalysis : Main signal analysis class
     SignalTearSheet : Result container for signal analysis
     """
 
@@ -125,7 +122,7 @@ class SignalDashboard(BaseDashboard):
         Parameters
         ----------
         analysis_results : SignalTearSheet
-            Results from SignalAnalysis.create_tear_sheet()
+            Signal analysis tear-sheet results.
         include_events : bool, default=False
             Whether to include Events tab (requires event_analysis)
         event_analysis : EventStudyResult, optional
@@ -162,7 +159,7 @@ class SignalDashboard(BaseDashboard):
         output_path : str
             Path for output HTML file
         analysis_results : SignalTearSheet
-            Results from SignalAnalysis.create_tear_sheet()
+            Signal analysis tear-sheet results.
         include_events : bool, default=False
             Whether to include Events tab
         event_analysis : EventStudyResult, optional
@@ -340,7 +337,7 @@ class SignalDashboard(BaseDashboard):
                 ras_ic = ic.ras_adjusted_ic.get(first_period, 0)
                 ras_sig = ic.ras_significant.get(first_period, False)
                 sig_icon = "✓" if ras_sig else "✗"
-                sig_color = "#28a745" if ras_sig else "#dc3545"
+                sig_color = "#10b981" if ras_sig else "#ef4444"
 
                 html_parts.append(f"""
                 <div class="insights-panel">
@@ -466,6 +463,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_ts.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("IC time series plot failed", exc_info=True)
             html_parts.append("<p>IC time series plot unavailable.</p>")
 
         # Two-column layout for histogram and Q-Q
@@ -478,6 +476,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_hist.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("IC histogram plot failed", exc_info=True)
             html_parts.append("<p>IC histogram unavailable.</p>")
 
         # IC Q-Q Plot
@@ -487,6 +486,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_qq.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("IC Q-Q plot failed", exc_info=True)
             html_parts.append("<p>IC Q-Q plot unavailable.</p>")
 
         html_parts.append("</div>")
@@ -498,6 +498,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_heatmap.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("IC heatmap plot failed", exc_info=True)
             html_parts.append("<p>IC heatmap unavailable.</p>")
 
         return "\n".join(html_parts)
@@ -528,6 +529,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_bar.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("Quantile returns bar chart failed", exc_info=True)
             html_parts.append("<p>Quantile returns bar chart unavailable.</p>")
 
         # Two-column layout
@@ -540,6 +542,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_violin.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("Quantile violin plot failed", exc_info=True)
             html_parts.append("<p>Quantile violin plot unavailable.</p>")
 
         # Spread Time Series
@@ -549,6 +552,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_spread.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("Spread time series plot failed", exc_info=True)
             html_parts.append("<p>Spread time series unavailable.</p>")
 
         html_parts.append("</div>")
@@ -561,6 +565,7 @@ class SignalDashboard(BaseDashboard):
                 html_parts.append(fig_cum.to_html(include_plotlyjs=False, full_html=False))
                 html_parts.append("</div>")
             except Exception:
+                logger.debug("Cumulative returns plot failed", exc_info=True)
                 html_parts.append("<p>Cumulative returns plot unavailable.</p>")
 
         return "\n".join(html_parts)
@@ -590,6 +595,7 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(fig_turnover.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")
         except Exception:
+            logger.debug("Turnover chart failed", exc_info=True)
             html_parts.append("<p>Turnover chart unavailable.</p>")
 
         # Autocorrelation
@@ -601,6 +607,7 @@ class SignalDashboard(BaseDashboard):
                 html_parts.append(fig_ac.to_html(include_plotlyjs=False, full_html=False))
                 html_parts.append("</div>")
             except Exception:
+                logger.debug("Autocorrelation plot failed", exc_info=True)
                 html_parts.append("<p>Autocorrelation plot unavailable.</p>")
 
         html_parts.append("</div>")
@@ -681,7 +688,7 @@ class SignalDashboard(BaseDashboard):
 
         # Summary metrics section
         sig_status = "Significant" if event_analysis.is_significant else "Not Significant"
-        sig_color = "#28a745" if event_analysis.is_significant else "#dc3545"
+        sig_color = "#10b981" if event_analysis.is_significant else "#ef4444"
 
         html_parts.append(f"""
         <div class="metric-grid">
@@ -831,7 +838,7 @@ class SignalDashboard(BaseDashboard):
 
         rows = []
         for r in sorted_results[:20]:  # Limit to top 20
-            car_color = "#28a745" if r.car >= 0 else "#dc3545"
+            car_color = "#10b981" if r.car >= 0 else "#ef4444"
             ar_day0 = r.ar_by_day.get(0, 0.0)
             beta_str = f"{r.estimation_beta:.2f}" if r.estimation_beta is not None else "N/A"
             rows.append(f"""
