@@ -19,11 +19,14 @@ Each library addresses a distinct stage: data infrastructure, feature engineerin
 Evaluating whether a signal or strategy has genuine predictive power requires statistical rigor. ml4t-diagnostic provides:
 
 - Information coefficient (IC) analysis with HAC-adjusted standard errors
-- Deflated Sharpe Ratio (DSR) and other multiple-testing corrections
-- Combinatorial purged cross-validation (CPCV) for time series
-- Feature importance analysis (MDI, PFI, MDA, SHAP)
+- Deflated Sharpe Ratio (DSR) and other multiple-testing corrections (RAS, PBO, FDR)
+- Combinatorial purged cross-validation (CPCV) with calendar-aware splitting
+- Feature importance analysis (MDI, PFI, MDA, SHAP) with consensus ranking
 - Trade-level diagnostics with SHAP-based error pattern discovery
-- Portfolio performance metrics and tear sheets
+- Backtest tear sheets: 4 templates, 22 sections, PDF/HTML export
+- Portfolio analysis: 16 performance metrics (Sharpe, Sortino, Calmar, VaR, CVaR, ...)
+- Systematic feature selection with IC, importance, correlation, and drift filtering
+- 65+ Plotly visualizations with 4 themes (default, dark, print, presentation)
 
 The library implements methods from the academic finance literature, particularly those addressing backtest overfitting and false discovery in strategy research.
 
@@ -61,6 +64,22 @@ print(f"IC t-stat (1D): {result.ic_t_stat['1D']:.2f}")
 print(f"Q5-Q1 spread (1D): {result.spread['1D']:.2%}")
 ```
 
+### Backtest Tear Sheet
+
+```python
+from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+html = generate_backtest_tearsheet(
+    trades=trades_df,
+    returns=daily_returns,
+    metrics={"sharpe": 1.5, "max_drawdown": -0.15},
+    template="hedge_fund",    # or "quant_trader", "risk_manager", "full"
+    theme="default",          # or "dark", "print", "presentation"
+    output_path="report.html",
+    n_trials=100,             # for DSR multiple-testing correction
+)
+```
+
 ### Deflated Sharpe Ratio
 
 ```python
@@ -76,33 +95,6 @@ dsr_result = deflated_sharpe_ratio(
 print(f"Sharpe: {dsr_result.sharpe_ratio:.2f}")
 print(f"Deflated Sharpe: {dsr_result.deflated_sharpe:.2f}")
 print(f"Significant: {dsr_result.is_significant}")
-```
-
-### Feature Importance
-
-```python
-from ml4t.diagnostic.evaluation import analyze_ml_importance
-
-# Combines MDI, PFI, MDA, SHAP methods
-results = analyze_ml_importance(model, X, y)
-print(results.consensus_ranking)
-```
-
-### Trade Diagnostics
-
-```python
-from ml4t.diagnostic.evaluation import TradeAnalysis, TradeShapAnalyzer
-
-analyzer = TradeAnalysis(trade_records)
-worst_trades = analyzer.worst_trades(n=20)
-
-# SHAP-based error pattern discovery
-shap_analyzer = TradeShapAnalyzer(model, features_df, shap_values)
-result = shap_analyzer.explain_worst_trades(worst_trades)
-
-for pattern in result.error_patterns:
-    print(f"Pattern: {pattern.hypothesis}")
-    print(f"Potential savings: ${pattern.potential_impact:,.2f}")
 ```
 
 ## Diagnostic Framework
@@ -146,23 +138,147 @@ Tier 4: Portfolio Analysis (Production)
 
 ## Cross-Validation
 
+Calendar-aware splitting with trading-day gaps:
+
 ```python
 from ml4t.diagnostic.splitters import WalkForwardCV, CombinatorialCV
 from ml4t.diagnostic.visualization import plot_cv_folds
 
-# Walk-forward with purging
+# Walk-forward with purging (gaps in trading days, not calendar days)
 cv = WalkForwardCV(n_splits=5, train_size=252, test_size=63, purge_days=21)
+
+# Combinatorial purged CV (de Prado)
+cpcv = CombinatorialCV(n_groups=6, n_test_groups=2, purge_days=5)
+
+# Calendar-aware: "4W" = 20 trading sessions, not 28 calendar days
+cv = WalkForwardCV(n_splits=5, train_size="52W", test_size="4W", calendar="NYSE")
 
 # Visualize fold structure
 fig = plot_cv_folds(cv, dates)
 fig.show()
 ```
 
+## Backtest Tear Sheets
+
+Four templates covering different analysis needs:
+
+| Template | Focus | Sections |
+|----------|-------|----------|
+| `quant_trader` | Trade-level analysis | MFE/MAE, exit optimization, trade waterfall |
+| `hedge_fund` | Risk-adjusted returns | Cost attribution, drawdowns, monthly heatmap |
+| `risk_manager` | Statistical validity | DSR gauge, confidence intervals, RAS analysis |
+| `full` | Everything | All 22 sections |
+
+Object-oriented API for custom tearsheets:
+
+```python
+from ml4t.diagnostic.visualization.backtest import BacktestTearsheet
+
+tearsheet = BacktestTearsheet(template="quant_trader", theme="dark")
+tearsheet.add_trades(trades_df)
+tearsheet.add_metrics(metrics_dict)
+tearsheet.enable_section("tail_risk")
+html = tearsheet.generate(output_path="report.html")
+```
+
+## Portfolio Analysis
+
+```python
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+pa = PortfolioAnalysis(daily_returns)
+metrics = pa.compute_metrics()
+
+print(f"Sharpe: {metrics.sharpe_ratio:.2f}")
+print(f"Sortino: {metrics.sortino_ratio:.2f}")
+print(f"Max Drawdown: {metrics.max_drawdown:.2%}")
+print(f"VaR (95%): {metrics.value_at_risk:.2%}")
+```
+
+Available metrics: `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `omega_ratio`, `tail_ratio`, `max_drawdown`, `annual_return`, `annual_volatility`, `value_at_risk`, `conditional_var`, `stability_of_timeseries`, `alpha_beta`, `information_ratio`, `up_down_capture`, and more.
+
+## Feature Selection
+
+Systematic multi-criteria feature filtering:
+
+```python
+from ml4t.diagnostic import FeatureSelector
+
+selector = FeatureSelector()
+report = selector.run_pipeline(
+    ic_results=ic_results,
+    importance_results=importance_results,
+    correlation_matrix=corr_matrix,
+)
+
+selected = selector.get_selected_features()
+print(f"Selected {len(selected)} features from {report.initial_count}")
+```
+
+Steps: IC filtering, importance filtering, correlation filtering, drift filtering.
+
+## Feature Importance
+
+```python
+from ml4t.diagnostic.evaluation import analyze_ml_importance
+
+# Combines MDI, PFI, MDA, SHAP methods
+results = analyze_ml_importance(model, X, y)
+print(results.consensus_ranking)
+```
+
+## Trade Diagnostics
+
+```python
+from ml4t.diagnostic.evaluation import TradeAnalysis, TradeShapAnalyzer
+
+analyzer = TradeAnalysis(trade_records)
+worst_trades = analyzer.worst_trades(n=20)
+
+# SHAP-based error pattern discovery
+shap_analyzer = TradeShapAnalyzer(model, features_df, shap_values)
+result = shap_analyzer.explain_worst_trades(worst_trades)
+
+for pattern in result.error_patterns:
+    print(f"Pattern: {pattern.hypothesis}")
+    print(f"Potential savings: ${pattern.potential_impact:,.2f}")
+```
+
+Fold-aware SHAP for walk-forward CV models:
+
+```python
+from ml4t.diagnostic.evaluation.trade_shap import compute_fold_shap
+
+# Compute SHAP values across walk-forward folds
+aligned_features, shap_values = compute_fold_shap(
+    boosters=fold_models,        # {fold_id: booster}
+    predictions_df=predictions,
+    features_df=features,
+    feature_names=feature_names,
+)
+```
+
+## Documentation
+
+- [Workflows](docs/user-guide/workflows.md) — end-to-end analysis patterns
+- [Validation Tiers](docs/user-guide/validation-tiers.md) — four-tier diagnostic framework
+- [Cross-Validation](docs/user-guide/cross-validation.md) — CPCV and walk-forward splitting
+- [CV Configuration](docs/user-guide/cv-configuration.md) — JSON/YAML config and fold persistence
+- [Feature Diagnostics](docs/user-guide/feature-diagnostics.md) — importance and interaction analysis
+- [Feature Selection](docs/user-guide/feature-selection.md) — systematic multi-criteria selection
+- [Statistical Tests](docs/user-guide/statistical-tests.md) — DSR, RAS, PBO, HAC
+- [Trade Analysis](docs/user-guide/trade-analysis.md) — trade-level diagnostics and SHAP
+
 ## Technical Characteristics
 
 - **Polars-based**: Native Polars DataFrames throughout
 - **HAC standard errors**: Newey-West adjustment for autocorrelated data
 - **Time-aware validation**: Purged and embargoed cross-validation splits
+- **Calendar-aware**: NYSE, CME, crypto calendars for trading-day gaps
+- **65+ visualizations**: Plotly-based with 4 themes (default, dark, print, presentation)
+- **PDF/HTML export**: Institutional-grade tear sheets
+- **Type-safe**: 0 type diagnostics (ty/Astral), full type annotations
+- **4,978 tests**: Comprehensive test coverage
 
 ## Related Libraries
 
@@ -174,7 +290,7 @@ fig.show()
 ## Development
 
 ```bash
-git clone https://github.com/applied-ai/ml4t-diagnostic.git
+git clone https://github.com/ml4t/ml4t-diagnostic.git
 cd ml4t-diagnostic
 uv sync
 uv run pytest tests/ -q -n auto
@@ -186,6 +302,8 @@ uv run ty check
 - Lopez de Prado, M. (2018). *Advances in Financial Machine Learning*. Wiley.
 - Bailey, D., & Lopez de Prado, M. (2012). "The Sharpe Ratio Efficient Frontier."
 - Bailey, D., et al. (2014). "The Deflated Sharpe Ratio."
+- Bailey, D., et al. (2016). "The Probability of Backtest Overfitting."
+- Lopez de Prado, M. (2020). "Combinatorial Purged Cross-Validation."
 
 ## License
 
