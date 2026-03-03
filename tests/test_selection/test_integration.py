@@ -69,9 +69,14 @@ class TestCorrelationMatrixFormats:
         features = ["f1", "f2", "f3"]
         ic_results = {
             f: FeatureICResults(
-                feature=f, ic_mean=0.05 - i * 0.01, ic_std=0.01,
-                ic_ir=3.0, t_stat=5.0, p_value=0.01,
-                ic_by_lag={1: 0.05 - i * 0.01}, n_observations=100,
+                feature=f,
+                ic_mean=0.05 - i * 0.01,
+                ic_std=0.01,
+                ic_ir=3.0,
+                t_stat=5.0,
+                p_value=0.01,
+                ic_by_lag={1: 0.05 - i * 0.01},
+                n_observations=100,
             )
             for i, f in enumerate(features)
         }
@@ -79,12 +84,14 @@ class TestCorrelationMatrixFormats:
 
     def test_with_feature_column(self, basic_outcome: FeatureOutcomeResult):
         """Correlation matrix with explicit 'feature' index column."""
-        corr = pl.DataFrame({
-            "feature": ["f1", "f2", "f3"],
-            "f1": [1.0, 0.9, 0.1],
-            "f2": [0.9, 1.0, 0.2],
-            "f3": [0.1, 0.2, 1.0],
-        })
+        corr = pl.DataFrame(
+            {
+                "feature": ["f1", "f2", "f3"],
+                "f1": [1.0, 0.9, 0.1],
+                "f2": [0.9, 1.0, 0.2],
+                "f3": [0.1, 0.2, 1.0],
+            }
+        )
         selector = FeatureSelector(basic_outcome, corr)
         selector.filter_by_correlation(threshold=0.8)
 
@@ -96,11 +103,13 @@ class TestCorrelationMatrixFormats:
 
     def test_without_feature_column(self, basic_outcome: FeatureOutcomeResult):
         """Correlation matrix without 'feature' column (column names are features)."""
-        corr = pl.DataFrame({
-            "f1": [1.0, 0.9, 0.1],
-            "f2": [0.9, 1.0, 0.2],
-            "f3": [0.1, 0.2, 1.0],
-        })
+        corr = pl.DataFrame(
+            {
+                "f1": [1.0, 0.9, 0.1],
+                "f2": [0.9, 1.0, 0.2],
+                "f3": [0.1, 0.2, 1.0],
+            }
+        )
         selector = FeatureSelector(basic_outcome, corr)
         selector.filter_by_correlation(threshold=0.8)
 
@@ -112,11 +121,13 @@ class TestCorrelationMatrixFormats:
     def test_features_missing_from_matrix(self, basic_outcome: FeatureOutcomeResult):
         """Features in selector but not in correlation matrix are kept."""
         # Only f1 and f2 in the matrix, f3 missing
-        corr = pl.DataFrame({
-            "feature": ["f1", "f2"],
-            "f1": [1.0, 0.3],
-            "f2": [0.3, 1.0],
-        })
+        corr = pl.DataFrame(
+            {
+                "feature": ["f1", "f2"],
+                "f1": [1.0, 0.3],
+                "f2": [0.3, 1.0],
+            }
+        )
         selector = FeatureSelector(basic_outcome, corr)
         selector.filter_by_correlation(threshold=0.8)
 
@@ -148,29 +159,36 @@ class TestDriftIntegration:
         rng = np.random.default_rng(42)
 
         # Reference data: 3 features, 500 samples
-        reference = pl.DataFrame({
-            "stable_1": rng.normal(0, 1, 500),
-            "stable_2": rng.normal(0, 1, 500),
-            "drifted": rng.normal(0, 1, 500),
-        })
+        reference = pl.DataFrame(
+            {
+                "stable_1": rng.normal(0, 1, 500),
+                "stable_2": rng.normal(0, 1, 500),
+                "drifted": rng.normal(0, 1, 500),
+            }
+        )
 
         # Test data: drifted feature has shifted mean
-        test = pl.DataFrame({
-            "stable_1": rng.normal(0, 1, 500),
-            "stable_2": rng.normal(0.1, 1, 500),
-            "drifted": rng.normal(2.0, 1, 500),  # Large shift
-        })
-
-        drift_result = analyze_drift(
-            reference.to_pandas(), test.to_pandas(), methods=["psi"]
+        test = pl.DataFrame(
+            {
+                "stable_1": rng.normal(0, 1, 500),
+                "stable_2": rng.normal(0.1, 1, 500),
+                "drifted": rng.normal(2.0, 1, 500),  # Large shift
+            }
         )
+
+        drift_result = analyze_drift(reference.to_pandas(), test.to_pandas(), methods=["psi"])
 
         # Build FeatureOutcomeResult with real drift
         features = ["stable_1", "stable_2", "drifted"]
         ic_results = {
             f: FeatureICResults(
-                feature=f, ic_mean=0.05, ic_std=0.01, ic_ir=5.0,
-                t_stat=10.0, p_value=0.001, ic_by_lag={1: 0.05},
+                feature=f,
+                ic_mean=0.05,
+                ic_std=0.01,
+                ic_ir=5.0,
+                t_stat=10.0,
+                p_value=0.001,
+                ic_by_lag={1: 0.05},
                 n_observations=100,
             )
             for f in features
@@ -208,11 +226,13 @@ class TestPolarsCorrelationIntegration:
 
         # Create features where f1 and f2 are highly correlated
         base = rng.normal(0, 1, 200)
-        data = pl.DataFrame({
-            "f1": base + rng.normal(0, 0.1, 200),
-            "f2": base + rng.normal(0, 0.1, 200),  # ~same as f1
-            "f3": rng.normal(0, 1, 200),            # independent
-        })
+        data = pl.DataFrame(
+            {
+                "f1": base + rng.normal(0, 0.1, 200),
+                "f2": base + rng.normal(0, 0.1, 200),  # ~same as f1
+                "f3": rng.normal(0, 1, 200),  # independent
+            }
+        )
 
         # Polars .corr() returns a DataFrame with column names as features
         corr_matrix = data.corr()
@@ -221,18 +241,33 @@ class TestPolarsCorrelationIntegration:
         features = ["f1", "f2", "f3"]
         ic_results = {
             "f1": FeatureICResults(
-                feature="f1", ic_mean=0.08, ic_std=0.01, ic_ir=8.0,
-                t_stat=10.0, p_value=0.001, ic_by_lag={1: 0.08},
+                feature="f1",
+                ic_mean=0.08,
+                ic_std=0.01,
+                ic_ir=8.0,
+                t_stat=10.0,
+                p_value=0.001,
+                ic_by_lag={1: 0.08},
                 n_observations=100,
             ),
             "f2": FeatureICResults(
-                feature="f2", ic_mean=0.03, ic_std=0.01, ic_ir=3.0,
-                t_stat=5.0, p_value=0.01, ic_by_lag={1: 0.03},
+                feature="f2",
+                ic_mean=0.03,
+                ic_std=0.01,
+                ic_ir=3.0,
+                t_stat=5.0,
+                p_value=0.01,
+                ic_by_lag={1: 0.03},
                 n_observations=100,
             ),
             "f3": FeatureICResults(
-                feature="f3", ic_mean=0.05, ic_std=0.01, ic_ir=5.0,
-                t_stat=7.0, p_value=0.005, ic_by_lag={1: 0.05},
+                feature="f3",
+                ic_mean=0.05,
+                ic_std=0.01,
+                ic_ir=5.0,
+                t_stat=7.0,
+                p_value=0.005,
+                ic_by_lag={1: 0.05},
                 n_observations=100,
             ),
         }
@@ -270,10 +305,14 @@ class TestFullPipelineIntegration:
         for i, name in enumerate(names):
             ic_val = 0.06 - i * 0.006  # 0.06 down to 0.006
             ic_results[name] = FeatureICResults(
-                feature=name, ic_mean=ic_val, ic_std=0.01,
-                ic_ir=ic_val / 0.01, t_stat=ic_val / 0.01 * 2,
+                feature=name,
+                ic_mean=ic_val,
+                ic_std=0.01,
+                ic_ir=ic_val / 0.01,
+                t_stat=ic_val / 0.01 * 2,
                 p_value=0.001 if ic_val > 0.02 else 0.2,
-                ic_by_lag={1: ic_val}, n_observations=200,
+                ic_by_lag={1: ic_val},
+                n_observations=200,
             )
 
         # Importance: monotonically decreasing
@@ -281,11 +320,14 @@ class TestFullPipelineIntegration:
         for i, name in enumerate(names):
             imp = 0.3 - i * 0.025
             importance_results[name] = FeatureImportanceResults(
-                feature=name, mdi_importance=imp,
+                feature=name,
+                mdi_importance=imp,
                 permutation_importance=imp * 0.9,
                 permutation_std=0.01,
-                shap_mean=imp * 0.8, shap_std=0.01,
-                rank_mdi=i + 1, rank_permutation=i + 1,
+                shap_mean=imp * 0.8,
+                shap_std=0.01,
+                rank_mdi=i + 1,
+                rank_permutation=i + 1,
             )
 
         # Drift: last 2 features drifted
@@ -294,28 +336,32 @@ class TestFullPipelineIntegration:
             FeatureDriftResult,
             PSIResult,
         )
+
         drift_features = []
         for i, name in enumerate(names):
             is_drifted = i >= 8
-            drift_features.append(FeatureDriftResult(
-                feature=name,
-                psi_result=PSIResult(
-                    psi=0.3 if is_drifted else 0.05,
-                    bin_psi=np.array([0.06 if is_drifted else 0.01] * 5),
-                    bin_edges=np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]),
-                    reference_counts=np.array([20] * 5),
-                    test_counts=np.array([20] * 5),
-                    reference_percents=np.array([0.2] * 5),
-                    test_percents=np.array([0.2] * 5),
-                    n_bins=5, is_categorical=False,
-                    alert_level="red" if is_drifted else "green",
-                    interpretation="drift" if is_drifted else "stable",
-                ),
-                drifted=is_drifted,
-                n_methods_run=1,
-                n_methods_detected=1 if is_drifted else 0,
-                drift_probability=1.0 if is_drifted else 0.0,
-            ))
+            drift_features.append(
+                FeatureDriftResult(
+                    feature=name,
+                    psi_result=PSIResult(
+                        psi=0.3 if is_drifted else 0.05,
+                        bin_psi=np.array([0.06 if is_drifted else 0.01] * 5),
+                        bin_edges=np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]),
+                        reference_counts=np.array([20] * 5),
+                        test_counts=np.array([20] * 5),
+                        reference_percents=np.array([0.2] * 5),
+                        test_percents=np.array([0.2] * 5),
+                        n_bins=5,
+                        is_categorical=False,
+                        alert_level="red" if is_drifted else "green",
+                        interpretation="drift" if is_drifted else "stable",
+                    ),
+                    drifted=is_drifted,
+                    n_methods_run=1,
+                    n_methods_detected=1 if is_drifted else 0,
+                    drift_probability=1.0 if is_drifted else 0.0,
+                )
+            )
 
         drift_results = DriftSummaryResult(
             feature_results=drift_features,
@@ -353,12 +399,14 @@ class TestFullPipelineIntegration:
         outcome, corr = realistic_outcome
 
         selector = FeatureSelector(outcome, corr)
-        selector.run_pipeline([
-            ("drift", {"threshold": 0.2, "method": "psi"}),
-            ("ic", {"threshold": 0.02}),
-            ("correlation", {"threshold": 0.8, "keep_strategy": "higher_ic"}),
-            ("importance", {"threshold": 0.05, "method": "mdi"}),
-        ])
+        selector.run_pipeline(
+            [
+                ("drift", {"threshold": 0.2, "method": "psi"}),
+                ("ic", {"threshold": 0.02}),
+                ("correlation", {"threshold": 0.8, "keep_strategy": "higher_ic"}),
+                ("importance", {"threshold": 0.05, "method": "mdi"}),
+            ]
+        )
 
         report = selector.get_selection_report()
         selected = selector.get_selected_features()
@@ -393,10 +441,12 @@ class TestFullPipelineIntegration:
         outcome, corr = realistic_outcome
 
         selector = FeatureSelector(outcome, corr)
-        selector.run_pipeline([
-            ("drift", {"threshold": 0.2}),
-            ("ic", {"threshold": 0.02}),
-        ])
+        selector.run_pipeline(
+            [
+                ("drift", {"threshold": 0.2}),
+                ("ic", {"threshold": 0.02}),
+            ]
+        )
 
         report = selector.get_selection_report()
         summary = report.summary()
@@ -414,10 +464,12 @@ class TestFullPipelineIntegration:
         outcome, corr = realistic_outcome
 
         selector = FeatureSelector(outcome, corr)
-        selector.run_pipeline([
-            ("drift", {"threshold": 0.2}),
-            ("ic", {"threshold": 0.02}),
-        ])
+        selector.run_pipeline(
+            [
+                ("drift", {"threshold": 0.2}),
+                ("ic", {"threshold": 0.02}),
+            ]
+        )
 
         removed_count = len(selector.get_removed_features())
         assert removed_count > 0
@@ -436,10 +488,12 @@ class TestFullPipelineIntegration:
 
         # Pipeline
         s1 = FeatureSelector(outcome, corr)
-        s1.run_pipeline([
-            ("ic", {"threshold": 0.02}),
-            ("importance", {"threshold": 0.1, "method": "mdi"}),
-        ])
+        s1.run_pipeline(
+            [
+                ("ic", {"threshold": 0.02}),
+                ("importance", {"threshold": 0.1, "method": "mdi"}),
+            ]
+        )
 
         # Chaining
         s2 = FeatureSelector(outcome, corr)
