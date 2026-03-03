@@ -8,8 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- `ml4t.diagnostic.evaluation` mega re-exports will be reduced to a smaller
-  stable surface. Integrations should migrate to `ml4t.diagnostic.api` or direct submodule imports.
+- **BREAKING**: `ml4t.diagnostic.evaluation` namespace trimmed from ~130 to 54 exports.
+  Low-level functions (binary metrics, stationarity tests, distribution analysis,
+  portfolio metric functions, etc.) are no longer re-exported. Import from submodules directly:
+  - `from ml4t.diagnostic.evaluation.portfolio_analysis import sharpe_ratio`
+  - `from ml4t.diagnostic.evaluation.stationarity import adf_test`
+  - `from ml4t.diagnostic.evaluation.binary_metrics import precision, recall`
+- `TradeShapAnalyzer` and result types promoted to `evaluation.__all__`
 
 ## [0.1.0a11] - 2026-03-03
 

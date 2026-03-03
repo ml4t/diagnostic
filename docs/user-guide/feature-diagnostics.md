@@ -121,7 +121,7 @@ print(f"Interaction strength: {h_stat:.3f}")
 Ensure features are stationary:
 
 ```python
-from ml4t.diagnostic.evaluation import analyze_stationarity
+from ml4t.diagnostic.evaluation.stationarity import analyze_stationarity
 
 result = analyze_stationarity(
     series=feature_series,

@@ -1,172 +1,58 @@
 """Evaluation framework implementing the Three-Tier Validation Framework.
 
-This module provides the Evaluator class, metrics, statistical tests, and
-visualization tools for comprehensive model validation.
+This module re-exports the public API for evaluation workflows.
+For low-level functions (binary metrics, stationarity tests, distribution
+analysis, portfolio metric functions, etc.), import from the submodule directly::
+
+    from ml4t.diagnostic.evaluation.binary_metrics import precision, recall
+    from ml4t.diagnostic.evaluation.stationarity import adf_test
+    from ml4t.diagnostic.evaluation.portfolio_analysis import sharpe_ratio
+
+For the stable integration surface, use ``ml4t.diagnostic.api``.
 """
 
-# ruff: noqa: F401
-
-from ml4t.diagnostic.caching.smart_cache import SmartCache
-from ml4t.diagnostic.results.barrier_results import (
-    BarrierTearSheet,
-    HitRateResult,
-    PrecisionRecallResult,
-    ProfitFactorResult,
-    TimeToTargetResult,
-)
-from ml4t.diagnostic.results.multi_signal_results import (
+from ml4t.diagnostic.caching.smart_cache import SmartCache  # noqa: F401
+from ml4t.diagnostic.results.multi_signal_results import (  # noqa: F401
     ComparisonResult,
     MultiSignalSummary,
 )
 
 from . import drift, metrics, stats  # noqa: F401 (module re-export)
-from .autocorrelation import (
-    ACFResult,
-    AutocorrelationAnalysisResult,
-    PACFResult,
-    analyze_autocorrelation,
-    compute_acf,
-    compute_pacf,
-)
-from .barrier_analysis import BarrierAnalysis
-from .binary_metrics import (
-    BinaryClassificationReport,
-    ConfusionMatrix,
-    balanced_accuracy,
-    binary_classification_report,
-    binomial_test_precision,
-    compare_precisions_z_test,
-    compute_all_metrics,
-    compute_confusion_matrix,
-    coverage,
-    f1_score,
-    format_classification_report,
-    lift,
-    precision,
-    proportions_z_test,
-    recall,
-    specificity,
-    wilson_score_interval,
-)
-from .distribution import (
-    DistributionAnalysisResult,
-    HillEstimatorResult,
-    JarqueBeraResult,
-    MomentsResult,
-    QQPlotData,
-    ShapiroWilkResult,
-    TailAnalysisResult,
-    analyze_distribution,
-    analyze_tails,
-    compute_moments,
-    generate_qq_data,
-    hill_estimator,
-    jarque_bera_test,
-    shapiro_wilk_test,
-)
-from .drift import (
-    PSIResult,
-    compute_psi,
-)
-from .event_analysis import EventStudyAnalysis
-from .excursion import (
-    ExcursionAnalysisResult,
-    ExcursionStats,
-    analyze_excursions,
-    compute_excursions,
-)
-from .feature_diagnostics import (
+from .barrier_analysis import BarrierAnalysis  # noqa: F401
+from .event_analysis import EventStudyAnalysis  # noqa: F401
+from .feature_diagnostics import (  # noqa: F401
     FeatureDiagnostics,
     FeatureDiagnosticsAnalysisResult,
     FeatureDiagnosticsResult,
 )
-from .framework import EvaluationResult, Evaluator, get_metric_directionality
-from .metric_registry import MetricRegistry
-from .metrics import (
+from .framework import EvaluationResult, Evaluator, get_metric_directionality  # noqa: F401
+from .metric_registry import MetricRegistry  # noqa: F401
+from .metrics import (  # noqa: F401
     analyze_feature_outcome,
     analyze_interactions,
     analyze_ml_importance,
-    compute_conditional_ic,
-    compute_forward_returns,
     compute_h_statistic,
-    compute_ic_by_horizon,
-    compute_ic_decay,
     compute_ic_hac_stats,
-    compute_ic_ir,
     compute_ic_series,
-    compute_mda_importance,
     compute_mdi_importance,
-    compute_monotonicity,
     compute_permutation_importance,
     compute_shap_importance,
     compute_shap_interactions,
-    information_coefficient,
 )
-from .multi_signal import MultiSignalAnalysis
-from .portfolio_analysis import (
-    DistributionResult,
-    DrawdownPeriod,
-    DrawdownResult,
-    # Portfolio Analysis (pyfolio replacement)
+from .multi_signal import MultiSignalAnalysis  # noqa: F401
+from .portfolio_analysis import (  # noqa: F401
     PortfolioAnalysis,
     PortfolioMetrics,
-    RollingMetricsResult,
-    alpha_beta,
-    annual_return,
-    annual_volatility,
-    calmar_ratio,
-    compute_portfolio_turnover,
-    conditional_var,
-    information_ratio,
-    max_drawdown,
-    omega_ratio,
-    # Core metric functions
-    sharpe_ratio,
-    sortino_ratio,
-    stability_of_timeseries,
-    up_down_capture,
-    value_at_risk,
 )
-from .signal_selector import SignalSelector
-from .stat_registry import StatTestRegistry
-from .stationarity import (
-    ADFResult,
-    KPSSResult,
-    PPResult,
-    StationarityAnalysisResult,
-    adf_test,
-    analyze_stationarity,
-    kpss_test,
-    pp_test,
-)
-from .stats import (
-    benjamini_hochberg_fdr,
-    compute_pbo,
-    holm_bonferroni,
-    ras_ic_adjustment,
-)
-from .threshold_analysis import (
-    MonotonicityResult,
-    OptimalThresholdResult,
-    SensitivityResult,
-    ThresholdAnalysisSummary,
-    analyze_all_metrics_monotonicity,
-    analyze_threshold_sensitivity,
-    check_monotonicity,
-    create_threshold_analysis_summary,
-    evaluate_percentile_thresholds,
-    evaluate_threshold_sweep,
-    find_optimal_threshold,
-    find_threshold_for_target_coverage,
-    format_threshold_analysis,
-)
-from .trade_analysis import (
+from .signal_selector import SignalSelector  # noqa: F401
+from .stat_registry import StatTestRegistry  # noqa: F401
+from .trade_analysis import (  # noqa: F401
     TradeAnalysis,
     TradeAnalysisResult,
     TradeMetrics,
     TradeStatistics,
 )
-from .trade_shap_diagnostics import (
+from .trade_shap_diagnostics import (  # noqa: F401
     ClusteringResult,
     ErrorPattern,
     TradeExplainFailure,
@@ -174,53 +60,21 @@ from .trade_shap_diagnostics import (
     TradeShapExplanation,
     TradeShapResult,
 )
-from .validated_cv import (
+from .validated_cv import (  # noqa: F401
     ValidatedCrossValidation,
     ValidationFoldResult,
     ValidationResult,
     validated_cross_val_score,
 )
-from .volatility import (
-    ARCHLMResult,
-    GARCHResult,
-    VolatilityAnalysisResult,
-    analyze_volatility,
-    arch_lm_test,
-    fit_garch,
-)
 
 # Optional visualization/report stack (plotly/matplotlib/seaborn).
 # Keep core evaluation importable without viz extras.
 try:
-    from . import diagnostic_plots, report_generation, visualization  # noqa: F401
-    from .dashboard import create_evaluation_dashboard
-    from .diagnostic_plots import (
-        plot_acf_pacf,
-        plot_distribution,
-        plot_qq,
-        plot_volatility_clustering,
-    )
-    from .report_generation import (
-        generate_html_report,
-        generate_json_report,
-        generate_markdown_report,
-        generate_multi_feature_html_report,
-        save_report,
-    )
+    from . import visualization  # noqa: F401
+    from .dashboard import create_evaluation_dashboard  # noqa: F401
 except ImportError:
-    diagnostic_plots = None
-    report_generation = None
-    visualization = None
-    create_evaluation_dashboard = None
-    plot_acf_pacf = None
-    plot_distribution = None
-    plot_qq = None
-    plot_volatility_clustering = None
-    generate_html_report = None
-    generate_json_report = None
-    generate_markdown_report = None
-    generate_multi_feature_html_report = None
-    save_report = None
+    visualization = None  # type: ignore[assignment]
+    create_evaluation_dashboard = None  # type: ignore[assignment]
 
 # Lazy import for dashboard functions to avoid slow Streamlit import at module load
 # This saves ~1.3 seconds on every import of ml4t.diagnostic
@@ -268,6 +122,12 @@ __all__: list[str] = [
     "TradeAnalysisResult",
     "TradeMetrics",
     "TradeStatistics",
+    "TradeShapAnalyzer",
+    "TradeShapResult",
+    "TradeShapExplanation",
+    "TradeExplainFailure",
+    "ErrorPattern",
+    "ClusteringResult",
     "BarrierAnalysis",
     "PortfolioAnalysis",
     "PortfolioMetrics",
