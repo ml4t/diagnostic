@@ -163,7 +163,7 @@ fig.write_image("monthly_heatmap.pdf")  # requires kaleido
 If you only need a specific metric and don't want the full analysis object:
 
 ```python
-from ml4t.diagnostic.evaluation import (
+from ml4t.diagnostic.evaluation.portfolio_analysis import (
     sharpe_ratio,
     sortino_ratio,
     max_drawdown,

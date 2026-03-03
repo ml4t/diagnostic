@@ -211,7 +211,7 @@ class SignalResult:
             if key not in self.ic_dates or key not in self.ic_series:
                 ic_by_date[key] = []
                 continue
-            date_to_ic = dict(zip(self.ic_dates[key], self.ic_series[key]))
+            date_to_ic = dict(zip(self.ic_dates[key], self.ic_series[key], strict=False))
             ic_by_date[key] = [date_to_ic[d] for d in common_dates if d in date_to_ic]
 
         return SignalICResult(

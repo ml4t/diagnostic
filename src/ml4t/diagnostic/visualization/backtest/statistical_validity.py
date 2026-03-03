@@ -767,13 +767,13 @@ def plot_statistical_summary_card(
     theme_config = get_theme_config(theme)
 
     # Extract metrics with defaults
-    dsr_prob = metrics.get("dsr_probability", None)
-    dsr_sig = metrics.get("dsr_significant", None)
-    min_trl = metrics.get("min_trl", None)
-    current_trl = metrics.get("current_trl", None)
-    trl_sufficient = metrics.get("trl_sufficient", None)
-    ras_ic = metrics.get("ras_adjusted_ic", None)
-    ras_sig = metrics.get("ras_significant", None)
+    dsr_prob = metrics.get("dsr_probability")
+    dsr_sig = metrics.get("dsr_significant")
+    min_trl = metrics.get("min_trl")
+    current_trl = metrics.get("current_trl")
+    trl_sufficient = metrics.get("trl_sufficient")
+    ras_ic = metrics.get("ras_adjusted_ic")
+    ras_sig = metrics.get("ras_significant")
 
     # Build indicators
     indicators = []

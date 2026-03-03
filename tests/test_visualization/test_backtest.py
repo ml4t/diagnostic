@@ -678,3 +678,269 @@ class TestEdgeCases:
         )
 
         assert isinstance(fig, go.Figure)
+
+
+# =============================================================================
+# Tail Risk Tests
+# =============================================================================
+
+
+class TestTailRisk:
+    """Tests for tail_risk.py functions."""
+
+    def test_plot_tail_risk_basic(self, sample_returns):
+        """Test basic tail risk analysis."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        fig = plot_tail_risk_analysis(sample_returns)
+
+        assert isinstance(fig, go.Figure)
+        # Should have histogram + table traces
+        assert len(fig.data) >= 2
+        # First trace should be histogram
+        assert fig.data[0].type == "histogram"
+        # Last trace should be table
+        assert fig.data[-1].type == "table"
+
+    def test_plot_tail_risk_themes(self, sample_returns):
+        """Test tail risk with all themes."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        for theme in ["default", "dark", "print", "presentation"]:
+            fig = plot_tail_risk_analysis(sample_returns, theme=theme)
+            assert isinstance(fig, go.Figure)
+
+    def test_plot_tail_risk_dimensions(self, sample_returns):
+        """Test tail risk respects height/width."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        fig = plot_tail_risk_analysis(sample_returns, height=700, width=1200)
+
+        assert fig.layout.height == 700
+        assert fig.layout.width == 1200
+
+    def test_plot_tail_risk_custom_confidence(self, sample_returns):
+        """Test tail risk with custom confidence levels."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        fig = plot_tail_risk_analysis(sample_returns, confidence_levels=(0.90, 0.95, 0.99))
+
+        assert isinstance(fig, go.Figure)
+        # Table should have rows for all 3 levels
+        table_trace = fig.data[-1]
+        assert table_trace.type == "table"
+
+    def test_plot_tail_risk_negative_skew(self):
+        """Test with negatively skewed returns (crash-like)."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        np.random.seed(42)
+        # Negative skew distribution
+        returns = np.concatenate(
+            [
+                np.random.normal(0.001, 0.01, 200),  # Normal period
+                np.random.normal(-0.05, 0.03, 20),  # Crash period
+            ]
+        )
+
+        fig = plot_tail_risk_analysis(returns)
+        assert isinstance(fig, go.Figure)
+
+    def test_plot_tail_risk_insufficient_data(self):
+        """Test with insufficient data returns placeholder."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        fig = plot_tail_risk_analysis(np.array([0.01]))
+        assert isinstance(fig, go.Figure)
+        # Should have annotation about insufficient data
+        assert len(fig.layout.annotations) > 0
+
+    def test_tail_risk_in_risk_manager_template(self, sample_returns):
+        """Test tail_risk section works via risk_manager template."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        html = generate_backtest_tearsheet(
+            returns=sample_returns,
+            metrics={"sharpe": 1.5, "n_periods": 252},
+            template="risk_manager",
+        )
+
+        assert isinstance(html, str)
+        assert "Tail Risk" in html
+
+
+# =============================================================================
+# SHAP Error Patterns Tests
+# =============================================================================
+
+
+@pytest.fixture
+def sample_shap_result():
+    """Create a sample TradeShapResult with explanations and error patterns."""
+    from datetime import datetime
+
+    from ml4t.diagnostic.evaluation.trade_shap.models import (
+        ErrorPattern,
+        TradeShapExplanation,
+        TradeShapResult,
+    )
+
+    n_features = 5
+    feature_names = ["momentum_20d", "volatility_10d", "rsi_14", "volume_ratio", "trend_60d"]
+
+    # Create 20 explanations
+    explanations = []
+    for i in range(20):
+        sv = np.random.randn(n_features) * 0.1
+        sorted_feats = sorted(
+            [(fname, sv[j]) for j, fname in enumerate(feature_names)],
+            key=lambda x: abs(x[1]),
+            reverse=True,
+        )
+        explanations.append(
+            TradeShapExplanation(
+                trade_id=f"AAPL_{datetime(2023, 1, i + 1).isoformat()}",
+                timestamp=datetime(2023, 1, i + 1),
+                top_features=sorted_feats,
+                feature_values={fname: np.random.randn() for fname in feature_names},
+                shap_vector=sv,
+            )
+        )
+
+    # Create 2 error patterns
+    error_patterns = [
+        ErrorPattern(
+            cluster_id=0,
+            n_trades=12,
+            description="High momentum + Low volatility -> Losses",
+            top_features=[
+                ("momentum_20d", 0.45, 0.001, 0.002, True),
+                ("volatility_10d", -0.32, 0.003, 0.004, True),
+                ("rsi_14", 0.15, 0.08, 0.09, False),
+            ],
+            separation_score=1.2,
+            distinctiveness=1.8,
+            hypothesis="Trend-following entries during low-vol regimes reverse quickly",
+            confidence=0.85,
+            actions=["Add vol filter", "Reduce position size in low-vol"],
+        ),
+        ErrorPattern(
+            cluster_id=1,
+            n_trades=8,
+            description="High RSI + High volume -> Losses",
+            top_features=[
+                ("rsi_14", 0.38, 0.001, 0.001, True),
+                ("volume_ratio", 0.29, 0.01, 0.02, True),
+            ],
+            separation_score=0.9,
+            distinctiveness=1.5,
+            hypothesis="Overbought entries with high volume signal reversals",
+            confidence=0.72,
+        ),
+    ]
+
+    return TradeShapResult(
+        n_trades_analyzed=20,
+        n_trades_explained=20,
+        n_trades_failed=0,
+        explanations=explanations,
+        error_patterns=error_patterns,
+    )
+
+
+class TestShapPatterns:
+    """Tests for shap_patterns.py functions."""
+
+    def test_plot_shap_error_patterns_basic(self, sample_shap_result):
+        """Test basic error pattern visualization."""
+        from ml4t.diagnostic.visualization.backtest import plot_shap_error_patterns
+
+        fig = plot_shap_error_patterns(sample_shap_result)
+
+        assert isinstance(fig, go.Figure)
+        # Should have bar traces (one per cluster) + table trace
+        bar_traces = [t for t in fig.data if t.type == "bar"]
+        table_traces = [t for t in fig.data if t.type == "table"]
+        assert len(bar_traces) == 2  # 2 clusters
+        assert len(table_traces) == 1
+
+    def test_plot_shap_error_patterns_themes(self, sample_shap_result):
+        """Test error patterns with all themes."""
+        from ml4t.diagnostic.visualization.backtest import plot_shap_error_patterns
+
+        for theme in ["default", "dark", "print", "presentation"]:
+            fig = plot_shap_error_patterns(sample_shap_result, theme=theme)
+            assert isinstance(fig, go.Figure)
+
+    def test_plot_shap_error_patterns_no_patterns(self):
+        """Test graceful handling when no patterns exist."""
+        from ml4t.diagnostic.evaluation.trade_shap.models import TradeShapResult
+        from ml4t.diagnostic.visualization.backtest import plot_shap_error_patterns
+
+        empty_result = TradeShapResult(
+            n_trades_analyzed=10,
+            n_trades_explained=10,
+            n_trades_failed=0,
+            explanations=[],
+            error_patterns=[],
+        )
+
+        fig = plot_shap_error_patterns(empty_result)
+        assert isinstance(fig, go.Figure)
+        # Should be a placeholder with annotation
+        assert len(fig.layout.annotations) > 0
+
+    def test_plot_shap_worst_trades_basic(self, sample_shap_result):
+        """Test worst trades SHAP contribution chart."""
+        from ml4t.diagnostic.visualization.backtest import plot_shap_worst_trades
+
+        fig = plot_shap_worst_trades(sample_shap_result)
+
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+        # All traces should be horizontal bars
+        for trace in fig.data:
+            assert trace.type == "bar"
+
+    def test_plot_shap_worst_trades_dimensions(self, sample_shap_result):
+        """Test worst trades respects dimensions."""
+        from ml4t.diagnostic.visualization.backtest import plot_shap_worst_trades
+
+        fig = plot_shap_worst_trades(sample_shap_result, height=800, width=1200)
+        assert fig.layout.width == 1200
+
+    def test_plot_shap_worst_trades_n_trades(self, sample_shap_result):
+        """Test worst trades with limited trade count."""
+        from ml4t.diagnostic.visualization.backtest import plot_shap_worst_trades
+
+        fig = plot_shap_worst_trades(sample_shap_result, n_trades=5)
+        assert isinstance(fig, go.Figure)
+        # Each bar trace should have at most 5 y values
+        for trace in fig.data:
+            assert len(trace.y) <= 5
+
+    def test_shap_errors_tearsheet_integration(self, sample_shap_result, sample_returns):
+        """Test shap_errors section via BacktestTearsheet."""
+        from ml4t.diagnostic.visualization.backtest import BacktestTearsheet
+
+        ts = BacktestTearsheet(template="quant_trader")
+        ts.add_returns(sample_returns)
+        ts.add_shap_result(sample_shap_result)
+        ts.enable_section("shap_errors")
+
+        html = ts.generate()
+        assert isinstance(html, str)
+        assert "SHAP Error Patterns" in html
+
+    def test_shap_errors_none_graceful(self, sample_returns):
+        """Test that shap_errors section returns None when no shap_result."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        # quant_trader has shap_errors disabled by default, so enable it
+        html = generate_backtest_tearsheet(
+            returns=sample_returns,
+            template="full",
+        )
+
+        # Should not crash, shap_errors section should be absent
+        assert isinstance(html, str)

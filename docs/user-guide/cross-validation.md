@@ -114,6 +114,21 @@ print(f"DSR: {result.dsr:.4f}")
 print(f"Is Significant: {result.is_significant}")
 ```
 
+---
+
+## Book Examples
+
+Cross-validation methods are demonstrated in the book:
+
+- **WalkForwardCV and CPCV**: `06_machine_learning_process/code/01_cv_foundations.ipynb` —
+  interactive visualization of fold boundaries, purge gaps, and embargo zones.
+
+- **Fold visualization**: `06_machine_learning_process/code/01_cv_foundations.ipynb` —
+  uses `plot_cv_folds()` to render train/validation/test timelines.
+
+- **Calendar-first splitting**: All case study model training notebooks use
+  `WalkForwardCV` with NYSE calendar alignment for trading-day-aware folds.
+
 ## References
 
 - López de Prado, M. (2018). *Advances in Financial Machine Learning*, Chapter 7

@@ -114,7 +114,7 @@ regime_attr = analyzer.attribute_by('regime')
 Optimize stop-loss and take-profit levels:
 
 ```python
-from ml4t.diagnostic.evaluation import analyze_excursions
+from ml4t.diagnostic.evaluation.excursion import analyze_excursions
 
 result = analyze_excursions(
     trade_records,

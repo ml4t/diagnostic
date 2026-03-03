@@ -155,7 +155,7 @@ class MultiSignalSummary(BaseResult):
         signal_names = self.summary_data["signal_name"]
         significant = self.summary_data[col]
 
-        return [name for name, sig in zip(signal_names, significant) if sig]
+        return [name for name, sig in zip(signal_names, significant, strict=False) if sig]
 
     def get_ranking(
         self,

@@ -33,6 +33,7 @@ from ml4t.diagnostic.evaluation.trade_shap.cluster import (
     find_optimal_clusters,
 )
 from ml4t.diagnostic.evaluation.trade_shap.explain import TradeShapExplainer
+from ml4t.diagnostic.evaluation.trade_shap.fold_shap import compute_fold_shap
 from ml4t.diagnostic.evaluation.trade_shap.hypotheses import (
     HypothesisGenerator,
     Template,
@@ -83,6 +84,8 @@ __all__ = [
     "TemplateMatcher",
     "Template",
     "load_templates",
+    # Fold-aware SHAP
+    "compute_fold_shap",
     # Pipeline
     "TradeShapPipeline",
     # Result models

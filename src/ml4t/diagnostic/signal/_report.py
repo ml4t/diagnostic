@@ -86,7 +86,7 @@ def generate_html(result: SignalResult, path: str) -> None:
     fig.add_trace(
         go.Table(
             header={"values": ["Period", "IC", "t-stat", "p-value"]},
-            cells={"values": list(zip(*ic_data)) if ic_data else [[], [], [], []]},
+            cells={"values": list(zip(*ic_data, strict=False)) if ic_data else [[], [], [], []]},
         ),
         row=2,
         col=1,
@@ -108,7 +108,9 @@ def generate_html(result: SignalResult, path: str) -> None:
     fig.add_trace(
         go.Table(
             header={"values": ["Period", "Spread", "t-stat", "Monotonicity"]},
-            cells={"values": list(zip(*spread_data)) if spread_data else [[], [], [], []]},
+            cells={
+                "values": list(zip(*spread_data, strict=False)) if spread_data else [[], [], [], []]
+            },
         ),
         row=2,
         col=2,

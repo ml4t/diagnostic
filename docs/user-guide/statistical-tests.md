@@ -161,6 +161,29 @@ print(f"PBO: {result.pbo:.1%}")  # e.g., "32.5%"
 | 10-30% | Moderate risk |
 | > 30% | High overfitting risk |
 
+---
+
+## Book Examples
+
+These statistical tests are demonstrated across several book notebooks:
+
+- **FDR (Benjamini-Hochberg)**: `07_defining_learning_task/code/07_multiple_testing.ipynb` —
+  full walkthrough of BH-FDR, Holm, and BY corrections with visual comparison.
+
+- **DSR and MinTRL**: `07_defining_learning_task/code/07_multiple_testing.ipynb` —
+  Deflated Sharpe Ratio and Minimum Track Record Length with worked examples.
+
+- **PBO**: `07_defining_learning_task/code/07_multiple_testing.ipynb` —
+  Probability of Backtest Overfitting estimation using combinatorial paths.
+
+- **HAC-adjusted IC**: Every case study evaluation notebook
+  (`case_studies/*/code/05_evaluation.py`) uses `compute_ic_hac_stats()` for
+  overlap-corrected IC inference, followed by `benjamini_hochberg_fdr()` for
+  multiple testing across features.
+
+- **DSR on real backtest**: `16_backtesting/code/07_dsr_validation.ipynb` —
+  applies DSR to actual strategy returns from the backtesting engine.
+
 ## References
 
 - López de Prado et al. (2025). "How to Use the Sharpe Ratio"

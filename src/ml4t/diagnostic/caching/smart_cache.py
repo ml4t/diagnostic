@@ -133,7 +133,7 @@ class SmartCache:
         >>> assert fp1 != fp3
         """
         # Build schema string for deterministic ordering
-        schema_str = str([(c, str(d)) for c, d in zip(df.columns, df.dtypes)])
+        schema_str = str([(c, str(d)) for c, d in zip(df.columns, df.dtypes, strict=False)])
 
         # Compute row hashes using Polars' optimized function
         row_hashes = df.hash_rows(seed=seed)

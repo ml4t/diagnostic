@@ -110,8 +110,8 @@ def plot_ic_ridge(
         ic_upper = df["ic_p95"].to_list()
     elif "ic_std" in df.columns:
         ic_stds = df["ic_std"].to_list()
-        ic_lower = [m - 1.96 * s for m, s in zip(ic_means, ic_stds)]
-        ic_upper = [m + 1.96 * s for m, s in zip(ic_means, ic_stds)]
+        ic_lower = [m - 1.96 * s for m, s in zip(ic_means, ic_stds, strict=False)]
+        ic_upper = [m + 1.96 * s for m, s in zip(ic_means, ic_stds, strict=False)]
     else:
         ic_lower = ic_means
         ic_upper = ic_means
@@ -143,7 +143,7 @@ def plot_ic_ridge(
 
     # Add range bars (5th to 95th percentile)
     for i, (name, lower, upper, mean, color) in enumerate(
-        zip(signal_names, ic_lower, ic_upper, ic_means, colors)
+        zip(signal_names, ic_lower, ic_upper, ic_means, colors, strict=False)
     ):
         # Range line
         fig.add_trace(
@@ -485,7 +485,7 @@ def plot_pareto_frontier(
 
     # Identify Pareto frontier
     pareto_mask = _compute_pareto_mask(x_values, y_values, minimize_x, maximize_y)
-    pareto_signals = [n for n, p in zip(signal_names, pareto_mask) if p]
+    pareto_signals = [n for n, p in zip(signal_names, pareto_mask, strict=False) if p]
 
     # Colors: Pareto=primary color, others=gray
     colors = [
@@ -527,11 +527,11 @@ def plot_pareto_frontier(
     # Add Pareto frontier line
     if highlight_pareto and len(pareto_signals) > 1:
         # Get Pareto points and sort for line
-        pareto_x = [x for x, p in zip(x_values, pareto_mask) if p]
-        pareto_y = [y for y, p in zip(y_values, pareto_mask) if p]
+        pareto_x = [x for x, p in zip(x_values, pareto_mask, strict=False) if p]
+        pareto_y = [y for y, p in zip(y_values, pareto_mask, strict=False) if p]
 
         # Sort by x for nice line
-        sorted_pairs = sorted(zip(pareto_x, pareto_y))
+        sorted_pairs = sorted(zip(pareto_x, pareto_y, strict=False))
         pareto_x_sorted = [p[0] for p in sorted_pairs]
         pareto_y_sorted = [p[1] for p in sorted_pairs]
 

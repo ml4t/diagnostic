@@ -195,17 +195,20 @@ class TemplateMatcher:
         direction = conditions.get("direction", "any")
         shap_val = primary_feature["mean_shap"]
 
-        if direction == "high" and shap_val <= 0:
-            return None
-        elif direction == "low" and shap_val >= 0:
-            return None
-        elif direction == "positive" and shap_val <= 0:
-            return None
-        elif direction == "negative" and shap_val >= 0:
-            return None
-        elif direction == "extreme" and abs(shap_val) < 0.1:
-            return None
-        elif direction == "moderate" and (abs(shap_val) < 0.05 or abs(shap_val) > 0.3):
+        if (
+            direction == "high"
+            and shap_val <= 0
+            or direction == "low"
+            and shap_val >= 0
+            or direction == "positive"
+            and shap_val <= 0
+            or direction == "negative"
+            and shap_val >= 0
+            or direction == "extreme"
+            and abs(shap_val) < 0.1
+            or direction == "moderate"
+            and (abs(shap_val) < 0.05 or abs(shap_val) > 0.3)
+        ):
             return None
 
         # Calculate confidence

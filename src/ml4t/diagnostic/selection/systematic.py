@@ -393,12 +393,8 @@ class FeatureSelector:
 
                     elif keep_strategy == "higher_importance":
                         imp_results = self.outcome_results.importance_results
-                        imp1 = (
-                            imp_results[feat1].mdi_importance if feat1 in imp_results else 0.0
-                        )
-                        imp2 = (
-                            imp_results[feat2].mdi_importance if feat2 in imp_results else 0.0
-                        )
+                        imp1 = imp_results[feat1].mdi_importance if feat1 in imp_results else 0.0
+                        imp2 = imp_results[feat2].mdi_importance if feat2 in imp_results else 0.0
                         to_remove = feat2 if imp1 > imp2 else feat1
 
                     else:  # "first"
@@ -417,8 +413,7 @@ class FeatureSelector:
             features_removed=list(features_to_remove),
             features_kept=list(self.selected_features),
             reasoning=(
-                f"Removed features with correlation > {threshold} "
-                f"using {keep_strategy} strategy"
+                f"Removed features with correlation > {threshold} using {keep_strategy} strategy"
             ),
         )
         self.selection_steps.append(step)
@@ -478,9 +473,7 @@ class FeatureSelector:
                     features_to_remove.append(feature)
 
             else:
-                raise ValueError(
-                    f"Unknown drift method: {method}. Choose from 'psi', 'consensus'"
-                )
+                raise ValueError(f"Unknown drift method: {method}. Choose from 'psi', 'consensus'")
 
         self.selected_features -= set(features_to_remove)
         self.removed_features |= set(features_to_remove)
