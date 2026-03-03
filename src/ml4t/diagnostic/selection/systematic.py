@@ -341,15 +341,25 @@ class FeatureSelector:
         features_before = len(self.selected_features)
         features_to_remove: set[str] = set()
 
-        # Convert to pandas for matrix indexing
-        if "feature" in self.correlation_matrix.columns:
-            corr_df = self.correlation_matrix.to_pandas()
-            corr_df = corr_df.set_index("feature")
+        # Build correlation lookup dict from Polars DataFrame
+        corr_matrix = self.correlation_matrix
+        if "feature" in corr_matrix.columns:
+            feature_names = corr_matrix["feature"].to_list()
+            value_columns = [c for c in corr_matrix.columns if c != "feature"]
         else:
-            corr_df = self.correlation_matrix.to_pandas()
+            feature_names = value_columns = list(corr_matrix.columns)
+
+        # Build {(feat1, feat2): correlation} lookup for O(1) access
+        corr_lookup: dict[tuple[str, str], float] = {}
+        feature_set = set(feature_names)
+        for row_idx, row_name in enumerate(feature_names):
+            row_data = corr_matrix.row(row_idx)
+            col_offset = 1 if "feature" in corr_matrix.columns else 0
+            for col_idx, col_name in enumerate(value_columns):
+                corr_lookup[(row_name, col_name)] = row_data[col_idx + col_offset]
 
         selected_list = sorted(self.selected_features)
-        selected_list = [f for f in selected_list if f in corr_df.index]
+        selected_list = [f for f in selected_list if f in feature_set]
 
         if len(selected_list) < 2:
             step = SelectionStep(
@@ -364,8 +374,6 @@ class FeatureSelector:
             self.selection_steps.append(step)
             return self
 
-        corr_subset = corr_df.loc[selected_list, selected_list]
-
         for i, feat1 in enumerate(selected_list):
             if feat1 in features_to_remove:
                 continue
@@ -374,7 +382,7 @@ class FeatureSelector:
                 if feat2 in features_to_remove:
                     continue
 
-                corr_value = abs(corr_subset.loc[feat1, feat2])
+                corr_value = abs(corr_lookup[(feat1, feat2)])
 
                 if corr_value > threshold:
                     if keep_strategy == "higher_ic":
