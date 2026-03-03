@@ -123,6 +123,7 @@ nav:
     - CV Configuration: user-guide/cv-configuration.md
     - Statistical Tests: user-guide/statistical-tests.md
     - Feature Diagnostics: user-guide/feature-diagnostics.md
+    - Feature Selection: user-guide/feature-selection.md
     - Workflows: user-guide/workflows.md
     - Trade Analysis: user-guide/trade-analysis.md
     - Trade-SHAP Dashboard: DASHBOARD.md
