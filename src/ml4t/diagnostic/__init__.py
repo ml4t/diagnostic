@@ -43,6 +43,7 @@ from . import (
     evaluation,
     integration,
     logging,
+    selection,
     signal,
     splitters,
 )
@@ -75,6 +76,9 @@ from .integration.data_contract import (
     DataValidationRequest,
     Severity,
 )
+
+# Feature selection
+from .selection import FeatureSelector, SelectionReport
 
 # Signal analysis (new clean API)
 from .signal import SignalResult, analyze_signal
@@ -139,6 +143,9 @@ __all__ = [
     "Evaluator",
     "EvaluationResult",
     "ValidatedCrossValidation",
+    # Feature Selection
+    "FeatureSelector",
+    "SelectionReport",
     # Signal Analysis (new clean API)
     "analyze_signal",
     "SignalResult",
@@ -175,6 +182,7 @@ __all__ = [
     "evaluation",
     "integration",
     "logging",
+    "selection",
     "signal",
     "splitters",
 ]
