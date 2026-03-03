@@ -487,9 +487,7 @@ class MultiSignalDashboard(BaseDashboard):
                     badge_class = "badge-high" if value else "badge-low"
                     badge_text = "Yes" if value else "No"
                     cell_html = f'<td><span class="badge {badge_class}">{badge_text}</span></td>'
-                elif col == "ic_p_value":
-                    cell_html = f"<td>{value:.4f}</td>"
-                elif isinstance(value, float):
+                elif col == "ic_p_value" or isinstance(value, float):
                     cell_html = f"<td>{value:.4f}</td>"
                 else:
                     cell_html = f"<td>{value}</td>"

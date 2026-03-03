@@ -145,9 +145,7 @@ def compute_permutation_importance(
     assert feature_names is not None, "feature_names should be set by this point"
 
     y_array: NDArray[Any]
-    if isinstance(y, pl.Series):
-        y_array = y.to_numpy()
-    elif isinstance(y, pd.Series):
+    if isinstance(y, pl.Series) or isinstance(y, pd.Series):
         y_array = y.to_numpy()
     else:
         y_array = np.asarray(y)

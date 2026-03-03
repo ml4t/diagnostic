@@ -252,9 +252,7 @@ def compute_mda_importance(
             feature_names = [f"feature_{i}" for i in range(X_array.shape[1])]
 
     y_array: NDArray[Any]
-    if isinstance(y, pl.Series):
-        y_array = y.to_numpy()
-    elif isinstance(y, pd.Series):
+    if isinstance(y, pl.Series) or isinstance(y, pd.Series):
         y_array = y.to_numpy()
     else:
         y_array = np.asarray(y)

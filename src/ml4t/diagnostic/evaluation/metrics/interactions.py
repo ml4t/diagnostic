@@ -506,10 +506,7 @@ def analyze_interactions(
                 # Extract columns
                 x_a: pl.Series | pd.Series | NDArray[Any]
                 x_b: pl.Series | pd.Series | NDArray[Any]
-                if isinstance(X, pl.DataFrame):
-                    x_a = X[feat_a]
-                    x_b = X[feat_b]
-                elif isinstance(X, pd.DataFrame):
+                if isinstance(X, pl.DataFrame) or isinstance(X, pd.DataFrame):
                     x_a = X[feat_a]
                     x_b = X[feat_b]
                 else:

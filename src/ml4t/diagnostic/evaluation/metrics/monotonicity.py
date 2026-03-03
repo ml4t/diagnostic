@@ -103,11 +103,7 @@ def compute_monotonicity(
     """
     # Extract feature and outcome arrays
     feature_vals: NDArray[Any]
-    if isinstance(features, pl.DataFrame):
-        if feature_col is None:
-            raise ValueError("feature_col must be specified for DataFrame input")
-        feature_vals = features[feature_col].to_numpy()
-    elif isinstance(features, pd.DataFrame):
+    if isinstance(features, pl.DataFrame) or isinstance(features, pd.DataFrame):
         if feature_col is None:
             raise ValueError("feature_col must be specified for DataFrame input")
         feature_vals = features[feature_col].to_numpy()
@@ -115,11 +111,7 @@ def compute_monotonicity(
         feature_vals = np.asarray(features).flatten()
 
     outcome_vals: NDArray[Any]
-    if isinstance(outcomes, pl.DataFrame):
-        if outcome_col is None:
-            raise ValueError("outcome_col must be specified for DataFrame input")
-        outcome_vals = outcomes[outcome_col].to_numpy()
-    elif isinstance(outcomes, pd.DataFrame):
+    if isinstance(outcomes, pl.DataFrame) or isinstance(outcomes, pd.DataFrame):
         if outcome_col is None:
             raise ValueError("outcome_col must be specified for DataFrame input")
         outcome_vals = outcomes[outcome_col].to_numpy()

@@ -388,6 +388,7 @@ class SignalSelector:
             zip(
                 summary_df["signal_name"].to_list(),
                 summary_df[metric].to_list(),
+                strict=False,
             )
         )
 

@@ -337,9 +337,7 @@ def analyze_feature_outcome(
 
     # 8. Build comprehensive summary
     # Extract IC values for std calculation - explicitly convert to float array
-    if isinstance(ic_series, pl.DataFrame):
-        ic_values_for_std = np.asarray(ic_series["ic"].to_numpy(), dtype=np.float64)
-    elif isinstance(ic_series, pd.DataFrame):
+    if isinstance(ic_series, pl.DataFrame) or isinstance(ic_series, pd.DataFrame):
         ic_values_for_std = np.asarray(ic_series["ic"].to_numpy(), dtype=np.float64)
     else:
         raise TypeError(f"ic_series must be DataFrame, got {type(ic_series)}")
