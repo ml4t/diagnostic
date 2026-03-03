@@ -1550,6 +1550,7 @@ viz = [
 dev = [
     { name = "hypothesis" },
     { name = "kaleido" },
+    { name = "lightgbm" },
     { name = "matplotlib" },
     { name = "plotly" },
     { name = "pre-commit" },
@@ -1563,6 +1564,7 @@ dev = [
     { name = "seaborn" },
     { name = "twine" },
     { name = "ty" },
+    { name = "xgboost" },
 ]
 
 [package.metadata]
@@ -1619,12 +1621,13 @@ requires-dist = [
     { name = "xgboost", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["all", "dashboard", "dev", "docs", "gpu", "integration", "ml", "tracking", "viz"]
+provides-extras = ["all", "dashboard", "dev", "docs", "gpu", "ml", "tracking", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis", specifier = ">=6.80.0" },
     { name = "kaleido", specifier = ">=0.2.0" },
+    { name = "lightgbm", specifier = ">=4.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "plotly", specifier = ">=5.15.0" },
     { name = "pre-commit", specifier = ">=3.3.0" },
@@ -1638,6 +1641,7 @@ dev = [
     { name = "seaborn", specifier = ">=0.12.0" },
     { name = "twine", specifier = ">=6.0.0" },
     { name = "ty" },
+    { name = "xgboost", specifier = ">=2.0.0" },
 ]
 
 [[package]]
