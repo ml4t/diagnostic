@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b1] - 2026-03-03
+
+### Added
+- **Tail risk visualization**: VaR/CVaR histogram + metrics table for `risk_manager` tearsheet
+- **Fold-aware SHAP bridge**: `compute_fold_shap()` for walk-forward CV model SHAP analysis
+- **SHAP pattern plots**: error pattern bars + worst trades stacked bars
+- **Tearsheet integration**: `shap_result` threaded through generate chain;
+  `BacktestTearsheet.generate()` preserves `enable_section()`/`disable_section()` customizations
+- LightGBM and XGBoost added to dev dependencies (55 previously-skipped tests now run)
+
 ### Changed
 - **BREAKING**: `ml4t.diagnostic.evaluation` namespace trimmed from ~130 to 54 exports.
   Low-level functions (binary metrics, stationarity tests, distribution analysis,
@@ -15,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `from ml4t.diagnostic.evaluation.stationarity import adf_test`
   - `from ml4t.diagnostic.evaluation.binary_metrics import precision, recall`
 - `TradeShapAnalyzer` and result types promoted to `evaluation.__all__`
+- Removed unused extras (`advanced`, `deep`, `all-ml`) and numpy/scipy upper version caps
+- Added `strict=False` to `zip()` calls, simplified redundant Polars/pandas type branches
+
+### Removed
+- `test_engineer_integration.py` — obsolete after FeatureSelector migration (splitter behavior
+  covered by 321 dedicated splitter tests)
 
 ## [0.1.0a11] - 2026-03-03
 
