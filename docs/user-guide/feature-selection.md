@@ -292,3 +292,25 @@ selector.run_pipeline([
 ::: ml4t.diagnostic.selection.types.FeatureImportanceResults
     options:
       show_root_heading: true
+
+---
+
+## See It in Action
+
+The `FeatureSelector` pipeline is demonstrated in the book at multiple levels:
+
+- **Teaching demo**: `08_feature_engineering/code/08_feature_selection.ipynb` (Ch08, Section 12) —
+  builds `FeatureOutcomeResult` from scratch and runs the full IC → correlation → importance pipeline.
+
+- **Production usage**: Each case study evaluation notebook includes a "Library Convenience Functions"
+  section comparing `FeatureSelector` output to the manual triage logic:
+
+  | Case Study | Notebook | IC Threshold | Entity |
+  |------------|----------|-------------|--------|
+  | CME Futures | `cme_futures/code/05_evaluation.py` | 0.008 | symbol |
+  | ETFs | `etfs/code/05_evaluation.py` | 0.01 | symbol |
+  | US Equities | `us_equities_panel/code/05_evaluation.py` | 0.003 | symbol |
+  | US Firm Chars | `us_firm_characteristics/code/05_evaluation.py` | 0.01 | stock_id |
+  | Crypto Perps | `crypto_perps_funding/code/05_evaluation.py` | 0.005 | symbol |
+  | FX Pairs | `fx_pairs/code/05_evaluation.py` | 0.005 | symbol |
+  | Nasdaq100 | `nasdaq100_microstructure/code/05_evaluation.py` | 0.003 | symbol |

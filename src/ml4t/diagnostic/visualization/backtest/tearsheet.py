@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
     import polars as pl
 
+    from ml4t.diagnostic.evaluation.trade_shap.models import TradeShapResult
+
 
 def generate_backtest_tearsheet(
     trades: pl.DataFrame | None = None,
@@ -47,6 +49,7 @@ def generate_backtest_tearsheet(
     subtitle: str = "",
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
+    shap_result: TradeShapResult | None = None,
     interactive: bool = True,
     include_plotlyjs: bool = True,
 ) -> str:
@@ -82,6 +85,8 @@ def generate_backtest_tearsheet(
         Benchmark returns for comparison
     n_trials : int, optional
         Number of trials for DSR calculation
+    shap_result : TradeShapResult, optional
+        Trade SHAP analysis result for error pattern visualization
     interactive : bool
         Whether charts should be interactive (vs static images)
     include_plotlyjs : bool
@@ -123,6 +128,7 @@ def generate_backtest_tearsheet(
         metrics=metrics,
         benchmark_returns=benchmark_returns,
         n_trials=n_trials,
+        shap_result=shap_result,
         theme=theme,
         interactive=interactive,
     )
@@ -162,6 +168,7 @@ def _generate_sections(
     metrics: dict[str, Any] | None = None,
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
+    shap_result: TradeShapResult | None = None,
     theme: str = "default",
     interactive: bool = True,
 ) -> str:
@@ -178,6 +185,7 @@ def _generate_sections(
             metrics=metrics,
             benchmark_returns=benchmark_returns,
             n_trials=n_trials,
+            shap_result=shap_result,
             theme=theme,
             interactive=interactive,
         )
@@ -196,6 +204,7 @@ def _generate_section(
     metrics: dict[str, Any] | None = None,
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
+    shap_result: TradeShapResult | None = None,
     theme: str = "default",
     interactive: bool = True,
 ) -> str | None:
@@ -209,6 +218,7 @@ def _generate_section(
             metrics=metrics,
             benchmark_returns=benchmark_returns,
             n_trials=n_trials,
+            shap_result=shap_result,
             theme=theme,
         )
 
@@ -250,6 +260,7 @@ def _create_section_figure(
     metrics: dict[str, Any] | None = None,
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
+    shap_result: TradeShapResult | None = None,
     theme: str = "default",
 ) -> go.Figure | None:
     """Create the Plotly figure for a specific section."""
@@ -500,8 +511,19 @@ def _create_section_figure(
             return plot_returns_distribution(pa, theme=theme)
 
     if section_name == "tail_risk":
-        # Tail risk analysis not yet implemented
-        return None
+        if returns is None:
+            return None
+        from .tail_risk import plot_tail_risk_analysis
+
+        ret_arr = returns if isinstance(returns, np.ndarray) else returns.to_numpy()
+        return plot_tail_risk_analysis(ret_arr, theme=theme)
+
+    if section_name == "shap_errors":
+        if shap_result is None or not shap_result.error_patterns:
+            return None
+        from .shap_patterns import plot_shap_error_patterns
+
+        return plot_shap_error_patterns(shap_result, theme=theme)
 
     # Unknown section
     return None
@@ -540,6 +562,7 @@ class BacktestTearsheet:
         self.metrics: dict[str, Any] = {}
         self.benchmark_returns: pl.Series | np.ndarray | None = None
         self.n_trials: int | None = None
+        self.shap_result: TradeShapResult | None = None
 
     def add_trades(self, trades: pl.DataFrame) -> BacktestTearsheet:
         """Add trade records to the tearsheet."""
@@ -564,6 +587,11 @@ class BacktestTearsheet:
     def add_benchmark(self, returns: pl.Series | np.ndarray) -> BacktestTearsheet:
         """Add benchmark returns for comparison."""
         self.benchmark_returns = returns
+        return self
+
+    def add_shap_result(self, shap_result: TradeShapResult) -> BacktestTearsheet:
+        """Add SHAP analysis result for error pattern visualization."""
+        self.shap_result = shap_result
         return self
 
     def set_n_trials(self, n: int) -> BacktestTearsheet:
@@ -591,8 +619,12 @@ class BacktestTearsheet:
         self,
         output_path: str | Path | None = None,
         interactive: bool = True,
+        include_plotlyjs: bool = True,
     ) -> str:
         """Generate the tearsheet HTML.
+
+        Uses the stored template directly so that enable_section/disable_section
+        customizations are preserved.
 
         Parameters
         ----------
@@ -600,23 +632,49 @@ class BacktestTearsheet:
             If provided, save HTML to this path
         interactive : bool
             Whether charts should be interactive
+        include_plotlyjs : bool
+            Whether to include Plotly.js
 
         Returns
         -------
         str
             HTML string of the complete tearsheet
         """
-        return generate_backtest_tearsheet(
+        # Use stored template directly (not recreated from name) to preserve
+        # enable_section/disable_section customizations
+        sections_html = _generate_sections(
+            self.template,
             trades=self.trades,
             returns=self.returns,
             equity_curve=self.equity_curve,
             metrics=self.metrics,
-            output_path=output_path,
-            template=self.template.name,  # type: ignore
-            theme=self.theme,
-            title=self.title,
-            subtitle=self.subtitle,
             benchmark_returns=self.benchmark_returns,
             n_trials=self.n_trials,
+            shap_result=self.shap_result,
+            theme=self.theme,
             interactive=interactive,
         )
+
+        if include_plotlyjs:
+            css = TEARSHEET_CSS
+        else:
+            css = TEARSHEET_CSS.replace(
+                '<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>',
+                "",
+            )
+
+        html = HTML_TEMPLATE.format(
+            theme=self.theme if self.theme == "dark" else "light",
+            title=self.title,
+            subtitle=self.subtitle or f"Template: {self.template.name}",
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            css=css,
+            sections_html=sections_html,
+        )
+
+        if output_path:
+            path = Path(output_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(html)
+
+        return html

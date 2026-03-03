@@ -613,7 +613,7 @@ def plot_cost_by_asset(
         secondary_name = "Cost %"
         secondary_format = ".1f"
     else:
-        secondary_values = [c / n for c, n in zip(total_costs, n_trades)]
+        secondary_values = [c / n for c, n in zip(total_costs, n_trades, strict=False)]
         secondary_name = "Avg/Trade"
         secondary_format = "$,.0f"
 

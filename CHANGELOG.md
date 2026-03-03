@@ -7,50 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `ml4t.diagnostic.evaluation` mega re-exports will be reduced to a smaller
+  stable surface. Integrations should migrate to `ml4t.diagnostic.api` or direct submodule imports.
+
+## [0.1.0a11] - 2026-03-03
+
 ### Added
-- **ValidatedCrossValidation**: Orchestrates CPCV with DSR computation for robust strategy validation
-  - `ValidatedCrossValidation` class combines CPCV and DSR in one workflow
-  - `validated_cross_val_score()` convenience function for quick evaluation
-  - `ValidationResult` with summary(), to_dict(), and human-readable interpretation
-  - Reduces 20+ line manual workflow to 5 lines
-- **Result interface standardization**: Added `interpret()` method to BaseResult and key result classes
-  - `BaseResult.interpret()` - returns list of human-readable insights
-  - `PSRResult.interpret()` - PSR-specific interpretation
-  - `DSRResult.interpret()` - DSR interpretation with recommendations
-- **ml4t-data integration contract**: Data quality validation framework
-  - `DataQualityReport` - complete quality report with metrics, anomalies, recommendations
-  - `DataQualityMetrics` - quantitative quality metrics (completeness, accuracy, consistency)
-  - `DataAnomaly` - individual anomaly record (price spikes, gaps, OHLC violations)
-  - `DataValidationRequest` - request from diagnostic to data for validation
-- HTML report generator tests for full coverage
-- Comprehensive validation module tests (dataframe, returns, timeseries)
-- docs/quickstart.md - Minimal examples (5-15 lines each)
-- docs/configuration.md - Configuration guide with presets and settings
-- **Test Coverage Improvements** (Jan 2026):
-  - 50 Information Coefficient tests (`test_information_coefficient.py`)
-  - 14 Real Data Integration tests with Wiki Prices (`test_equity_real_data.py`)
-  - Additional validation tests for `validate_frequency`, `validate_index`
-  - IC module coverage: 9% → 98%
-  - Validation modules: 70-100% coverage
+- **FeatureSelector migration** from ml4t-engineer:
+  - `FeatureSelector` class with IC, importance, correlation, and drift filtering pipeline
+  - `FeatureICResults`, `FeatureImportanceResults`, `FeatureOutcomeResult` types
+  - Correlation filtering uses pure Polars (no pandas dependency)
+  - 43 tests (30 unit + 13 integration)
+- **SignalResult → Visualization bridge**:
+  - `SignalResult.to_ic_result()`, `.to_quantile_result()`, `.to_tear_sheet()`
+  - Direct bridge from signal analysis to interactive plots
+- Feature selection user guide (`docs/user-guide/feature-selection.md`)
 
 ### Fixed
-- DSR/PSR/MinTRL test fixtures now match López de Prado et al. (2025) paper values
-- All xfail tests in DSR validation now pass
-- MinTRL formula uses SR₀ (not observed SR) in variance adjustment
+- Theme fixes: Pattern A elimination, THEME_DARK legend/axis configuration
+- `show()` method on plot functions
 
 ### Changed
-- Validation modules: 99%+ test coverage (dataframe 100%, returns 100%, timeseries 98%)
-- Reporting modules: 96-100% test coverage (base 100%, JSON 100%, HTML 100%, Markdown 96%)
-- Added canonical integration surface at `ml4t.diagnostic.api` and a machine-readable API contract
-  (`tests/contracts/public_api_contract.json`) to anchor export-boundary refactors.
+- Methods docs updated for all evaluation modules
+- HTML report palette improvements
 
-### Breaking (Planned for next alpha)
-- `ml4t.diagnostic.evaluation` and package-level mega re-exports will be reduced to a smaller
-  stable surface. Integrations should migrate to `ml4t.diagnostic.api` or direct submodule imports.
-- Stale names such as `fit_validate`, `SignalAnalysis`, and `TradeShapAnalyzer` will be removed
-  from canonical usage paths.
+## [0.1.0a10] - 2026-02-27
 
-## [1.1.0] - 2025-11-15
+### Added
+- **Calendar-First WalkForwardCV** (major):
+  - All fold arithmetic in session space (trading days), not sample space
+  - NYSE default calendar for WalkForwardCV
+  - Non-trading row filtering: weekends/holidays excluded from fold indices
+  - `"4W"` = 20 trading sessions, not 28 calendar days
+  - New `TradingCalendar` methods: `get_sessions_and_mask()`, `time_spec_to_sessions()`
+  - `filter_non_trading: bool = True` in SplitterConfig
+  - Graceful fallback for numpy arrays (no timestamps → sample-based splitting)
+  - Panel data support with duplicate timestamp handling
+  - 73 new calendar tests, 321 total splitter tests
+- `entity_col` parameter for `compute_ic_series()` (panel data IC computation)
+
+### Deprecated
+- `align_to_sessions` parameter — calendar-first splitting subsumes session alignment
+
+## [0.1.0a5] - 2026-02-11
+
+### Added
+- **CV Fold Visualization**: `plot_cv_folds()` for interactive timeline visualization
+  - Train/validation/test periods with purge gaps
+  - Works with WalkForwardCV and CombinatorialCV splitters
+  - Supports pandas, Polars, numpy data with automatic timestamp detection
+  - Interactive hover, theme support (default, dark, print, presentation)
+  - 36 tests
+
+## [0.1.0a4] - 2026-02-04
+
+### Fixed
+- `compute_forward_returns()` now uses PRICE date universe instead of FACTOR date universe
+  - Bug caused ~6% IC error when factor dates were subset of price dates
+  - Forward returns correctly compute "N trading days forward" using price calendar
+
+## [0.1.0a3] - 2026-01-19
+
+### Added
+- **ValidatedCrossValidation**: Combines CPCV + DSR in one workflow
+  - `validated_cross_val_score()` convenience function
+  - `ValidationResult` with summary(), to_dict(), interpretation
+- **Result interface standardization**: `interpret()` method on BaseResult and key result classes
+- **ml4t-data integration contract**: DataQualityReport, DataQualityMetrics, DataAnomaly
+- Canonical integration surface at `ml4t.diagnostic.api`
+- Machine-readable API contract (`tests/contracts/public_api_contract.json`)
+- 50 IC tests, 14 real data integration tests
+- IC module coverage: 9% → 98%
+
+### Fixed
+- DSR/PSR/MinTRL test fixtures match López de Prado et al. (2025) paper values
+- MinTRL formula uses SR₀ (not observed SR) in variance adjustment
+
+## [0.1.0a2] - 2025-11-15
 
 ### Added
 - **Trade SHAP Analysis**: `TradeShapAnalyzer` for SHAP-based trade error pattern analysis
@@ -58,32 +92,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Barrier Analysis**: `BarrierAnalysis` module for triple barrier outcome evaluation
 - **Portfolio Analysis**: `PortfolioAnalysis` as pyfolio replacement with modern API
 - **IC Time Series**: Alphalens-replacement IC computation with decay analysis
-- **Dashboard Export**: Export and caching functions for evaluation dashboards
-- **Percentile Computation**: CV prediction percentile module
+- Dashboard export and caching functions
 
 ### Changed
-- **D06 Config Consolidation**: Reduced 61+ config classes to 10 primary configs
-  - `DiagnosticConfig` (feature analysis)
-  - `StatisticalConfig` (multiple testing)
-  - `PortfolioConfig` (portfolio analysis)
-  - `TradeConfig` (trade analysis + SHAP)
-  - `SignalConfig` (signal analysis)
-  - `EventConfig`, `BarrierConfig`, `ReportConfig`, `RuntimeConfig`
-- **Single-level nesting**: `config.stationarity.enabled` pattern
-- **Preset methods preserved**: `for_quick_analysis()`, `for_research()`, `for_production()`
-- All old config class names available as deprecated aliases for backward compatibility
+- Config consolidation: 61+ config classes → 10 primary configs
+  (`DiagnosticConfig`, `StatisticalConfig`, `PortfolioConfig`, `TradeConfig`,
+  `SignalConfig`, `EventConfig`, `BarrierConfig`, `ReportConfig`, `RuntimeConfig`)
+- Single-level nesting: `config.stationarity.enabled` pattern
+- Preset methods: `for_quick_analysis()`, `for_research()`, `for_production()`
 
 ### Fixed
-- DSR variance calculation now correctly follows López de Prado et al. (2025)
+- DSR variance calculation follows López de Prado et al. (2025)
 - Pandas index bug in `plot_quantile_returns`
-- TradeMetrics.to_dict() now includes computed properties
-- 181 MyPy type errors resolved
+- TradeMetrics.to_dict() includes computed properties
 
 ### Removed
 - Invalid bootstrap tests that caused false failures
-- Unused MultiIndex support in DataFrameAdapter (-60% code)
+- Unused MultiIndex support in DataFrameAdapter
 
-## [1.0.0] - 2025-09-01
+## [0.1.0a1] - 2025-09-01
 
 ### Added
 - **Four-Tier Validation Framework**:
@@ -91,49 +118,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2. Model Diagnostics (during/after modeling)
   3. Backtest Analysis (post-modeling)
   4. Portfolio Analysis (production)
-
-- **Cross-Validation Methods**:
-  - Combinatorial Purged Cross-Validation (CPCV)
-  - Purged Walk-Forward Cross-Validation
-  - Calendar-aware splitters
-  - Group isolation splitters
-
-- **Statistical Tests**:
-  - Deflated Sharpe Ratio (DSR) for multiple testing
-  - Rademacher Anti-Serum (RAS) for overfitting detection
-  - Benjamini-Hochberg FDR corrections
-  - HAC-adjusted Information Coefficient
-
-- **Feature Importance** (7 methods):
-  - MDI (Mean Decrease Impurity)
-  - PFI (Permutation Feature Importance)
-  - MDA (Mean Decrease Accuracy)
-  - SHAP values
-  - Conditional IC
-  - H-statistic
-  - Consensus ensemble
-
-- **Feature Diagnostics**:
-  - Stationarity tests (ADF, KPSS, Phillips-Perron)
-  - Autocorrelation analysis (ACF/PACF)
-  - Volatility analysis (GARCH, ARCH)
-  - Distribution analysis (tails, moments, normality)
-  - Drift detection (PSI)
-
-- **Visualization**:
-  - Interactive Plotly charts
-  - Heatmaps for IC correlation and feature importance
-  - Time-series plots for returns and equity curves
-  - Distribution plots for returns and residuals
-
-- **Reporting**:
-  - HTML reports (self-contained with embedded Plotly)
-  - JSON export (machine-readable)
-  - Markdown reports (version-control friendly)
-
-- **Pydantic v2 Configuration**: Full validation and serialization support
-
-- **40+ Statistical Metrics**: Comprehensive coverage of evaluation metrics
+- **Cross-Validation**: CPCV, Purged Walk-Forward CV, calendar-aware splitters
+- **Statistical Tests**: DSR, RAS, Benjamini-Hochberg FDR, HAC-adjusted IC
+- **Feature Importance** (7 methods): MDI, PFI, MDA, SHAP, Conditional IC, H-statistic, Consensus
+- **Feature Diagnostics**: Stationarity (ADF, KPSS, PP), ACF/PACF, GARCH, distribution, drift (PSI)
+- **Visualization**: Interactive Plotly charts, heatmaps, time-series, distribution plots
+- **Reporting**: HTML (self-contained), JSON, Markdown
+- **Pydantic v2 Configuration**: Full validation and serialization
 
 ### References
 - López de Prado, M. (2018). "Advances in Financial Machine Learning"
@@ -145,29 +136,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Migration Notes
 
-### From v1.0.0 to v1.1.0
+### From 0.1.0a1 to 0.1.0a2
 
-**Config class renames** (old names still work as aliases):
+**Config class renames** (old names removed):
 ```python
-# Old (deprecated but functional)
+# Old
 from ml4t.diagnostic.config import FeatureEvaluatorConfig
 
-# New (preferred)
+# New
 from ml4t.diagnostic.config import DiagnosticConfig
 ```
 
-**TradeShapConfig merged into TradeConfig**:
-```python
-# Old
-from ml4t.diagnostic.config import TradeShapConfig
+### From 0.1.0a9 to 0.1.0a10
 
-# New
-from ml4t.diagnostic.config import TradeConfig
-config = TradeConfig(
-    shap=TradeShapSettings(...)
-)
+**Calendar-first CV** replaces `align_to_sessions`:
+```python
+# Old (deprecated)
+cv = WalkForwardCV(n_splits=5, align_to_sessions=True, session_col="date")
+
+# New (preferred)
+cv = WalkForwardCV(n_splits=5, calendar="NYSE")
 ```
 
-[Unreleased]: https://github.com/ml4t/ml4t-diagnostic/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/ml4t/ml4t-diagnostic/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/ml4t/ml4t-diagnostic/releases/tag/v1.0.0
+[Unreleased]: https://github.com/ml4t/ml4t-diagnostic/compare/v0.1.0a11...HEAD
+[0.1.0a11]: https://github.com/ml4t/ml4t-diagnostic/compare/v0.1.0a10...v0.1.0a11
+[0.1.0a10]: https://github.com/ml4t/ml4t-diagnostic/compare/v0.1.0a5...v0.1.0a10
+[0.1.0a5]: https://github.com/ml4t/ml4t-diagnostic/compare/v0.1.0a4...v0.1.0a5
+[0.1.0a4]: https://github.com/ml4t/ml4t-diagnostic/compare/v0.1.0a3...v0.1.0a4
+[0.1.0a3]: https://github.com/ml4t/ml4t-diagnostic/compare/v0.1.0a2...v0.1.0a3
+[0.1.0a2]: https://github.com/ml4t/ml4t-diagnostic/compare/v0.1.0a1...v0.1.0a2
+[0.1.0a1]: https://github.com/ml4t/ml4t-diagnostic/releases/tag/v0.1.0a1

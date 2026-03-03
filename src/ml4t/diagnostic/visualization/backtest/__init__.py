@@ -32,6 +32,7 @@ from .interactive_controls import (
     get_section_navigation_html,
     get_theme_switcher_html,
 )
+from .shap_patterns import plot_shap_error_patterns, plot_shap_worst_trades
 from .statistical_validity import (
     plot_confidence_intervals,
     plot_dsr_gauge,
@@ -39,6 +40,7 @@ from .statistical_validity import (
     plot_ras_analysis,
     plot_statistical_summary_card,
 )
+from .tail_risk import plot_tail_risk_analysis
 from .tearsheet import (
     BacktestTearsheet,
     generate_backtest_tearsheet,
@@ -82,6 +84,11 @@ __all__ = [
     "plot_ras_analysis",
     "plot_minimum_track_record",
     "plot_statistical_summary_card",
+    # Tail Risk
+    "plot_tail_risk_analysis",
+    # SHAP Error Patterns
+    "plot_shap_error_patterns",
+    "plot_shap_worst_trades",
     # Unified Tearsheet (Phase 5)
     "generate_backtest_tearsheet",
     "BacktestTearsheet",
