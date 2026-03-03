@@ -393,7 +393,7 @@ def plot_exit_reason_breakdown(
 
         grouped = trades_with_outcome.group_by([exit_reason_col, "outcome"]).agg(
             [
-                pl.count().alias("count"),
+                pl.len().alias("count"),
                 pl.col(pnl_col).sum().alias("total_pnl"),
                 pl.col(pnl_col).mean().alias("avg_pnl"),
             ]
@@ -441,7 +441,7 @@ def plot_exit_reason_breakdown(
         # Simple grouping
         grouped = trades_df.group_by(exit_reason_col).agg(
             [
-                pl.count().alias("count"),
+                pl.len().alias("count"),
                 pl.col(pnl_col).sum().alias("total_pnl"),
             ]
         )
@@ -612,7 +612,7 @@ def plot_trade_waterfall(
             .agg(
                 [
                     pl.col(pnl_col).sum().alias(pnl_col),
-                    pl.count().alias("n_trades"),
+                    pl.len().alias("n_trades"),
                 ]
             )
             .sort("date")

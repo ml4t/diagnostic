@@ -8,11 +8,11 @@
 
 ## Table of Contents
 
-1. [Vision & Value Proposition](#vision--value-proposition)
+1. [Vision & Value Proposition](#vision-value-proposition)
 2. [Four-Tier Architecture](#four-tier-architecture)
 3. [Modular Tear Sheet Pattern](#modular-tear-sheet-pattern)
 4. [Visualization Layer](#visualization-layer)
-5. [Data Schemas & Contracts](#data-schemas--contracts)
+5. [Data Schemas & Contracts](#data-schemas-contracts)
 6. [Design Principles](#design-principles)
 7. [Technology Stack](#technology-stack)
 8. [Integration Points](#integration-points)

@@ -263,8 +263,16 @@ markers = [
     "property: marks property-based tests",
 ]
 filterwarnings = [
-    "ignore::DeprecationWarning",
+    # Dependency deprecation warnings (not actionable by us)
+    "ignore::DeprecationWarning:plotly",
+    "ignore::DeprecationWarning:kaleido",
+    "ignore::DeprecationWarning:polars",
+    "ignore::DeprecationWarning:pandas",
+    "ignore::DeprecationWarning:sklearn",
+    "ignore::DeprecationWarning:numpy",
     "ignore::PendingDeprecationWarning",
+    # Our own intentional deprecation warnings in tests
+    "ignore:align_to_sessions.*deprecated:DeprecationWarning:ml4t",
 ]
 
 [tool.ruff]

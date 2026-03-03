@@ -20,7 +20,7 @@ Consensus Logic:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -312,7 +312,7 @@ def analyze_stationarity(
     data: pd.Series | np.ndarray,
     alpha: float = 0.05,
     include_tests: list[Literal["adf", "kpss", "pp"]] | None = None,
-    **test_kwargs,
+    **test_kwargs: Any,
 ) -> StationarityAnalysisResult:
     """Perform comprehensive stationarity analysis with multiple tests.
 

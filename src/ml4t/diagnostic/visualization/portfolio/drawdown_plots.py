@@ -326,12 +326,12 @@ def plot_drawdown_summary(
             col=1,
         )
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title="Drawdown Analysis",
         height=height,
         width=width,
-        **theme_config["layout"],
     )
 
     fig.update_yaxes(tickformat=".0%", row=1, col=1)

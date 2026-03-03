@@ -1,6 +1,6 @@
 """Tests for ml4t.diagnostic.integration.data_contract module."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -326,7 +326,7 @@ class TestDataQualityReport:
 
     def test_created_at_default(self, sample_metrics):
         """Test created_at defaults to now."""
-        before = datetime.utcnow()
+        before = datetime.now(tz=UTC)
         report = DataQualityReport(
             symbol="AAPL",
             source="databento",
@@ -335,7 +335,7 @@ class TestDataQualityReport:
             metrics=sample_metrics,
             is_production_ready=True,
         )
-        after = datetime.utcnow()
+        after = datetime.now(tz=UTC)
         assert before <= report.created_at <= after
 
     def test_is_acceptable_default_thresholds(self, sample_metrics):

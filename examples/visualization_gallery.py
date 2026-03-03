@@ -303,7 +303,7 @@ def example_7_tier_specific_visualizations():
 
 def main():
     """Run all visualization examples."""
-    print("\nqeval Visualization Gallery")
+    print("\nml4t-diagnostic Visualization Gallery")
     print("=" * 60)
     print("This script demonstrates all visualization capabilities in ml4t.diagnostic.")
     print("Each example creates an interactive HTML file you can open in a browser.")

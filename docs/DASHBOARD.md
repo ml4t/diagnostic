@@ -162,13 +162,13 @@ ml4t.diagnostic.evaluation.trade_dashboard/
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.11+
 - Streamlit >= 1.0.0
 - ml4t-diagnostic (core library)
 - SHAP (for explanations)
 
 ## See Also
 
-- [Trade-SHAP Analysis Guide](trade_shap.md)
-- [Statistical Validation](validation.md)
-- [SHAP Feature Importance](shap_importance.md)
+- Trade-SHAP Analysis Guide
+- Statistical Validation
+- SHAP Feature Importance

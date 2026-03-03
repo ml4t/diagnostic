@@ -40,25 +40,25 @@ class HTMLReportGenerator(ReportGenerator):
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
+            background-color: #FAFAF9;
         }}
         .container {{
             background-color: white;
             padding: 30px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(10,22,40,0.08);
         }}
         h1 {{
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
+            color: #0a1628;
+            border-bottom: 2px solid #D4A84B;
             padding-bottom: 10px;
         }}
         h2 {{
-            color: #34495e;
+            color: #1a2d4a;
             margin-top: 30px;
         }}
         .metadata {{
-            background-color: #ecf0f1;
+            background-color: #F8F8F6;
             padding: 15px;
             border-radius: 4px;
             margin-bottom: 20px;
@@ -67,8 +67,8 @@ class HTMLReportGenerator(ReportGenerator):
             margin: 5px 0;
         }}
         .summary {{
-            background-color: #fff9e6;
-            border-left: 4px solid #f39c12;
+            background-color: #fffbf0;
+            border-left: 4px solid #D4A84B;
             padding: 15px;
             margin: 20px 0;
         }}
@@ -78,8 +78,8 @@ class HTMLReportGenerator(ReportGenerator):
             margin: 20px 0;
         }}
         th {{
-            background-color: #3498db;
-            color: white;
+            background-color: #0a1628;
+            color: #F8F8F6;
             padding: 12px;
             text-align: left;
         }}

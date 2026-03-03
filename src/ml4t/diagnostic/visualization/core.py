@@ -135,6 +135,17 @@ THEME_DARK = {
             "color": "#FFFFFF",
             "family": "DM Sans, DejaVu Sans, sans-serif",
         },
+        "legend": {
+            "font": {"color": _ML4T_COLORS["silver"]},
+        },
+        "xaxis": {
+            "color": _ML4T_COLORS["silver"],
+            "gridcolor": "rgba(248, 248, 246, 0.1)",
+        },
+        "yaxis": {
+            "color": _ML4T_COLORS["silver"],
+            "gridcolor": "rgba(248, 248, 246, 0.1)",
+        },
         "margin": {"l": 80, "r": 20, "t": 100, "b": 80},
         "hovermode": "closest",
         "hoverlabel": {
@@ -424,6 +435,40 @@ def get_colorscale(
         return pc.sample_colorscale(colors, n_colors)
 
 
+def get_quantile_colors(n_quantiles: int, theme_config: dict[str, Any]) -> list[str]:
+    """Get diverging colors for quantiles (red -> green progression).
+
+    Parameters
+    ----------
+    n_quantiles : int
+        Number of quantile bins.
+    theme_config : dict
+        Theme configuration from get_theme_config().
+
+    Returns
+    -------
+    list[str]
+        List of hex color strings, one per quantile.
+    """
+    if n_quantiles <= 5:
+        return [
+            _ML4T_COLORS["negative"],  # #ef4444 — worst quantile
+            _ML4T_COLORS["copper"],  # #C87533 — below average
+            _ML4T_COLORS["amber_light"],  # #E4B85B — neutral middle
+            "#5B8C5A",  # muted sage — above average
+            _ML4T_COLORS["positive"],  # #10b981 — best quantile
+        ][:n_quantiles]
+    # For >5 quantiles, use RdYlGn colorscale
+    try:
+        raw_colors = get_colorscale("rdylgn", n_colors=n_quantiles, reverse=False)
+        if isinstance(raw_colors[0], tuple):
+            return [str(c[1]) if isinstance(c, tuple) else str(c) for c in raw_colors]
+        return [str(c) for c in raw_colors]
+    except (ValueError, IndexError):
+        colorway = theme_config.get("colorway", [_ML4T_COLORS["blue"]])
+        return (colorway * ((n_quantiles // len(colorway)) + 1))[:n_quantiles]
+
+
 # =============================================================================
 # Validation Helpers
 # =============================================================================
@@ -626,14 +671,14 @@ def create_base_figure(
 
     fig = go.Figure()
 
-    # Build layout
+    # Apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     layout = {
         "title": title,
         "xaxis_title": xaxis_title,
         "yaxis_title": yaxis_title,
         "width": width or theme_config["defaults"]["width"],
         "height": height,
-        **theme_config["layout"],
     }
 
     if margin is not None:

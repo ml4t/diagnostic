@@ -70,7 +70,7 @@ def example_1_backtest_evaluation():
             "stationarity": {"adf_pvalue": 0.02, "stationary": True},
             "autocorrelation": {"ljung_box_pvalue": 0.15, "independent": True},
         },
-        qeval_version="2.0.0",
+        diagnostic_version="2.0.0",
     )
 
     # Export to dictionary (for ML4T Backtest storage)

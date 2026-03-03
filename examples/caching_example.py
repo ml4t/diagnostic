@@ -272,7 +272,7 @@ def example_10_integration_pattern():
     print("\n=== Example 10: Integration Pattern ===")
 
     # Set up persistent cache for analysis
-    cache_dir = Path(".qeval_cache")
+    cache_dir = Path(".ml4t_diagnostic_cache")
     cache = Cache(
         CacheConfig(
             backend=CacheBackend.DISK,

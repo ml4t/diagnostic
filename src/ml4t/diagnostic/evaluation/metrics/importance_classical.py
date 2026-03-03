@@ -90,13 +90,11 @@ def compute_permutation_importance(
     ...     scoring='accuracy'
     ... )
     >>>
-    >>> # Examine results
-    >>> print(f"Baseline score: {pfi['baseline_score']:.3f}")
-    >>> print(f"Most important feature: {pfi['feature_names'][np.argmax(pfi['importances_mean'])]}")
-    >>> print(f"Importance: {np.max(pfi['importances_mean']):.3f} ± {pfi['importances_std'][np.argmax(pfi['importances_mean'])]:.3f}")
-    Baseline score: 0.920
-    Most important feature: feature_0
-    Importance: 0.124 ± 0.015
+    >>> # Results are sorted descending by importance
+    >>> print(pfi['baseline_score'])
+    0.92
+    >>> print(pfi['feature_names'])  # doctest: +SKIP
+    ['feature_0', 'feature_3', ...]
 
     Notes
     -----
@@ -259,13 +257,11 @@ def compute_mdi_importance(
     ...     feature_names=[f'feature_{i}' for i in range(10)]
     ... )
     >>>
-    >>> # Examine results
-    >>> print(f"Most important feature: {mdi['feature_names'][0]}")
-    >>> print(f"Importance: {mdi['importances'][0]:.3f}")
-    >>> print(f"Model type: {mdi['model_type']}")
-    Most important feature: feature_3
-    Importance: 0.245
-    Model type: lightgbm.LGBMClassifier
+    >>> # Results are sorted descending by importance
+    >>> print(mdi['feature_names'])  # doctest: +SKIP
+    ['feature_3', 'feature_0', ...]
+    >>> print(mdi['model_type'])
+    lightgbm.LGBMClassifier
 
     Notes
     -----

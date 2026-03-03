@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
-from ml4t.diagnostic.visualization.core import get_theme_config as get_theme
+from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.results.event_results import (
@@ -64,8 +64,8 @@ def plot_caar(
     >>> fig = plot_caar(result, show_confidence=True)
     >>> fig.show()
     """
-    theme_config = get_theme(theme)
-    colors = theme_config.get("colors", {})
+    theme = validate_theme(theme)
+    theme_config = get_theme_config(theme)
 
     # Create figure
     if show_aar_bars:
@@ -91,7 +91,7 @@ def plot_caar(
                 x=x + x[::-1],
                 y=result.caar_ci_upper + result.caar_ci_lower[::-1],
                 fill="toself",
-                fillcolor=colors.get("ci_fill", "rgba(31, 119, 180, 0.2)"),
+                fillcolor="rgba(10, 22, 40, 0.15)",  # _ML4T_COLORS["blue"] at 15%
                 line={"color": "rgba(0,0,0,0)"},
                 name=f"{int(result.confidence_level * 100)}% CI",
                 showlegend=True,
@@ -108,7 +108,7 @@ def plot_caar(
             y=y,
             mode="lines+markers",
             name="CAAR",
-            line={"color": colors.get("primary", _ML4T_COLORS["blue"]), "width": 2},
+            line={"color": theme_config["colorway"][0], "width": 2},
             marker={"size": 6},
             hovertemplate="Day %{x}<br>CAAR: %{y:.4f}<extra></extra>",
         ),
@@ -120,7 +120,7 @@ def plot_caar(
     fig.add_vline(
         x=0,
         line_dash="dash",
-        line_color=colors.get("event_line", "red"),
+        line_color=_ML4T_COLORS["negative"],
         annotation_text="Event",
         annotation_position="top",
         row=1 if show_aar_bars else None,
@@ -131,7 +131,7 @@ def plot_caar(
     fig.add_hline(
         y=0,
         line_dash="dot",
-        line_color="gray",
+        line_color=_ML4T_COLORS["silver_muted"],
         row=1 if show_aar_bars else None,
         col=1 if show_aar_bars else None,
     )
@@ -142,10 +142,7 @@ def plot_caar(
         aar_y = list(result.aar_by_day.values())
 
         bar_colors = [
-            colors.get("positive", _ML4T_COLORS["positive"])
-            if v >= 0
-            else colors.get("negative", _ML4T_COLORS["negative"])
-            for v in aar_y
+            _ML4T_COLORS["positive"] if v >= 0 else _ML4T_COLORS["negative"] for v in aar_y
         ]
 
         fig.add_trace(
@@ -160,24 +157,35 @@ def plot_caar(
             col=1,
         )
 
-        fig.add_vline(x=0, line_dash="dash", line_color="red", row=2, col=1)
-        fig.add_hline(y=0, line_dash="dot", line_color="gray", row=2, col=1)
+        fig.add_vline(x=0, line_dash="dash", line_color=_ML4T_COLORS["negative"], row=2, col=1)
+        fig.add_hline(y=0, line_dash="dot", line_color=_ML4T_COLORS["silver_muted"], row=2, col=1)
 
     # Update layout
     title = f"Event Study: CAAR (n={result.n_events} events)"
     if result.is_significant:
         title += f" - Significant at {result.confidence_level:.0%}"
 
-    fig.update_layout(
-        title=title,
-        xaxis_title="Days Relative to Event",
-        yaxis_title="CAAR",
-        width=width or 800,
-        height=height or (600 if show_aar_bars else 450),
-        template=theme_config.get("template", "plotly_white"),
-        hovermode="x unified",
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
-    )
+    layout_updates = {
+        "title": title,
+        "xaxis_title": "Days Relative to Event",
+        "yaxis_title": "CAAR",
+        "width": width or 800,
+        "height": height or (600 if show_aar_bars else 450),
+        "hovermode": "x unified",
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        },
+    }
+
+    for key, value in theme_config["layout"].items():
+        if key not in layout_updates:
+            layout_updates[key] = value
+
+    fig.update_layout(**layout_updates)
 
     # Add statistical info annotation
     annotation_text = (
@@ -195,7 +203,7 @@ def plot_caar(
         font={"size": 10},
         align="left",
         bgcolor="rgba(255,255,255,0.8)",
-        bordercolor="gray",
+        bordercolor=_ML4T_COLORS["silver_muted"],
         borderwidth=1,
     )
 
@@ -238,7 +246,8 @@ def plot_event_heatmap(
     if not ar_results:
         raise ValueError("No abnormal return results provided")
 
-    theme_config = get_theme(theme)
+    theme = validate_theme(theme)
+    theme_config = get_theme_config(theme)
 
     # Collect all days and build matrix
     all_days: set[int] = set()
@@ -280,16 +289,21 @@ def plot_event_heatmap(
     )
 
     # Add vertical line at event day
-    fig.add_vline(x=0, line_dash="dash", line_color="black", line_width=2)
+    fig.add_vline(x=0, line_dash="dash", line_color=_ML4T_COLORS["neutral"], line_width=2)
 
-    fig.update_layout(
-        title="Abnormal Returns by Event and Day",
-        xaxis_title="Days Relative to Event",
-        yaxis_title="Event",
-        width=width or 900,
-        height=height or max(400, len(ar_results) * 25 + 100),
-        template=theme_config.get("template", "plotly_white"),
-    )
+    layout_updates = {
+        "title": "Abnormal Returns by Event and Day",
+        "xaxis_title": "Days Relative to Event",
+        "yaxis_title": "Event",
+        "width": width or 900,
+        "height": height or max(400, len(ar_results) * 25 + 100),
+    }
+
+    for key, value in theme_config["layout"].items():
+        if key not in layout_updates:
+            layout_updates[key] = value
+
+    fig.update_layout(**layout_updates)
 
     return fig
 
@@ -330,8 +344,9 @@ def plot_ar_distribution(
     if result.individual_results is None:
         raise ValueError("EventStudyResult must include individual_results")
 
-    theme_config = get_theme(theme)
-    colors = theme_config.get("colors", {})
+    theme = validate_theme(theme)
+    theme_config = get_theme_config(theme)
+    colorway = theme_config["colorway"]
 
     # Collect ARs for the specified day
     ars = []
@@ -354,7 +369,7 @@ def plot_ar_distribution(
             x=ars_array,
             nbinsx=min(20, len(ars)),
             name="AR Distribution",
-            marker_color=colors.get("primary", _ML4T_COLORS["blue"]),
+            marker_color=colorway[0],
             opacity=0.7,
             histnorm="probability density" if show_kde else None,
         )
@@ -374,7 +389,10 @@ def plot_ar_distribution(
                 y=kde_y,
                 mode="lines",
                 name="KDE",
-                line={"color": colors.get("secondary", _ML4T_COLORS["amber"]), "width": 2},
+                line={
+                    "color": colorway[1] if len(colorway) > 1 else _ML4T_COLORS["amber"],
+                    "width": 2,
+                },
             )
         )
 
@@ -383,13 +401,13 @@ def plot_ar_distribution(
     fig.add_vline(
         x=mean_ar,
         line_dash="dash",
-        line_color="red",
+        line_color=_ML4T_COLORS["negative"],
         annotation_text=f"Mean: {mean_ar:.4f}",
         annotation_position="top right",
     )
 
     # Add vertical line at 0
-    fig.add_vline(x=0, line_dash="dot", line_color="gray")
+    fig.add_vline(x=0, line_dash="dot", line_color=_ML4T_COLORS["silver_muted"])
 
     # Calculate statistics
     std_ar = float(np.std(ars_array, ddof=1))
@@ -397,14 +415,20 @@ def plot_ar_distribution(
     p_val = 2 * (1 - sp_stats.t.cdf(abs(t_stat), df=len(ars) - 1)) if len(ars) > 1 else 1.0
 
     day_label = "Event Day" if day == 0 else f"Day {day:+d}"
-    fig.update_layout(
-        title=f"Abnormal Return Distribution - {day_label}",
-        xaxis_title="Abnormal Return",
-        yaxis_title="Density" if show_kde else "Count",
-        width=width or 600,
-        height=height or 400,
-        template=theme_config.get("template", "plotly_white"),
-    )
+
+    layout_updates = {
+        "title": f"Abnormal Return Distribution - {day_label}",
+        "xaxis_title": "Abnormal Return",
+        "yaxis_title": "Density" if show_kde else "Count",
+        "width": width or 600,
+        "height": height or 400,
+    }
+
+    for key, value in theme_config["layout"].items():
+        if key not in layout_updates:
+            layout_updates[key] = value
+
+    fig.update_layout(**layout_updates)
 
     # Add statistics annotation
     annotation_text = (
@@ -424,7 +448,7 @@ def plot_ar_distribution(
         font={"size": 10},
         align="left",
         bgcolor="rgba(255,255,255,0.8)",
-        bordercolor="gray",
+        bordercolor=_ML4T_COLORS["silver_muted"],
         borderwidth=1,
     )
 
@@ -467,8 +491,8 @@ def plot_car_by_event(
     if not ar_results:
         raise ValueError("No abnormal return results provided")
 
-    theme_config = get_theme(theme)
-    colors = theme_config.get("colors", {})
+    theme = validate_theme(theme)
+    theme_config = get_theme_config(theme)
 
     # Sort results
     if sort_by == "car":
@@ -483,12 +507,7 @@ def plot_car_by_event(
     # Prepare data
     labels = [f"{r.event_id} ({r.asset})" for r in sorted_results]
     cars = [r.car for r in sorted_results]
-    bar_colors = [
-        colors.get("positive", _ML4T_COLORS["positive"])
-        if c >= 0
-        else colors.get("negative", _ML4T_COLORS["negative"])
-        for c in cars
-    ]
+    bar_colors = [_ML4T_COLORS["positive"] if c >= 0 else _ML4T_COLORS["negative"] for c in cars]
 
     fig = go.Figure(
         data=go.Bar(
@@ -500,20 +519,25 @@ def plot_car_by_event(
         )
     )
 
-    fig.add_vline(x=0, line_dash="solid", line_color="gray")
+    fig.add_vline(x=0, line_dash="solid", line_color=_ML4T_COLORS["silver_muted"])
 
     title = "Cumulative Abnormal Return by Event"
     if top_n is not None:
         title += f" (Top {top_n})"
 
-    fig.update_layout(
-        title=title,
-        xaxis_title="CAR",
-        yaxis_title="Event",
-        width=width or 700,
-        height=height or max(400, len(sorted_results) * 25 + 100),
-        template=theme_config.get("template", "plotly_white"),
-        yaxis={"autorange": "reversed"},  # Largest at top
-    )
+    layout_updates = {
+        "title": title,
+        "xaxis_title": "CAR",
+        "yaxis_title": "Event",
+        "width": width or 700,
+        "height": height or max(400, len(sorted_results) * 25 + 100),
+        "yaxis": {"autorange": "reversed"},
+    }
+
+    for key, value in theme_config["layout"].items():
+        if key not in layout_updates:
+            layout_updates[key] = value
+
+    fig.update_layout(**layout_updates)
 
     return fig

@@ -480,7 +480,7 @@ def load_config(
             # Check current directory (try new name first, then legacy)
             default_path = Path("ml4t-diagnostic.yaml")
             if not default_path.exists():
-                default_path = Path("mlquant.evaluation.yaml")
+                default_path = Path("ml4t.diagnostic.yaml")
             if default_path.exists():
                 config_path = default_path
 

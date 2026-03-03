@@ -396,7 +396,7 @@ class EvaluationExport(BaseModel):
         ...         "cagr": 0.24,
         ...         "max_drawdown": -0.18
         ...     },
-        ...     timestamp=datetime.utcnow()
+        ...     timestamp=datetime.now(tz=UTC)
         ... )
         >>> backtest_engine.store_evaluation(export.to_dict())
     """

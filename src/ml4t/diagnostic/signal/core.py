@@ -182,6 +182,11 @@ def analyze_signal(
     all_dates = data.select(date_col).unique().sort(date_col).to_series().to_list()
     date_range = (str(all_dates[0]), str(all_dates[-1])) if all_dates else ("", "")
 
+    # Count by quantile (period-independent, compute once)
+    count_by_quantile: dict[int, int] = {}
+    for q_val, cnt in data.group_by("quantile").len().sort("quantile").iter_rows():
+        count_by_quantile[int(q_val)] = cnt
+
     # Initialize result dicts
     ic: dict[str, float] = {}
     ic_std: dict[str, float] = {}
@@ -190,10 +195,13 @@ def analyze_signal(
     ic_ir: dict[str, float] = {}
     ic_positive_pct: dict[str, float] = {}
     ic_series: dict[str, list[float]] = {}
+    ic_dates: dict[str, list[str]] = {}
     quantile_returns: dict[str, dict[int, float]] = {}
+    quantile_returns_std: dict[str, dict[int, float]] = {}
     spread: dict[str, float] = {}
     spread_t_stat: dict[str, float] = {}
     spread_p_value: dict[str, float] = {}
+    spread_std: dict[str, float] = {}
     monotonicity: dict[str, float] = {}
 
     # Compute metrics for each period
@@ -211,6 +219,7 @@ def analyze_signal(
         ic_t_stat[period_key] = summary["t_stat"]
         ic_p_value[period_key] = summary["p_value"]
         ic_series[period_key] = ic_vals
+        ic_dates[period_key] = [str(d) for d in dates]
 
         # IC Information Ratio and positive percentage
         if summary["std"] > 0:
@@ -226,11 +235,32 @@ def analyze_signal(
         q_returns = compute_quantile_returns(data, period, quantiles)
         quantile_returns[period_key] = q_returns
 
+        # Quantile return standard deviations
+        return_col = f"{period}D_fwd_return"
+        q_detail = (
+            data.filter(pl.col(return_col).is_not_null())
+            .group_by("quantile")
+            .agg(pl.col(return_col).std().alias("std_return"))
+            .sort("quantile")
+        )
+        q_std: dict[int, float] = {}
+        for row in q_detail.iter_rows(named=True):
+            std_val = row["std_return"]
+            q_std[int(row["quantile"])] = float(std_val) if std_val is not None else 0.0
+        quantile_returns_std[period_key] = q_std
+
         # Spread
         spread_stats = compute_spread(data, period, quantiles)
         spread[period_key] = spread_stats["spread"]
         spread_t_stat[period_key] = spread_stats["t_stat"]
         spread_p_value[period_key] = spread_stats["p_value"]
+
+        # Spread std (derive from identity: se = spread / t_stat)
+        t = spread_stats["t_stat"]
+        if abs(t) > 1e-12:
+            spread_std[period_key] = abs(spread_stats["spread"] / t)
+        else:
+            spread_std[period_key] = float("nan")
 
         # Monotonicity
         monotonicity[period_key] = monotonicity_score(q_returns)
@@ -256,10 +286,14 @@ def analyze_signal(
         ic_ir=ic_ir,
         ic_positive_pct=ic_positive_pct,
         ic_series=ic_series,
+        ic_dates=ic_dates,
         quantile_returns=quantile_returns,
+        quantile_returns_std=quantile_returns_std,
+        count_by_quantile=count_by_quantile,
         spread=spread,
         spread_t_stat=spread_t_stat,
         spread_p_value=spread_p_value,
+        spread_std=spread_std,
         monotonicity=monotonicity,
         turnover=turnover_dict,
         autocorrelation=autocorr,

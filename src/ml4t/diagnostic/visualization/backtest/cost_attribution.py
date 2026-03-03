@@ -19,7 +19,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
-from ml4t.diagnostic.visualization.core import get_theme_config
+from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
 if TYPE_CHECKING:
     import polars as pl
@@ -79,6 +79,7 @@ def plot_cost_waterfall(
     ... )
     >>> fig.show()
     """
+    theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
     # Build cost categories
@@ -213,6 +214,7 @@ def plot_cost_sensitivity(
     """
     import polars as pl
 
+    theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
     # Convert to numpy
@@ -411,6 +413,7 @@ def plot_cost_over_time(
     """
     import polars as pl
 
+    theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
     colors = theme_config["colorway"]
 
@@ -553,6 +556,7 @@ def plot_cost_by_asset(
     """
     import polars as pl
 
+    theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
     colors = theme_config["colorway"]
 
@@ -701,6 +705,7 @@ def plot_cost_pie(
     go.Figure
         Plotly pie chart figure
     """
+    theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
     colors = theme_config["colorway"]
 

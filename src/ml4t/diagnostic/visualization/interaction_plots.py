@@ -206,12 +206,12 @@ def plot_interaction_bar(
         )
     )
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title=title or "Feature Interactions - Top Pairs",
         xaxis_title="Interaction Strength",
         yaxis_title="Feature Pairs",
-        **theme_config["layout"],
         width=width or 1000,
         height=height or max(400, len(pair_labels) * 25 + 100),
         showlegend=False,
@@ -357,7 +357,8 @@ def plot_interaction_heatmap(
         )
     )
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title=title or "Feature Interaction Matrix",
         xaxis={
@@ -369,7 +370,6 @@ def plot_interaction_heatmap(
             "title": "",
             "autorange": "reversed",  # Top to bottom
         },
-        **theme_config["layout"],
         width=width or 800,
         height=height or 800,
     )

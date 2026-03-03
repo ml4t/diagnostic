@@ -36,7 +36,7 @@ where $\gamma$ accounts for:
 - Expected maximum Sharpe under null hypothesis
 - Autocorrelation in returns
 
-See [Deflated Sharpe Ratio Guide](../guides/deflated-sharpe-ratio.md) for details.
+See [Deflated Sharpe Ratio](../methods/deflated-sharpe-ratio.md) for details.
 
 ## Rademacher Anti-Serum (RAS)
 

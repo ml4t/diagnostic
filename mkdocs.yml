@@ -120,11 +120,17 @@ nav:
   - User Guide:
     - Four-Tier Validation: user-guide/validation-tiers.md
     - Cross-Validation: user-guide/cross-validation.md
+    - CV Configuration: user-guide/cv-configuration.md
     - Statistical Tests: user-guide/statistical-tests.md
     - Feature Diagnostics: user-guide/feature-diagnostics.md
+    - Workflows: user-guide/workflows.md
     - Trade Analysis: user-guide/trade-analysis.md
-  - Guides:
-    - Deflated Sharpe Ratio: guides/deflated-sharpe-ratio.md
+    - Trade-SHAP Dashboard: DASHBOARD.md
+  - Methods:
+    - Overview: methods/index.md
+    - Deflated Sharpe Ratio: methods/deflated-sharpe-ratio.md
+    - Combinatorial Purged CV: methods/cpcv.md
+    - HAC-adjusted IC: methods/hac-ic.md
   - Reference:
     - Architecture: reference/architecture.md
     - Academic References: reference/references.md

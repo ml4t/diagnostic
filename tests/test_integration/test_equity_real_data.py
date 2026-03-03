@@ -66,7 +66,7 @@ def wiki_returns(wiki_prices):
 def single_stock_returns(wiki_returns):
     """Get returns for a single stock with sufficient history."""
     # Find stock with most observations
-    counts = wiki_returns.group_by("ticker").count().sort("count", descending=True)
+    counts = wiki_returns.group_by("ticker").len().sort("len", descending=True)
     top_ticker = counts["ticker"][0]
 
     single_stock = wiki_returns.filter(pl.col("ticker") == top_ticker).sort("date")
@@ -77,7 +77,7 @@ def single_stock_returns(wiki_returns):
 def multi_stock_returns(wiki_returns):
     """Get returns for multiple stocks on the same dates."""
     # Get top 10 stocks by observation count
-    counts = wiki_returns.group_by("ticker").count().sort("count", descending=True)
+    counts = wiki_returns.group_by("ticker").len().sort("len", descending=True)
     top_tickers = counts["ticker"][:10].to_list()
 
     multi_stock = wiki_returns.filter(pl.col("ticker").is_in(top_tickers))

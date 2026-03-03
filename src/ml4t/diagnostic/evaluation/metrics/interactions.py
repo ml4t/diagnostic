@@ -90,7 +90,7 @@ def compute_h_statistic(
     >>> model = lgb.LGBMRegressor()
     >>> model.fit(X_train, y_train)
     >>> results = compute_h_statistic(model, X_test)
-    >>> for feat_i, feat_j, h_val in results["h_statistics"][:5]:
+    >>> for feat_i, feat_j, h_val in results["h_statistics"]:
     ...     print(f"  {feat_i} x {feat_j}: H = {h_val:.4f}")
     """
     start_time = time.time()

@@ -232,29 +232,29 @@ def get_template(
 TEARSHEET_CSS = """
 <style>
     :root {
-        --primary-color: #636EFA;
-        --success-color: #00CC96;
-        --warning-color: #FECB52;
-        --danger-color: #EF553B;
-        --text-color: #2E2E2E;
-        --bg-color: #FFFFFF;
-        --card-bg: #F8F9FA;
-        --border-color: #DEE2E6;
+        --primary-color: #0a1628;
+        --success-color: #10b981;
+        --warning-color: #D4A84B;
+        --danger-color: #ef4444;
+        --text-color: #0a1628;
+        --bg-color: #FAFAF9;
+        --card-bg: #F8F8F6;
+        --border-color: #e8e8e6;
     }
 
     [data-theme="dark"] {
-        --primary-color: #636EFA;
-        --success-color: #00CC96;
-        --warning-color: #FECB52;
-        --danger-color: #EF553B;
-        --text-color: #E0E0E0;
-        --bg-color: #1E1E1E;
-        --card-bg: #2D2D2D;
-        --border-color: #404040;
+        --primary-color: #F8F8F6;
+        --success-color: #10b981;
+        --warning-color: #E4B85B;
+        --danger-color: #ef4444;
+        --text-color: #F8F8F6;
+        --bg-color: #0a1628;
+        --card-bg: #152238;
+        --border-color: #1a2d4a;
     }
 
     body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        font-family: 'DM Sans', 'DejaVu Sans', -apple-system, sans-serif;
         color: var(--text-color);
         background-color: var(--bg-color);
         margin: 0;
@@ -280,7 +280,7 @@ TEARSHEET_CSS = """
     }
 
     .tearsheet-header .subtitle {
-        color: #666;
+        color: var(--text-color); opacity: 0.6;
         font-size: 1.1em;
     }
 
@@ -333,13 +333,13 @@ TEARSHEET_CSS = """
         margin-top: 40px;
         padding-top: 20px;
         border-top: 1px solid var(--border-color);
-        color: #666;
+        color: var(--text-color); opacity: 0.6;
         font-size: 0.9em;
     }
 
     .timestamp {
         font-size: 0.85em;
-        color: #888;
+        color: var(--text-color); opacity: 0.5;
     }
 </style>
 """

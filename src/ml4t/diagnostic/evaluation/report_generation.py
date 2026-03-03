@@ -132,7 +132,7 @@ def generate_json_report(
         pkg_version = "unknown"
     data["_metadata"] = {
         "generated_at": datetime.now().isoformat(),
-        "qeval_version": pkg_version,
+        "diagnostic_version": pkg_version,
         "format_version": "1.0",
     }
 
@@ -735,18 +735,18 @@ def _html_header(title: str) -> str:
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
-            color: #333;
+            background-color: #FAFAF9;
+            color: #0a1628;
         }}
         h1, h2, h3 {{
-            color: #2c3e50;
+            color: #0a1628;
         }}
         h1 {{
-            border-bottom: 3px solid #3498db;
+            border-bottom: 3px solid #D4A84B;
             padding-bottom: 10px;
         }}
         h2 {{
-            border-bottom: 2px solid #95a5a6;
+            border-bottom: 2px solid #e8e8e6;
             padding-bottom: 5px;
             margin-top: 30px;
         }}
@@ -755,11 +755,11 @@ def _html_header(title: str) -> str:
             margin: 20px 0;
             width: 100%;
             background-color: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(10,22,40,0.08);
         }}
         .dataframe th {{
-            background-color: #3498db;
-            color: white;
+            background-color: #0a1628;
+            color: #F8F8F6;
             padding: 12px;
             text-align: left;
         }}

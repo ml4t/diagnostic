@@ -451,7 +451,8 @@ def plot_ic_qq(
     # Normality test
     if len(ic_clean) >= 8:
         _, shapiro_p = stats.shapiro(ic_clean[:5000])  # Shapiro-Wilk limited to 5000
-        _, jb_stat, jb_p = stats.jarque_bera(ic_clean)
+        jb_result = stats.jarque_bera(ic_clean)
+        jb_p = jb_result.pvalue
 
         normality_text = (
             f"<b>Normality Tests:</b><br>"

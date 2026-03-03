@@ -221,8 +221,8 @@ def example_8_error_hierarchy():
 
     print("\nAll errors are ML4TEvaluationError instances:")
     for error in errors_to_test:
-        is_qeval = isinstance(error, ML4TEvaluationError)
-        print(f"  {type(error).__name__}: {is_qeval}")
+        is_diagnostic = isinstance(error, ML4TEvaluationError)
+        print(f"  {type(error).__name__}: {is_diagnostic}")
     print()
 
 

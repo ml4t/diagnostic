@@ -369,11 +369,11 @@ def create_metric_card(
         line={"color": color},
     )
 
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         height=200,
         width=250,
         margin={"l": 20, "r": 20, "t": 40, "b": 20},
-        **theme_config["layout"],
     )
 
     return fig

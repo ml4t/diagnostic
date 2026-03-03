@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
     format_percentage,
-    get_colorscale,
+    get_quantile_colors,
     get_theme_config,
     validate_theme,
 )
@@ -28,24 +28,8 @@ if TYPE_CHECKING:
 
 
 def _get_quantile_colors(n_quantiles: int, theme_config: dict[str, Any]) -> list[str]:
-    """Get diverging colors for quantiles (red → green progression)."""
-    # Use a custom diverging scale: red for bottom, gray for middle, green for top
-    colors: list[str]
-    if n_quantiles <= 5:
-        colors = ["#D32F2F", "#F57C00", "#FBC02D", "#689F38", "#388E3C"][:n_quantiles]
-    else:
-        # Generate more colors via interpolation
-        try:
-            raw_colors = get_colorscale("rdylgn", n_colors=n_quantiles, reverse=False)
-            if isinstance(raw_colors[0], tuple):  # Continuous colorscale format
-                colors = [str(c[1]) if isinstance(c, tuple) else str(c) for c in raw_colors]
-            else:
-                colors = [str(c) for c in raw_colors]
-        except (ValueError, IndexError):
-            # Fallback to theme colorway
-            colorway = theme_config.get("colorway", ["#1f77b4"])
-            colors = (colorway * ((n_quantiles // len(colorway)) + 1))[:n_quantiles]
-    return colors
+    """Get diverging colors for quantiles (red -> green progression)."""
+    return get_quantile_colors(n_quantiles, theme_config)
 
 
 def plot_quantile_returns_bar(

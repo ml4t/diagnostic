@@ -221,12 +221,12 @@ def plot_importance_bar(
         )
     )
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title=title or "Feature Importance - Consensus Ranking",
         xaxis_title="Consensus Importance Score",
         yaxis_title="Features",
-        **theme_config["layout"],
         width=width or 1000,
         height=height or max(400, len(features) * 25 + 100),
         showlegend=False,
@@ -405,7 +405,8 @@ def plot_importance_heatmap(
         )
     )
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title=title or "Method Agreement - Ranking Correlations",
         xaxis={
@@ -416,7 +417,6 @@ def plot_importance_heatmap(
             "title": "",
             "autorange": "reversed",  # Top to bottom
         },
-        **theme_config["layout"],
         width=width or 800,
         height=height or 800,
     )
@@ -582,12 +582,12 @@ def plot_importance_distribution(
                 )
             )
 
+        fig.update_layout(theme_config["layout"])
         fig.update_layout(
             title=title or "Feature Importance Distribution",
             xaxis_title="Importance Score",
             yaxis_title="Frequency",
             barmode="overlay" if overlay else "stack",
-            **theme_config["layout"],
             width=width or 1000,
             height=height or 600,
         )
@@ -622,9 +622,9 @@ def plot_importance_distribution(
             fig.update_xaxes(title_text="Importance Score", row=i, col=1)
             fig.update_yaxes(title_text="Frequency", row=i, col=1)
 
+        fig.update_layout(theme_config["layout"])
         fig.update_layout(
             title=title or "Feature Importance Distribution by Method",
-            **theme_config["layout"],
             width=width or 1000,
             height=height or (400 * n_methods),
         )
@@ -861,7 +861,8 @@ def plot_importance_summary(
     fig.update_xaxes(title_text="Importance Score", row=2, col=1)
     fig.update_yaxes(title_text="Frequency", row=2, col=1)
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title={
             "text": title or "Feature Importance Analysis - Summary",
@@ -869,7 +870,6 @@ def plot_importance_summary(
             "xanchor": "center",
         },
         barmode="overlay",
-        **theme_config["layout"],
         width=width or 1400,
         height=height or 1000,
         showlegend=True,

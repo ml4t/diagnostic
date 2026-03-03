@@ -278,7 +278,7 @@ class TestIntegrationError:
 class TestErrorHierarchy:
     """Test exception hierarchy and polymorphism."""
 
-    def test_all_errors_are_qeval_errors(self):
+    def test_all_errors_are_diagnostic_errors(self):
         """Test all custom errors inherit from DiagnosticError."""
         errors = [
             ConfigurationError("test"),
@@ -291,7 +291,7 @@ class TestErrorHierarchy:
         for error in errors:
             assert isinstance(error, DiagnosticError)
 
-    def test_catch_any_qeval_error(self):
+    def test_catch_any_diagnostic_error(self):
         """Test catching any ML4T Diagnostic error with base class."""
         errors = [
             ConfigurationError("config"),

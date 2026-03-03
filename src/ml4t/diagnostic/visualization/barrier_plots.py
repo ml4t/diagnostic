@@ -22,7 +22,7 @@ import plotly.graph_objects as go
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
-    get_colorscale,
+    get_quantile_colors,
     get_theme_config,
     validate_theme,
 )
@@ -37,22 +37,8 @@ if TYPE_CHECKING:
 
 
 def _get_quantile_colors(n_quantiles: int, theme_config: dict) -> list[str]:
-    """Get diverging colors for quantiles (red → green progression)."""
-    colors: list[str]
-    if n_quantiles <= 5:
-        colors = ["#D32F2F", "#F57C00", "#FBC02D", "#689F38", "#388E3C"][:n_quantiles]
-    else:
-        try:
-            raw_colors = get_colorscale("rdylgn", n_colors=n_quantiles, reverse=False)
-            if isinstance(raw_colors[0], tuple):
-                colors = [str(c[1]) if isinstance(c, tuple) else str(c) for c in raw_colors]
-            else:
-                colors = [str(c) for c in raw_colors]
-        except (ValueError, IndexError):
-            colorway = theme_config["colorway"]
-            repeated = colorway * ((n_quantiles // len(colorway)) + 1)
-            colors = [str(c) for c in repeated[:n_quantiles]]
-    return colors
+    """Get diverging colors for quantiles (red -> green progression)."""
+    return get_quantile_colors(n_quantiles, theme_config)
 
 
 def _get_outcome_colors() -> dict[str, str]:

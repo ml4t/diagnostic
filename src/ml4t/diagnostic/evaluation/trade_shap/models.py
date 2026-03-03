@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     pass
@@ -81,10 +81,7 @@ class TradeShapExplanation(BaseModel):
         ..., description="Full SHAP vector for all features"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ClusteringResult(BaseModel):
@@ -171,10 +168,7 @@ class ClusteringResult(BaseModel):
     distance_metric: str = Field(..., description="Distance metric used for clustering")
     linkage_method: str = Field(..., description="Linkage method used for clustering")
 
-    class Config:
-        """Pydantic config."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ErrorPattern(BaseModel):
@@ -339,10 +333,7 @@ class ErrorPattern(BaseModel):
 
         return "\n".join(lines)
 
-    class Config:
-        """Pydantic config."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class TradeShapResult(BaseModel):
@@ -380,7 +371,4 @@ class TradeShapResult(BaseModel):
         description="Identified error patterns (populated by clustering and characterization)",
     )
 
-    class Config:
-        """Pydantic config."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)

@@ -350,7 +350,8 @@ def _compute_bar_width(
         Width of the bar.
     """
     if has_timestamps and isinstance(start, pd.Timestamp) and isinstance(end, pd.Timestamp):
-        return end - start
+        # Return milliseconds for JSON serialization (Plotly can't serialize Timedelta)
+        return int((end - start).total_seconds() * 1000)
     # For index-based, compute number of samples
     return int(end) - int(start) + 1  # type: ignore[arg-type]
 
@@ -475,9 +476,9 @@ def plot_cv_folds(
             showarrow=False,
             font={"size": 14},
         )
+        fig.update_layout(theme_config["layout"])
         fig.update_layout(
             title=title or "Cross-Validation Fold Structure",
-            **theme_config["layout"],
             width=width or 800,
             height=height or 200,
         )
@@ -498,9 +499,9 @@ def plot_cv_folds(
             showarrow=False,
             font={"size": 14},
         )
+        fig.update_layout(theme_config["layout"])
         fig.update_layout(
             title=title or "Cross-Validation Fold Structure",
-            **theme_config["layout"],
             width=width or 800,
             height=height or 200,
         )
@@ -635,7 +636,8 @@ def plot_cv_folds(
         y_tick_vals.append(-1)
         y_tick_text.append("Held-out Test")
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title=title or "Cross-Validation Fold Structure",
         xaxis_title="Date" if has_timestamps else "Sample Index",
@@ -646,7 +648,6 @@ def plot_cv_folds(
             "ticktext": y_tick_text,
         },
         barmode="overlay",
-        **theme_config["layout"],
         width=width or theme_config["defaults"]["width"],
         height=height or max(300, (n_folds + (1 if test_info else 0)) * 50 + 100),
         legend={

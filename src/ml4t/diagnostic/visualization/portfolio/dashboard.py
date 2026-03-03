@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ml4t.diagnostic.visualization._colors import COLORS
 from ml4t.diagnostic.visualization.core import (
     get_theme_config,
     validate_theme,
@@ -42,18 +43,37 @@ class PortfolioTearSheet:
     html_content: str | None = None
     _analysis: PortfolioAnalysis | None = None
 
-    def show(self) -> None:
-        """Display tear sheet in Jupyter notebook."""
-        # Display metrics first
-        print(self.metrics.summary())
-        print()
+    def show(self, compact: bool = False) -> None:
+        """Display tear sheet in Jupyter notebook or browser.
 
-        # Display each figure
-        for name, fig in self.figures.items():
-            print(f"\n{'=' * 50}")
-            print(f"  {name}")
-            print("=" * 50)
+        In Jupyter: renders the 4-panel overview inline (compact=True) or
+        displays all individual figures (compact=False).
+        In terminal: opens a single browser window with the overview.
+
+        Parameters
+        ----------
+        compact : bool, default False
+            If True, show 4-panel overview only. If False, show all figures.
+        """
+        if compact and self._analysis is not None:
+            fig = create_simple_dashboard(self._analysis)
             fig.show()
+            return
+
+        # Try Jupyter inline display first
+        try:
+            from IPython.display import HTML, display
+
+            display(HTML(f"<pre>{self.metrics.summary()}</pre>"))
+            for fig in self.figures.values():
+                fig.show()
+        except ImportError:
+            # Terminal fallback: print metrics, show each figure
+            print(self.metrics.summary())
+            print()
+            for name, fig in self.figures.items():
+                print(f"\n  {name}")
+                fig.show()
 
     def save_html(
         self,
@@ -81,47 +101,49 @@ class PortfolioTearSheet:
         html_parts = []
 
         if full_html:
-            html_parts.append("""<!DOCTYPE html>
+            html_parts.append(f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <title>Portfolio Tear Sheet</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        body {{
+            font-family: 'DM Sans', 'DejaVu Sans', -apple-system, sans-serif;
             max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
-            background: #f5f5f5;
-        }
-        .metrics-summary {
+            background: {COLORS["bg_light"]};
+            color: {COLORS["blue"]};
+        }}
+        .metrics-summary {{
             background: white;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .metrics-summary pre {
-            font-family: 'Monaco', 'Consolas', monospace;
+            box-shadow: 0 2px 4px rgba(10,22,40,0.08);
+        }}
+        .metrics-summary pre {{
+            font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
             font-size: 13px;
             line-height: 1.5;
-        }
-        .plot-container {
+            color: {COLORS["neutral"]};
+        }}
+        .plot-container {{
             background: white;
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
+            box-shadow: 0 2px 4px rgba(10,22,40,0.08);
+        }}
+        h1 {{
+            color: {COLORS["blue"]};
+            border-bottom: 2px solid {COLORS["amber"]};
             padding-bottom: 10px;
-        }
-        h2 {
-            color: #34495e;
+        }}
+        h2 {{
+            color: {COLORS["slate"]};
             margin-top: 0;
-        }
+        }}
     </style>
 </head>
 <body>
@@ -499,12 +521,12 @@ def create_simple_dashboard(
         col=2,
     )
 
-    # Update layout
+    # Update layout — apply theme first, then function-specific overrides
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title="Portfolio Overview",
         height=height,
         width=width,
-        **theme_config["layout"],
     )
 
     # Format axes

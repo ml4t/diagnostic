@@ -4,7 +4,7 @@ This module defines configuration schemas for trading calendar integration,
 ensuring proper timezone handling and session awareness.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CalendarConfig(BaseModel):
@@ -67,10 +67,7 @@ class CalendarConfig(BaseModel):
         default=True, description="Whether to localize tz-naive data to the specified timezone"
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        frozen = True  # Immutable after creation
+    model_config = ConfigDict(frozen=True)
 
     def __repr__(self) -> str:
         """String representation."""

@@ -23,7 +23,7 @@ Example workflow:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -199,7 +199,7 @@ class DataQualityReport(BaseModel):
     recommendations: list[str] = Field(default_factory=list, description="Recommendations")
     is_production_ready: bool = Field(..., description="Meets production standards")
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Report generation time"
+        default_factory=lambda: datetime.now(tz=UTC), description="Report generation time"
     )
 
     def is_acceptable(

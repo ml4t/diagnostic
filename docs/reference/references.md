@@ -6,7 +6,7 @@ This document provides comprehensive educational documentation linking our imple
 
 ## Table of Contents
 
-1. [Multiple Testing & False Discoveries](#1-multiple-testing--false-discoveries)
+1. [Multiple Testing & False Discoveries](#1-multiple-testing-false-discoveries)
    - [The Problem: Selection Bias](#the-problem-selection-bias)
    - [Deflated Sharpe Ratio (DSR)](#deflated-sharpe-ratio-dsr)
    - [Rademacher Anti-Serum (RAS)](#rademacher-anti-serum-ras)
@@ -15,7 +15,7 @@ This document provides comprehensive educational documentation linking our imple
 2. [Cross-Validation for Financial Data](#2-cross-validation-for-financial-data)
    - [Why Standard K-Fold Fails](#why-standard-k-fold-fails)
    - [Combinatorial Purged Cross-Validation (CPCV)](#combinatorial-purged-cross-validation-cpcv)
-   - [Purging & Embargo](#purging--embargo)
+   - [Purging & Embargo](#purging-embargo)
 3. [Information Coefficient Analysis](#3-information-coefficient-analysis)
 4. [Statistical Tests](#4-statistical-tests)
 5. [Feature Importance](#5-feature-importance)

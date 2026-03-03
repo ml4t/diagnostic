@@ -115,9 +115,9 @@ def get_date_range_html(
             background: #e9ecef;
         }}
         .date-preset-btn.active {{
-            background: #636EFA;
+            background: #0a1628;
             color: white;
-            border-color: #636EFA;
+            border-color: #0a1628;
         }}
         .custom-range {{
             display: flex;
@@ -332,7 +332,7 @@ def get_section_navigation_html(
             color: #333;
         }}
         .nav-item.active {{
-            background: #636EFA;
+            background: #0a1628;
             color: white;
         }}
     </style>
@@ -557,7 +557,7 @@ def get_interactive_toolbar_html(
             align-items: center;
             gap: 6px;
             padding: 8px 16px;
-            background: #636EFA;
+            background: #0a1628;
             color: white;
             border: none;
             border-radius: 6px;
@@ -640,9 +640,9 @@ def get_theme_switcher_html(
             background: #f0f0f0;
         }}
         .theme-btn.active {{
-            background: #636EFA;
+            background: #0a1628;
             color: white;
-            border-color: #636EFA;
+            border-color: #0a1628;
         }}
     </style>
 
