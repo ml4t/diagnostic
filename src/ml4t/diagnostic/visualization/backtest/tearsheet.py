@@ -577,18 +577,14 @@ def _create_section_figure(
                 plot_return_attribution_waterfall,
             )
 
-            return plot_return_attribution_waterfall(
-                factor_analysis.attribution(), theme=theme
-            )
+            return plot_return_attribution_waterfall(factor_analysis.attribution(), theme=theme)
 
         if section_name == "factor_risk":
             from ml4t.diagnostic.visualization.factor import (
                 plot_risk_attribution_pie,
             )
 
-            return plot_risk_attribution_pie(
-                factor_analysis.risk_attribution(), theme=theme
-            )
+            return plot_risk_attribution_pie(factor_analysis.risk_attribution(), theme=theme)
 
     # Unknown section
     return None

@@ -14,7 +14,9 @@ from ml4t.diagnostic.evaluation.factor.static_model import compute_factor_model
 
 
 @pytest.fixture
-def synthetic_data(synthetic_3f_data: tuple[np.ndarray, FactorData]) -> tuple[np.ndarray, FactorData]:
+def synthetic_data(
+    synthetic_3f_data: tuple[np.ndarray, FactorData],
+) -> tuple[np.ndarray, FactorData]:
     """Alias for shared 3-factor fixture."""
     return synthetic_3f_data
 
@@ -109,12 +111,14 @@ class TestComputeFactorModel:
         assert result.n_obs > 0
 
     def test_insufficient_data_raises(self) -> None:
-        factor_df = pl.DataFrame({
-            "timestamp": [date(2020, 1, i) for i in range(1, 4)],
-            "A": [0.01, 0.02, -0.01],
-            "B": [-0.01, 0.01, 0.02],
-            "C": [0.005, -0.005, 0.01],
-        })
+        factor_df = pl.DataFrame(
+            {
+                "timestamp": [date(2020, 1, i) for i in range(1, 4)],
+                "A": [0.01, 0.02, -0.01],
+                "B": [-0.01, 0.01, 0.02],
+                "C": [0.005, -0.005, 0.01],
+            }
+        )
         fd = FactorData.from_dataframe(factor_df)
         returns = np.array([0.01, -0.02, 0.005])
         with pytest.raises(ValueError, match="Not enough observations"):

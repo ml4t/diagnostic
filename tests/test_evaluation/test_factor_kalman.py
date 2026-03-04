@@ -21,13 +21,13 @@ def synthetic_data() -> tuple[np.ndarray, FactorData]:
     eps = np.random.normal(0, 0.003, T)
     returns = 0.0002 + 0.8 * mkt + eps
 
-    dates = pl.date_range(
-        date(2019, 1, 1), date(2020, 6, 30), eager=True
-    )[:T]
-    factor_df = pl.DataFrame({
-        "timestamp": dates,
-        "Mkt-RF": mkt,
-    })
+    dates = pl.date_range(date(2019, 1, 1), date(2020, 6, 30), eager=True)[:T]
+    factor_df = pl.DataFrame(
+        {
+            "timestamp": dates,
+            "Mkt-RF": mkt,
+        }
+    )
     return returns, FactorData.from_dataframe(factor_df)
 
 
@@ -47,30 +47,25 @@ class TestKalmanBetas:
         # Kalman should converge to true beta (~0.8) in steady state
         mkt_betas = result.rolling_betas["Mkt-RF"]
         # Use second half where filter has converged
-        steady_state = mkt_betas[len(mkt_betas) // 2:]
+        steady_state = mkt_betas[len(mkt_betas) // 2 :]
         assert abs(np.mean(steady_state) - 0.8) < 0.3
 
-    def test_with_noise_optimization(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_with_noise_optimization(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
         result = compute_kalman_betas(returns, fd, optimize_noise=True)
         assert len(result.timestamps) > 0
 
-    def test_manual_noise_params(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_manual_noise_params(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
         result = compute_kalman_betas(
-            returns, fd,
+            returns,
+            fd,
             observation_noise=0.00001,
             state_noise=0.000001,
         )
         assert len(result.timestamps) > 0
 
-    def test_stability_diagnostics(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_stability_diagnostics(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
         result = compute_kalman_betas(returns, fd, optimize_noise=False)
 
@@ -86,11 +81,15 @@ class TestKalmanBetas:
         eps = np.random.normal(0, 0.003, T)
         returns = 0.0002 + 1.0 * mkt + 0.3 * smb + eps
 
-        dates = pl.date_range(
-            date(2019, 1, 1), date(2020, 6, 30), eager=True
-        )[:T]
-        fd = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates, "Mkt-RF": mkt, "SMB": smb,
-        }))
+        dates = pl.date_range(date(2019, 1, 1), date(2020, 6, 30), eager=True)[:T]
+        fd = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates,
+                    "Mkt-RF": mkt,
+                    "SMB": smb,
+                }
+            )
+        )
         result = compute_kalman_betas(returns, fd, optimize_noise=False)
         assert len(result.rolling_betas) == 2

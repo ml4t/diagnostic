@@ -31,9 +31,7 @@ def synthetic_3f_data() -> tuple[np.ndarray, FactorData]:
     returns = 0.0002 + 1.0 * mkt + 0.3 * smb - 0.1 * hml + eps
 
     dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
-    factor_df = pl.DataFrame(
-        {"timestamp": dates, "Mkt-RF": mkt, "SMB": smb, "HML": hml}
-    )
+    factor_df = pl.DataFrame({"timestamp": dates, "Mkt-RF": mkt, "SMB": smb, "HML": hml})
     return returns, FactorData.from_dataframe(factor_df)
 
 

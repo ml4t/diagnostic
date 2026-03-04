@@ -60,9 +60,7 @@ def compute_rolling_exposures(
 
     if expanding:
         out_betas, out_alpha, out_r2 = _rolling_ols_expanding(y, X, min_periods, n_windows)
-        out_timestamps = np.array(
-            [timestamps[min_periods + i - 1] for i in range(n_windows)]
-        )
+        out_timestamps = np.array([timestamps[min_periods + i - 1] for i in range(n_windows)])
     else:
         out_betas, out_alpha, out_r2 = _rolling_ols_vectorized(y, X, window)
         out_timestamps = np.array([timestamps[i + window - 1] for i in range(n_windows)])

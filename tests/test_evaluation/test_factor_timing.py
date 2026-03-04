@@ -22,14 +22,14 @@ def synthetic_data() -> tuple[np.ndarray, FactorData]:
     eps = np.random.normal(0, 0.003, T)
     returns = 0.0002 + 1.0 * mkt + 0.3 * smb + eps
 
-    dates = pl.date_range(
-        date(2018, 1, 1), date(2019, 12, 31), eager=True
-    )[:T]
-    factor_df = pl.DataFrame({
-        "timestamp": dates,
-        "Mkt-RF": mkt,
-        "SMB": smb,
-    })
+    dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
+    factor_df = pl.DataFrame(
+        {
+            "timestamp": dates,
+            "Mkt-RF": mkt,
+            "SMB": smb,
+        }
+    )
     return returns, FactorData.from_dataframe(factor_df)
 
 
@@ -42,9 +42,7 @@ class TestFactorTiming:
         assert result.window == 63
         assert len(result.factor_names) == 2
 
-    def test_correlations_in_range(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_correlations_in_range(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
         result = compute_factor_timing(returns, fd, window=63)
 

@@ -83,7 +83,11 @@ class TimestampAligner:
         # numpy deprecation warning (will become error in future numpy versions)
         import pandas as pd
 
-        if hasattr(timestamps, "dtype") and hasattr(timestamps.dtype, "tz") and timestamps.dtype.tz is not None:
+        if (
+            hasattr(timestamps, "dtype")
+            and hasattr(timestamps.dtype, "tz")
+            and timestamps.dtype.tz is not None
+        ):
             timestamps = pd.DatetimeIndex(timestamps).tz_localize(None)
         elif isinstance(timestamps, (list, tuple)) and len(timestamps) > 0:
             first = timestamps[0]

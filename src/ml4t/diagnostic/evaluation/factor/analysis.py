@@ -185,9 +185,7 @@ class FactorAnalysis:
             # Use _align_and_prepare to get the exact rows used in fitting
             # (handles NaN masking and length alignment consistently)
             _, X_aligned, _ = _align_and_prepare(self._returns, self._factor_data)
-            self._cache[key] = validate_factor_model(
-                model, X_aligned, max_acf_lags=max_acf_lags
-            )
+            self._cache[key] = validate_factor_model(model, X_aligned, max_acf_lags=max_acf_lags)
         return self._cache[key]
 
     def factor_timing(self, *, window: int = 63) -> FactorTimingResult:

@@ -29,15 +29,15 @@ def analysis() -> FactorAnalysis:
     eps = np.random.normal(0, 0.003, T)
     returns = 0.0002 + 1.0 * mkt + 0.3 * smb - 0.1 * hml + eps
 
-    dates = pl.date_range(
-        date(2018, 1, 1), date(2019, 12, 31), eager=True
-    )[:T]
-    factor_df = pl.DataFrame({
-        "timestamp": dates,
-        "Mkt-RF": mkt,
-        "SMB": smb,
-        "HML": hml,
-    })
+    dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
+    factor_df = pl.DataFrame(
+        {
+            "timestamp": dates,
+            "Mkt-RF": mkt,
+            "SMB": smb,
+            "HML": hml,
+        }
+    )
     factor_data = FactorData.from_dataframe(factor_df)
     return FactorAnalysis(returns, factor_data)
 

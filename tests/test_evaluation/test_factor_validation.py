@@ -26,12 +26,10 @@ def model_and_factors() -> tuple:
     returns = 0.0002 + 1.0 * mkt + 0.3 * smb - 0.1 * hml + eps
 
     dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
-    factor_df = pl.DataFrame(
-        {"timestamp": dates, "Mkt-RF": mkt, "SMB": smb, "HML": hml}
-    )
+    factor_df = pl.DataFrame({"timestamp": dates, "Mkt-RF": mkt, "SMB": smb, "HML": hml})
     fd = FactorData.from_dataframe(factor_df)
     model = compute_factor_model(returns, fd, hac=True)
-    factor_array = fd.get_factor_array()[:model.n_obs]
+    factor_array = fd.get_factor_array()[: model.n_obs]
     return model, factor_array
 
 
@@ -106,11 +104,9 @@ class TestQlikeWindowSensitivity:
         eps = np.random.normal(0, 0.003, T)
         returns = 1.0 * mkt + eps
         dates = pl.date_range(date(2020, 1, 1), date(2020, 3, 1), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "Mkt": mkt})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "Mkt": mkt}))
         model = compute_factor_model(returns, fd, hac=False)
-        X = fd.get_factor_array()[:model.n_obs]
+        X = fd.get_factor_array()[: model.n_obs]
         result = validate_factor_model(model, X, qlike_window=25)
         # With T=30 and window=25, only ~5 rolling windows → may be NaN or small
         assert np.isfinite(result.qlike) or np.isnan(result.qlike)
@@ -125,11 +121,9 @@ class TestLjungBoxEdgeCases:
         eps = np.random.normal(0, 0.003, T)
         returns = 1.0 * mkt + eps
         dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "Mkt": mkt})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "Mkt": mkt}))
         model = compute_factor_model(returns, fd, hac=False)
-        X = fd.get_factor_array()[:model.n_obs]
+        X = fd.get_factor_array()[: model.n_obs]
         result = validate_factor_model(model, X, max_acf_lags=10)
         # With true model and white noise, p should be high (no autocorrelation)
         assert result.ljung_box_p > 0.01
@@ -145,11 +139,9 @@ class TestLjungBoxEdgeCases:
             ar_component[t] = 0.5 * ar_component[t - 1] + np.random.normal(0, 0.003)
         returns = 1.0 * mkt + ar_component
         dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "Mkt": mkt})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "Mkt": mkt}))
         model = compute_factor_model(returns, fd, hac=False)
-        X = fd.get_factor_array()[:model.n_obs]
+        X = fd.get_factor_array()[: model.n_obs]
         result = validate_factor_model(model, X, max_acf_lags=10)
         # Omitted AR(1) should cause significant autocorrelation
         assert result.ljung_box_p < 0.05

@@ -16,16 +16,16 @@ def sample_factor_df() -> pl.DataFrame:
     """Create a sample factor DataFrame."""
     np.random.seed(42)
     n = 252
-    dates = pl.date_range(
-        date(2020, 1, 1), date(2020, 12, 31), eager=True
-    )[:n]
-    return pl.DataFrame({
-        "timestamp": dates,
-        "Mkt-RF": np.random.normal(0.0004, 0.01, n),
-        "SMB": np.random.normal(0.0001, 0.005, n),
-        "HML": np.random.normal(0.0001, 0.005, n),
-        "RF": np.full(n, 0.0001),
-    })
+    dates = pl.date_range(date(2020, 1, 1), date(2020, 12, 31), eager=True)[:n]
+    return pl.DataFrame(
+        {
+            "timestamp": dates,
+            "Mkt-RF": np.random.normal(0.0004, 0.01, n),
+            "SMB": np.random.normal(0.0001, 0.005, n),
+            "HML": np.random.normal(0.0001, 0.005, n),
+            "RF": np.full(n, 0.0001),
+        }
+    )
 
 
 @pytest.fixture
@@ -47,10 +47,12 @@ class TestFactorData:
         assert fd.n_factors == 3
 
     def test_from_dataframe_custom_timestamp_col(self) -> None:
-        df = pl.DataFrame({
-            "date": [date(2020, 1, i) for i in range(1, 11)],
-            "factor_a": np.random.randn(10),
-        })
+        df = pl.DataFrame(
+            {
+                "date": [date(2020, 1, i) for i in range(1, 11)],
+                "factor_a": np.random.randn(10),
+            }
+        )
         fd = FactorData.from_dataframe(df, timestamp_column="date")
         assert "timestamp" in fd.returns.columns
         assert fd.n_periods == 10
@@ -65,10 +67,12 @@ class TestFactorData:
             )
 
     def test_missing_factor_column_raises(self) -> None:
-        df = pl.DataFrame({
-            "timestamp": [date(2020, 1, 1)],
-            "factor_a": [0.01],
-        })
+        df = pl.DataFrame(
+            {
+                "timestamp": [date(2020, 1, 1)],
+                "factor_a": [0.01],
+            }
+        )
         with pytest.raises(ValueError, match="missing"):
             FactorData(
                 returns=df,
@@ -94,14 +98,22 @@ class TestFactorData:
 class TestFactorDataCombine:
     def test_combine_two(self) -> None:
         dates = [date(2020, 1, i) for i in range(1, 11)]
-        fd1 = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates,
-            "Mkt": np.random.randn(10),
-        }))
-        fd2 = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates,
-            "SMB": np.random.randn(10),
-        }))
+        fd1 = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates,
+                    "Mkt": np.random.randn(10),
+                }
+            )
+        )
+        fd2 = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates,
+                    "SMB": np.random.randn(10),
+                }
+            )
+        )
         combined = FactorData.combine(fd1, fd2)
         assert combined.n_factors == 2
         assert set(combined.factor_names) == {"Mkt", "SMB"}
@@ -110,47 +122,77 @@ class TestFactorDataCombine:
     def test_combine_partial_overlap(self) -> None:
         dates1 = [date(2020, 1, i) for i in range(1, 11)]
         dates2 = [date(2020, 1, i) for i in range(5, 15)]
-        fd1 = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates1,
-            "A": np.random.randn(10),
-        }))
-        fd2 = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates2,
-            "B": np.random.randn(10),
-        }))
+        fd1 = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates1,
+                    "A": np.random.randn(10),
+                }
+            )
+        )
+        fd2 = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates2,
+                    "B": np.random.randn(10),
+                }
+            )
+        )
         combined = FactorData.combine(fd1, fd2)
         assert combined.n_periods == 6  # overlap: Jan 5-10
 
     def test_combine_duplicate_names_raises(self) -> None:
         dates = [date(2020, 1, i) for i in range(1, 6)]
-        fd1 = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates, "A": np.random.randn(5),
-        }))
-        fd2 = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates, "A": np.random.randn(5),
-        }))
+        fd1 = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates,
+                    "A": np.random.randn(5),
+                }
+            )
+        )
+        fd2 = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates,
+                    "A": np.random.randn(5),
+                }
+            )
+        )
         with pytest.raises(ValueError, match="Duplicate"):
             FactorData.combine(fd1, fd2)
 
     def test_combine_needs_two(self) -> None:
         dates = [date(2020, 1, i) for i in range(1, 6)]
-        fd = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates, "A": np.random.randn(5),
-        }))
+        fd = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates,
+                    "A": np.random.randn(5),
+                }
+            )
+        )
         with pytest.raises(ValueError, match="at least 2"):
             FactorData.combine(fd)
 
     def test_combine_preserves_rf(self) -> None:
         dates = [date(2020, 1, i) for i in range(1, 11)]
-        df1 = pl.DataFrame({
-            "timestamp": dates,
-            "Mkt": np.random.randn(10),
-            "RF": np.full(10, 0.0001),
-        })
+        df1 = pl.DataFrame(
+            {
+                "timestamp": dates,
+                "Mkt": np.random.randn(10),
+                "RF": np.full(10, 0.0001),
+            }
+        )
         fd1 = FactorData.from_dataframe(df1, rf_column="RF")
-        fd2 = FactorData.from_dataframe(pl.DataFrame({
-            "timestamp": dates, "SMB": np.random.randn(10),
-        }))
+        fd2 = FactorData.from_dataframe(
+            pl.DataFrame(
+                {
+                    "timestamp": dates,
+                    "SMB": np.random.randn(10),
+                }
+            )
+        )
         combined = FactorData.combine(fd1, fd2)
         assert combined.rf_rate is not None
 
@@ -177,13 +219,9 @@ class TestFactorDataFactories:
             pass
 
     def test_from_dataframe_source_label(self, sample_factor_df: pl.DataFrame) -> None:
-        fd = FactorData.from_dataframe(
-            sample_factor_df, rf_column="RF", source="test_source"
-        )
+        fd = FactorData.from_dataframe(sample_factor_df, rf_column="RF", source="test_source")
         assert fd.source == "test_source"
 
     def test_from_dataframe_frequency(self, sample_factor_df: pl.DataFrame) -> None:
-        fd = FactorData.from_dataframe(
-            sample_factor_df, rf_column="RF", frequency="monthly"
-        )
+        fd = FactorData.from_dataframe(sample_factor_df, rf_column="RF", frequency="monthly")
         assert fd.frequency == "monthly"

@@ -32,15 +32,17 @@ from ml4t.diagnostic.visualization.factor import (
 def factor_data() -> FactorData:
     np.random.seed(42)
     T = 500
-    dates = pl.date_range(
-        date(2018, 1, 1), date(2019, 12, 31), eager=True
-    )[:T]
-    return FactorData.from_dataframe(pl.DataFrame({
-        "timestamp": dates,
-        "Mkt-RF": np.random.normal(0.0004, 0.01, T),
-        "SMB": np.random.normal(0.0001, 0.005, T),
-        "HML": np.random.normal(0.0001, 0.005, T),
-    }))
+    dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
+    return FactorData.from_dataframe(
+        pl.DataFrame(
+            {
+                "timestamp": dates,
+                "Mkt-RF": np.random.normal(0.0004, 0.01, T),
+                "SMB": np.random.normal(0.0001, 0.005, T),
+                "HML": np.random.normal(0.0001, 0.005, T),
+            }
+        )
+    )
 
 
 @pytest.fixture
@@ -166,9 +168,7 @@ class TestDiagnosticPlots:
 
 
 class TestGenerateReport:
-    def test_generate_report(
-        self, returns: np.ndarray, factor_data: FactorData
-    ) -> None:
+    def test_generate_report(self, returns: np.ndarray, factor_data: FactorData) -> None:
         fa = FactorAnalysis(returns, factor_data)
         report = fa.generate_report()
         assert isinstance(report, dict)

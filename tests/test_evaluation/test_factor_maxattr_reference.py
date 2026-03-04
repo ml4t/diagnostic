@@ -45,9 +45,7 @@ class TestMaximalAttributionHandComputed:
         returns = 0.0001 + beta1 * f1 + beta2 * f2 + eps
 
         dates = pl.date_range(date(2010, 1, 1), date(2049, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2}))
 
         result = compute_maximal_attribution(returns, fd, factors_of_interest=["F1"])
 
@@ -79,9 +77,7 @@ class TestMaximalAttributionHandComputed:
         returns = beta1 * f1 + beta2 * f2 + eps
 
         dates = pl.date_range(date(2010, 1, 1), date(2049, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2}))
 
         result = compute_maximal_attribution(returns, fd, factors_of_interest=["F1"])
 
@@ -106,9 +102,7 @@ class TestMaximalAttributionHandComputed:
         returns = 0.8 * f1 + 0.3 * f2 + eps
 
         dates = pl.date_range(date(2010, 1, 1), date(2029, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2}))
 
         result = compute_maximal_attribution(returns, fd, factors_of_interest=["F1"])
 
@@ -126,9 +120,7 @@ class TestMaximalAttributionHandComputed:
         returns = 1.0 * f1 + 0.5 * f2 + eps
 
         dates = pl.date_range(date(2010, 1, 1), date(2029, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2}))
 
         model = compute_factor_model(returns, fd)
         result = compute_maximal_attribution(
@@ -154,9 +146,7 @@ class TestMaximalAttributionHandComputed:
         returns = 1.0 * f1 + 0.3 * f2 + eps
 
         dates = pl.date_range(date(2010, 1, 1), date(2029, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "F1": f1, "F2": f2}))
 
         r1 = compute_maximal_attribution(returns, fd, factors_of_interest=["F1"])
         r2 = compute_maximal_attribution(returns, fd, factors_of_interest=["F2"])

@@ -12,7 +12,9 @@ from ml4t.diagnostic.evaluation.factor.rolling_model import compute_rolling_expo
 
 
 @pytest.fixture
-def synthetic_data(synthetic_2f_data: tuple[np.ndarray, FactorData]) -> tuple[np.ndarray, FactorData]:
+def synthetic_data(
+    synthetic_2f_data: tuple[np.ndarray, FactorData],
+) -> tuple[np.ndarray, FactorData]:
     """Alias for shared 2-factor fixture."""
     return synthetic_2f_data
 
@@ -62,9 +64,7 @@ class TestRollingExposures:
 
     def test_expanding_window(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
-        result = compute_rolling_exposures(
-            returns, fd, window=63, expanding=True, min_periods=30
-        )
+        result = compute_rolling_exposures(returns, fd, window=63, expanding=True, min_periods=30)
         assert len(result.timestamps) > 0
 
     def test_vif_computation(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
@@ -76,7 +76,9 @@ class TestRollingExposures:
             assert f in result.stability.vif
             assert result.stability.vif[f] >= 1.0  # VIF >= 1 by definition
 
-    def test_insufficient_window_raises(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
+    def test_insufficient_window_raises(
+        self, synthetic_data: tuple[np.ndarray, FactorData]
+    ) -> None:
         returns, fd = synthetic_data
         with pytest.raises(ValueError, match="Not enough data"):
             compute_rolling_exposures(returns[:10], fd, window=100)

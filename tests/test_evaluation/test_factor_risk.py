@@ -13,7 +13,9 @@ from ml4t.diagnostic.evaluation.factor.static_model import compute_factor_model
 
 
 @pytest.fixture
-def synthetic_data(synthetic_2f_data: tuple[np.ndarray, FactorData]) -> tuple[np.ndarray, FactorData]:
+def synthetic_data(
+    synthetic_2f_data: tuple[np.ndarray, FactorData],
+) -> tuple[np.ndarray, FactorData]:
     """Alias for shared 2-factor fixture."""
     return synthetic_2f_data
 
@@ -35,13 +37,12 @@ class TestRiskAttribution:
         result = compute_risk_attribution(returns, fd)
 
         # Factor + idiosyncratic should equal total
-        assert abs(
-            result.factor_variance + result.idiosyncratic_variance - result.total_variance
-        ) < 1e-8
+        assert (
+            abs(result.factor_variance + result.idiosyncratic_variance - result.total_variance)
+            < 1e-8
+        )
 
-    def test_euler_decomposition_sums(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_euler_decomposition_sums(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         """Euler contributions should sum to factor variance."""
         returns, fd = synthetic_data
         result = compute_risk_attribution(returns, fd)
@@ -49,9 +50,7 @@ class TestRiskAttribution:
         total_contrib = sum(result.factor_contributions.values())
         assert abs(total_contrib - result.factor_variance) < 1e-8
 
-    def test_percentages_sum(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_percentages_sum(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
         result = compute_risk_attribution(returns, fd)
 
@@ -81,9 +80,7 @@ class TestRiskAttribution:
         for r in [result_none, result_lw, result_oas]:
             assert r.total_variance > 0
 
-    def test_with_precomputed_model(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_with_precomputed_model(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
         model = compute_factor_model(returns, fd)
         result = compute_risk_attribution(returns, fd, model_result=model)
@@ -117,14 +114,9 @@ class TestRiskAttribution:
         assert "Mkt-RF" in s
         assert "MCTR" in s
 
-    def test_mkt_dominates_risk(
-        self, synthetic_data: tuple[np.ndarray, FactorData]
-    ) -> None:
+    def test_mkt_dominates_risk(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         """With beta_mkt=1.0 and beta_smb=0.3, Mkt should dominate risk."""
         returns, fd = synthetic_data
         result = compute_risk_attribution(returns, fd)
 
-        assert (
-            result.factor_contributions_pct["Mkt-RF"]
-            > result.factor_contributions_pct["SMB"]
-        )
+        assert result.factor_contributions_pct["Mkt-RF"] > result.factor_contributions_pct["SMB"]

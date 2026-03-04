@@ -30,12 +30,14 @@ def rf_factor_data() -> tuple[np.ndarray, FactorData]:
     returns = 0.0003 + 1.0 * mkt + 0.3 * smb + eps + rf  # total returns (not excess)
 
     dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
-    factor_df = pl.DataFrame({
-        "timestamp": dates,
-        "Mkt-RF": mkt,
-        "SMB": smb,
-        "RF": rf,
-    })
+    factor_df = pl.DataFrame(
+        {
+            "timestamp": dates,
+            "Mkt-RF": mkt,
+            "SMB": smb,
+            "RF": rf,
+        }
+    )
     fd = FactorData.from_dataframe(factor_df, rf_column="RF")
     return returns, fd
 
@@ -153,11 +155,13 @@ class TestNaNAlignment:
         returns[150] = np.nan
 
         dates = pl.date_range(date(2018, 1, 1), date(2019, 12, 31), eager=True)[:T]
-        factor_df = pl.DataFrame({
-            "timestamp": dates,
-            "Mkt-RF": mkt,
-            "SMB": smb,
-        })
+        factor_df = pl.DataFrame(
+            {
+                "timestamp": dates,
+                "Mkt-RF": mkt,
+                "SMB": smb,
+            }
+        )
         fd = FactorData.from_dataframe(factor_df)
         return returns, fd
 
@@ -209,23 +213,29 @@ class TestUtf8Timestamps:
 
     def test_utf8_timestamps_coerced_to_date(self):
         """FactorData should accept string timestamps and coerce to Date."""
-        df = pl.DataFrame({
-            "timestamp": ["2020-01-01", "2020-01-02", "2020-01-03"],
-            "Mkt-RF": [0.01, -0.005, 0.003],
-        })
+        df = pl.DataFrame(
+            {
+                "timestamp": ["2020-01-01", "2020-01-02", "2020-01-03"],
+                "Mkt-RF": [0.01, -0.005, 0.003],
+            }
+        )
         fd = FactorData.from_dataframe(df)
         assert fd.returns["timestamp"].dtype == pl.Date
 
     def test_utf8_combine_with_date(self):
         """Combining string-timestamp and Date-timestamp FactorData should work."""
-        df1 = pl.DataFrame({
-            "timestamp": [date(2020, 1, 1), date(2020, 1, 2), date(2020, 1, 3)],
-            "Mkt-RF": [0.01, -0.005, 0.003],
-        })
-        df2 = pl.DataFrame({
-            "timestamp": ["2020-01-01", "2020-01-02", "2020-01-03"],
-            "SMB": [0.002, 0.001, -0.001],
-        })
+        df1 = pl.DataFrame(
+            {
+                "timestamp": [date(2020, 1, 1), date(2020, 1, 2), date(2020, 1, 3)],
+                "Mkt-RF": [0.01, -0.005, 0.003],
+            }
+        )
+        df2 = pl.DataFrame(
+            {
+                "timestamp": ["2020-01-01", "2020-01-02", "2020-01-03"],
+                "SMB": [0.002, 0.001, -0.001],
+            }
+        )
         fd1 = FactorData.from_dataframe(df1)
         fd2 = FactorData.from_dataframe(df2)
 

@@ -34,10 +34,7 @@ class TestFeatureDiagnosticsFailureDetection:
 
         # Should flag the failure, not report clean
         assert "ALL_MODULES_FAILED" in result.flags
-        assert not any(
-            "passes all diagnostic checks" in r.lower()
-            for r in result.recommendations
-        )
+        assert not any("passes all diagnostic checks" in r.lower() for r in result.recommendations)
         assert any("failed" in r.lower() for r in result.recommendations)
 
     def test_normal_data_still_passes(self):
@@ -151,7 +148,8 @@ class TestTimezoneAlignment:
             warnings.simplefilter("always")
             aligner = TimestampAligner.from_datetime_index(tz_timestamps)
             deprecation_msgs = [
-                x for x in w
+                x
+                for x in w
                 if "timezone" in str(x.message).lower() and "deprecated" in str(x.message).lower()
             ]
             assert len(deprecation_msgs) == 0, f"Got deprecation warning: {deprecation_msgs}"

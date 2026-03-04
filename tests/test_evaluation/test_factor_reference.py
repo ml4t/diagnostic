@@ -31,9 +31,7 @@ def reference_data() -> tuple[np.ndarray, np.ndarray, FactorData]:
 
     dates = pl.date_range(date(2016, 1, 1), date(2019, 12, 31), eager=True)[:T]
     X = np.column_stack([mkt, smb, hml])
-    factor_df = pl.DataFrame(
-        {"timestamp": dates, "Mkt-RF": mkt, "SMB": smb, "HML": hml}
-    )
+    factor_df = pl.DataFrame({"timestamp": dates, "Mkt-RF": mkt, "SMB": smb, "HML": hml})
     fd = FactorData.from_dataframe(factor_df)
     return returns, X, fd
 
@@ -109,9 +107,7 @@ class TestVsStatsmodelsOLS:
         our = compute_factor_model(returns, fd, hac=True, max_lags=5)
 
         X_const = sm.add_constant(X)
-        sm_result = sm.OLS(returns, X_const).fit(
-            cov_type="HAC", cov_kwds={"maxlags": 5}
-        )
+        sm_result = sm.OLS(returns, X_const).fit(cov_type="HAC", cov_kwds={"maxlags": 5})
 
         assert abs(our.alpha_se - sm_result.bse[0]) < 1e-10
         for i, f in enumerate(fd.factor_names):
@@ -150,9 +146,7 @@ class TestEdgeCases:
         mkt = np.random.normal(0, 0.01, T)
         returns = 0.8 * mkt + np.random.normal(0, 0.005, T)
         dates = pl.date_range(date(2020, 1, 1), date(2020, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "Mkt": mkt})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "Mkt": mkt}))
         result = compute_factor_model(returns, fd)
         assert abs(result.betas["Mkt"] - 0.8) < 0.1
 
@@ -187,9 +181,7 @@ class TestEdgeCases:
         returns[50] = np.nan
 
         dates = pl.date_range(date(2020, 1, 1), date(2020, 12, 31), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "Mkt": mkt})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "Mkt": mkt}))
         result = compute_factor_model(returns, fd)
         assert result.n_obs == T - 2  # 2 NaN rows dropped
 
@@ -205,9 +197,7 @@ class TestEdgeCases:
         returns = np.zeros(T)
 
         dates = pl.date_range(date(2020, 1, 1), date(2020, 6, 30), eager=True)[:T]
-        fd = FactorData.from_dataframe(
-            pl.DataFrame({"timestamp": dates, "Mkt": mkt})
-        )
+        fd = FactorData.from_dataframe(pl.DataFrame({"timestamp": dates, "Mkt": mkt}))
         result = compute_factor_model(returns, fd)
         assert np.isnan(result.r_squared) or result.r_squared < 0.01
         assert abs(result.betas["Mkt"]) < 1e-10

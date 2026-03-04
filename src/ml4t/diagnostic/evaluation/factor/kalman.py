@@ -343,9 +343,7 @@ def _optimize_noise(y: np.ndarray, X: np.ndarray, K: int) -> tuple[float, float]
             return _neg_loglik_numpy(params, y, X, K)
 
     x0 = np.array([np.log(var_y * 0.5), np.log(var_y * 0.005)])
-    result = minimize(
-        neg_loglik, x0, method="Nelder-Mead", options={"maxiter": 500, "xatol": 1e-4}
-    )
+    result = minimize(neg_loglik, x0, method="Nelder-Mead", options={"maxiter": 500, "xatol": 1e-4})
 
     if not result.success:
         warnings.warn(
@@ -396,9 +394,7 @@ def _make_neg_loglik_jit():  # type: ignore[no-untyped-def]
     """Create JIT-compiled negative log-likelihood function."""
 
     @njit(cache=True)
-    def _neg_loglik_inner(
-        params: np.ndarray, y: np.ndarray, X: np.ndarray, K: int
-    ) -> float:
+    def _neg_loglik_inner(params: np.ndarray, y: np.ndarray, X: np.ndarray, K: int) -> float:
         obs_noise = np.exp(params[0])
         state_noise = np.exp(params[1])
 
@@ -491,9 +487,7 @@ def _compute_kalman_stability(
 
         beta_std[f] = float(np.std(valid))
         full_sign = np.sign(np.mean(valid))
-        sign_consistency[f] = (
-            float(np.mean(np.sign(valid) == full_sign)) if full_sign != 0 else 0.5
-        )
+        sign_consistency[f] = float(np.mean(np.sign(valid) == full_sign)) if full_sign != 0 else 0.5
         diffs = np.abs(np.diff(valid))
         max_abs_change[f] = float(np.max(diffs)) if len(diffs) > 0 else 0.0
 

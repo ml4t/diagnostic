@@ -305,9 +305,7 @@ class FactorData:
                         "_rf": rf_source.rf_rate,
                     }
                 )
-                joined = result_df.select("timestamp").join(
-                    rf_df, on="timestamp", how="inner"
-                )
+                joined = result_df.select("timestamp").join(rf_df, on="timestamp", how="inner")
                 rf_rate = joined["_rf"] if "_rf" in joined.columns else None
             else:
                 rf_rate = None

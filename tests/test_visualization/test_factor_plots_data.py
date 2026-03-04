@@ -98,8 +98,10 @@ class TestRollingBetasDataCorrectness:
             valid = np.isfinite(expected)
             plotted = np.array(trace.y)
             np.testing.assert_allclose(
-                plotted[valid], expected[valid], atol=1e-10,
-                err_msg=f"Rolling betas for {f} don't match"
+                plotted[valid],
+                expected[valid],
+                atol=1e-10,
+                err_msg=f"Rolling betas for {f} don't match",
             )
 
 
