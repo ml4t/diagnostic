@@ -79,6 +79,16 @@ class TimestampAligner:
             ValueError: If timestamps array is empty
         """
         # Convert to numpy datetime64[ns] if needed
+        # Handle tz-aware timestamps: strip timezone before conversion to avoid
+        # numpy deprecation warning (will become error in future numpy versions)
+        import pandas as pd
+
+        if hasattr(timestamps, "dtype") and hasattr(timestamps.dtype, "tz") and timestamps.dtype.tz is not None:
+            timestamps = pd.DatetimeIndex(timestamps).tz_localize(None)
+        elif isinstance(timestamps, (list, tuple)) and len(timestamps) > 0:
+            first = timestamps[0]
+            if hasattr(first, "tzinfo") and first.tzinfo is not None:
+                timestamps = [t.replace(tzinfo=None) for t in timestamps]
         ts_array = np.asarray(timestamps, dtype="datetime64[ns]")
 
         if len(ts_array) == 0:
@@ -126,6 +136,10 @@ class TimestampAligner:
         Returns:
             AlignmentResult with index (or None), exact flag, and distance
         """
+        # Strip timezone for consistent matching (aligner stores tz-naive)
+        if hasattr(target, "tzinfo") and target.tzinfo is not None:
+            target = target.replace(tzinfo=None)
+
         # Try exact match first (O(1))
         if target in self.index_by_ts:
             return AlignmentResult(index=self.index_by_ts[target], exact=True, distance_seconds=0.0)

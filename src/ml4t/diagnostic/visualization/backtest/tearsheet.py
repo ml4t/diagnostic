@@ -17,6 +17,7 @@ This is the primary interface users should use:
 
 from __future__ import annotations
 
+import html as html_mod
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -121,6 +122,16 @@ def generate_backtest_tearsheet(
     ...     n_trials=100,  # For DSR
     ... )
     """
+    if not interactive:
+        import warnings
+
+        warnings.warn(
+            "interactive=False has no effect; all output is interactive Plotly HTML. "
+            "This parameter will be removed in a future version.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     # Get template
     tmpl = get_template(template)
 
@@ -156,8 +167,8 @@ def generate_backtest_tearsheet(
 
     html = HTML_TEMPLATE.format(
         theme=theme if theme == "dark" else "light",
-        title=title,
-        subtitle=subtitle or f"Template: {template}",
+        title=html_mod.escape(title),
+        subtitle=html_mod.escape(subtitle or f"Template: {template}"),
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         css=css,
         sections_html=sections_html,
@@ -265,11 +276,12 @@ def _generate_section(
 
     except Exception as e:
         # Log error but don't fail the whole report
+        safe_error = html_mod.escape(str(e))
         return f"""
         <section class="section">
             <h2 class="section-title">{section_title}</h2>
             <div class="chart-container">
-                <p style="color: #999;">Section unavailable: {str(e)}</p>
+                <p style="color: #999;">Section unavailable: {safe_error}</p>
             </div>
         </section>
         """
@@ -705,6 +717,16 @@ class BacktestTearsheet:
         str
             HTML string of the complete tearsheet
         """
+        if not interactive:
+            import warnings
+
+            warnings.warn(
+                "interactive=False has no effect; all output is interactive Plotly HTML. "
+                "This parameter will be removed in a future version.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         # Use stored template directly (not recreated from name) to preserve
         # enable_section/disable_section customizations
         sections_html = _generate_sections(
@@ -731,8 +753,8 @@ class BacktestTearsheet:
 
         html = HTML_TEMPLATE.format(
             theme=self.theme if self.theme == "dark" else "light",
-            title=self.title,
-            subtitle=self.subtitle or f"Template: {self.template.name}",
+            title=html_mod.escape(self.title),
+            subtitle=html_mod.escape(self.subtitle or f"Template: {self.template.name}"),
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             css=css,
             sections_html=sections_html,
