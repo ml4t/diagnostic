@@ -93,6 +93,11 @@ class TearsheetTemplate:
                 TearsheetSection("mfe_mae", "Exit Efficiency", priority=10, enabled=False),
                 TearsheetSection("trade_waterfall", "Trade Details", priority=11, enabled=False),
                 TearsheetSection("dsr", "Statistical Tests", priority=12, enabled=False),
+                # Factor (disabled by default, enabled when factor_data passed)
+                TearsheetSection("factor_exposure", "Factor Exposures", priority=13, enabled=False),
+                TearsheetSection(
+                    "factor_attribution", "Factor Attribution", priority=14, enabled=False
+                ),
             ],
         )
 
@@ -126,6 +131,8 @@ class TearsheetTemplate:
                 # Disabled by default
                 TearsheetSection("mfe_mae", "Exit Efficiency", priority=10, enabled=False),
                 TearsheetSection("cost_waterfall", "Cost Attribution", priority=11, enabled=False),
+                # Factor (disabled by default, enabled when factor_data passed)
+                TearsheetSection("factor_risk", "Factor Risk", priority=9, enabled=False),
             ],
         )
 
@@ -167,6 +174,14 @@ class TearsheetTemplate:
                 TearsheetSection("tail_risk", "Tail Risk", priority=51),
                 # SHAP (optional, requires model)
                 TearsheetSection("shap_errors", "SHAP Error Patterns", priority=60, enabled=False),
+                # Factor analysis (optional, requires factor_data)
+                TearsheetSection("factor_exposure", "Factor Exposures", priority=70, enabled=False),
+                TearsheetSection(
+                    "factor_attribution", "Factor Attribution", priority=71, enabled=False
+                ),
+                TearsheetSection(
+                    "factor_risk", "Factor Risk Decomposition", priority=72, enabled=False
+                ),
             ],
         )
 

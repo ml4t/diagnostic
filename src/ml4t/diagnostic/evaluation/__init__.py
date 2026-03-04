@@ -20,6 +20,20 @@ from ml4t.diagnostic.results.multi_signal_results import (  # noqa: F401
 from . import drift, metrics, stats  # noqa: F401 (module re-export)
 from .barrier_analysis import BarrierAnalysis  # noqa: F401
 from .event_analysis import EventStudyAnalysis  # noqa: F401
+
+# Factor exposure and attribution
+from .factor import (  # noqa: F401
+    AttributionResult,
+    FactorAnalysis,
+    FactorData,
+    FactorModelResult,
+    RiskAttributionResult,
+    RollingExposureResult,
+    compute_factor_model,
+    compute_return_attribution,
+    compute_risk_attribution,
+    compute_rolling_exposures,
+)
 from .feature_diagnostics import (  # noqa: F401
     FeatureDiagnostics,
     FeatureDiagnosticsAnalysisResult,
@@ -155,4 +169,15 @@ __all__: list[str] = [
     "run_diagnostics_dashboard",
     # Utilities
     "SmartCache",
+    # Factor exposure and attribution
+    "FactorAnalysis",
+    "FactorData",
+    "FactorModelResult",
+    "RollingExposureResult",
+    "AttributionResult",
+    "RiskAttributionResult",
+    "compute_factor_model",
+    "compute_rolling_exposures",
+    "compute_return_attribution",
+    "compute_risk_attribution",
 ]

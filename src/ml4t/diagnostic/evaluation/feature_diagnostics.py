@@ -355,6 +355,16 @@ class FeatureDiagnosticsAnalysisResult:
 
         return pd.DataFrame(rows)
 
+    @property
+    def _all_modules_failed(self) -> bool:
+        """True when every enabled module result is None (all analyses failed)."""
+        return (
+            self.stationarity is None
+            and self.autocorrelation is None
+            and self.volatility is None
+            and self.distribution is None
+        )
+
     def _generate_recommendations(self) -> list[str]:
         """Generate actionable recommendations based on diagnostic results.
 
@@ -428,9 +438,17 @@ class FeatureDiagnosticsAnalysisResult:
 
         # General recommendations
         if not recommendations:
-            recommendations.append(
-                "Feature passes all diagnostic checks. Safe to use in modeling without transformation."
-            )
+            if self._all_modules_failed:
+                recommendations.append(
+                    "All diagnostic modules failed to produce results. "
+                    "Feature data may be pathological (e.g., all NaN/Inf). "
+                    "Inspect the input data before using this feature."
+                )
+            else:
+                recommendations.append(
+                    "Feature passes all diagnostic checks. "
+                    "Safe to use in modeling without transformation."
+                )
 
         return recommendations
 
@@ -507,6 +525,10 @@ class FeatureDiagnosticsAnalysisResult:
             List of warning flag strings
         """
         flags = []
+
+        if self._all_modules_failed:
+            flags.append("ALL_MODULES_FAILED")
+            return flags
 
         # Stationarity flags
         if self.stationarity is not None:

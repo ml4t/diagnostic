@@ -636,7 +636,7 @@ class SignalDashboard(BaseDashboard):
                 <td>{top_to:.1%}</td>
                 <td>{bottom_to:.1%}</td>
                 <td>{mean_ac:.4f}</td>
-                <td>{f"{half_life:.1f}" if half_life else "N/A"}</td>
+                <td>{f"{half_life:.1f}" if half_life is not None else "N/A"}</td>
             </tr>
             """)
 

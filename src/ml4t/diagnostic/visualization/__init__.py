@@ -77,6 +77,19 @@ from ml4t.diagnostic.visualization.data_extraction import (
     extract_importance_viz_data,
     extract_interaction_viz_data,
 )
+
+# Factor analysis plots
+from ml4t.diagnostic.visualization.factor import (  # noqa: F401
+    plot_factor_betas_bar,
+    plot_factor_correlation_heatmap,
+    plot_residual_diagnostics,
+    plot_return_attribution_area,
+    plot_return_attribution_waterfall,
+    plot_risk_attribution_bar,
+    plot_risk_attribution_pie,
+    plot_rolling_betas,
+    plot_vif_bar,
+)
 from ml4t.diagnostic.visualization.feature_plots import (
     # Feature importance visualizations
     plot_importance_bar,
@@ -226,4 +239,14 @@ __all__ = [
     "create_portfolio_dashboard",
     # Cross-validation fold visualization
     "plot_cv_folds",
+    # Factor analysis plots
+    "plot_factor_betas_bar",
+    "plot_rolling_betas",
+    "plot_return_attribution_waterfall",
+    "plot_return_attribution_area",
+    "plot_risk_attribution_pie",
+    "plot_risk_attribution_bar",
+    "plot_residual_diagnostics",
+    "plot_factor_correlation_heatmap",
+    "plot_vif_bar",
 ]

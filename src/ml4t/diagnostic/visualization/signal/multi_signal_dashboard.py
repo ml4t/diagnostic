@@ -18,6 +18,7 @@ Few, S. (2012). "Show Me the Numbers"
 
 from __future__ import annotations
 
+import html as html_mod
 from typing import TYPE_CHECKING, Any, Literal
 
 import polars as pl
@@ -482,7 +483,7 @@ class MultiSignalDashboard(BaseDashboard):
 
                 # Format based on column type
                 if col == "signal_name":
-                    cell_html = f"<td><strong>{value}</strong></td>"
+                    cell_html = f"<td><strong>{html_mod.escape(str(value))}</strong></td>"
                 elif "significant" in col:
                     badge_class = "badge-high" if value else "badge-low"
                     badge_text = "Yes" if value else "No"
@@ -490,7 +491,7 @@ class MultiSignalDashboard(BaseDashboard):
                 elif col == "ic_p_value" or isinstance(value, float):
                     cell_html = f"<td>{value:.4f}</td>"
                 else:
-                    cell_html = f"<td>{value}</td>"
+                    cell_html = f"<td>{html_mod.escape(str(value))}</td>"
 
                 cells.append(cell_html)
 
@@ -541,7 +542,7 @@ class MultiSignalDashboard(BaseDashboard):
                 value = signal_df[col][0]
 
                 if col == "signal_name":
-                    cell_html = f"<td><strong>{value}</strong></td>"
+                    cell_html = f"<td><strong>{html_mod.escape(str(value))}</strong></td>"
                 elif "significant" in col:
                     badge_class = "badge-high" if value else "badge-low"
                     badge_text = "Yes" if value else "No"
@@ -549,7 +550,7 @@ class MultiSignalDashboard(BaseDashboard):
                 elif isinstance(value, float):
                     cell_html = f"<td>{value:.4f}</td>"
                 else:
-                    cell_html = f"<td>{value}</td>"
+                    cell_html = f"<td>{html_mod.escape(str(value))}</td>"
 
                 cells.append(cell_html)
 
@@ -579,7 +580,7 @@ class MultiSignalDashboard(BaseDashboard):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{self.title}</title>
+    <title>{html_mod.escape(self.title)}</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     {self._get_base_styles()}
 </head>
@@ -596,7 +597,7 @@ class MultiSignalDashboard(BaseDashboard):
         """Build dashboard header HTML."""
         return f"""
         <div class="dashboard-header">
-            <h1>{self.title}</h1>
+            <h1>{html_mod.escape(self.title)}</h1>
             <p class="timestamp">Generated: {self.created_at.strftime("%Y-%m-%d %H:%M:%S")}</p>
         </div>
         """
@@ -612,7 +613,7 @@ class MultiSignalDashboard(BaseDashboard):
             tabs_html.append(
                 f'<button class="tab-button {active_class}" '
                 f"onclick=\"switchTab(event, 'section-{i}')\">"
-                f"{section.title}</button>"
+                f"{html_mod.escape(section.title)}</button>"
             )
 
         return f"""
@@ -627,10 +628,12 @@ class MultiSignalDashboard(BaseDashboard):
 
         for i, section in enumerate(self.sections):
             active_class = "active" if i == 0 else ""
+            safe_title = html_mod.escape(section.title)
+            safe_desc = html_mod.escape(section.description)
             sections_html.append(f"""
             <div id="section-{i}" class="tab-content {active_class}">
-                <h2>{section.title}</h2>
-                <div class="section-description">{section.description}</div>
+                <h2>{safe_title}</h2>
+                <div class="section-description">{safe_desc}</div>
                 {section.content}
             </div>
             """)

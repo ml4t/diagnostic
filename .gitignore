@@ -136,3 +136,6 @@ test_output.txt
 CLAUDE.md
 repomix.config.json
 repomix-output.xml
+
+# MkDocs build output
+site/

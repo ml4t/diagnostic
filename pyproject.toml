@@ -290,6 +290,8 @@ extend-ignore-names = [
     "F841",  # Unused local variables (common in test setup)
     "F401",  # Unused imports (availability checks)
 ]
+# Factor module uses mathematical notation (T, K, X, Sigma, Omega, etc.)
+"src/ml4t/diagnostic/evaluation/factor/*" = ["N806", "N803"]
 
 # ty - High-performance type checker (Astral)
 # Run: uv run ty check src/
