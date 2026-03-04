@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
     import polars as pl
 
+    from ml4t.diagnostic.evaluation.factor.data import FactorData
     from ml4t.diagnostic.evaluation.trade_shap.models import TradeShapResult
 
 
@@ -50,6 +51,7 @@ def generate_backtest_tearsheet(
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
     shap_result: TradeShapResult | None = None,
+    factor_data: FactorData | None = None,
     interactive: bool = True,
     include_plotlyjs: bool = True,
 ) -> str:
@@ -87,6 +89,9 @@ def generate_backtest_tearsheet(
         Number of trials for DSR calculation
     shap_result : TradeShapResult, optional
         Trade SHAP analysis result for error pattern visualization
+    factor_data : FactorData, optional
+        Factor data for factor exposure/attribution/risk sections.
+        When provided, factor sections are automatically enabled.
     interactive : bool
         Whether charts should be interactive (vs static images)
     include_plotlyjs : bool
@@ -119,6 +124,12 @@ def generate_backtest_tearsheet(
     # Get template
     tmpl = get_template(template)
 
+    # Auto-enable factor sections when factor_data is provided
+    if factor_data is not None:
+        for section in tmpl.sections:
+            if section.name.startswith("factor_"):
+                section.enabled = True
+
     # Generate sections HTML
     sections_html = _generate_sections(
         tmpl,
@@ -129,6 +140,7 @@ def generate_backtest_tearsheet(
         benchmark_returns=benchmark_returns,
         n_trials=n_trials,
         shap_result=shap_result,
+        factor_data=factor_data,
         theme=theme,
         interactive=interactive,
     )
@@ -169,10 +181,19 @@ def _generate_sections(
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
     shap_result: TradeShapResult | None = None,
+    factor_data: FactorData | None = None,
     theme: str = "default",
     interactive: bool = True,
 ) -> str:
     """Generate HTML for all enabled sections."""
+    # Pre-build FactorAnalysis to cache models across factor sections
+    factor_analysis = None
+    if factor_data is not None and returns is not None:
+        from ml4t.diagnostic.evaluation.factor.analysis import FactorAnalysis
+
+        ret_arr = returns if isinstance(returns, np.ndarray) else returns.to_numpy()
+        factor_analysis = FactorAnalysis(ret_arr, factor_data)
+
     sections_html = []
 
     for section in template.get_enabled_sections():
@@ -186,6 +207,8 @@ def _generate_sections(
             benchmark_returns=benchmark_returns,
             n_trials=n_trials,
             shap_result=shap_result,
+            factor_data=factor_data,
+            factor_analysis=factor_analysis,
             theme=theme,
             interactive=interactive,
         )
@@ -205,6 +228,8 @@ def _generate_section(
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
     shap_result: TradeShapResult | None = None,
+    factor_data: FactorData | None = None,
+    factor_analysis: Any | None = None,
     theme: str = "default",
     interactive: bool = True,
 ) -> str | None:
@@ -219,17 +244,15 @@ def _generate_section(
             benchmark_returns=benchmark_returns,
             n_trials=n_trials,
             shap_result=shap_result,
+            factor_data=factor_data,
+            factor_analysis=factor_analysis,
             theme=theme,
         )
 
         if fig is None:
             return None
 
-        # Convert figure to HTML
-        if interactive:
-            fig_html = fig.to_html(full_html=False, include_plotlyjs=False)
-        else:
-            fig_html = fig.to_html(full_html=False, include_plotlyjs=False)
+        fig_html = fig.to_html(full_html=False, include_plotlyjs=False)
 
         return f"""
         <section class="section">
@@ -261,6 +284,8 @@ def _create_section_figure(
     benchmark_returns: pl.Series | np.ndarray | None = None,
     n_trials: int | None = None,
     shap_result: TradeShapResult | None = None,
+    factor_data: FactorData | None = None,
+    factor_analysis: Any | None = None,
     theme: str = "default",
 ) -> go.Figure | None:
     """Create the Plotly figure for a specific section."""
@@ -525,6 +550,34 @@ def _create_section_figure(
 
         return plot_shap_error_patterns(shap_result, theme=theme)
 
+    # Factor analysis sections — require factor_analysis (built in _generate_sections)
+    if section_name in ("factor_exposure", "factor_attribution", "factor_risk"):
+        if factor_analysis is None:
+            return None
+
+        if section_name == "factor_exposure":
+            from ml4t.diagnostic.visualization.factor import plot_factor_betas_bar
+
+            return plot_factor_betas_bar(factor_analysis.static_model(), theme=theme)
+
+        if section_name == "factor_attribution":
+            from ml4t.diagnostic.visualization.factor import (
+                plot_return_attribution_waterfall,
+            )
+
+            return plot_return_attribution_waterfall(
+                factor_analysis.attribution(), theme=theme
+            )
+
+        if section_name == "factor_risk":
+            from ml4t.diagnostic.visualization.factor import (
+                plot_risk_attribution_pie,
+            )
+
+            return plot_risk_attribution_pie(
+                factor_analysis.risk_attribution(), theme=theme
+            )
+
     # Unknown section
     return None
 
@@ -563,6 +616,7 @@ class BacktestTearsheet:
         self.benchmark_returns: pl.Series | np.ndarray | None = None
         self.n_trials: int | None = None
         self.shap_result: TradeShapResult | None = None
+        self.factor_data: FactorData | None = None
 
     def add_trades(self, trades: pl.DataFrame) -> BacktestTearsheet:
         """Add trade records to the tearsheet."""
@@ -592,6 +646,17 @@ class BacktestTearsheet:
     def add_shap_result(self, shap_result: TradeShapResult) -> BacktestTearsheet:
         """Add SHAP analysis result for error pattern visualization."""
         self.shap_result = shap_result
+        return self
+
+    def add_factor_data(self, factor_data: FactorData) -> BacktestTearsheet:
+        """Add factor data for factor exposure/attribution/risk sections.
+
+        Automatically enables all factor sections in the template.
+        """
+        self.factor_data = factor_data
+        for section in self.template.sections:
+            if section.name.startswith("factor_"):
+                section.enabled = True
         return self
 
     def set_n_trials(self, n: int) -> BacktestTearsheet:
@@ -651,6 +716,7 @@ class BacktestTearsheet:
             benchmark_returns=self.benchmark_returns,
             n_trials=self.n_trials,
             shap_result=self.shap_result,
+            factor_data=self.factor_data,
             theme=self.theme,
             interactive=interactive,
         )

@@ -46,6 +46,16 @@
     "stats",
     "visualization",
     "run_diagnostics_dashboard",
-    "SmartCache"
+    "SmartCache",
+    "FactorAnalysis",
+    "FactorData",
+    "FactorModelResult",
+    "RollingExposureResult",
+    "AttributionResult",
+    "RiskAttributionResult",
+    "compute_factor_model",
+    "compute_rolling_exposures",
+    "compute_return_attribution",
+    "compute_risk_attribution"
   ]
 }
