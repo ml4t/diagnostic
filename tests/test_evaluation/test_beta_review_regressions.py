@@ -11,7 +11,7 @@ Tests that would have caught:
 from __future__ import annotations
 
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import numpy as np
 import pytest
@@ -139,9 +139,9 @@ class TestTimezoneAlignment:
         from ml4t.diagnostic.evaluation.trade_shap.alignment import TimestampAligner
 
         tz_timestamps = [
-            datetime(2020, 1, 1, 10, 0, tzinfo=timezone.utc),
-            datetime(2020, 1, 1, 11, 0, tzinfo=timezone.utc),
-            datetime(2020, 1, 1, 12, 0, tzinfo=timezone.utc),
+            datetime(2020, 1, 1, 10, 0, tzinfo=UTC),
+            datetime(2020, 1, 1, 11, 0, tzinfo=UTC),
+            datetime(2020, 1, 1, 12, 0, tzinfo=UTC),
         ]
 
         with warnings.catch_warnings(record=True) as w:

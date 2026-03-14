@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - Polars 0.20+
 
 ## Basic Installation

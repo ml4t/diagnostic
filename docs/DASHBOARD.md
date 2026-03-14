@@ -162,7 +162,7 @@ ml4t.diagnostic.evaluation.trade_dashboard/
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - Streamlit >= 1.0.0
 - ml4t-diagnostic (core library)
 - SHAP (for explanations)
