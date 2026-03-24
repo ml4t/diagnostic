@@ -133,6 +133,11 @@ dashboard = [
     "streamlit>=1.28.0",
 ]
 
+# Backtest integration bridge
+backtest = [
+    "ml4t-backtest>=0.1.0b7",
+]
+
 # Experiment tracking integrations
 tracking = [
     "wandb>=0.16.0",
@@ -171,6 +176,7 @@ all = [
     "pypdf>=5.0.0",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
+    "ml4t-backtest>=0.1.0b7",
     "streamlit>=1.28.0",
     "wandb>=0.16.0",
 ]
@@ -200,6 +206,7 @@ dev = [
     "seaborn>=0.12.0",
     "kaleido>=0.2.0",
     "pypdf>=5.0.0",
+    "ml4t-backtest>=0.1.0b7",
     # ML backends needed for SHAP/importance test coverage
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
@@ -354,3 +361,4 @@ deadline = 10000
 [tool.uv.sources]
 ml4t-data = { path = "../ml4t-data", editable = true }
 ml4t-engineer = { path = "../ml4t-engineer", editable = true }
+ml4t-backtest = { path = "../ml4t-backtest", editable = true }
