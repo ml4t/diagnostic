@@ -3,6 +3,8 @@
 *$py.class
 *.bak
 artifacts/
+!src/ml4t/diagnostic/artifacts/
+!src/ml4t/diagnostic/artifacts/*.py
 benchmark_results/
 .benchmarks/
 # Benchmarks
