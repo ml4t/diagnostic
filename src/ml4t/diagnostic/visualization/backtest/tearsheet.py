@@ -1298,10 +1298,10 @@ def _render_overview_snapshot(ctx: _SectionContext) -> go.Figure | None:
         from .profile_sections import plot_overview_snapshot
 
         return plot_overview_snapshot(ctx.profile, theme=ctx.theme)
-    # Fallback: use equity+drawdown from returns when no profile
+    # Fallback: use equity curve from returns when no profile
     if ctx.returns is None:
         return None
-    return _render_portfolio_section(ctx, "drawdowns")
+    return _render_portfolio_section(ctx, "equity_curve")
 
 
 def _render_activity_overview(ctx: _SectionContext) -> go.Figure | None:

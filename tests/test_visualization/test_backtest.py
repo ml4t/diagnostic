@@ -284,7 +284,7 @@ class TestExecutiveSummary:
         assert any("Quote-aware execution audit" in message for message in messages)
 
     def test_create_key_metrics_table_html_with_benchmark(self, sample_metrics):
-        """Test HTML metrics table includes benchmark comparison columns."""
+        """Test HTML metrics table renders dense grid with available metrics."""
         from ml4t.diagnostic.visualization.backtest import create_key_metrics_table_html
 
         html = create_key_metrics_table_html(
@@ -293,13 +293,12 @@ class TestExecutiveSummary:
             benchmark_label="SPY",
         )
 
-        assert "metrics-table" in html
-        assert "SPY" in html
+        # Dense grid layout — no table elements, uses flexbox
+        assert "display:flex" in html
         assert "Sharpe Ratio" in html
-        assert "Spread = Strategy - SPY" in html
+        # No subjective labels
         assert "Better" not in html
         assert "Worse" not in html
-        assert 'data-label="Strategy"' in html
         assert "Favorable" not in html
 
     def test_create_key_metrics_table_html_tolerates_non_numeric_benchmark_values(
@@ -315,9 +314,8 @@ class TestExecutiveSummary:
             benchmark_label="SPY",
         )
 
-        assert "metrics-table" in html
+        assert "display:flex" in html
         assert "Sharpe Ratio" in html
-        assert "SPY" in html
 
 
 # =============================================================================

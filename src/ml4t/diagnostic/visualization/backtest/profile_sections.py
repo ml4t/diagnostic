@@ -137,19 +137,12 @@ def plot_activity_overview(
 
 
 def plot_overview_snapshot(profile: BacktestProfile, theme: str | None = None) -> go.Figure:
-    """Plot a full-width performance snapshot for the overview workspace."""
+    """Plot equity curve (cumulative returns) for the overview workspace."""
     theme = validate_theme(theme)
     equity = profile.equity_df
     theme_config = get_theme_config(theme)
 
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        row_heights=[0.62, 0.38],
-        subplot_titles=("Cumulative Return", "Drawdown"),
-    )
+    fig = go.Figure()
 
     if not equity.is_empty():
         timestamps = equity["timestamp"].to_list()
@@ -159,35 +152,21 @@ def plot_overview_snapshot(profile: BacktestProfile, theme: str | None = None) -
                 y=equity["cumulative_return"].to_list(),
                 mode="lines",
                 name="Strategy",
-                line={"width": 2.5},
+                line={"color": theme_config["colorway"][0], "width": 2.5},
+                hovertemplate="Date: %{x}<br>Return: %{y:.2%}<extra></extra>",
             ),
-            row=1,
-            col=1,
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=timestamps,
-                y=equity["drawdown"].to_list(),
-                mode="lines",
-                name="Drawdown",
-                line={"width": 1.5, "color": "#c53030"},
-                fill="tozeroy",
-                fillcolor="rgba(197, 48, 48, 0.22)",
-            ),
-            row=2,
-            col=1,
         )
 
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
-        height=700,
-        margin={"t": 24, "l": 48, "r": 24, "b": 40},
+        title="Cumulative Return",
+        height=420,
+        margin={"t": 40, "l": 48, "r": 24, "b": 40},
+        hovermode="x unified",
+        yaxis={"tickformat": ".0%"},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1.0},
     )
-    fig.update_yaxes(tickformat=".0%", row=1, col=1)
-    fig.update_yaxes(tickformat=".0%", row=2, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=1, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=2, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
     return fig
 
 

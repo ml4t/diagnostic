@@ -916,113 +916,50 @@ def create_key_metrics_table_html(
     benchmark_label: str = "Benchmark",
     thresholds: dict[str, dict[str, Any]] | None = None,
 ) -> str:
-    """Create a compact HTML table of key metrics for tearsheet display."""
+    """Create a dense summary statistics panel (QuantStats-style).
+
+    Uses CSS grid with tight label:value pairs grouped by category.
+    Each group renders as a column in a multi-column grid.
+    """
     if thresholds is None:
         thresholds = DEFAULT_THRESHOLDS
-    has_benchmark = bool(benchmark_metrics)
-    column_count = 4
 
-    rendered_rows: list[str] = []
-    used_metrics: set[str] = set()
-
+    group_html_parts: list[str] = []
     for group_name, metric_names in SUMMARY_TABLE_GROUPS:
-        group_metric_names = [metric_name for metric_name in metric_names if metric_name in metrics]
-        rows = _render_metric_group_rows(
-            group_metric_names,
-            metrics,
-            thresholds,
-            has_benchmark=has_benchmark,
-            benchmark_metrics=benchmark_metrics,
-            benchmark_label=benchmark_label,
-        )
-        used_metrics.update(group_metric_names)
-
-        if rows:
-            rendered_rows.append(
-                f"""
-                <tr class="metrics-table-group">
-                    <th colspan="{column_count}">
-                        <div class="metrics-group-heading">{html_mod.escape(group_name)}</div>
-                    </th>
-                </tr>
-                {"".join(rows)}
-                """
+        items: list[str] = []
+        for metric_name in metric_names:
+            if metric_name not in metrics:
+                continue
+            value = metrics[metric_name]
+            label = _get_metric_label(metric_name, thresholds)
+            value_text = _format_metric_value(value, metric_name, thresholds)
+            items.append(
+                f'<div style="display:flex;justify-content:space-between;'
+                f'padding:2px 0;border-bottom:1px solid #f0f0f0">'
+                f'<span style="color:#6b7280;font-size:12px">'
+                f'{html_mod.escape(label)}</span>'
+                f'<span style="font-weight:500;font-size:12px;font-variant-numeric:tabular-nums">'
+                f'{html_mod.escape(value_text)}</span></div>'
             )
 
-    fallback_metrics = selected_metrics or list(metrics.keys())
-    remaining = [
-        metric for metric in fallback_metrics if metric in metrics and metric not in used_metrics
-    ]
-    if remaining:
-        fallback_rows = _render_metric_group_rows(
-            remaining[:8],
-            metrics,
-            thresholds,
-            has_benchmark=has_benchmark,
-            benchmark_metrics=benchmark_metrics,
-            benchmark_label=benchmark_label,
-        )
-        rendered_rows.append(
-            f"""
-            <tr class="metrics-table-group">
-                <th colspan="{column_count}">
-                    <div class="metrics-group-heading">Additional Metrics</div>
-                </th>
-            </tr>
-            {"".join(fallback_rows)}
-            """
-        )
+        if items:
+            group_html_parts.append(
+                f'<div style="min-width:200px;flex:1">'
+                f'<div style="font-weight:600;font-size:11px;text-transform:uppercase;'
+                f'color:#374151;letter-spacing:0.05em;padding-bottom:4px;'
+                f'margin-bottom:4px;border-bottom:2px solid #e5e7eb">'
+                f'{html_mod.escape(group_name)}</div>'
+                f'{"".join(items)}</div>'
+            )
 
-    if not rendered_rows:
-        return '<p class="metrics-table-empty">No summary metrics available.</p>'
+    if not group_html_parts:
+        return '<p style="color:#9ca3af;font-size:13px">No summary metrics available.</p>'
 
-    benchmark_context = (
-        f"""
-        <div class="metrics-table-intro">
-            <div class="metrics-table-intro-chip">
-                Benchmark: {html_mod.escape(benchmark_label)} | Spread = Strategy - {html_mod.escape(benchmark_label)}
-            </div>
-        </div>
-        """
-        if has_benchmark
-        else ""
+    return (
+        '<div style="display:flex;flex-wrap:wrap;gap:24px;padding:12px 0">'
+        f'{"".join(group_html_parts)}'
+        '</div>'
     )
-
-    header_html = (
-        f"""
-        <thead>
-            <tr>
-                <th>Metric</th>
-                <th>Strategy</th>
-                <th>{html_mod.escape(benchmark_label)}</th>
-                <th>Spread</th>
-            </tr>
-        </thead>
-        """
-        if has_benchmark
-        else """
-        <thead>
-            <tr>
-                <th>Metric</th>
-                <th>Value</th>
-                <th>Metric</th>
-                <th>Value</th>
-            </tr>
-        </thead>
-        """
-    )
-
-    return f"""
-    <div class="metrics-table-wrap">
-        {benchmark_context}
-        <table class="metrics-table">
-            {header_html}
-            <tbody>
-                {"".join(rendered_rows)}
-            </tbody>
-        </table>
-    </div>
-    """
 
 
 def _render_metric_group_rows(
