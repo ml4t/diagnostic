@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
@@ -228,7 +227,7 @@ def plot_drawdown_summary(
     height: int = 600,
     width: int | None = None,
 ) -> go.Figure:
-    """Create combined drawdown summary with underwater curve and top periods.
+    """Create drawdown summary with underwater curve and annotated top periods.
 
     Parameters
     ----------
@@ -244,22 +243,22 @@ def plot_drawdown_summary(
     Returns
     -------
     go.Figure
-        Combined subplot figure
+        Underwater curve figure with top drawdown markers
     """
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
     drawdown_result = analysis.compute_drawdown_analysis(top_n=5)
 
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        row_heights=[0.6, 0.4],
-        subplot_titles=["Underwater Curve", "Top 5 Drawdowns"],
-        vertical_spacing=0.12,
+    fig = create_base_figure(
+        title="Drawdown Analysis",
+        xaxis_title="Date",
+        yaxis_title="Drawdown",
+        height=height,
+        width=width,
+        theme=theme,
     )
 
-    # === Row 1: Underwater curve ===
     dates = drawdown_result.dates.to_list()
     underwater = drawdown_result.underwater_curve.to_numpy()
 
@@ -274,13 +273,10 @@ def plot_drawdown_summary(
             fillcolor="rgba(231, 76, 60, 0.3)",
             hovertemplate="Date: %{x}<br>Drawdown: %{y:.2%}<extra></extra>",
         ),
-        row=1,
-        col=1,
     )
 
     # Mark top drawdowns on the curve
     for i, dd in enumerate(drawdown_result.top_drawdowns[:5]):
-        # Find valley date in dates list
         try:
             valley_idx = dates.index(dd.valley_date)
             fig.add_trace(
@@ -296,45 +292,13 @@ def plot_drawdown_summary(
                     },
                     showlegend=False,
                 ),
-                row=1,
-                col=1,
             )
         except (ValueError, IndexError):
             pass
 
-    # === Row 2: Top drawdowns bar chart ===
-    top_drawdowns = drawdown_result.top_drawdowns[:5]
-    if top_drawdowns:
-        depths = [d.depth if d.depth <= 0 else -abs(d.depth) for d in top_drawdowns]
-        labels = [f"#{i + 1}: {str(d.valley_date)[:10]}" for i, d in enumerate(top_drawdowns)]
-
-        fig.add_trace(
-            go.Bar(
-                y=labels,
-                x=depths,
-                orientation="h",
-                marker_color=[
-                    theme_config["colorway"][i % len(theme_config["colorway"])]
-                    for i in range(len(top_drawdowns))
-                ],
-                text=[f"{d:.1%}" for d in depths],
-                textposition="outside",
-                showlegend=False,
-                hovertemplate="Drawdown: %{x:.2%}<extra></extra>",
-            ),
-            row=2,
-            col=1,
-        )
-
-    # Update layout — apply theme first, then function-specific overrides
-    fig.update_layout(theme_config["layout"])
     fig.update_layout(
-        title="Drawdown Analysis",
-        height=height,
-        width=width,
+        yaxis={"tickformat": ".0%"},
+        hovermode="x unified",
     )
-
-    fig.update_yaxes(tickformat=".0%", row=1, col=1)
-    fig.update_xaxes(tickformat=".0%", row=2, col=1)
 
     return fig
