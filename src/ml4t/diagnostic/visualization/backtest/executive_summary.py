@@ -1,11 +1,8 @@
-"""Executive summary visualizations for backtest analysis.
-
-Provides KPI cards with traffic lights (red/yellow/green) and
-automated insight generation for backtest results.
-"""
+"""Executive summary visualizations for backtest analysis."""
 
 from __future__ import annotations
 
+import html as html_mod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -21,6 +18,8 @@ from ml4t.diagnostic.visualization.core import (
 
 if TYPE_CHECKING:
     import polars as pl
+
+    from ml4t.diagnostic.integration.backtest_profile import BacktestProfile
 
 
 # =============================================================================
@@ -96,7 +95,7 @@ DEFAULT_THRESHOLDS: dict[str, dict[str, Any]] = {
         "red": (-float("inf"), 0.0),
         "yellow": (0.0, 50.0),
         "green": (50.0, float("inf")),
-        "format": "${:.2f}",
+        "format": "${:,.2f}",
         "label": "Expectancy",
         "higher_is_better": True,
     },
@@ -104,7 +103,7 @@ DEFAULT_THRESHOLDS: dict[str, dict[str, Any]] = {
         "red": (-float("inf"), 0.0),
         "yellow": (0.0, 25.0),
         "green": (25.0, float("inf")),
-        "format": "${:.2f}",
+        "format": "${:,.2f}",
         "label": "Avg Trade",
         "higher_is_better": True,
     },
@@ -112,8 +111,8 @@ DEFAULT_THRESHOLDS: dict[str, dict[str, Any]] = {
         "red": (-float("inf"), 30),
         "yellow": (30, 100),
         "green": (100, float("inf")),
-        "format": "{:.0f}",
-        "label": "Total Trades",
+        "format": "{:,.0f}",
+        "label": "Trade Count",
         "higher_is_better": True,
     },
     "volatility": {
@@ -124,6 +123,62 @@ DEFAULT_THRESHOLDS: dict[str, dict[str, Any]] = {
         "label": "Volatility",
         "higher_is_better": False,
     },
+    "avg_turnover": {
+        "red": (0.75, float("inf")),
+        "yellow": (0.25, 0.75),
+        "green": (-float("inf"), 0.25),
+        "format": "{:.2f}",
+        "label": "Avg Turnover",
+        "higher_is_better": False,
+    },
+    "num_rebalance_events": {
+        "red": (250, float("inf")),
+        "yellow": (50, 250),
+        "green": (-float("inf"), 50),
+        "format": "{:,.0f}",
+        "label": "Rebalances",
+        "higher_is_better": False,
+    },
+    "avg_open_positions": {
+        "red": (-float("inf"), 3),
+        "yellow": (3, 10),
+        "green": (10, float("inf")),
+        "format": "{:.1f}",
+        "label": "Avg Open Positions",
+        "higher_is_better": True,
+    },
+    "time_in_market": {
+        "red": (-float("inf"), 0.2),
+        "yellow": (0.2, 0.6),
+        "green": (0.6, float("inf")),
+        "format": "{:.1%}",
+        "label": "Time In Market",
+        "higher_is_better": True,
+    },
+    "total_implementation_cost": {
+        "red": (10000.0, float("inf")),
+        "yellow": (2500.0, 10000.0),
+        "green": (-float("inf"), 2500.0),
+        "format": "${:,.0f}",
+        "label": "Implementation Cost",
+        "higher_is_better": False,
+    },
+    "dsr_probability": {
+        "red": (-float("inf"), 0.8),
+        "yellow": (0.8, 0.95),
+        "green": (0.95, float("inf")),
+        "format": "{:.1%}",
+        "label": "Deflated Sharpe Ratio",
+        "higher_is_better": True,
+    },
+    "min_trl": {
+        "red": (252.0, float("inf")),
+        "yellow": (126.0, 252.0),
+        "green": (-float("inf"), 126.0),
+        "format": "{:,.0f}",
+        "label": "MinTRL",
+        "higher_is_better": False,
+    },
 }
 
 TRAFFIC_LIGHT_COLORS = {
@@ -131,6 +186,69 @@ TRAFFIC_LIGHT_COLORS = {
     "yellow": _ML4T_COLORS["amber"],
     "red": _ML4T_COLORS["negative"],
     "neutral": _ML4T_COLORS["neutral"],
+}
+
+
+@dataclass(frozen=True)
+class MetricTableSpec:
+    """Presentation metadata for a tearsheet metric row."""
+
+    benchmark_comparable: bool = False
+
+
+SUMMARY_TABLE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Performance",
+        (
+            "total_return",
+            "cagr",
+            "sharpe_ratio",
+            "sortino_ratio",
+            "calmar_ratio",
+            "max_drawdown",
+            "volatility",
+        ),
+    ),
+    (
+        "Trading Edge",
+        ("win_rate", "profit_factor", "avg_trade", "expectancy", "n_trades"),
+    ),
+    (
+        "Implementation",
+        (
+            "avg_turnover",
+            "num_rebalance_events",
+            "avg_open_positions",
+            "time_in_market",
+            "total_implementation_cost",
+        ),
+    ),
+    (
+        "Statistical",
+        ("dsr_probability", "min_trl"),
+    ),
+)
+
+METRIC_TABLE_SPECS: dict[str, MetricTableSpec] = {
+    "total_return": MetricTableSpec(benchmark_comparable=True),
+    "cagr": MetricTableSpec(benchmark_comparable=True),
+    "sharpe_ratio": MetricTableSpec(benchmark_comparable=True),
+    "sortino_ratio": MetricTableSpec(benchmark_comparable=True),
+    "calmar_ratio": MetricTableSpec(benchmark_comparable=True),
+    "max_drawdown": MetricTableSpec(benchmark_comparable=True),
+    "volatility": MetricTableSpec(benchmark_comparable=True),
+    "win_rate": MetricTableSpec(),
+    "profit_factor": MetricTableSpec(),
+    "avg_trade": MetricTableSpec(),
+    "expectancy": MetricTableSpec(),
+    "n_trades": MetricTableSpec(),
+    "avg_turnover": MetricTableSpec(),
+    "num_rebalance_events": MetricTableSpec(),
+    "avg_open_positions": MetricTableSpec(),
+    "time_in_market": MetricTableSpec(),
+    "total_implementation_cost": MetricTableSpec(),
+    "dsr_probability": MetricTableSpec(),
+    "min_trl": MetricTableSpec(),
 }
 
 
@@ -168,21 +286,21 @@ def get_traffic_light_color(
 
     config = thresholds[metric_name]
 
-    # Handle NaN
-    if np.isnan(value):
+    numeric_value = _coerce_numeric_value(value)
+    if numeric_value is None or np.isnan(numeric_value):
         return "neutral"
 
     # Check which range the value falls into
     for color in ["green", "yellow", "red"]:
         low, high = config[color]
-        if low <= value < high:
+        if low <= numeric_value < high:
             return color
 
     return "neutral"
 
 
 def _format_metric_value(
-    value: float,
+    value: Any,
     metric_name: str,
     thresholds: dict[str, dict[str, Any]] | None = None,
 ) -> str:
@@ -205,14 +323,33 @@ def _format_metric_value(
     if thresholds is None:
         thresholds = DEFAULT_THRESHOLDS
 
-    if np.isnan(value):
+    numeric_value = _coerce_numeric_value(value)
+    if numeric_value is None:
+        return html_mod.escape(str(value))
+    if np.isnan(numeric_value):
         return "N/A"
+    if np.isposinf(numeric_value):
+        return "∞"
+    if np.isneginf(numeric_value):
+        return "-∞"
 
     if metric_name in thresholds:
         fmt = thresholds[metric_name].get("format", "{:.2f}")
-        return fmt.format(value)
+        return fmt.format(numeric_value)
 
-    return f"{value:.2f}"
+    return f"{numeric_value:.2f}"
+
+
+def _coerce_numeric_value(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _has_numeric_value(value: Any) -> bool:
+    numeric_value = _coerce_numeric_value(value)
+    return numeric_value is not None and not np.isnan(numeric_value)
 
 
 def _get_metric_label(
@@ -407,9 +544,19 @@ def _get_plotly_format(
 
     # Convert Python format to d3
     if "%" in py_fmt:
-        return ".1%"
+        return ",.1%"
     elif "$" in py_fmt:
+        if ",.0f" in py_fmt:
+            return "$,.0f"
+        if ",.2f" in py_fmt:
+            return "$,.2f"
         return "$.2f"
+    elif ",.0f" in py_fmt:
+        return ",.0f"
+    elif ",.1f" in py_fmt:
+        return ",.1f"
+    elif ",.2f" in py_fmt:
+        return ",.2f"
     elif ".0f" in py_fmt:
         return ".0f"
     elif ".1f" in py_fmt:
@@ -533,6 +680,13 @@ def create_executive_summary(
         delta = None
         if benchmark_metrics and metric_name in benchmark_metrics:
             delta = value - benchmark_metrics[metric_name]
+        higher_is_better = thresholds.get(metric_name, {}).get("higher_is_better", True)
+        increasing_color = (
+            _ML4T_COLORS["positive"] if higher_is_better else _ML4T_COLORS["negative"]
+        )
+        decreasing_color = (
+            _ML4T_COLORS["negative"] if higher_is_better else _ML4T_COLORS["positive"]
+        )
 
         # Add indicator
         fig.add_trace(
@@ -546,9 +700,9 @@ def create_executive_summary(
                 delta={
                     "reference": value - delta if delta is not None else 0,
                     "relative": False,
-                    "valueformat": ".2f",
-                    "increasing": {"color": _ML4T_COLORS["positive"]},
-                    "decreasing": {"color": _ML4T_COLORS["negative"]},
+                    "valueformat": _get_plotly_format(metric_name, thresholds),
+                    "increasing": {"color": increasing_color},
+                    "decreasing": {"color": decreasing_color},
                 }
                 if delta is not None
                 else None,
@@ -589,6 +743,337 @@ def create_executive_summary(
     return fig
 
 
+def create_executive_summary_html(
+    metrics: dict[str, float],
+    *,
+    selected_metrics: list[str] | None = None,
+    benchmark_metrics: dict[str, float] | None = None,
+    benchmark_label: str = "Benchmark",
+    thresholds: dict[str, dict[str, Any]] | None = None,
+) -> str:
+    """Create a dense HTML executive strip for first-page tearsheet use."""
+    if thresholds is None:
+        thresholds = DEFAULT_THRESHOLDS
+
+    if selected_metrics is None:
+        selected_metrics = [
+            "total_return",
+            "cagr",
+            "sharpe_ratio",
+            "max_drawdown",
+            "volatility",
+            "dsr_probability",
+        ]
+
+    metric_order = [metric_name for metric_name in selected_metrics if metric_name in metrics]
+    if not metric_order:
+        metric_order = list(metrics.keys())[:6]
+    elif len(metric_order) < 6:
+        metric_order.extend(
+            metric_name for metric_name in metrics if metric_name not in metric_order
+        )
+
+    cards: list[str] = []
+    for metric_name in metric_order[:8]:
+        label = _get_metric_label(metric_name, thresholds)
+        value_text = _format_metric_value(metrics[metric_name], metric_name, thresholds)
+        footer = ""
+        benchmark_value = benchmark_metrics.get(metric_name) if benchmark_metrics else None
+        spec = METRIC_TABLE_SPECS.get(metric_name)
+        if (
+            spec is not None
+            and spec.benchmark_comparable
+            and _has_numeric_value(benchmark_value)
+        ):
+            benchmark_text = _format_metric_value(benchmark_value, metric_name, thresholds)
+            spread_text = _format_metric_spread_text(
+                metric_name, metrics[metric_name], benchmark_value, thresholds
+            )
+            footer = (
+                f'<div class="executive-strip-meta">'
+                f"<span>{html_mod.escape(benchmark_label)} {html_mod.escape(benchmark_text)}</span>"
+                f"<span>{html_mod.escape(spread_text)}</span>"
+                f"</div>"
+            )
+
+        cards.append(
+            f"""
+            <div class="executive-kpi">
+                <div class="executive-kpi-label">{html_mod.escape(label)}</div>
+                <div class="executive-kpi-value">{html_mod.escape(value_text)}</div>
+                {footer}
+            </div>
+            """
+        )
+
+    return f"""
+    <div class="executive-strip">
+        {"".join(cards)}
+    </div>
+    """
+
+
+def create_key_metrics_table_html(
+    metrics: dict[str, float],
+    *,
+    selected_metrics: list[str] | None = None,
+    benchmark_metrics: dict[str, float] | None = None,
+    benchmark_label: str = "Benchmark",
+    thresholds: dict[str, dict[str, Any]] | None = None,
+) -> str:
+    """Create a compact HTML table of key metrics for tearsheet display."""
+    if thresholds is None:
+        thresholds = DEFAULT_THRESHOLDS
+    has_benchmark = bool(benchmark_metrics)
+    column_count = 4
+
+    rendered_rows: list[str] = []
+    used_metrics: set[str] = set()
+
+    for group_name, metric_names in SUMMARY_TABLE_GROUPS:
+        group_metric_names = [metric_name for metric_name in metric_names if metric_name in metrics]
+        rows = _render_metric_group_rows(
+            group_metric_names,
+            metrics,
+            thresholds,
+            has_benchmark=has_benchmark,
+            benchmark_metrics=benchmark_metrics,
+            benchmark_label=benchmark_label,
+        )
+        used_metrics.update(group_metric_names)
+
+        if rows:
+            rendered_rows.append(
+                f"""
+                <tr class="metrics-table-group">
+                    <th colspan="{column_count}">
+                        <div class="metrics-group-heading">{html_mod.escape(group_name)}</div>
+                    </th>
+                </tr>
+                {"".join(rows)}
+                """
+            )
+
+    fallback_metrics = selected_metrics or list(metrics.keys())
+    remaining = [
+        metric for metric in fallback_metrics if metric in metrics and metric not in used_metrics
+    ]
+    if remaining:
+        fallback_rows = _render_metric_group_rows(
+            remaining[:8],
+            metrics,
+            thresholds,
+            has_benchmark=has_benchmark,
+            benchmark_metrics=benchmark_metrics,
+            benchmark_label=benchmark_label,
+        )
+        rendered_rows.append(
+            f"""
+            <tr class="metrics-table-group">
+                <th colspan="{column_count}">
+                    <div class="metrics-group-heading">Additional Metrics</div>
+                </th>
+            </tr>
+            {"".join(fallback_rows)}
+            """
+        )
+
+    if not rendered_rows:
+        return '<p class="metrics-table-empty">No summary metrics available.</p>'
+
+    benchmark_context = (
+        f"""
+        <div class="metrics-table-intro">
+            <div class="metrics-table-intro-chip">
+                Benchmark: {html_mod.escape(benchmark_label)} | Spread = Strategy - {html_mod.escape(benchmark_label)}
+            </div>
+        </div>
+        """
+        if has_benchmark
+        else ""
+    )
+
+    header_html = (
+        f"""
+        <thead>
+            <tr>
+                <th>Metric</th>
+                <th>Strategy</th>
+                <th>{html_mod.escape(benchmark_label)}</th>
+                <th>Spread</th>
+            </tr>
+        </thead>
+        """
+        if has_benchmark
+        else """
+        <thead>
+            <tr>
+                <th>Metric</th>
+                <th>Value</th>
+                <th>Metric</th>
+                <th>Value</th>
+            </tr>
+        </thead>
+        """
+    )
+
+    return f"""
+    <div class="metrics-table-wrap">
+        {benchmark_context}
+        <table class="metrics-table">
+            {header_html}
+            <tbody>
+                {"".join(rendered_rows)}
+            </tbody>
+        </table>
+    </div>
+    """
+
+
+def _render_metric_group_rows(
+    metric_names: list[str],
+    metrics: dict[str, float],
+    thresholds: dict[str, dict[str, Any]],
+    *,
+    has_benchmark: bool,
+    benchmark_metrics: dict[str, float] | None,
+    benchmark_label: str,
+) -> list[str]:
+    if has_benchmark:
+        return [
+            _render_metric_table_row(
+                metric_name,
+                metrics[metric_name],
+                thresholds,
+                has_benchmark=True,
+                benchmark_value=benchmark_metrics.get(metric_name) if benchmark_metrics else None,
+                benchmark_label=benchmark_label,
+            )
+            for metric_name in metric_names
+        ]
+
+    rows: list[str] = []
+    for index in range(0, len(metric_names), 2):
+        left_name = metric_names[index]
+        right_name = metric_names[index + 1] if index + 1 < len(metric_names) else None
+        rows.append(
+            _render_metric_pair_row(
+                left_name,
+                metrics[left_name],
+                thresholds,
+                right_name=right_name,
+                right_value=metrics[right_name] if right_name is not None else None,
+            )
+        )
+    return rows
+
+
+def _render_metric_table_row(
+    metric_name: str,
+    value: float,
+    thresholds: dict[str, dict[str, Any]],
+    *,
+    has_benchmark: bool,
+    benchmark_value: float | None,
+    benchmark_label: str,
+) -> str:
+    spec = METRIC_TABLE_SPECS.get(metric_name, MetricTableSpec())
+    label = _get_metric_label(metric_name, thresholds)
+    value_text = _format_metric_value(value, metric_name, thresholds)
+    if not has_benchmark:
+        return f"""
+        <tr class="metrics-table-row">
+            <td data-label="Metric"><div class="metric-label">{html_mod.escape(label)}</div></td>
+            <td data-label="Value">
+                <div class="metric-primary">{html_mod.escape(value_text)}</div>
+            </td>
+        </tr>
+        """
+
+    benchmark_text = "—"
+    spread_html = '<div class="metric-spread metric-spread--na">—</div>'
+    if spec.benchmark_comparable and _has_numeric_value(benchmark_value):
+        benchmark_text = _format_metric_value(benchmark_value, metric_name, thresholds)
+        spread_html = _format_metric_spread(
+            metric_name,
+            value,
+            benchmark_value,
+            thresholds,
+        )
+
+    return f"""
+    <tr class="metrics-table-row">
+        <td data-label="Metric"><div class="metric-label">{html_mod.escape(label)}</div></td>
+        <td data-label="Strategy">
+            <div class="metric-primary">{html_mod.escape(value_text)}</div>
+        </td>
+        <td data-label="{html_mod.escape(benchmark_label)}">
+            <div class="metric-benchmark">{html_mod.escape(benchmark_text)}</div>
+        </td>
+        <td data-label="Spread">{spread_html}</td>
+    </tr>
+    """
+
+
+def _render_metric_pair_row(
+    metric_name: str,
+    value: float,
+    thresholds: dict[str, dict[str, Any]],
+    *,
+    right_name: str | None,
+    right_value: float | None,
+) -> str:
+    left_label = _get_metric_label(metric_name, thresholds)
+    left_value = _format_metric_value(value, metric_name, thresholds)
+
+    right_label_html = ""
+    right_value_html = ""
+    if right_name is not None and right_value is not None:
+        right_label = _get_metric_label(right_name, thresholds)
+        right_text = _format_metric_value(right_value, right_name, thresholds)
+        right_label_html = f'<div class="metric-label">{html_mod.escape(right_label)}</div>'
+        right_value_html = f'<div class="metric-primary">{html_mod.escape(right_text)}</div>'
+
+    return f"""
+    <tr class="metrics-table-row">
+        <td data-label="Metric"><div class="metric-label">{html_mod.escape(left_label)}</div></td>
+        <td data-label="Value">
+            <div class="metric-primary">{html_mod.escape(left_value)}</div>
+        </td>
+        <td data-label="Metric">{right_label_html}</td>
+        <td data-label="Value">{right_value_html}</td>
+    </tr>
+    """
+
+
+def _format_metric_spread(
+    metric_name: str,
+    strategy_value: float,
+    benchmark_value: float,
+    thresholds: dict[str, dict[str, Any]],
+) -> str:
+    delta = strategy_value - benchmark_value
+    prefix = "+" if delta > 0 else ""
+    delta_text = f"{prefix}{_format_metric_value(delta, metric_name, thresholds)}"
+    return (
+        '<div class="metric-spread">'
+        f'<span class="metric-spread-value">{html_mod.escape(delta_text)}</span>'
+        "</div>"
+    )
+
+
+def _format_metric_spread_text(
+    metric_name: str,
+    strategy_value: float,
+    benchmark_value: float,
+    thresholds: dict[str, dict[str, Any]],
+) -> str:
+    delta = strategy_value - benchmark_value
+    prefix = "+" if delta > 0 else ""
+    delta_text = f"{prefix}{_format_metric_value(delta, metric_name, thresholds)}"
+    return f"Spread {delta_text}"
+
+
 # =============================================================================
 # Automated Insights Generation
 # =============================================================================
@@ -609,6 +1094,7 @@ class Insight:
 def create_key_insights(
     metrics: dict[str, float],
     *,
+    profile: BacktestProfile | None = None,
     trades_df: pl.DataFrame | None = None,
     equity_df: pl.DataFrame | None = None,
     max_insights: int = 5,
@@ -623,6 +1109,9 @@ def create_key_insights(
     ----------
     metrics : dict[str, float]
         Dictionary of metric name to value
+    profile : BacktestProfile, optional
+        Backtest profile with availability, burden, concentration, and other
+        profile-native analytics
     trades_df : pl.DataFrame, optional
         Trade-level data for deeper analysis
     equity_df : pl.DataFrame, optional
@@ -845,9 +1334,99 @@ def create_key_insights(
                 )
             )
 
+    # --- Profile-native burden / concentration / availability insights ---
+    if profile is not None:
+        cost_share = profile.attribution["metrics"].get("top_5_cost_share")
+        if cost_share is not None and cost_share > 0.75:
+            insights.append(
+                Insight(
+                    category="warning",
+                    metric="cost_burden",
+                    message=(
+                        f"Top symbols account for {cost_share:.1%} of implementation cost - "
+                        "burden is highly concentrated"
+                    ),
+                    severity=4,
+                    value=cost_share,
+                    threshold=0.75,
+                )
+            )
+
+        pnl_share = profile.attribution["metrics"].get("top_5_pnl_share")
+        if pnl_share is not None and pnl_share > 0.80:
+            insights.append(
+                Insight(
+                    category="warning",
+                    metric="pnl_concentration",
+                    message=(
+                        f"Top contributors explain {pnl_share:.1%} of net PnL - "
+                        "returns may be fragile to symbol concentration"
+                    ),
+                    severity=4,
+                    value=pnl_share,
+                    threshold=0.80,
+                )
+            )
+
+        avg_turnover = profile.activity["metrics"].get("avg_turnover")
+        if avg_turnover is not None and avg_turnover > 0.50:
+            insights.append(
+                Insight(
+                    category="warning",
+                    metric="avg_turnover",
+                    message=(
+                        f"Average turnover of {avg_turnover:.2f} per period suggests substantial "
+                        "implementation burden"
+                    ),
+                    severity=3,
+                    value=avg_turnover,
+                    threshold=0.50,
+                )
+            )
+
+        execution_availability = profile.availability.families["execution"]
+        if execution_availability.status.value == "partial":
+            coverage = execution_availability.coverage or 0.0
+            insights.append(
+                Insight(
+                    category="warning",
+                    metric="execution_availability",
+                    message=(
+                        f"Quote-aware execution audit is only partially available "
+                        f"({coverage:.1%} coverage)"
+                    ),
+                    severity=4,
+                    value=coverage,
+                    threshold=profile.quote_coverage_threshold,
+                )
+            )
+        elif execution_availability.status.value == "unavailable":
+            insights.append(
+                Insight(
+                    category="info",
+                    metric="execution_availability",
+                    message="Quote-aware execution audit is unavailable for this backtest",
+                    severity=1,
+                )
+            )
+
     # Sort by severity and limit
     insights.sort(key=lambda x: x.severity, reverse=True)
-    return insights[:max_insights]
+    selected = insights[:max_insights]
+
+    if profile is not None:
+        essential_metrics = ["cost_burden", "execution_availability"]
+        for metric_name in essential_metrics:
+            essential_insight = next(
+                (insight for insight in insights if insight.metric == metric_name),
+                None,
+            )
+            if essential_insight is not None and all(
+                insight.metric != metric_name for insight in selected
+            ):
+                selected.append(essential_insight)
+
+    return selected
 
 
 def format_insights_html(insights: list[Insight]) -> str:

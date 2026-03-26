@@ -1,10 +1,9 @@
 """Backtest visualization module.
 
 Plotly-based interactive visualizations for backtest analysis.
-State-of-the-art tearsheet generation exceeding QuantStats.
 
 This module provides:
-- Executive summary with KPI cards and traffic lights
+- Executive summary surfaces for dense tearsheet reporting
 - Trade-level visualizations (MFE/MAE, exit reasons, waterfall)
 - Cost attribution analysis (gross-to-net decomposition)
 - Statistical validity displays (DSR gauge, confidence intervals)
@@ -20,9 +19,17 @@ from .cost_attribution import (
 )
 from .executive_summary import (
     create_executive_summary,
+    create_executive_summary_html,
     create_key_insights,
+    create_key_metrics_table_html,
     create_metric_card,
     get_traffic_light_color,
+)
+from .html_tables import (
+    create_cost_summary_line_html,
+    create_credibility_box_html,
+    create_top_drawdowns_table_html,
+    create_worst_trades_table_html,
 )
 from .interactive_controls import (
     get_date_range_html,
@@ -31,6 +38,15 @@ from .interactive_controls import (
     get_metric_filter_html,
     get_section_navigation_html,
     get_theme_switcher_html,
+)
+from .ml_plots import plot_prediction_trade_alignment
+from .profile_sections import (
+    plot_activity_overview,
+    plot_attribution_overview,
+    plot_cost_bridge,
+    plot_drawdown_anatomy,
+    plot_occupancy_overview,
+    plot_stability_overview,
 )
 from .shap_patterns import plot_shap_error_patterns, plot_shap_worst_trades
 from .statistical_validity import (
@@ -62,9 +78,16 @@ from .trade_plots import (
 __all__ = [
     # Executive Summary
     "create_executive_summary",
+    "create_executive_summary_html",
     "create_key_insights",
+    "create_key_metrics_table_html",
     "create_metric_card",
     "get_traffic_light_color",
+    # HTML Tables
+    "create_credibility_box_html",
+    "create_top_drawdowns_table_html",
+    "create_worst_trades_table_html",
+    "create_cost_summary_line_html",
     # Trade Plots (Phase 2)
     "plot_mfe_mae_scatter",
     "plot_exit_reason_breakdown",
@@ -78,6 +101,12 @@ __all__ = [
     "plot_cost_over_time",
     "plot_cost_by_asset",
     "plot_cost_pie",
+    "plot_activity_overview",
+    "plot_occupancy_overview",
+    "plot_attribution_overview",
+    "plot_drawdown_anatomy",
+    "plot_cost_bridge",
+    "plot_stability_overview",
     # Statistical Validity (Phase 4)
     "plot_dsr_gauge",
     "plot_confidence_intervals",
@@ -86,6 +115,7 @@ __all__ = [
     "plot_statistical_summary_card",
     # Tail Risk
     "plot_tail_risk_analysis",
+    "plot_prediction_trade_alignment",
     # SHAP Error Patterns
     "plot_shap_error_patterns",
     "plot_shap_worst_trades",

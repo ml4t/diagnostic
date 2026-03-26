@@ -38,14 +38,14 @@ def plot_dsr_gauge(
     """Create a gauge chart showing DSR probability.
 
     The Deflated Sharpe Ratio corrects for selection bias when choosing
-    the best strategy from multiple tests. A DSR probability < 0.05
-    suggests the performance is statistically significant.
+    the best strategy from multiple tests. The probability represents
+    P(true SR > benchmark) — higher values indicate stronger evidence of skill.
 
     Parameters
     ----------
     dsr_probability : float
-        DSR probability value (0-1), where lower is more significant.
-        Typically displayed as 1 - dsr for "confidence" interpretation.
+        Probability of skill (0-1). Higher is better.
+        This is P(SR > benchmark), NOT a p-value.
     observed_sharpe : float
         The observed Sharpe ratio being tested
     expected_max_sharpe : float, optional
@@ -79,9 +79,9 @@ def plot_dsr_gauge(
     """
     theme_config = get_theme_config(theme)
 
-    # Convert to "confidence" (1 - p-value style)
-    # High confidence = good, Low confidence = bad
-    confidence = (1 - dsr_probability) * 100
+    # dsr_probability is P(SR > benchmark) — probability of skill.
+    # High = good (strong evidence), Low = bad (likely noise).
+    confidence = dsr_probability * 100
 
     # Color zones: Red (not significant) -> Yellow (marginal) -> Green (significant)
     # Standard thresholds: p < 0.05 (95%), p < 0.01 (99%)
@@ -133,7 +133,7 @@ def plot_dsr_gauge(
         {
             "x": 0.5,
             "y": 0.25,
-            "text": f"DSR p-value: {dsr_probability:.4f}",
+            "text": f"p-value: {1 - dsr_probability:.4f}",
             "showarrow": False,
             "font": {"size": 14},
             "xref": "paper",
@@ -343,6 +343,22 @@ def plot_confidence_intervals(
         fig.add_vline(x=0, line_dash="dash", line_color="gray", line_width=1)
     else:
         fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+
+    # Annotate when CI includes zero (metric not statistically significant)
+    for i, metric_name in enumerate(metric_names):
+        metric_data = metrics[metric_name]
+        lower_95 = metric_data.get("lower_95")
+        upper_95 = metric_data.get("upper_95")
+        if lower_95 is not None and upper_95 is not None:
+            if lower_95 < 0 < upper_95 and metric_name.lower() in ("sharpe", "cagr"):
+                if orientation == "h":
+                    fig.add_annotation(
+                        x=0, y=i, xshift=10,
+                        text="CI includes zero",
+                        showarrow=False,
+                        font={"size": 10, "color": _ML4T_COLORS["negative"]},
+                        xanchor="left",
+                    )
 
     # Build layout
     if orientation == "h":
@@ -883,5 +899,105 @@ def plot_statistical_summary_card(
             layout_updates[key] = value
 
     fig.update_layout(**layout_updates)
+
+    return fig
+
+
+def plot_pbo_gauge(
+    pbo: float,
+    n_combinations: int | None = None,
+    n_strategies: int | None = None,
+    title: str = "Probability of Backtest Overfitting",
+    theme: str | None = None,
+    height: int = 350,
+    width: int = 500,
+) -> go.Figure:
+    """Create a gauge chart for Probability of Backtest Overfitting (PBO).
+
+    PBO measures the probability that the best in-sample strategy
+    performs below median out-of-sample. High PBO indicates overfitting.
+
+    Parameters
+    ----------
+    pbo : float
+        Probability of overfitting (0-1). Lower is better.
+    n_combinations : int, optional
+        Number of IS/OOS combinations evaluated.
+    n_strategies : int, optional
+        Number of strategies compared.
+    """
+    theme_config = get_theme_config(theme)
+    pbo_pct = pbo * 100
+
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=pbo_pct,
+            number={"suffix": "%", "font": {"size": 36}},
+            title={"text": title, "font": {"size": 18}},
+            gauge={
+                "axis": {
+                    "range": [0, 100],
+                    "tickwidth": 1, "tickcolor": "darkgray",
+                    "tickvals": [0, 10, 25, 40, 50, 75, 100],
+                    "ticktext": ["0%", "10%", "25%", "40%", "50%", "75%", "100%"],
+                },
+                "bar": {"color": "darkblue"},
+                "bgcolor": "white",
+                "borderwidth": 2, "bordercolor": "gray",
+                "steps": [
+                    {"range": [0, 10], "color": _ML4T_COLORS["positive"]},
+                    {"range": [10, 25], "color": _ML4T_COLORS["sage"]},
+                    {"range": [25, 40], "color": _ML4T_COLORS["amber_light"]},
+                    {"range": [40, 60], "color": _ML4T_COLORS["amber"]},
+                    {"range": [60, 100], "color": _ML4T_COLORS["negative"]},
+                ],
+                "threshold": {
+                    "line": {"color": "black", "width": 4},
+                    "thickness": 0.75,
+                    "value": pbo_pct,
+                },
+            },
+        )
+    )
+
+    if pbo < 0.10:
+        verdict = "Low overfitting risk"
+    elif pbo < 0.25:
+        verdict = "Moderate overfitting risk"
+    elif pbo < 0.40:
+        verdict = "Elevated overfitting risk"
+    else:
+        verdict = "High overfitting risk"
+
+    annotations = [
+        {"x": 0.5, "y": 0.25, "text": verdict,
+         "showarrow": False, "font": {"size": 14},
+         "xref": "paper", "yref": "paper"},
+    ]
+    if n_combinations is not None:
+        annotations.append(
+            {"x": 0.5, "y": 0.15,
+             "text": f"{n_combinations} IS/OOS combinations",
+             "showarrow": False, "font": {"size": 12, "color": "gray"},
+             "xref": "paper", "yref": "paper"}
+        )
+    if n_strategies is not None:
+        annotations.append(
+            {"x": 0.5, "y": 0.08,
+             "text": f"{n_strategies} strategies compared",
+             "showarrow": False, "font": {"size": 12, "color": "gray"},
+             "xref": "paper", "yref": "paper"}
+        )
+
+    layout_kw: dict[str, Any] = {
+        "height": height, "width": width,
+        "annotations": annotations,
+        "margin": {"l": 40, "r": 40, "t": 60, "b": 40},
+    }
+    for key, value in theme_config["layout"].items():
+        if key not in layout_kw:
+            layout_kw[key] = value
+    fig.update_layout(**layout_kw)
 
     return fig

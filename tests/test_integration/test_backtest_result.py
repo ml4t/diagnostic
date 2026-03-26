@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
 import numpy as np
+import polars as pl
 import pytest
-
 from ml4t.backtest import BacktestConfig, BacktestResult
 from ml4t.backtest.types import Trade
 from ml4t.data.artifacts.market_data import FeedSpec
+
 from ml4t.diagnostic.integration import (
+    BacktestReportMetadata,
     compute_metrics_from_result,
     generate_tearsheet_from_result,
+    generate_tearsheet_from_run_artifacts,
     portfolio_analysis_from_result,
+    profile_from_run_artifacts,
 )
 
 
@@ -39,7 +44,7 @@ def create_sample_result(n_trades: int = 20) -> BacktestResult:
                 pnl_percent=pnl / 10000,
                 bars_held=2,
                 fees=5.0,
-                slippage=2.0,
+                exit_slippage=2.0,
                 exit_reason="signal",
                 mfe=0.02,
                 mae=-0.01,
@@ -239,7 +244,7 @@ def test_generate_tearsheet_from_result_extracts_fallback_metrics(tmp_path, monk
         pnl=10.0,
         pnl_percent=0.01,
         bars_held=1,
-        slippage=0.20,
+        exit_slippage=0.20,
         entry_slippage=0.10,
     )
     result = BacktestResult(
@@ -257,6 +262,242 @@ def test_generate_tearsheet_from_result_extracts_fallback_metrics(tmp_path, monk
     metrics = captured["metrics"]
     assert isinstance(metrics, dict)
     assert metrics["total_slippage"] == pytest.approx(trade.total_slippage_cost)
+
+
+def test_profile_from_run_artifacts_resolves_predictions_and_weights(tmp_path):
+    run_log = tmp_path / "run_log"
+    backtest_hash = "abc123def456"
+    prediction_hash = "pred987654321"
+    backtest_dir = run_log / "backtest" / backtest_hash
+    prediction_dir = run_log / "predictions" / prediction_hash
+    backtest_dir.mkdir(parents=True)
+    prediction_dir.mkdir(parents=True)
+
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "entry_time": [datetime(2024, 1, 1, 0, 0)],
+            "exit_time": [datetime(2024, 1, 2, 0, 0)],
+            "entry_price": [100.0],
+            "exit_price": [102.0],
+            "quantity": [10.0],
+            "direction": ["long"],
+            "pnl": [20.0],
+            "pnl_percent": [0.02],
+            "bars_held": [1],
+            "fees": [1.0],
+            "exit_slippage": [0.1],
+            "mfe": [0.03],
+            "mae": [-0.01],
+            "entry_slippage": [0.1],
+            "multiplier": [1.0],
+            "gross_pnl": [22.0],
+            "net_return": [0.019],
+            "total_slippage_cost": [2.0],
+            "cost_drag": [0.001],
+            "exit_reason": ["signal"],
+            "status": ["closed"],
+        }
+    ).write_parquet(backtest_dir / "trades.parquet")
+    pl.DataFrame(
+        {
+            "timestamp": [date(2024, 1, 1), date(2024, 1, 2)],
+            "daily_return": [0.01, -0.005],
+        }
+    ).write_parquet(backtest_dir / "daily_returns.parquet")
+    pl.DataFrame(
+        {
+            "timestamp": [datetime(2024, 1, 1, 0, 0)],
+            "symbol": ["AAPL"],
+            "weight": [0.2],
+        }
+    ).write_parquet(backtest_dir / "weights.parquet")
+    (backtest_dir / "spec.json").write_text(
+        json.dumps(
+            {
+                "preset_id": "etfs:base",
+                "strategy": {
+                    "signal": {"method": "equal_weight_top_k", "top_k": 2},
+                    "allocation": {"method": "hrp"},
+                },
+                "backtest_config": {
+                    "cash": {"initial": 100000.0},
+                    "calendar": {"calendar": "NYSE"},
+                    "metadata": {"prediction_hash": prediction_hash},
+                },
+            }
+        )
+    )
+    pl.DataFrame(
+        {
+            "timestamp": ["2024-01-01"],
+            "symbol": ["AAPL"],
+            "y_true": [0.02],
+            "y_score": [0.8],
+            "config_name": ["cae"],
+        }
+    ).write_parquet(prediction_dir / "predictions.parquet")
+
+    profile = profile_from_run_artifacts(backtest_dir)
+
+    assert profile.has_predictions is True
+    assert profile.has_signals is True
+    assert profile.predictions_df["asset"].to_list() == ["AAPL"]
+    assert profile.signals_df["signal_value"].to_list() == [0.2]
+    assert profile.strategy_metadata["mapping_name"] == "equal_weight_top_k"
+    assert profile.ml["metrics"]["translation_ready"] is True
+    assert profile.occupancy["metrics"]["time_in_market"] > 0
+    assert profile.activity["metrics"]["num_rebalance_events"] > 0
+
+
+def test_profile_from_run_artifacts_trims_pre_live_warmup_window(tmp_path):
+    run_log = tmp_path / "run_log"
+    backtest_hash = "abc123def456"
+    backtest_dir = run_log / "backtest" / backtest_hash
+    backtest_dir.mkdir(parents=True)
+
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "entry_time": [datetime(2024, 1, 5, 0, 0)],
+            "exit_time": [datetime(2024, 1, 8, 0, 0)],
+            "entry_price": [100.0],
+            "exit_price": [102.0],
+            "quantity": [10.0],
+            "direction": ["long"],
+            "pnl": [20.0],
+            "pnl_percent": [0.02],
+            "bars_held": [1],
+            "fees": [1.0],
+            "exit_slippage": [0.1],
+            "mfe": [0.03],
+            "mae": [-0.01],
+            "entry_slippage": [0.1],
+            "multiplier": [1.0],
+            "gross_pnl": [22.0],
+            "net_return": [0.019],
+            "total_slippage_cost": [2.0],
+            "cost_drag": [0.001],
+            "exit_reason": ["signal"],
+            "status": ["closed"],
+        }
+    ).write_parquet(backtest_dir / "trades.parquet")
+    pl.DataFrame(
+        {
+            "timestamp": [
+                date(2023, 1, 2),
+                date(2023, 1, 3),
+                date(2024, 1, 5),
+                date(2024, 1, 8),
+            ],
+            "daily_return": [0.0, 0.0, 0.01, -0.005],
+        }
+    ).write_parquet(backtest_dir / "daily_returns.parquet")
+    pl.DataFrame(
+        {
+            "timestamp": [datetime(2024, 1, 5, 0, 0)],
+            "symbol": ["AAPL"],
+            "weight": [0.2],
+        }
+    ).write_parquet(backtest_dir / "weights.parquet")
+    (backtest_dir / "spec.json").write_text(
+        json.dumps(
+            {
+                "backtest_config": {
+                    "cash": {"initial": 100000.0},
+                    "calendar": {"calendar": "NYSE"},
+                }
+            }
+        )
+    )
+
+    profile = profile_from_run_artifacts(backtest_dir)
+
+    assert profile.equity_df["timestamp"][0] == datetime(2024, 1, 5, 0, 0)
+    assert len(profile.daily_returns) == 2
+    assert profile.daily_returns[1] == pytest.approx(-0.005)
+
+
+def test_generate_tearsheet_from_run_artifacts_renders_ml_workspace(tmp_path):
+    run_log = tmp_path / "run_log"
+    backtest_hash = "abc123def456"
+    prediction_hash = "pred987654321"
+    backtest_dir = run_log / "backtest" / backtest_hash
+    prediction_dir = run_log / "predictions" / prediction_hash
+    backtest_dir.mkdir(parents=True)
+    prediction_dir.mkdir(parents=True)
+
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "entry_time": [datetime(2024, 1, 1, 0, 0)],
+            "exit_time": [datetime(2024, 1, 2, 0, 0)],
+            "entry_price": [100.0],
+            "exit_price": [102.0],
+            "quantity": [10.0],
+            "direction": ["long"],
+            "pnl": [20.0],
+            "pnl_percent": [0.02],
+            "bars_held": [1],
+            "fees": [1.0],
+            "exit_slippage": [0.1],
+            "mfe": [0.03],
+            "mae": [-0.01],
+            "entry_slippage": [0.1],
+            "multiplier": [1.0],
+            "gross_pnl": [22.0],
+            "net_return": [0.019],
+            "total_slippage_cost": [2.0],
+            "cost_drag": [0.001],
+            "exit_reason": ["signal"],
+            "status": ["closed"],
+        }
+    ).write_parquet(backtest_dir / "trades.parquet")
+    pl.DataFrame(
+        {
+            "timestamp": [date(2024, 1, 1), date(2024, 1, 2)],
+            "daily_return": [0.01, -0.005],
+        }
+    ).write_parquet(backtest_dir / "daily_returns.parquet")
+    pl.DataFrame(
+        {
+            "timestamp": [datetime(2024, 1, 1, 0, 0)],
+            "symbol": ["AAPL"],
+            "weight": [0.2],
+        }
+    ).write_parquet(backtest_dir / "weights.parquet")
+    (backtest_dir / "spec.json").write_text(
+        json.dumps(
+            {
+                "preset_id": "etfs:base",
+                "strategy": {
+                    "signal": {"method": "equal_weight_top_k", "top_k": 2},
+                    "allocation": {"method": "hrp"},
+                },
+                "backtest_config": {
+                    "cash": {"initial": 100000.0},
+                    "calendar": {"calendar": "NYSE"},
+                    "metadata": {"prediction_hash": prediction_hash},
+                },
+            }
+        )
+    )
+    pl.DataFrame(
+        {
+            "timestamp": ["2024-01-01"],
+            "symbol": ["AAPL"],
+            "y_true": [0.02],
+            "y_score": [0.8],
+            "config_name": ["cae"],
+        }
+    ).write_parquet(prediction_dir / "predictions.parquet")
+
+    html = generate_tearsheet_from_run_artifacts(backtest_dir, template="full")
+
+    assert 'data-workspace="ml"' in html
+    assert "Prediction Translation" in html
+    assert "Prediction vs Trade Outcomes" in html
+    assert "cae" in html
 
 
 def test_generate_tearsheet_from_result_normalizes_backtest_metric_keys(monkeypatch):
@@ -299,3 +540,34 @@ def test_generate_tearsheet_from_result_normalizes_backtest_metric_keys(monkeypa
     assert metrics["total_return"] == pytest.approx(0.125)
     assert metrics["n_trades"] == 4
     assert metrics["max_drawdown"] == pytest.approx(0.1)
+
+
+def test_generate_tearsheet_from_result_forwards_report_metadata(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def _generate_backtest_tearsheet(**kwargs):
+        captured.update(kwargs)
+        return "<html></html>"
+
+    monkeypatch.setattr(
+        "ml4t.diagnostic.visualization.backtest.generate_backtest_tearsheet",
+        _generate_backtest_tearsheet,
+    )
+
+    result = BacktestResult(
+        trades=[],
+        equity_curve=[
+            (datetime(2024, 1, 1, 9, 30), 100000.0),
+            (datetime(2024, 1, 2, 9, 30), 101000.0),
+        ],
+        fills=[],
+        metrics={},
+    )
+    metadata = BacktestReportMetadata(
+        strategy_name="Momentum Rotation",
+        benchmark_name="SPY",
+    )
+
+    generate_tearsheet_from_result(result, report_metadata=metadata)
+
+    assert captured["report_metadata"] == metadata

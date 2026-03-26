@@ -135,7 +135,7 @@ dashboard = [
 
 # Backtest integration bridge
 backtest = [
-    "ml4t-backtest>=0.1.0b7",
+    "ml4t-backtest>=0.1.0b10",
 ]
 
 # Experiment tracking integrations
@@ -176,7 +176,7 @@ all = [
     "pypdf>=5.0.0",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "ml4t-backtest>=0.1.0b7",
+    "ml4t-backtest>=0.1.0b10",
     "streamlit>=1.28.0",
     "wandb>=0.16.0",
 ]
@@ -206,7 +206,7 @@ dev = [
     "seaborn>=0.12.0",
     "kaleido>=0.2.0",
     "pypdf>=5.0.0",
-    "ml4t-backtest>=0.1.0b7",
+    "ml4t-backtest>=0.1.0b10",
     # ML backends needed for SHAP/importance test coverage
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",

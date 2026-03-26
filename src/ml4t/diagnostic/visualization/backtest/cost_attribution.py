@@ -264,8 +264,8 @@ def plot_cost_sensitivity(
     fig = make_subplots(
         rows=1,
         cols=2,
-        subplot_titles=("Sharpe Ratio vs Costs", "CAGR vs Costs"),
-        horizontal_spacing=0.12,
+        subplot_titles=("Sharpe", "CAGR"),
+        horizontal_spacing=0.08,
     )
 
     # Sharpe trace
@@ -330,8 +330,8 @@ def plot_cost_sensitivity(
                     x=breakeven,
                     line_dash="dot",
                     line_color="red",
-                    annotation_text=f"Breakeven: {breakeven:.1f} bps",
-                    annotation_position="top",
+                    annotation_text=f"Breakeven {breakeven:.1f} bps",
+                    annotation_position="top left",
                     row=1,
                     col=1,
                 )
@@ -346,6 +346,7 @@ def plot_cost_sensitivity(
             text="Current",
             showarrow=True,
             arrowhead=2,
+            ay=-28,
             row=1,
             col=1,
         )

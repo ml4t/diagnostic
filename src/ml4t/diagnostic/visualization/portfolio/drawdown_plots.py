@@ -305,7 +305,7 @@ def plot_drawdown_summary(
     # === Row 2: Top drawdowns bar chart ===
     top_drawdowns = drawdown_result.top_drawdowns[:5]
     if top_drawdowns:
-        depths = [abs(d.depth) for d in top_drawdowns]
+        depths = [d.depth if d.depth <= 0 else -abs(d.depth) for d in top_drawdowns]
         labels = [f"#{i + 1}: {str(d.valley_date)[:10]}" for i, d in enumerate(top_drawdowns)]
 
         fig.add_trace(
@@ -336,6 +336,5 @@ def plot_drawdown_summary(
 
     fig.update_yaxes(tickformat=".0%", row=1, col=1)
     fig.update_xaxes(tickformat=".0%", row=2, col=1)
-    fig.update_yaxes(autorange="reversed", row=2, col=1)
 
     return fig

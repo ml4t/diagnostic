@@ -76,23 +76,23 @@ THEME_DEFAULT = {
     "description": "Clean, modern light theme for general use",
     "layout": {
         "paper_bgcolor": "#FFFFFF",
-        "plot_bgcolor": _ML4T_COLORS["bg_light"],
+        "plot_bgcolor": "#FFFFFF",
         "font": {
-            "family": "DM Sans, DejaVu Sans, sans-serif",
+            "family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
             "size": 12,
             "color": _ML4T_COLORS["neutral"],
         },
         "title_font": {
-            "size": 18,
+            "size": 16,
             "color": _ML4T_COLORS["neutral"],
-            "family": "DM Sans, DejaVu Sans, sans-serif",
+            "family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         },
-        "margin": {"l": 80, "r": 20, "t": 100, "b": 80},
+        "margin": {"l": 60, "r": 16, "t": 60, "b": 60},
         "hovermode": "closest",
         "hoverlabel": {
             "bgcolor": "white",
             "font_size": 13,
-            "font_family": "DM Sans, DejaVu Sans, sans-serif",
+            "font_family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         },
     },
     "colorway": [
