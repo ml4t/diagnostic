@@ -429,8 +429,7 @@ class TearsheetTemplate:
                     "cost_summary_line", "Cost Summary", band="hero", priority=3
                 ),
                 TearsheetSection(
-                    "key_metrics_table", "Performance Table", band="hero", priority=4,
-                    enabled=False,
+                    "key_metrics_table", "Summary Statistics", band="hero", priority=4,
                 ),
                 TearsheetSection(
                     "monthly_heatmap_overview",
@@ -500,6 +499,7 @@ class TearsheetTemplate:
                     "Monthly Returns",
                     band="appendix",
                     priority=46,
+                    enabled=False,  # Only on Overview as monthly_heatmap_overview
                 ),
                 TearsheetSection(
                     "annual_returns",

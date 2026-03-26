@@ -185,7 +185,7 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     "top_contributors": "overview",
     "overview_snapshot": "overview",
     "cost_summary_line": "overview",
-    "key_metrics_table": "overview",
+    "key_metrics_table": "performance",
     "monthly_heatmap_overview": "overview",
     "key_insights": "overview",
     # Performance
@@ -246,7 +246,7 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
         "rolling_metrics",
         "annual_returns",
         "distribution",
-        "monthly_returns",
+        "key_metrics_table",
     ),
     "trading": (
         "occupancy_overview",
@@ -338,6 +338,34 @@ def _infer_periods_per_year(returns: pl.Series | np.ndarray | None) -> int:
         return 252
     n_periods = len(returns)
     return 12 if n_periods < 100 else 252
+
+
+def _enrich_from_trades(trades: pl.DataFrame, metrics: dict[str, Any]) -> None:
+    """Add trade-level summary stats to the metrics dict."""
+    if trades.is_empty():
+        return
+    if "pnl" in trades.columns:
+        pnl = trades["pnl"]
+        metrics.setdefault("best_trade", float(pnl.max()))
+        metrics.setdefault("worst_trade", float(pnl.min()))
+        metrics.setdefault("avg_trade", float(pnl.mean()))
+        winners = pnl.filter(pnl > 0)
+        losers = pnl.filter(pnl <= 0)
+        if winners.len() > 0 and losers.len() > 0:
+            avg_win = float(winners.mean())
+            avg_loss = abs(float(losers.mean()))
+            if avg_loss > 0:
+                metrics.setdefault("avg_win_loss_ratio", avg_win / avg_loss)
+    if "bars_held" in trades.columns:
+        metrics.setdefault("avg_bars_held", float(trades["bars_held"].mean()))
+        metrics.setdefault("median_bars_held", float(trades["bars_held"].median()))
+    if "pnl_percent" in trades.columns:
+        pnl_pct = trades["pnl_percent"]
+        metrics.setdefault("best_trade_pct", float(pnl_pct.max()))
+        metrics.setdefault("worst_trade_pct", float(pnl_pct.min()))
+    n_symbols = trades["symbol"].n_unique() if "symbol" in trades.columns else None
+    if n_symbols is not None:
+        metrics.setdefault("n_symbols", n_symbols)
 
 
 def _compute_portfolio_summary_metrics(
@@ -669,6 +697,7 @@ def generate_backtest_tearsheet(
     returns: pl.Series | np.ndarray | None = None,
     equity_curve: pl.DataFrame | None = None,
     metrics: dict[str, Any] | None = None,
+    predictions: pl.DataFrame | None = None,
     output_path: str | Path | None = None,
     template: Literal["quant_trader", "hedge_fund", "risk_manager", "full"] = "full",
     theme: Literal["default", "dark", "print", "presentation"] = "default",
@@ -784,6 +813,27 @@ def generate_backtest_tearsheet(
         )
     )
 
+    # Enrich metrics with portfolio-level stats from returns
+    if returns is not None and metrics is not None:
+        portfolio_stats = _compute_portfolio_summary_metrics(returns, periods_per_year=periods_per_year)
+        for key, value in portfolio_stats.items():
+            metrics.setdefault(key, value)
+        # Add common aliases
+        if "sharpe_ratio" in metrics and "sharpe" not in metrics:
+            metrics["sharpe"] = metrics["sharpe_ratio"]
+        if "sharpe" in metrics and "sharpe_ratio" not in metrics:
+            metrics["sharpe_ratio"] = metrics["sharpe"]
+
+    # Enrich with trade-level stats
+    if trades is not None and metrics is not None:
+        _enrich_from_trades(trades, metrics)
+
+    # Auto-enable ML sections when predictions are provided
+    if predictions is not None and not predictions.is_empty():
+        for section in tmpl.sections:
+            if section.name in ("signal_diagnostics", "prediction_calibration", "ml_summary"):
+                section.enabled = True
+
     # Auto-enable factor sections when factor_data is provided
     if factor_data is not None:
         for section in tmpl.sections:
@@ -799,6 +849,7 @@ def generate_backtest_tearsheet(
         returns=returns,
         equity_curve=equity_curve,
         metrics=metrics,
+        predictions=predictions,
         benchmark_returns=benchmark_returns,
         benchmark_metrics=benchmark_metrics,
         benchmark_name=resolved_benchmark_name,
@@ -922,6 +973,7 @@ def _generate_sections(
     returns: pl.Series | np.ndarray | None = None,
     equity_curve: pl.DataFrame | None = None,
     metrics: dict[str, Any] | None = None,
+    predictions: pl.DataFrame | None = None,
     benchmark_returns: pl.Series | np.ndarray | None = None,
     benchmark_metrics: dict[str, float] | None = None,
     benchmark_name: str = "Benchmark",
@@ -955,6 +1007,7 @@ def _generate_sections(
             returns=returns,
             equity_curve=equity_curve,
             metrics=metrics,
+            predictions=predictions,
             benchmark_returns=benchmark_returns,
             benchmark_metrics=benchmark_metrics,
             benchmark_name=benchmark_name,
@@ -981,6 +1034,7 @@ def _generate_section(
     returns: pl.Series | np.ndarray | None = None,
     equity_curve: pl.DataFrame | None = None,
     metrics: dict[str, Any] | None = None,
+    predictions: pl.DataFrame | None = None,
     benchmark_returns: pl.Series | np.ndarray | None = None,
     benchmark_metrics: dict[str, float] | None = None,
     benchmark_name: str = "Benchmark",
@@ -1008,6 +1062,7 @@ def _generate_section(
             returns=returns,
             equity_curve=equity_curve,
             metrics=metrics,
+            predictions=predictions,
             benchmark_returns=benchmark_returns,
             benchmark_metrics=benchmark_metrics,
             benchmark_name=benchmark_name,
@@ -1136,7 +1191,7 @@ class _SectionContext:
 
     __slots__ = (
         "preset", "profile", "trades", "returns", "equity_curve", "metrics",
-        "benchmark_returns", "benchmark_metrics", "benchmark_name",
+        "predictions", "benchmark_returns", "benchmark_metrics", "benchmark_name",
         "n_trials", "shap_result", "factor_data", "factor_analysis", "theme",
     )
 
@@ -1153,6 +1208,7 @@ class _SectionContext:
         benchmark_metrics: dict[str, float] | None,
         benchmark_name: str,
         n_trials: int | None,
+        predictions: pl.DataFrame | None,
         shap_result: TradeShapResult | None,
         factor_data: FactorData | None,
         factor_analysis: Any | None,
@@ -1164,6 +1220,7 @@ class _SectionContext:
         self.returns = returns
         self.equity_curve = equity_curve
         self.metrics = metrics
+        self.predictions = predictions
         self.benchmark_returns = benchmark_returns
         self.benchmark_metrics = benchmark_metrics
         self.benchmark_name = benchmark_name
@@ -1581,6 +1638,58 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
 
 # --- ML renderers ---
 
+class _PredictionAdapter:
+    """Lightweight adapter so ML plots can work without a full BacktestProfile."""
+
+    def __init__(
+        self,
+        predictions_df: pl.DataFrame,
+        equity_df: pl.DataFrame | None = None,
+        trades_df: pl.DataFrame | None = None,
+    ):
+        # Normalize column names
+        if "symbol" in predictions_df.columns and "asset" not in predictions_df.columns:
+            predictions_df = predictions_df.rename({"symbol": "asset"})
+        self._predictions_df = predictions_df
+        self._equity_df = equity_df if equity_df is not None else pl.DataFrame()
+        self._trades_df = trades_df if trades_df is not None else pl.DataFrame()
+
+    @property
+    def predictions_df(self) -> pl.DataFrame:
+        return self._predictions_df
+
+    @property
+    def equity_df(self) -> pl.DataFrame:
+        return self._equity_df
+
+    @property
+    def prediction_enriched_trades_df(self) -> pl.DataFrame:
+        return pl.DataFrame()
+
+    @property
+    def strategy_metadata(self) -> dict:
+        return {}
+
+    @property
+    def signals_df(self) -> pl.DataFrame:
+        return pl.DataFrame()
+
+    @property
+    def ml(self) -> dict:
+        return {"available": True, "has_predictions": True, "has_signals": False,
+                "metrics": {"n_predictions": self._predictions_df.height},
+                "strategy_metadata": {}}
+
+
+def _get_prediction_adapter(ctx: _SectionContext) -> Any:
+    """Return the profile or a lightweight adapter for raw predictions."""
+    if ctx.profile is not None:
+        return ctx.profile
+    if ctx.predictions is not None and not ctx.predictions.is_empty():
+        return _PredictionAdapter(ctx.predictions, ctx.equity_curve)
+    return None
+
+
 def _render_shap_errors(ctx: _SectionContext) -> go.Figure | None:
     if ctx.shap_result is None or not ctx.shap_result.error_patterns:
         return None
@@ -1590,33 +1699,37 @@ def _render_shap_errors(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_ml_summary(ctx: _SectionContext) -> str | None:
-    if ctx.profile is None:
+    adapter = _get_prediction_adapter(ctx)
+    if adapter is None:
         return None
-    return _create_ml_summary_html(ctx.profile)
+    return _create_ml_summary_html(adapter)
 
 
 def _render_signal_diagnostics(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.profile is None:
+    adapter = _get_prediction_adapter(ctx)
+    if adapter is None:
         return None
     from .ml_plots import plot_prediction_signal_diagnostics
 
-    return plot_prediction_signal_diagnostics(ctx.profile, theme=ctx.theme)
+    return plot_prediction_signal_diagnostics(adapter, theme=ctx.theme)
 
 
 def _render_prediction_trade_alignment(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.profile is None:
+    adapter = _get_prediction_adapter(ctx)
+    if adapter is None:
         return None
     from .ml_plots import plot_prediction_trade_alignment
 
-    return plot_prediction_trade_alignment(ctx.profile, theme=ctx.theme)
+    return plot_prediction_trade_alignment(adapter, theme=ctx.theme)
 
 
 def _render_prediction_calibration(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.profile is None:
+    adapter = _get_prediction_adapter(ctx)
+    if adapter is None:
         return None
     from .ml_plots import plot_prediction_calibration
 
-    return plot_prediction_calibration(ctx.profile, theme=ctx.theme)
+    return plot_prediction_calibration(adapter, theme=ctx.theme)
 
 
 # --- Factor renderers ---
@@ -1713,6 +1826,7 @@ def _create_section_figure(
     returns: pl.Series | np.ndarray | None = None,
     equity_curve: pl.DataFrame | None = None,
     metrics: dict[str, Any] | None = None,
+    predictions: pl.DataFrame | None = None,
     benchmark_returns: pl.Series | np.ndarray | None = None,
     benchmark_metrics: dict[str, float] | None = None,
     benchmark_name: str = "Benchmark",
@@ -1737,6 +1851,7 @@ def _create_section_figure(
         returns=returns,
         equity_curve=equity_curve,
         metrics=metrics or {},
+        predictions=predictions,
         benchmark_returns=benchmark_returns,
         benchmark_metrics=benchmark_metrics,
         benchmark_name=benchmark_name,

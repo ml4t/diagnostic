@@ -179,6 +179,68 @@ DEFAULT_THRESHOLDS: dict[str, dict[str, Any]] = {
         "label": "MinTRL",
         "higher_is_better": False,
     },
+    "omega_ratio": {
+        "format": "{:.2f}",
+        "label": "Omega Ratio",
+        "higher_is_better": True,
+    },
+    "var_95": {
+        "format": "{:.2%}",
+        "label": "VaR (95%)",
+        "higher_is_better": False,
+    },
+    "cvar_95": {
+        "format": "{:.2%}",
+        "label": "CVaR (95%)",
+        "higher_is_better": False,
+    },
+    "skewness": {
+        "format": "{:.2f}",
+        "label": "Skewness",
+    },
+    "kurtosis": {
+        "format": "{:.1f}",
+        "label": "Kurtosis",
+    },
+    "tail_ratio": {
+        "format": "{:.2f}",
+        "label": "Tail Ratio",
+        "higher_is_better": True,
+    },
+    "stability": {
+        "format": "{:.2f}",
+        "label": "Stability",
+        "higher_is_better": True,
+    },
+    "avg_win_loss_ratio": {
+        "format": "{:.2f}",
+        "label": "Avg Win/Loss",
+        "higher_is_better": True,
+    },
+    "n_symbols": {
+        "format": "{:,.0f}",
+        "label": "Symbols Traded",
+    },
+    "avg_bars_held": {
+        "format": "{:.0f}",
+        "label": "Avg Holding Period",
+    },
+    "best_trade": {
+        "format": "${:,.0f}",
+        "label": "Best Trade",
+    },
+    "worst_trade": {
+        "format": "${:,.0f}",
+        "label": "Worst Trade",
+    },
+    "total_commission": {
+        "format": "${:,.0f}",
+        "label": "Total Commission",
+    },
+    "total_slippage": {
+        "format": "${:,.0f}",
+        "label": "Total Slippage",
+    },
 }
 
 TRAFFIC_LIGHT_COLORS = {
@@ -205,22 +267,43 @@ SUMMARY_TABLE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "sharpe_ratio",
             "sortino_ratio",
             "calmar_ratio",
+            "omega_ratio",
             "max_drawdown",
             "volatility",
         ),
     ),
     (
-        "Trading Edge",
-        ("win_rate", "profit_factor", "avg_trade", "expectancy", "n_trades"),
+        "Risk",
+        (
+            "var_95",
+            "cvar_95",
+            "skewness",
+            "kurtosis",
+            "tail_ratio",
+            "stability",
+        ),
     ),
     (
-        "Implementation",
+        "Trading",
         (
-            "avg_turnover",
-            "num_rebalance_events",
-            "avg_open_positions",
-            "time_in_market",
+            "win_rate",
+            "profit_factor",
+            "avg_trade",
+            "avg_win_loss_ratio",
+            "n_trades",
+            "n_symbols",
+            "avg_bars_held",
+            "best_trade",
+            "worst_trade",
+        ),
+    ),
+    (
+        "Costs",
+        (
             "total_implementation_cost",
+            "total_commission",
+            "total_slippage",
+            "avg_turnover",
         ),
     ),
     (

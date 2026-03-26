@@ -225,28 +225,14 @@ def create_worst_trades_table_html(
 def create_cost_summary_line_html(metrics: dict[str, Any]) -> str | None:
     """Create a one-line cost summary strip.
 
-    Shows gross return, net return, and cost drag percentage.
+    Shows cost drag and total cost (no total return — already in KPI strip).
     Returns None if insufficient cost data.
     """
-    total_return = metrics.get("total_return")
-    if total_return is None:
-        return None
-
     total_cost = metrics.get("total_implementation_cost", 0.0)
     gross_pnl = metrics.get("gross_pnl")
     total_pnl = metrics.get("total_pnl")
 
-    try:
-        tr = float(total_return)
-    except (TypeError, ValueError):
-        return None
-
     items: list[str] = []
-    items.append(
-        f'<span class="cost-summary-item">'
-        f'<span class="cost-summary-label">Total Return</span>'
-        f'<span class="cost-summary-value">{tr:.1%}</span></span>'
-    )
 
     if gross_pnl is not None and total_pnl is not None:
         try:
@@ -275,7 +261,15 @@ def create_cost_summary_line_html(metrics: dict[str, Any]) -> str | None:
         except (TypeError, ValueError):
             pass
 
-    if len(items) < 2:
+    n_trades = metrics.get("num_trades", metrics.get("n_trades"))
+    if n_trades is not None:
+        items.append(
+            f'<span class="cost-summary-item">'
+            f'<span class="cost-summary-label">Trades</span>'
+            f'<span class="cost-summary-value">{int(n_trades):,}</span></span>'
+        )
+
+    if not items:
         return None
 
     return f'<div class="cost-summary-line">{"".join(items)}</div>'
