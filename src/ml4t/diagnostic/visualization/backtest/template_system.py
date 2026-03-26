@@ -92,7 +92,7 @@ class TearsheetTemplate:
                 TearsheetSection(
                     "key_insights", "Key Insights", band="hero", priority=2, enabled=False
                 ),
-                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=3),
+                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=3, enabled=False),
                 TearsheetSection(
                     "activity_overview", "Activity", band="implementation", priority=3
                 ),
@@ -200,7 +200,7 @@ class TearsheetTemplate:
                 TearsheetSection(
                     "key_insights", "Key Insights", band="hero", priority=2, enabled=False
                 ),
-                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=3),
+                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=3, enabled=False),
                 TearsheetSection("equity_curve", "Equity Curve", band="implementation", priority=3),
                 TearsheetSection(
                     "rolling_metrics", "Rolling Performance", band="implementation", priority=4
@@ -311,7 +311,7 @@ class TearsheetTemplate:
             sections=[
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
                 TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
-                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=2),
+                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=2, enabled=False),
                 TearsheetSection(
                     "statistical_summary", "Statistical Summary", band="hero", priority=3
                 ),
@@ -429,7 +429,8 @@ class TearsheetTemplate:
                     "cost_summary_line", "Cost Summary", band="hero", priority=3
                 ),
                 TearsheetSection(
-                    "key_metrics_table", "Performance Table", band="hero", priority=4
+                    "key_metrics_table", "Performance Table", band="hero", priority=4,
+                    enabled=False,
                 ),
                 TearsheetSection(
                     "monthly_heatmap_overview",
@@ -461,7 +462,6 @@ class TearsheetTemplate:
                     "Top Drawdowns",
                     band="implementation",
                     priority=13,
-                    enabled=False,  # Already embedded in drawdown chart
                 ),
                 TearsheetSection(
                     "drawdown_anatomy",
@@ -480,10 +480,12 @@ class TearsheetTemplate:
                 TearsheetSection("occupancy_overview", "Exposure", band="burden", priority=21),
                 TearsheetSection("attribution_overview", "Attribution", band="burden", priority=22),
                 TearsheetSection(
-                    "statistical_summary", "Statistical Summary", band="appendix", priority=40
+                    "statistical_summary", "Statistical Summary", band="appendix", priority=40,
+                    enabled=False,
                 ),
                 TearsheetSection(
-                    "dsr_gauge", "Statistical Validity", band="appendix", priority=41
+                    "dsr_gauge", "Statistical Validity", band="appendix", priority=41,
+                    enabled=False,
                 ),
                 TearsheetSection(
                     "pbo_gauge", "Overfitting Probability", band="appendix", priority=42
@@ -492,13 +494,12 @@ class TearsheetTemplate:
                     "confidence_intervals", "Confidence Intervals", band="appendix", priority=43
                 ),
                 TearsheetSection("min_trl", "Minimum Track Record", band="appendix", priority=44),
-                TearsheetSection("tail_risk", "Tail Risk", band="appendix", priority=45),
+                TearsheetSection("tail_risk", "Tail Risk", band="appendix", priority=45, enabled=False),
                 TearsheetSection(
                     "monthly_returns",
                     "Monthly Returns",
                     band="appendix",
                     priority=46,
-                    enabled=False,  # Already on Overview as monthly_heatmap_overview
                 ),
                 TearsheetSection(
                     "annual_returns",
@@ -537,6 +538,7 @@ class TearsheetTemplate:
                     "Trade-by-Trade PnL",
                     band="appendix",
                     priority=52,
+                    enabled=False,
                 ),
                 TearsheetSection(
                     "duration",

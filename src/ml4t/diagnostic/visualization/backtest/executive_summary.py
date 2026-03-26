@@ -765,16 +765,28 @@ def create_executive_summary_html(
             "dsr_probability",
         ]
 
-    metric_order = [metric_name for metric_name in selected_metrics if metric_name in metrics]
+    # Resolve common aliases so preset names like "sharpe_ratio" find "sharpe"
+    metric_aliases: dict[str, str] = {
+        "sharpe_ratio": "sharpe",
+        "sharpe": "sharpe_ratio",
+    }
+
+    def _resolve_metric(name: str) -> str | None:
+        if name in metrics:
+            return name
+        alias = metric_aliases.get(name)
+        if alias and alias in metrics:
+            return alias
+        return None
+
+    metric_order = [
+        _resolve_metric(m) for m in selected_metrics if _resolve_metric(m) is not None
+    ]
     if not metric_order:
         metric_order = list(metrics.keys())[:6]
-    elif len(metric_order) < 6:
-        metric_order.extend(
-            metric_name for metric_name in metrics if metric_name not in metric_order
-        )
 
     cards: list[str] = []
-    for metric_name in metric_order[:8]:
+    for metric_name in metric_order[:6]:
         label = _get_metric_label(metric_name, thresholds)
         value_text = _format_metric_value(metrics[metric_name], metric_name, thresholds)
         footer = ""

@@ -42,7 +42,6 @@ def create_credibility_box_html(
     dsr_prob = metrics.get("dsr_probability")
     min_trl = metrics.get("min_trl")
     n_periods = metrics.get("n_periods", metrics.get("n_observations"))
-    sharpe = metrics.get("sharpe_ratio", metrics.get("sharpe"))
 
     items: list[str] = []
 
@@ -55,15 +54,12 @@ def create_credibility_box_html(
         if dsr_val is not None and not np.isnan(dsr_val):
             color = get_traffic_light_color(dsr_val, "dsr_probability", thresholds)
             hex_color = TRAFFIC_LIGHT_COLORS.get(color, TRAFFIC_LIGHT_COLORS["neutral"])
-            verdict = "Significant" if dsr_val >= 0.95 else (
-                "Marginal" if dsr_val >= 0.80 else "Not significant"
-            )
             items.append(
                 f'<div class="credibility-item">'
                 f'<span class="credibility-dot" style="background:{hex_color}"></span>'
                 f'<div><div class="credibility-label">Deflated Sharpe</div>'
                 f'<div class="credibility-value">'
-                f'{dsr_val:.1%} — {verdict}</div></div></div>'
+                f'{dsr_val:.1%}</div></div></div>'
             )
 
     # MinTRL
@@ -78,37 +74,12 @@ def create_credibility_box_html(
             sufficient = periods_val >= trl_val
             color = "green" if sufficient else "red"
             hex_color = TRAFFIC_LIGHT_COLORS.get(color, TRAFFIC_LIGHT_COLORS["neutral"])
-            verdict = "Sufficient" if sufficient else f"Need {trl_val - periods_val:.0f} more days"
             items.append(
                 f'<div class="credibility-item">'
                 f'<span class="credibility-dot" style="background:{hex_color}"></span>'
                 f'<div><div class="credibility-label">Min Track Record</div>'
                 f'<div class="credibility-value">'
-                f'{trl_val:.0f} days req — {verdict}</div></div></div>'
-            )
-
-    # Sharpe context — always show when available
-    if sharpe is not None:
-        try:
-            sr_val = float(sharpe)
-        except (TypeError, ValueError):
-            sr_val = None
-        if sr_val is not None and not np.isnan(sr_val):
-            color = get_traffic_light_color(sr_val, "sharpe_ratio", thresholds)
-            hex_color = TRAFFIC_LIGHT_COLORS.get(color, TRAFFIC_LIGHT_COLORS["neutral"])
-            if sr_val >= 1.5:
-                verdict = "Strong"
-            elif sr_val >= 1.0:
-                verdict = "Adequate"
-            elif sr_val >= 0.5:
-                verdict = "Marginal"
-            else:
-                verdict = "Weak"
-            items.append(
-                f'<div class="credibility-item">'
-                f'<span class="credibility-dot" style="background:{hex_color}"></span>'
-                f'<div><div class="credibility-label">Sharpe Ratio</div>'
-                f'<div class="credibility-value">{sr_val:.2f} — {verdict}</div></div></div>'
+                f'{trl_val:.0f} days required ({periods_val:.0f} observed)</div></div></div>'
             )
 
     # Track record length — show when available

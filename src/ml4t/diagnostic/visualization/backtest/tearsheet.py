@@ -235,44 +235,34 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     "overview": (
         "executive_summary",
         "credibility_box",
-        "top_contributors",
-        "overview_snapshot",
         "cost_summary_line",
-        "key_metrics_table",
+        "overview_snapshot",
         "monthly_heatmap_overview",
-        "key_insights",
     ),
     "performance": (
         "equity_curve",
         "drawdowns",
         "top_drawdowns_table",
         "rolling_metrics",
-        "monthly_returns",
         "annual_returns",
         "distribution",
-        "tail_risk",
-        "attribution_overview",
+        "monthly_returns",
     ),
     "trading": (
-        "activity_overview",
         "occupancy_overview",
         "cost_waterfall",
         "cost_sensitivity",
+        "attribution_overview",
         "mfe_mae",
-        "exit_reasons",
         "worst_trades_table",
         "duration",
-        "trade_waterfall",
-        "size_return",
-        "cost_by_asset",
-        "consecutive",
+        "exit_reasons",
     ),
     "validation": (
-        "statistical_summary",
-        "dsr_gauge",
-        "pbo_gauge",
         "confidence_intervals",
         "min_trl",
+        "credibility_box_validation",
+        "pbo_gauge",
         "ras_analysis",
         "drawdown_anatomy",
     ),
@@ -1247,11 +1237,14 @@ def _render_key_insights(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_overview_snapshot(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.profile is None:
-        return None
-    from .profile_sections import plot_overview_snapshot
+    if ctx.profile is not None:
+        from .profile_sections import plot_overview_snapshot
 
-    return plot_overview_snapshot(ctx.profile, theme=ctx.theme)
+        return plot_overview_snapshot(ctx.profile, theme=ctx.theme)
+    # Fallback: use equity+drawdown from returns when no profile
+    if ctx.returns is None:
+        return None
+    return _render_portfolio_section(ctx, "drawdowns")
 
 
 def _render_activity_overview(ctx: _SectionContext) -> go.Figure | None:
@@ -1299,6 +1292,11 @@ def _render_mfe_mae(ctx: _SectionContext) -> go.Figure | None:
 def _render_exit_reasons(ctx: _SectionContext) -> go.Figure | None:
     if ctx.trades is None:
         return None
+    # Skip if fewer than 3 distinct exit reasons (not informative)
+    if "exit_reason" in ctx.trades.columns:
+        n_reasons = ctx.trades["exit_reason"].n_unique()
+        if n_reasons < 3:
+            return None
     from .trade_plots import plot_exit_reason_breakdown
 
     return plot_exit_reason_breakdown(ctx.trades, chart_type="bar", theme=ctx.theme)
@@ -1338,21 +1336,32 @@ def _render_size_return(ctx: _SectionContext) -> go.Figure | None:
 
 # --- Cost Attribution renderers ---
 
-def _render_cost_waterfall(ctx: _SectionContext) -> go.Figure | None:
+def _render_cost_waterfall(ctx: _SectionContext) -> str | None:
     if ctx.profile is not None:
         from .profile_sections import plot_cost_bridge
 
-        return plot_cost_bridge(ctx.profile, theme=ctx.theme)
-    gross_pnl = ctx.metrics.get("gross_pnl")
-    commission = ctx.metrics.get("commission", 0)
-    slippage = ctx.metrics.get("slippage", 0)
-    if gross_pnl is None:
-        return None
-    from .cost_attribution import plot_cost_waterfall
+        fig = plot_cost_bridge(ctx.profile, theme=ctx.theme)
+    else:
+        gross_pnl = ctx.metrics.get("gross_pnl")
+        commission = ctx.metrics.get("total_commission", ctx.metrics.get("commission", 0))
+        slippage = ctx.metrics.get("total_slippage", ctx.metrics.get("slippage", 0))
+        if gross_pnl is None:
+            return None
+        from .cost_attribution import plot_cost_waterfall
 
-    return plot_cost_waterfall(
-        gross_pnl=gross_pnl, commission=commission,
-        slippage=slippage, theme=ctx.theme,
+        fig = plot_cost_waterfall(
+            gross_pnl=gross_pnl, commission=commission,
+            slippage=slippage, theme=ctx.theme,
+            height=380,
+        )
+    if fig is None:
+        return None
+    fig.update_layout(autosize=True, width=None, margin={"t": 40})
+    chart_html = _figure_to_clean_html(fig)
+    return (
+        '<div style="max-width:560px">'
+        f'<div class="chart-container">{chart_html}</div>'
+        '</div>'
     )
 
 

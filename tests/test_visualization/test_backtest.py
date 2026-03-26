@@ -617,14 +617,12 @@ class TestTearsheetGeneration:
         assert 'data-workspace="overview"' in html
         assert 'data-workspace="performance"' in html
         assert "report-section" in html
-        assert "metrics-table" in html.lower()
         assert "executive-strip" in html
         assert "Benchmark Context" not in html
         assert "Backtest Diagnostics" not in html
         assert "State-of-the-art" not in html
-        # Trade waterfall is now enabled (collapsible) in the full template
-        assert "Trade-by-Trade PnL" in html
-        # Position size is still disabled per reviewer recommendations
+        # Trade waterfall and position size disabled per content architecture review
+        assert "Trade-by-Trade PnL" not in html
         assert "Position Size Analysis" not in html
 
     def test_generate_backtest_tearsheet_templates(
@@ -767,8 +765,7 @@ class TestTearsheetGeneration:
         )
 
         assert "SPY" in html
-        assert "Spread = Strategy - SPY" in html
-        assert "metrics-table" in html.lower()
+        # key_metrics_table disabled — benchmark context no longer in main table
         assert "Assessment" not in html
         assert "Better" not in html
         assert "Worse" not in html
@@ -796,7 +793,6 @@ class TestTearsheetGeneration:
 
         assert "Statistical Arbitrage" in html
         assert "SPY" in html
-        assert "Benchmark: SPY" in html
 
     def test_generate_backtest_tearsheet_allows_date_only_masthead(
         self,
@@ -1336,7 +1332,6 @@ class TestShapPatterns:
         )
 
         assert "SPY" in html
-        assert "Spread = Strategy - SPY" in html
         assert "Assessment" not in html
 
     def test_shap_errors_none_graceful(self, sample_returns):
