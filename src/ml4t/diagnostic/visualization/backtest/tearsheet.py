@@ -601,7 +601,7 @@ def _create_ml_summary_html(profile: BacktestProfile) -> str | None:
             ("prediction_value", "score", "prediction", "y_pred", "y_score", "probability"),
         )
         outcome_col = _first_present_column(
-            predictions_df, ("y_true", "target", "realized_return", "forward_return"),
+            predictions_df, ("y_true", "actual", "target", "realized_return", "forward_return"),
         )
         if score_col and outcome_col:
             date_col = _first_present_column(predictions_df, ("timestamp", "date", "session_date"))
@@ -1939,7 +1939,7 @@ def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
                     preds, ("prediction_value", "score", "prediction", "y_pred", "y_score"),
                 )
                 outcome_col = _first_present_column(
-                    preds, ("y_true", "target", "realized_return", "forward_return"),
+                    preds, ("y_true", "actual", "target", "realized_return", "forward_return"),
                 )
                 date_col = _first_present_column(preds, ("timestamp", "date", "session_date"))
                 asset_col = _first_present_column(preds, ("asset",))
@@ -2244,7 +2244,7 @@ def _build_prediction_vs_outcome_scatter(
         preds, ("prediction_value", "score", "prediction", "y_pred", "y_score"),
     )
     outcome_col = _first_present_column(
-        preds, ("y_true", "target", "realized_return", "forward_return"),
+        preds, ("y_true", "actual", "target", "realized_return", "forward_return"),
     )
     if score_col is None or outcome_col is None:
         return None

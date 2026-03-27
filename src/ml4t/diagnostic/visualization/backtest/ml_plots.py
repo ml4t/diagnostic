@@ -33,7 +33,7 @@ def plot_prediction_signal_diagnostics(
         predictions,
         ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
     )
-    outcome_col = _first_present_column(predictions, ("y_true", "target", "realized_return", "forward_return"))
+    outcome_col = _first_present_column(predictions, ("y_true", "actual", "target", "realized_return", "forward_return"))
     if date_col is None or asset_col is None or score_col is None or outcome_col is None:
         return None
 
@@ -242,7 +242,7 @@ def plot_ic_time_series(
         predictions,
         ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
     )
-    outcome_col = _first_present_column(predictions, ("y_true", "target", "realized_return", "forward_return"))
+    outcome_col = _first_present_column(predictions, ("y_true", "actual", "target", "realized_return", "forward_return"))
     if date_col is None or asset_col is None or score_col is None or outcome_col is None:
         return None
 
@@ -305,7 +305,7 @@ def plot_quintile_returns(
         predictions,
         ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
     )
-    outcome_col = _first_present_column(predictions, ("y_true", "target", "realized_return", "forward_return"))
+    outcome_col = _first_present_column(predictions, ("y_true", "actual", "target", "realized_return", "forward_return"))
     if date_col is None or asset_col is None or score_col is None or outcome_col is None:
         return None
 
@@ -515,7 +515,7 @@ def plot_prediction_calibration(
         ("prediction_value", "score", "prediction", "y_pred", "y_score", "probability"),
     )
     outcome_col = _first_present_column(
-        predictions, ("y_true", "target", "realized_return", "forward_return"),
+        predictions, ("y_true", "actual", "target", "realized_return", "forward_return"),
     )
     if score_col is None or outcome_col is None:
         return None

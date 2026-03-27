@@ -366,10 +366,15 @@ def plot_monthly_returns_heatmap(
         [1.0, "#1a9850"],
     ]
 
-    # Find symmetric range for color scale
+    # Find symmetric range for color scale, clamped to robust percentile
+    # so extreme outliers (e.g., crypto ±240%) don't wash out normal cells
     max_abs = np.nanmax(np.abs(z_array))
     if np.isnan(max_abs):
         max_abs = 0.1
+    elif max_abs > 0:
+        p95 = float(np.nanpercentile(np.abs(z_array), 95))
+        if p95 > 0 and max_abs > 2 * p95:
+            max_abs = p95 * 1.5
 
     fig = go.Figure(
         data=go.Heatmap(

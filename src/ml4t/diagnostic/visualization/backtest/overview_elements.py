@@ -25,13 +25,6 @@ def _get(metrics: dict[str, Any], *keys: str) -> Any | None:
     return None
 
 
-def _is_fraction(value: Any) -> bool:
-    """Heuristic: treat as fraction if numeric and |v| <= 1.0."""
-    if not isinstance(value, (int, float)):
-        return False
-    return abs(value) <= 1.0
-
-
 # =============================================================================
 # Formatting Helpers
 # =============================================================================
@@ -44,12 +37,10 @@ def _fmt_ratio(v: Any) -> str:
 
 
 def _fmt_pct(v: Any) -> str:
+    """Format a fraction as a percentage (e.g., 0.15 → '15.0%', 1.35 → '135.0%')."""
     if v is None:
         return "\u2014"
-    fv = float(v)
-    if _is_fraction(fv):
-        return f"{fv:.1%}"
-    return f"{fv:.1f}%"
+    return f"{float(v):.1%}"
 
 
 def _fmt_int(v: Any) -> str:
@@ -73,10 +64,7 @@ def _fmt_shape(v: Any) -> str:
 def _fmt_pct_best_worst(v: Any) -> str:
     if v is None:
         return "\u2014"
-    fv = float(v)
-    if _is_fraction(fv):
-        return f"{fv:.1%}"
-    return f"{fv:.1f}%"
+    return f"{float(v):.1%}"
 
 
 # =============================================================================
@@ -423,7 +411,7 @@ def create_activity_strip_html(metrics: dict[str, Any]) -> str:
     time_in_market = _get(metrics, "time_in_market")
     if time_in_market is not None:
         fv = float(time_in_market)
-        formatted = f"{fv:.1%}" if _is_fraction(fv) else f"{fv:.1f}%"
+        formatted = f"{fv:.1%}"
         cards.append(_kpi_card("TIME IN MARKET", formatted))
 
     if not cards:
@@ -559,19 +547,19 @@ def create_ml_summary_strip_html(metrics: dict[str, Any]) -> str:
     hit_rate = _get(metrics, "hit_rate")
     if hit_rate is not None:
         fv = float(hit_rate)
-        formatted = f"{fv:.1%}" if _is_fraction(fv) else f"{fv:.1f}%"
+        formatted = f"{fv:.1%}"
         cards.append(_kpi_card("HIT RATE", formatted))
 
     coverage = _get(metrics, "coverage")
     if coverage is not None:
         fv = float(coverage)
-        formatted = f"{fv:.1%}" if _is_fraction(fv) else f"{fv:.1f}%"
+        formatted = f"{fv:.1%}"
         cards.append(_kpi_card("COVERAGE", formatted))
 
     selection_rate = _get(metrics, "selection_rate")
     if selection_rate is not None:
         fv = float(selection_rate)
-        formatted = f"{fv:.1%}" if _is_fraction(fv) else f"{fv:.1f}%"
+        formatted = f"{fv:.1%}"
         cards.append(_kpi_card("SELECTION RATE", formatted))
 
     if not cards:
