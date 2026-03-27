@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import plotly.graph_objects as go
 
 from ml4t.diagnostic.visualization._colors import get_factor_color
@@ -43,22 +44,25 @@ def plot_return_attribution_waterfall(
     """
     theme_config = get_theme_config(theme)
 
-    # Build waterfall data
+    # Use additive (sum of daily) contributions — these are exactly additive:
+    # sum(factor_contributions[f]) + sum(alpha) + sum(residual) == sum(total_returns)
     all_labels = list(result.factor_names) + ["Alpha", "Residual", "Total"]
-    values = []
+    values: list[float] = []
     for f in result.factor_names:
-        values.append(result.cumulative_factor[f][-1])
-    values.append(result.cumulative_alpha[-1])
-    values.append(result.cumulative_residual[-1])
-    total_val = result.cumulative_total[-1]
+        values.append(float(np.sum(result.factor_contributions[f])))
+    alpha_sum = float(np.sum(result.alpha_contribution))
+    residual_sum = float(np.sum(result.residual))
+    values.append(alpha_sum)
+    values.append(residual_sum)
+    total_val = sum(values)  # exact sum of additive components
     values.append(total_val)
 
     measures = ["relative"] * (len(result.factor_names) + 2) + ["total"]
 
-    # Clean text labels (value only, CI in hover)
+    # Text labels
     text = [f"{v:.2%}" for v in values]
 
-    # Per-bar colors from factor palette
+    # Per-bar colors
     bar_colors = [get_factor_color(f) for f in result.factor_names]
     bar_colors.append(get_factor_color("Alpha"))
     bar_colors.append(get_factor_color("Residual"))
@@ -67,34 +71,31 @@ def plot_return_attribution_waterfall(
     # Hover with CI where available
     hover_texts = []
     for f in result.factor_names:
-        val = result.cumulative_factor[f][-1]
+        val = float(np.sum(result.factor_contributions[f]))
         ci = result.attribution_ci.get(f)
         if ci:
             hover_texts.append(
-                f"<b>{f}</b><br>Return: {val:.4f}<br>"
+                f"<b>{f}</b><br>Contribution: {val:.4f}<br>"
                 f"CI: [{ci[0]:.4f}, {ci[1]:.4f}]"
             )
         else:
-            hover_texts.append(f"<b>{f}</b><br>Return: {val:.4f}")
-    hover_texts.append(f"<b>Alpha</b><br>Return: {result.cumulative_alpha[-1]:.4f}")
-    hover_texts.append(f"<b>Residual</b><br>Return: {result.cumulative_residual[-1]:.4f}")
-    hover_texts.append(f"<b>Total</b><br>Return: {total_val:.4f}")
+            hover_texts.append(f"<b>{f}</b><br>Contribution: {val:.4f}")
+    hover_texts.append(f"<b>Alpha</b><br>Contribution: {alpha_sum:.4f}")
+    hover_texts.append(f"<b>Residual</b><br>Contribution: {residual_sum:.4f}")
+    hover_texts.append(f"<b>Total</b><br>Sum of contributions: {total_val:.4f}")
 
-    # Plotly Waterfall doesn't support per-bar marker_color directly,
-    # so we use individual Bar traces for per-factor coloring
+    # Build waterfall with per-bar coloring via individual Bar traces
     fig = go.Figure()
 
-    # Build cumulative base for waterfall effect
     base = 0.0
     for i, (label, val) in enumerate(zip(all_labels, values)):
         is_total = measures[i] == "total"
         bar_base = 0.0 if is_total else base
-        bar_val = val if is_total else val
 
         fig.add_trace(go.Bar(
             x=[label],
-            y=[abs(bar_val)],
-            base=[bar_base if bar_val >= 0 else bar_base + bar_val],
+            y=[abs(val)],
+            base=[bar_base if val >= 0 else bar_base + val],
             marker_color=bar_colors[i],
             text=[text[i]],
             textposition="outside",
@@ -106,12 +107,11 @@ def plot_return_attribution_waterfall(
         if not is_total:
             base += val
 
-    # Connector lines between bars
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
-        title="Return Attribution (Cumulative)",
-        yaxis_title="Cumulative Return",
-        yaxis_tickformat=".1%",
+        title="Return Attribution (Additive)",
+        yaxis_title="Contribution (sum of daily \u03b2 \u00d7 factor return)",
+        yaxis_tickformat=".2%",
         height=height,
         width=width or theme_config["defaults"]["width"],
         barmode="overlay",
@@ -121,9 +121,8 @@ def plot_return_attribution_waterfall(
     # Footnote
     fig.add_annotation(
         text=(
-            "Additive attribution: cumulative sum of daily \u03b2 \u00d7 factor return. "
-            "Total may differ from compound strategy return due to compounding effects. "
-            "Hover for confidence intervals."
+            "Additive decomposition: \u03a3 \u03b2[t\u22121] \u00d7 f[t]. "
+            "Components sum exactly to Total. Hover for confidence intervals."
         ),
         xref="paper", yref="paper",
         x=0, y=-0.15,

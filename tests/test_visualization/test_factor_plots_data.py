@@ -107,7 +107,9 @@ class TestRollingBetasDataCorrectness:
 
 class TestWaterfallDataCorrectness:
     def test_waterfall_values_match_attribution(self, factor_setup: tuple) -> None:
-        """Waterfall bar values should match cumulative attribution."""
+        """Waterfall bar values should match additive (sum-of-daily) attribution."""
+        import numpy as np
+
         returns, fd = factor_setup
         attr = compute_return_attribution(returns, fd, window=63)
         fig = plot_return_attribution_waterfall(attr)
@@ -120,22 +122,26 @@ class TestWaterfallDataCorrectness:
                 labels.append(trace.x[0])
                 values.append(trace.y[0])
 
-        # Check each factor's cumulative contribution
+        # Check each factor's additive contribution (sum of daily)
         for f in fd.factor_names:
             assert f in labels
             idx = labels.index(f)
-            expected = attr.cumulative_factor[f][-1]
+            expected = float(np.sum(attr.factor_contributions[f]))
             assert abs(values[idx] - abs(expected)) < 1e-10, (
-                f"Waterfall {f}: plotted={values[idx]}, expected={expected}"
+                f"Waterfall {f}: plotted={values[idx]}, expected={abs(expected)}"
             )
 
-        # Check alpha
+        # Check alpha (sum of daily alpha contributions)
         alpha_idx = labels.index("Alpha")
-        assert abs(values[alpha_idx] - abs(attr.cumulative_alpha[-1])) < 1e-10
+        expected_alpha = float(np.sum(attr.alpha_contribution))
+        assert abs(values[alpha_idx] - abs(expected_alpha)) < 1e-10
 
-        # Check total
+        # Check total = sum of all additive components
         total_idx = labels.index("Total")
-        assert abs(values[total_idx] - abs(attr.cumulative_total[-1])) < 1e-10
+        component_sum = sum(
+            float(np.sum(attr.factor_contributions[f])) for f in fd.factor_names
+        ) + expected_alpha + float(np.sum(attr.residual))
+        assert abs(values[total_idx] - abs(component_sum)) < 1e-10
 
 
 class TestRiskPieDataCorrectness:

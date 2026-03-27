@@ -216,6 +216,7 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     # Factors
     "factor_exposure": "factors",
     "factor_legend": "factors",
+    "factor_regression_table": "factors",
     "factor_attribution": "factors",
     "factor_risk": "factors",
     # ML
@@ -269,6 +270,7 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     "factors": (
         "factor_exposure",
         "factor_legend",
+        "factor_regression_table",
         "factor_attribution",
         "factor_risk",
     ),
@@ -2320,6 +2322,9 @@ def _render_factor_section(ctx: _SectionContext, section_name: str) -> Any:
     if section_name == "factor_legend":
         return _render_factor_legend(ctx)
 
+    if section_name == "factor_regression_table":
+        return _render_factor_regression_table(ctx)
+
     if section_name == "factor_attribution":
         from ml4t.diagnostic.visualization.factor import plot_return_attribution_waterfall
 
@@ -2335,6 +2340,74 @@ def _render_factor_section(ctx: _SectionContext, section_name: str) -> Any:
         )
 
     return None
+
+
+def _render_factor_regression_table(ctx: _SectionContext) -> str | None:
+    """Render an HTML table of factor regression statistics."""
+    if ctx.factor_analysis is None:
+        return None
+    model = ctx.factor_analysis.static_model()
+
+    rows: list[str] = []
+    for f in model.factor_names:
+        beta = model.betas.get(f, 0.0)
+        se = model.beta_ses.get(f, 0.0)
+        t = model.beta_ts.get(f, 0.0)
+        p = model.beta_ps.get(f, 1.0)
+        sig = " *" if p < 0.05 else ""
+        p_class = ' class="positive"' if p < 0.05 else ""
+        rows.append(
+            f"<tr><td>{html_mod.escape(f)}</td>"
+            f'<td class="num">{beta:.4f}</td>'
+            f'<td class="num">{se:.4f}</td>'
+            f'<td class="num">{t:.2f}</td>'
+            f'<td class="num"{p_class}>{p:.3f}{sig}</td></tr>'
+        )
+    # Alpha row
+    a = getattr(model, "alpha", 0.0) or 0.0
+    a_se = getattr(model, "alpha_se", 0.0) or 0.0
+    a_t = getattr(model, "alpha_t", 0.0) or 0.0
+    a_p = getattr(model, "alpha_p", 1.0) or 1.0
+    a_sig = " *" if a_p < 0.05 else ""
+    a_class = ' class="positive"' if a_p < 0.05 else ""
+    rows.append(
+        f"<tr><td><em>Alpha (annlzd)</em></td>"
+        f'<td class="num">{a * 252:.4f}</td>'
+        f'<td class="num">{a_se * np.sqrt(252):.4f}</td>'
+        f'<td class="num">{a_t:.2f}</td>'
+        f'<td class="num"{a_class}>{a_p:.3f}{a_sig}</td></tr>'
+    )
+
+    # Model fit stats
+    r2 = getattr(model, "r_squared", None)
+    adj_r2 = getattr(model, "adj_r_squared", None)
+    dw = getattr(model, "durbin_watson", None)
+    n = getattr(model, "n_obs", None)
+    hac = getattr(model, "hac", False)
+
+    footer_parts = []
+    if r2 is not None:
+        footer_parts.append(f"R\u00b2={r2:.4f}")
+    if adj_r2 is not None:
+        footer_parts.append(f"Adj R\u00b2={adj_r2:.4f}")
+    if n is not None:
+        footer_parts.append(f"N={n:,}")
+    if dw is not None:
+        footer_parts.append(f"DW={dw:.2f}")
+    if hac:
+        footer_parts.append("HAC SEs")
+    footer = " &nbsp;|&nbsp; ".join(footer_parts)
+
+    return (
+        '<table class="data-table">'
+        "<thead><tr>"
+        "<th>Factor</th><th>Beta</th><th>SE</th><th>t-stat</th><th>p-value</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+        f'<div style="font-size:11px;color:var(--c-text-muted);padding:6px 12px;">'
+        f"{footer}</div>"
+    )
 
 
 def _render_factor_legend(ctx: _SectionContext) -> str | None:
@@ -2400,6 +2473,7 @@ _SECTION_REGISTRY: dict[str, Any] = {
     # Factors
     "factor_exposure": lambda ctx: _render_factor_section(ctx, "factor_exposure"),
     "factor_legend": lambda ctx: _render_factor_section(ctx, "factor_legend"),
+    "factor_regression_table": lambda ctx: _render_factor_section(ctx, "factor_regression_table"),
     "factor_attribution": lambda ctx: _render_factor_section(ctx, "factor_attribution"),
     "factor_risk": lambda ctx: _render_factor_section(ctx, "factor_risk"),
 }

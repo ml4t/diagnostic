@@ -104,9 +104,15 @@ def plot_mfe_mae_scatter(
     theme = validate_theme(theme)
 
     # Extract data
-    mfe = trades_df[mfe_col].to_numpy()
-    mae = np.abs(trades_df[mae_col].to_numpy())  # MAE as positive values
-    pnl = trades_df["pnl"].to_numpy() if "pnl" in trades_df.columns else np.zeros(len(mfe))
+    mfe_raw = trades_df[mfe_col].to_numpy()
+    mae_raw = np.abs(trades_df[mae_col].to_numpy())  # MAE as positive values
+    pnl = trades_df["pnl"].to_numpy() if "pnl" in trades_df.columns else np.zeros(len(mfe_raw))
+
+    # Auto-detect scale: if max values exceed 2.0, data is in dollar terms, not fractions
+    _max_val = max(np.nanmax(np.abs(mfe_raw)), np.nanmax(mae_raw), 1e-10)
+    is_dollar = _max_val > 2.0
+    mfe = mfe_raw
+    mae = mae_raw
 
     # Color encoding
     if color_by == "pnl" and "pnl" in trades_df.columns:
@@ -148,24 +154,40 @@ def plot_mfe_mae_scatter(
         sizes = 12  # Uniform size
 
     # Create figure
+    if is_dollar:
+        x_title = "MAE (Max Adverse Excursion) — $"
+        y_title = "MFE (Max Favorable Excursion) — $"
+    else:
+        x_title = "MAE (Max Adverse Excursion) — % Loss from Entry"
+        y_title = "MFE (Max Favorable Excursion) — % Gain from Entry"
+
     fig = create_base_figure(
         title="MFE vs MAE Analysis (Exit Efficiency)",
-        xaxis_title="MAE (Max Adverse Excursion) - % Loss from Entry",
-        yaxis_title="MFE (Max Favorable Excursion) - % Gain from Entry",
+        xaxis_title=x_title,
+        yaxis_title=y_title,
         height=height,
         width=width,
         theme=theme,
     )
 
     # Hover template
-    hover_template = (
-        "<b>Trade</b><br>"
-        "MFE: %{y:.2%}<br>"
-        "MAE: %{x:.2%}<br>"
-        "PnL: $%{customdata[0]:.2f}<br>"
-        "Return: %{customdata[1]:.2%}<br>"
-        "<extra></extra>"
-    )
+    if is_dollar:
+        hover_template = (
+            "<b>Trade</b><br>"
+            "MFE: $%{y:,.0f}<br>"
+            "MAE: $%{x:,.0f}<br>"
+            "PnL: $%{customdata[0]:.2f}<br>"
+            "<extra></extra>"
+        )
+    else:
+        hover_template = (
+            "<b>Trade</b><br>"
+            "MFE: %{y:.2%}<br>"
+            "MAE: %{x:.2%}<br>"
+            "PnL: $%{customdata[0]:.2f}<br>"
+            "Return: %{customdata[1]:.2%}<br>"
+            "<extra></extra>"
+        )
 
     # Custom data for hover
     custom_data = np.column_stack(
@@ -335,10 +357,11 @@ def plot_mfe_mae_scatter(
             borderwidth=1,
         )
 
+    tick_fmt = "$,.0f" if is_dollar else ".0%"
     fig.update_layout(
         legend={"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
-        xaxis={"tickformat": ".0%"},
-        yaxis={"tickformat": ".0%"},
+        xaxis={"tickformat": tick_fmt},
+        yaxis={"tickformat": tick_fmt},
     )
 
     return fig

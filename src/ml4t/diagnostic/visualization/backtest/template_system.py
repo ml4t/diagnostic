@@ -415,8 +415,9 @@ class TearsheetTemplate:
                 # === Factors (conditional) ===
                 TearsheetSection("factor_exposure", "Factor Exposures", band="validation", priority=70, enabled=False),
                 TearsheetSection("factor_legend", "Factor Legend", band="validation", priority=70, enabled=False),
-                TearsheetSection("factor_attribution", "Factor Attribution", band="validation", priority=71, enabled=False),
-                TearsheetSection("factor_risk", "Factor Risk Decomposition", band="validation", priority=72, enabled=False),
+                TearsheetSection("factor_regression_table", "Regression Statistics", band="validation", priority=71, enabled=False),
+                TearsheetSection("factor_attribution", "Factor Attribution", band="validation", priority=72, enabled=False),
+                TearsheetSection("factor_risk", "Factor Risk Decomposition", band="validation", priority=73, enabled=False),
             ],
         )
 
