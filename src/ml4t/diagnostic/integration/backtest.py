@@ -538,6 +538,21 @@ def _first_present_column(df: pl.DataFrame, candidates: Sequence[str]) -> str | 
     return None
 
 
+def _align_timestamp_precision(*dfs: pl.DataFrame) -> tuple[pl.DataFrame, ...]:
+    """Cast all DataFrames' timestamp column to microsecond precision.
+
+    Polars join requires matching dtypes; Parquet files from different
+    sources may use datetime[ms] vs datetime[μs].
+    """
+    out = []
+    target = pl.Datetime("us")
+    for df in dfs:
+        if "timestamp" in df.columns and df["timestamp"].dtype != target:
+            df = df.with_columns(pl.col("timestamp").cast(target))
+        out.append(df)
+    return tuple(out)
+
+
 def _portfolio_state_from_weights(
     weights_df: pl.DataFrame,
     equity_curve: list[tuple[datetime, float]],
@@ -571,6 +586,7 @@ def _portfolio_state_from_weights(
             "equity": [float(value) for _, value in equity_curve],
         }
     )
+    equity_df, summary = _align_timestamp_precision(equity_df, summary)
     timeline = (
         equity_df.join(summary, on="timestamp", how="left")
         .with_columns(
@@ -626,6 +642,7 @@ def _fills_from_weights(
             "equity": [float(value) for _, value in equity_curve],
         }
     )
+    weights, equity_df = _align_timestamp_precision(weights, equity_df)
     enriched = weights.join(equity_df, on="timestamp", how="left").with_columns(
         pl.col("equity").fill_null(strategy="forward").fill_null(strategy="backward")
     )
