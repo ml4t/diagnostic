@@ -90,10 +90,6 @@ class TearsheetTemplate:
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
                 TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
                 TearsheetSection(
-                    "key_insights", "Key Insights", band="hero", priority=2, enabled=False
-                ),
-                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=3, enabled=False),
-                TearsheetSection(
                     "activity_strip", "Activity", band="implementation", priority=3
                 ),
                 TearsheetSection(
@@ -113,28 +109,25 @@ class TearsheetTemplate:
                 ),
                 TearsheetSection("duration", "Trade Duration Analysis", band="burden", priority=10),
                 TearsheetSection(
-                    "consecutive", "Win/Loss Streaks", band="appendix", priority=11, enabled=False
-                ),
-                TearsheetSection(
-                    "size_return", "Position Size Analysis", band="appendix", priority=12
-                ),
-                TearsheetSection(
-                    "signal_diagnostics",
-                    "Signal Diagnostics",
+                    "ic_time_series",
+                    "IC Time Series",
                     band="appendix",
                     priority=13,
+                    enabled=False,
                 ),
                 TearsheetSection(
-                    "ml_summary",
-                    "Prediction Translation",
+                    "quintile_returns",
+                    "Quintile Returns",
                     band="appendix",
                     priority=14,
+                    enabled=False,
                 ),
                 TearsheetSection(
                     "prediction_trade_alignment",
                     "Prediction vs Trade Outcomes",
                     band="appendix",
                     priority=15,
+                    enabled=False,
                 ),
                 TearsheetSection(
                     "shap_errors",
@@ -145,13 +138,10 @@ class TearsheetTemplate:
                 ),
                 # Disabled by default
                 TearsheetSection(
-                    "equity_curve", "Equity Curve", band="appendix", priority=14, enabled=False
+                    "equity_curve", "Equity Curve", band="appendix", priority=17, enabled=False
                 ),
                 TearsheetSection(
-                    "drawdowns", "Drawdowns", band="appendix", priority=15, enabled=False
-                ),
-                TearsheetSection(
-                    "dsr", "Statistical Validity", band="appendix", priority=16, enabled=False
+                    "drawdowns", "Drawdowns", band="appendix", priority=18, enabled=False
                 ),
             ],
         )
@@ -197,10 +187,6 @@ class TearsheetTemplate:
             sections=[
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
                 TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
-                TearsheetSection(
-                    "key_insights", "Key Insights", band="hero", priority=2, enabled=False
-                ),
-                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=3, enabled=False),
                 TearsheetSection("equity_curve", "Equity Curve", band="implementation", priority=3),
                 TearsheetSection(
                     "rolling_metrics", "Rolling Performance", band="implementation", priority=4
@@ -212,7 +198,7 @@ class TearsheetTemplate:
                     "drawdown_anatomy", "Drawdown Anatomy", band="implementation", priority=6
                 ),
                 TearsheetSection(
-                    "monthly_returns", "Monthly Returns", band="implementation", priority=7
+                    "monthly_heatmap_overview", "Monthly Returns", band="implementation", priority=7
                 ),
                 TearsheetSection(
                     "annual_returns", "Annual Returns", band="implementation", priority=8
@@ -231,40 +217,41 @@ class TearsheetTemplate:
                 TearsheetSection(
                     "trade_waterfall", "Trade Details", band="appendix", priority=23, enabled=False
                 ),
+                # ML (disabled by default, enabled when predictions passed)
                 TearsheetSection(
-                    "dsr", "Statistical Tests", band="appendix", priority=24, enabled=False
-                ),
-                # Factor (disabled by default, enabled when factor_data passed)
-                TearsheetSection(
-                    "signal_diagnostics",
-                    "Signal Diagnostics",
+                    "ml_summary_strip",
+                    "ML Summary",
                     band="appendix",
                     priority=19,
+                    enabled=False,
                 ),
                 TearsheetSection(
-                    "ml_summary",
-                    "Prediction Translation",
+                    "ic_time_series",
+                    "IC Time Series",
                     band="appendix",
                     priority=20,
+                    enabled=False,
                 ),
                 TearsheetSection(
-                    "prediction_trade_alignment",
-                    "Prediction vs Trade Outcomes",
+                    "quintile_returns",
+                    "Quintile Returns",
                     band="appendix",
                     priority=21,
+                    enabled=False,
                 ),
+                # Factor (disabled by default, enabled when factor_data passed)
                 TearsheetSection(
                     "factor_exposure",
                     "Factor Exposures",
                     band="appendix",
-                    priority=22,
+                    priority=24,
                     enabled=False,
                 ),
                 TearsheetSection(
                     "factor_attribution",
                     "Factor Attribution",
                     band="appendix",
-                    priority=22,
+                    priority=25,
                     enabled=False,
                 ),
             ],
@@ -311,22 +298,14 @@ class TearsheetTemplate:
             sections=[
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
                 TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
-                TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=2, enabled=False),
-                TearsheetSection(
-                    "statistical_summary", "Statistical Summary", band="hero", priority=3
-                ),
                 TearsheetSection("equity_curve", "Equity Curve", band="implementation", priority=3),
                 TearsheetSection(
                     "rolling_metrics", "Rolling Performance", band="implementation", priority=4
                 ),
                 TearsheetSection("drawdowns", "Drawdowns", band="burden", priority=5),
                 TearsheetSection("drawdown_anatomy", "Drawdown Anatomy", band="burden", priority=6),
-                TearsheetSection("dsr_gauge", "Statistical Validity", band="burden", priority=7),
                 TearsheetSection(
-                    "pbo_gauge",
-                    "Overfitting Probability",
-                    band="burden",
-                    priority=8,
+                    "validity_card", "Statistical Validity", band="burden", priority=7
                 ),
                 TearsheetSection(
                     "confidence_intervals",
@@ -335,49 +314,46 @@ class TearsheetTemplate:
                     priority=9,
                 ),
                 TearsheetSection("min_trl", "Minimum Track Record", band="burden", priority=10),
+                TearsheetSection("sharpe_bootstrap", "Sharpe Bootstrap", band="burden", priority=11),
                 TearsheetSection(
-                    "ras_analysis",
-                    "RAS Overfitting Check",
-                    band="appendix",
-                    priority=11,
-                    enabled=False,
-                ),
-                TearsheetSection("tail_risk", "Tail Risk", band="appendix", priority=11),
-                TearsheetSection(
-                    "distribution", "Returns Distribution", band="appendix", priority=10
+                    "distribution", "Returns Distribution", band="appendix", priority=12
                 ),
                 # Disabled by default
                 TearsheetSection(
-                    "mfe_mae", "Exit Efficiency", band="appendix", priority=11, enabled=False
+                    "mfe_mae", "Exit Efficiency", band="appendix", priority=13, enabled=False
                 ),
                 TearsheetSection(
                     "cost_waterfall",
                     "Cost Attribution",
                     band="appendix",
-                    priority=12,
+                    priority=14,
+                    enabled=False,
+                ),
+                # ML (disabled by default, enabled when predictions passed)
+                TearsheetSection(
+                    "ml_summary_strip",
+                    "ML Summary",
+                    band="appendix",
+                    priority=16,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "ic_time_series",
+                    "IC Time Series",
+                    band="appendix",
+                    priority=17,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "quintile_returns",
+                    "Quintile Returns",
+                    band="appendix",
+                    priority=18,
                     enabled=False,
                 ),
                 # Factor (disabled by default, enabled when factor_data passed)
                 TearsheetSection(
-                    "signal_diagnostics",
-                    "Signal Diagnostics",
-                    band="appendix",
-                    priority=14,
-                ),
-                TearsheetSection(
-                    "ml_summary",
-                    "Prediction Translation",
-                    band="appendix",
-                    priority=15,
-                ),
-                TearsheetSection(
-                    "prediction_trade_alignment",
-                    "Prediction vs Trade Outcomes",
-                    band="appendix",
-                    priority=16,
-                ),
-                TearsheetSection(
-                    "factor_risk", "Factor Risk", band="appendix", priority=16, enabled=False
+                    "factor_risk", "Factor Risk", band="appendix", priority=20, enabled=False
                 ),
             ],
         )

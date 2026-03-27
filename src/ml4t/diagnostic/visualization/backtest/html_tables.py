@@ -51,7 +51,7 @@ def create_credibility_box_html(
             dsr_val = float(dsr_prob)
         except (TypeError, ValueError):
             dsr_val = None
-        if dsr_val is not None and not np.isnan(dsr_val):
+        if dsr_val is not None and np.isfinite(dsr_val):
             color = get_traffic_light_color(dsr_val, "dsr_probability", thresholds)
             hex_color = TRAFFIC_LIGHT_COLORS.get(color, TRAFFIC_LIGHT_COLORS["neutral"])
             items.append(
@@ -70,17 +70,27 @@ def create_credibility_box_html(
         except (TypeError, ValueError):
             trl_val = None
             periods_val = None
-        if trl_val is not None and periods_val is not None:
-            sufficient = periods_val >= trl_val
-            color = "green" if sufficient else "red"
-            hex_color = TRAFFIC_LIGHT_COLORS.get(color, TRAFFIC_LIGHT_COLORS["neutral"])
-            items.append(
-                f'<div class="credibility-item">'
-                f'<span class="credibility-dot" style="background:{hex_color}"></span>'
-                f'<div><div class="credibility-label">Min Track Record</div>'
-                f'<div class="credibility-value">'
-                f'{trl_val:.0f} days required ({periods_val:.0f} observed)</div></div></div>'
-            )
+        if trl_val is not None and periods_val is not None and np.isfinite(trl_val):
+            if trl_val > 36500:  # >100 years — effectively unreachable
+                hex_color = TRAFFIC_LIGHT_COLORS.get("red", TRAFFIC_LIGHT_COLORS["neutral"])
+                items.append(
+                    f'<div class="credibility-item">'
+                    f'<span class="credibility-dot" style="background:{hex_color}"></span>'
+                    f'<div><div class="credibility-label">Min Track Record</div>'
+                    f'<div class="credibility-value">'
+                    f'— unreachable ({periods_val:.0f} observed)</div></div></div>'
+                )
+            else:
+                sufficient = periods_val >= trl_val
+                color = "green" if sufficient else "red"
+                hex_color = TRAFFIC_LIGHT_COLORS.get(color, TRAFFIC_LIGHT_COLORS["neutral"])
+                items.append(
+                    f'<div class="credibility-item">'
+                    f'<span class="credibility-dot" style="background:{hex_color}"></span>'
+                    f'<div><div class="credibility-label">Min Track Record</div>'
+                    f'<div class="credibility-value">'
+                    f'{trl_val:.0f} days required ({periods_val:.0f} observed)</div></div></div>'
+                )
 
     # Track record length — show when available
     if n_periods is not None and min_trl is None:

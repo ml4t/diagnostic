@@ -7,6 +7,7 @@ activity strips, and ML summary strips used across tearsheet tabs.
 from __future__ import annotations
 
 import html as html_mod
+import math
 from typing import Any
 
 from ml4t.diagnostic.visualization._colors import FACTOR_COLORS, FACTOR_DESCRIPTIONS
@@ -270,7 +271,11 @@ def create_validity_card_html(metrics: dict[str, Any]) -> str:
 
     mintrl_rows: list[str] = []
     if min_trl is not None:
-        mintrl_rows.append(_validity_metric_row("Min TRL", f"{float(min_trl):.1f}"))
+        trl_f = float(min_trl)
+        if not math.isfinite(trl_f) or trl_f > 36500:
+            mintrl_rows.append(_validity_metric_row("Min TRL", "—"))
+        else:
+            mintrl_rows.append(_validity_metric_row("Min TRL", f"{trl_f:.1f}"))
     if observed_sr is not None:
         mintrl_rows.append(_validity_metric_row("Observed SR", f"{float(observed_sr):.2f}"))
     if n_periods is not None:

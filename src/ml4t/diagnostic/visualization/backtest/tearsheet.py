@@ -1335,16 +1335,17 @@ def _build_portfolio_analysis(
             pass
 
     if analysis_dates is None and equity_curve is not None and not equity_curve.is_empty():
-        if "timestamp" in equity_curve.columns and equity_curve.height == len(ret_series):
-            analysis_dates = equity_curve["timestamp"]
-    elif analysis_dates is None and profile is not None:
+        for _dc in ("timestamp", "date", "session_date"):
+            if _dc in equity_curve.columns and equity_curve.height == len(ret_series):
+                analysis_dates = equity_curve[_dc]
+                break
+    if analysis_dates is None and profile is not None:
         profile_equity = profile.equity_df
-        if (
-            not profile_equity.is_empty()
-            and "timestamp" in profile_equity.columns
-            and profile_equity.height == len(ret_series)
-        ):
-            analysis_dates = profile_equity["timestamp"]
+        if not profile_equity.is_empty() and profile_equity.height == len(ret_series):
+            for _dc in ("timestamp", "date", "session_date"):
+                if _dc in profile_equity.columns:
+                    analysis_dates = profile_equity[_dc]
+                    break
 
     return PortfolioAnalysis(
         ret_series, benchmark=bench, dates=analysis_dates,
