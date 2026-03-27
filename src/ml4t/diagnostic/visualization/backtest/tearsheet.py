@@ -546,16 +546,6 @@ def _create_ml_summary_html(profile: BacktestProfile) -> str | None:
     if predictions_df.is_empty() and signals_df.is_empty() and not strategy_metadata:
         return None
 
-    selected_col = (
-        _find_first_column(signals_df, ("selected",))
-        or _find_first_column(predictions_df, ("selected",))
-    )
-    selected_df = signals_df if "selected" in signals_df.columns else predictions_df
-    selection_rate = None
-    if selected_col is not None and not selected_df.is_empty():
-        selected = selected_df[selected_col].cast(pl.Int8(), strict=False)
-        selection_rate = float(selected.mean()) if selected.len() else None
-
     metadata_chips: list[str] = []
     for key, label in (
         ("strategy_type", "Strategy"),
@@ -572,15 +562,9 @@ def _create_ml_summary_html(profile: BacktestProfile) -> str | None:
             )
 
     n_pred = predictions_df.height if not predictions_df.is_empty() else 0
-    n_sig = signals_df.height if not signals_df.is_empty() else 0
     n_assets_pred = (
         predictions_df["asset"].n_unique()
         if "asset" in predictions_df.columns and not predictions_df.is_empty()
-        else 0
-    )
-    n_assets_sig = (
-        signals_df["asset"].n_unique()
-        if "asset" in signals_df.columns and not signals_df.is_empty()
         else 0
     )
     trade_coverage = profile.ml["metrics"].get("trade_prediction_coverage")
@@ -631,9 +615,20 @@ def _create_ml_summary_html(profile: BacktestProfile) -> str | None:
     except Exception:
         pass
 
+    # Signal utilization: how many predictions actually became trades
+    n_trades = 0
+    utilization_str = "N/A"
+    enriched_trades = profile.prediction_enriched_trades_df
+    if not enriched_trades.is_empty():
+        n_trades = enriched_trades.height
+        if n_pred > 0:
+            utilization_str = f"{n_trades:,} / {n_pred:,} ({n_trades / n_pred:.2%})"
+        else:
+            utilization_str = f"{n_trades:,} trades"
+
     rows = [
         ("Predictions", f"{n_pred:,}", f"{n_assets_pred:,} assets", ""),
-        ("Signals", f"{n_sig:,}", f"{n_assets_sig:,} assets", ""),
+        ("Signal Utilization", utilization_str, "", "Predictions that led to trade entries"),
         (
             "Period",
             _format_timestamp_span(predictions_df) if n_pred else "N/A",
@@ -643,12 +638,6 @@ def _create_ml_summary_html(profile: BacktestProfile) -> str | None:
         ("Mean IC", mean_ic_str, "", "Daily Spearman rank correlation"),
         ("IC t-stat", ic_tstat_str, "", "Mean / SE, > 2 is significant"),
         ("Hit Rate", hit_rate_str, "", "Fraction where sign(pred) == sign(outcome)"),
-        (
-            "Selection Rate",
-            _format_optional_ratio(selection_rate) if selection_rate else "N/A",
-            "",
-            "",
-        ),
         (
             "Trade Coverage",
             _format_optional_ratio(trade_coverage) if trade_coverage else "N/A",
@@ -1971,6 +1960,18 @@ def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
 
     if not any(k in ml_metrics for k in ("mean_ic", "ic_tstat", "hit_rate")):
         return None
+
+    # Add signal utilization: how many predictions became trades
+    if ctx.profile is not None:
+        enriched = ctx.profile.prediction_enriched_trades_df
+        if not enriched.is_empty():
+            n_trades = enriched.height
+            adapter = _get_prediction_adapter(ctx)
+            n_preds = adapter.predictions_df.height if adapter else 0
+            if n_preds > 0:
+                ml_metrics["signal_utilization"] = n_trades / n_preds
+                ml_metrics["n_enriched_trades"] = n_trades
+                ml_metrics["n_predictions"] = n_preds
 
     from .overview_elements import create_ml_summary_strip_html
 

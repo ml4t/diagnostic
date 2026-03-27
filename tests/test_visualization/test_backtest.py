@@ -693,9 +693,10 @@ class TestTearsheetGeneration:
 
         sample_backtest_profile.result.to_predictions_df = lambda: pl.DataFrame(
             {
-                "timestamp": [datetime(2024, 1, 1, 9, 30)],
-                "asset": ["AAPL"],
-                "prediction_value": [0.7],
+                "timestamp": [datetime(2024, 1, 1, 9, 30)] * 5,
+                "asset": ["AAPL", "MSFT", "GOOG", "AMZN", "META"],
+                "prediction_value": [0.7, 0.3, -0.2, 0.5, -0.1],
+                "y_true": [0.02, -0.01, -0.03, 0.01, 0.005],
             }
         )
         sample_backtest_profile.result.to_signals_df = lambda: pl.DataFrame(

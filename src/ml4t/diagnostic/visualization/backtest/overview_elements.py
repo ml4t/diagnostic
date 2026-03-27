@@ -550,17 +550,13 @@ def create_ml_summary_strip_html(metrics: dict[str, Any]) -> str:
         formatted = f"{fv:.1%}"
         cards.append(_kpi_card("HIT RATE", formatted))
 
-    coverage = _get(metrics, "coverage")
-    if coverage is not None:
-        fv = float(coverage)
-        formatted = f"{fv:.1%}"
-        cards.append(_kpi_card("COVERAGE", formatted))
-
-    selection_rate = _get(metrics, "selection_rate")
-    if selection_rate is not None:
-        fv = float(selection_rate)
-        formatted = f"{fv:.1%}"
-        cards.append(_kpi_card("SELECTION RATE", formatted))
+    utilization = _get(metrics, "signal_utilization")
+    n_trades = _get(metrics, "n_enriched_trades")
+    if utilization is not None and n_trades is not None:
+        cards.append(_kpi_card(
+            "SIGNAL UTILIZATION",
+            f"{int(n_trades):,} ({float(utilization):.2%})",
+        ))
 
     if not cards:
         return ""

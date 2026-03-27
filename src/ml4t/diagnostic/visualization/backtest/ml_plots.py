@@ -355,22 +355,28 @@ def plot_prediction_trade_alignment(
     *,
     theme: Literal["default", "dark", "print", "presentation"] = "default",
 ) -> go.Figure | None:
-    """Plot how entry-time prediction values align with realized trade outcomes."""
+    """Plot trade outcome by entry-time prediction decile.
+
+    Shows mean trade return per prediction decile at entry, with trade count
+    annotations — directly answers whether stronger predictions lead to better
+    trades.
+    """
     validate_theme(theme)
     trades_df = profile.prediction_enriched_trades_df
     if trades_df.is_empty():
         return None
 
-    # Prefer return % over $ PnL for comparability with prediction scores
+    # Prefer return % over $ PnL for comparability
     outcome_col = "pnl"
-    outcome_label = "Trade PnL"
-    outcome_fmt = "$,.0f"
+    outcome_label = "Mean Trade Return"
+    outcome_fmt = ".2%"
     for candidate in ("pnl_pct", "return_pct", "return"):
         if candidate in trades_df.columns:
             outcome_col = candidate
-            outcome_label = "Trade Return"
-            outcome_fmt = ".1%"
             break
+    if outcome_col == "pnl":
+        outcome_label = "Mean Trade PnL"
+        outcome_fmt = "$,.0f"
     if outcome_col not in trades_df.columns:
         return None
 
@@ -383,114 +389,51 @@ def plot_prediction_trade_alignment(
         return None
 
     value_col = _choose_primary_entry_column(entry_columns)
-    aligned = (
-        trades_df
-        .filter(pl.col(value_col).is_not_null() & pl.col(outcome_col).is_not_null())
-        .with_columns(
-            pl.when(pl.col(outcome_col) >= 0)
-            .then(pl.lit("Winning trades"))
-            .otherwise(pl.lit("Losing trades"))
-            .alias("_outcome_bucket")
-        )
+    aligned = trades_df.filter(
+        pl.col(value_col).is_not_null() & pl.col(outcome_col).is_not_null()
     )
-    if aligned.is_empty():
+    if aligned.height < 5:
         return None
 
-    theme_config = get_theme_config(theme)
-    fig = make_subplots(
-        rows=1,
-        cols=2,
-        subplot_titles=("Entry Prediction Distribution", f"Entry Prediction vs {outcome_label}"),
-        horizontal_spacing=0.12,
-    )
+    # Bin trades by entry prediction into deciles
+    n_bins = min(10, max(3, aligned.height // 5))
+    scores = aligned[value_col].to_numpy()
+    outcomes = aligned[outcome_col].to_numpy()
+    edges = np.percentile(scores, np.linspace(0, 100, n_bins + 1))
 
-    colors = {
-        "Winning trades": COLORS["positive"],
-        "Losing trades": COLORS["negative"],
-    }
-    for bucket in ("Winning trades", "Losing trades"):
-        subset = aligned.filter(pl.col("_outcome_bucket") == bucket)
-        if subset.is_empty():
+    labels, means, counts, win_rates = [], [], [], []
+    for j in range(n_bins):
+        lo, hi = edges[j], edges[j + 1]
+        mask = (scores >= lo) & (scores <= hi) if j == n_bins - 1 else (scores >= lo) & (scores < hi)
+        if mask.sum() == 0:
             continue
-        fig.add_trace(
-            go.Histogram(
-                x=subset[value_col].to_list(),
-                name=bucket,
-                marker_color=colors[bucket],
-                opacity=0.7,
-                nbinsx=min(30, max(10, int(np.sqrt(subset.height)))),
-                showlegend=True,
-                legendgroup=bucket,
-            ),
-            row=1,
-            col=1,
-        )
-        hover_fmt = "%{y:.2%}" if outcome_fmt == ".1%" else "%{y:$,.0f}"
-        fig.add_trace(
-            go.Scatter(
-                x=subset[value_col].to_list(),
-                y=subset[outcome_col].to_list(),
-                mode="markers",
-                name=bucket,
-                marker={
-                    "color": colors[bucket],
-                    "size": 8,
-                    "opacity": 0.75,
-                },
-                legendgroup=bucket,
-                showlegend=False,
-                hovertemplate=(
-                    f"{value_col}: %{{x:.4f}}<br>"
-                    f"{outcome_label}: {hover_fmt}<br>"
-                    "<extra></extra>"
-                ),
-            ),
-            row=1,
-            col=2,
-        )
+        prefix = "D" if n_bins > 5 else "Q"
+        labels.append(f"{prefix}{j + 1}")
+        means.append(float(np.mean(outcomes[mask])))
+        counts.append(int(mask.sum()))
+        win_rates.append(float(np.mean(outcomes[mask] >= 0)))
 
-    # Add binned-mean overlay on scatter
-    score_arr = aligned[value_col].to_numpy()
-    outcome_arr = aligned[outcome_col].to_numpy()
-    if len(score_arr) >= 10:
-        n_bins = min(10, max(5, len(score_arr) // 10))
-        edges = np.percentile(score_arr, np.linspace(0, 100, n_bins + 1))
-        bin_centers: list[float] = []
-        bin_means: list[float] = []
-        for j in range(n_bins):
-            mask = (score_arr >= edges[j]) & (score_arr <= edges[j + 1])
-            if mask.sum() > 0:
-                bin_centers.append(float(np.mean(score_arr[mask])))
-                bin_means.append(float(np.mean(outcome_arr[mask])))
-        if bin_centers:
-            fig.add_trace(
-                go.Scatter(
-                    x=bin_centers, y=bin_means,
-                    mode="lines+markers",
-                    name="Binned Mean",
-                    line={"color": COLORS["amber"], "width": 2.5},
-                    marker={"size": 8, "color": COLORS["amber"]},
-                    showlegend=True,
-                ),
-                row=1, col=2,
-            )
+    if not labels:
+        return None
 
+    bar_colors = [COLORS["positive"] if v >= 0 else COLORS["negative"] for v in means]
+    text_labels = [f"N={c:,}<br>Win {wr:.0%}" for c, wr in zip(counts, win_rates)]
+
+    theme_config = get_theme_config(theme)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=labels, y=means, marker_color=bar_colors,
+        text=text_labels, textposition="outside", textfont={"size": 9},
+        showlegend=False,
+    ))
+    fig.update_layout(theme_config["layout"])
+    pred_label = value_col.replace("entry_", "").replace("_", " ").title()
     fig.update_layout(
-        title="Prediction-to-Trade Alignment",
-        barmode="overlay",
+        title=f"Trade Outcome by Entry {pred_label} Decile",
         height=300,
-        template=theme_config.get("template", "plotly_white"),
-        paper_bgcolor=theme_config.get("paper_bgcolor"),
-        plot_bgcolor=theme_config.get("plot_bgcolor"),
-        font={"color": theme_config.get("font_color")},
-        margin={"l": 40, "r": 24, "t": 72, "b": 48},
-    )
-    fig.update_xaxes(title_text=value_col.replace("entry_", "").replace("_", " ").title(), row=1, col=1)
-    fig.update_xaxes(title_text=value_col.replace("entry_", "").replace("_", " ").title(), row=1, col=2)
-    fig.update_yaxes(title_text="Trades", row=1, col=1)
-    fig.update_yaxes(
-        title_text=outcome_label, row=1, col=2,
-        tickformat=outcome_fmt if outcome_fmt == ".1%" else None,
+        margin={"t": 40, "l": 48, "r": 24, "b": 48},
+        xaxis={"title": f"Entry {pred_label} Decile (D1=lowest, D{n_bins}=highest)"},
+        yaxis={"title": outcome_label, "tickformat": outcome_fmt},
     )
     return fig
 
