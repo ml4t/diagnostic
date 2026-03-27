@@ -56,6 +56,7 @@
     "compute_factor_model",
     "compute_rolling_exposures",
     "compute_return_attribution",
-    "compute_risk_attribution"
+    "compute_risk_attribution",
+    "load_fama_french_5factor"
   ]
 }

@@ -103,6 +103,7 @@ dependencies = [
 #   pip install ml4t-diagnostic              # Core only
 #   pip install ml4t-diagnostic[viz]         # + Visualization
 #   pip install ml4t-diagnostic[ml]          # + ML models
+#   pip install ml4t-diagnostic[factors]     # + Fama-French/AQR data sourcing
 #   pip install ml4t-diagnostic[viz,ml]      # + Viz + ML
 #   pip install ml4t-diagnostic[all]         # Everything
 # ============================================================================
@@ -131,6 +132,11 @@ gpu = [
 # Dashboard and interactive visualization (Streamlit)
 dashboard = [
     "streamlit>=1.28.0",
+]
+
+# Factor analysis with automatic data sourcing (Fama-French, AQR)
+factors = [
+    "ml4t-data>=0.1.0b5",
 ]
 
 # Backtest integration bridge
@@ -176,6 +182,7 @@ all = [
     "pypdf>=5.0.0",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
+    "ml4t-data>=0.1.0b5",
     "ml4t-backtest>=0.1.0b10",
     "streamlit>=1.28.0",
     "wandb>=0.16.0",

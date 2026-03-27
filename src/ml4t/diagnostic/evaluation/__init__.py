@@ -33,6 +33,7 @@ from .factor import (  # noqa: F401
     compute_return_attribution,
     compute_risk_attribution,
     compute_rolling_exposures,
+    load_fama_french_5factor,
 )
 from .feature_diagnostics import (  # noqa: F401
     FeatureDiagnostics,
@@ -180,4 +181,5 @@ __all__: list[str] = [
     "compute_rolling_exposures",
     "compute_return_attribution",
     "compute_risk_attribution",
+    "load_fama_french_5factor",
 ]

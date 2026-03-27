@@ -49,9 +49,48 @@ from .static_model import compute_factor_model  # noqa: F401
 from .timing import compute_factor_timing  # noqa: F401
 from .validation import validate_factor_model  # noqa: F401
 
+
+def load_fama_french_5factor(
+    frequency: str = "daily",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> FactorData:
+    """Load Fama-French 5-factor data ready for tearsheet use.
+
+    Convenience wrapper around ``FactorData.from_fama_french()``.
+    Requires the ``factors`` extra: ``pip install ml4t-diagnostic[factors]``.
+
+    Parameters
+    ----------
+    frequency : str
+        ``"daily"`` or ``"monthly"``.
+    start_date, end_date : str | None
+        Date range filter (``"YYYY-MM-DD"``).
+
+    Returns
+    -------
+    FactorData
+        Ready to pass to ``generate_backtest_tearsheet(factor_data=...)``.
+
+    Examples
+    --------
+    >>> from ml4t.diagnostic.evaluation.factor import load_fama_french_5factor
+    >>> factor_data = load_fama_french_5factor()
+    >>> html = generate_backtest_tearsheet(result=result, factor_data=factor_data)
+    """
+    return FactorData.from_fama_french(
+        dataset="ff5",
+        frequency=frequency,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
 __all__: list[str] = [
     # Data container
     "FactorData",
+    # Convenience loaders
+    "load_fama_french_5factor",
     # Orchestrator
     "FactorAnalysis",
     # Core functions

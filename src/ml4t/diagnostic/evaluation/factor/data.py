@@ -140,7 +140,8 @@ class FactorData:
             from ml4t.data.providers import FamaFrenchProvider
         except ImportError as e:
             raise ImportError(
-                "ml4t-data is required for Fama-French data. Install with: pip install ml4t-data"
+                "ml4t-data is required for Fama-French data. "
+                "Install with: pip install ml4t-diagnostic[factors]"
             ) from e
 
         provider = FamaFrenchProvider()
@@ -185,7 +186,8 @@ class FactorData:
             from ml4t.data.providers import AQRFactorProvider
         except ImportError as e:
             raise ImportError(
-                "ml4t-data is required for AQR factor data. Install with: pip install ml4t-data"
+                "ml4t-data is required for AQR factor data. "
+                "Install with: pip install ml4t-diagnostic[factors]"
             ) from e
 
         provider = AQRFactorProvider()

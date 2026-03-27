@@ -89,6 +89,7 @@ share/python-wheels/
 # Temporary files
 !tests/data/*.csv
 !tests/data/*.parquet
+!tests/fixtures/*.parquet
 Thumbs.db
 *.tmp
 .tox/
