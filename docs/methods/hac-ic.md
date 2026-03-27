@@ -1,5 +1,9 @@
 # HAC-adjusted Information Coefficient
 
+Use this method when your IC series is measured across time and you need a
+significance test that respects autocorrelation instead of assuming each period
+is independent.
+
 ## The Problem
 
 You computed the Information Coefficient (IC) of your alpha signal and got a mean
@@ -87,7 +91,7 @@ $$
 
 Typically $SE_{\text{HAC}} > SE_{\text{naive}}$, so $|t_{\text{HAC}}| < |t_{\text{naive}}|$.
 
-## ml4t-diagnostic API
+## Minimal Working Example
 
 ### Primary Function: `compute_ic_hac_stats()`
 
@@ -240,3 +244,20 @@ has meaningful autocorrelation and naive significance tests cannot be trusted.
 | `compute_ic_hac_stats()` | HAC-adjusted IC statistics |
 | `robust_ic()` | Stationary bootstrap IC with confidence intervals |
 | `compute_ic_by_horizon()` | IC analysis across multiple forward return horizons |
+
+## See It In The Book
+
+HAC-adjusted IC is used in the signal-validation material and then reused in the
+feature-triage case studies:
+
+- Ch07 for robust IC significance testing
+- `code/08_feature_engineering/*` and case-study evaluation notebooks for practical usage
+
+Use the [Book Guide](../book-guide/index.md) for the chapter and notebook map.
+
+## Next Steps
+
+- [Feature Diagnostics](../user-guide/feature-diagnostics.md) - Use robust IC inside a wider diagnostics workflow
+- [Feature Selection](../user-guide/feature-selection.md) - Turn IC evidence into a repeatable triage pipeline
+- [Statistical Methods](index.md) - Compare HAC-adjusted IC to the other core validation methods
+- [Book Guide](../book-guide/index.md) - Find the matching notebook and case-study implementations

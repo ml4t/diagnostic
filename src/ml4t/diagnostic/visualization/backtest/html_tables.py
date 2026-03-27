@@ -359,6 +359,87 @@ def create_top_contributors_html(
     )
 
 
+def create_stock_attribution_table_html(
+    trades: pl.DataFrame | None,
+    *,
+    max_rows: int = 15,
+) -> str | None:
+    """Create a per-symbol P&L attribution table.
+
+    Shows top contributors and detractors with trade count, win rate,
+    total P&L, and average P&L per trade.
+
+    Returns None if trades is empty or missing required columns.
+    """
+    if trades is None or trades.is_empty():
+        return None
+
+    import polars as pl_mod
+
+    sym_col = _first_col(trades, ("symbol", "asset", "ticker"))
+    pnl_col = _first_col(trades, ("pnl", "net_pnl", "gross_pnl"))
+    if sym_col is None or pnl_col is None:
+        return None
+
+    # Group by symbol and compute stats
+    agg_exprs = [
+        pl_mod.col(pnl_col).sum().alias("total_pnl"),
+        pl_mod.col(pnl_col).mean().alias("avg_pnl"),
+        pl_mod.col(pnl_col).count().alias("trades"),
+        (pl_mod.col(pnl_col) > 0).sum().alias("wins"),
+    ]
+    by_sym = (
+        trades.group_by(sym_col)
+        .agg(agg_exprs)
+        .with_columns(
+            (pl_mod.col("wins") / pl_mod.col("trades") * 100).alias("win_rate"),
+        )
+        .sort("total_pnl", descending=True)
+    )
+
+    # Take top N/2 and bottom N/2
+    half = max_rows // 2
+    if by_sym.height <= max_rows:
+        display = by_sym
+    else:
+        top = by_sym.head(half)
+        bottom = by_sym.tail(half)
+        display = pl_mod.concat([top, bottom])
+
+    green = TRAFFIC_LIGHT_COLORS.get("green", "#10b981")
+    red = TRAFFIC_LIGHT_COLORS.get("red", "#ef4444")
+
+    rows: list[str] = []
+    for i in range(display.height):
+        sym = str(display[sym_col][i])
+        total = float(display["total_pnl"][i])
+        avg = float(display["avg_pnl"][i])
+        n_trades = int(display["trades"][i])
+        wr = float(display["win_rate"][i])
+        color = green if total >= 0 else red
+
+        rows.append(
+            f"<tr>"
+            f"<td>{html_mod.escape(sym)}</td>"
+            f"<td>{n_trades}</td>"
+            f"<td>{wr:.0f}%</td>"
+            f'<td style="color:{color};font-weight:600">${total:+,.0f}</td>'
+            f"<td>${avg:+,.0f}</td>"
+            f"</tr>"
+        )
+
+    return (
+        '<div class="metrics-table-wrap">'
+        '<table class="metrics-table">'
+        "<thead><tr>"
+        "<th>Symbol</th><th>Trades</th><th>Win %</th>"
+        "<th>Total P&amp;L</th><th>Avg P&amp;L</th>"
+        "</tr></thead>"
+        f'<tbody>{"".join(rows)}</tbody>'
+        "</table></div>"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

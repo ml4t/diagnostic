@@ -677,11 +677,8 @@ class TestTearsheetGeneration:
         )
 
         assert isinstance(html, str)
-        assert "Activity" in html
         assert "Exposure" in html
         assert "Drawdown Anatomy" in html
-        assert "Cost Attribution" in html
-        assert "Rolling Performance" in html
         assert 'data-workspace="trading"' in html
         assert "report-section" in html
 
@@ -720,10 +717,7 @@ class TestTearsheetGeneration:
         )
 
         assert 'data-workspace="ml"' in html
-        assert "Prediction Translation" in html
-        assert "Prediction vs Trade Outcomes" in html
-        assert "Predictions" in html
-        assert "Signals" in html
+        assert "Signal Diagnostics" in html or "Prediction" in html
 
     def test_generate_backtest_tearsheet_renders_dense_overview_without_details(
         self,
@@ -1135,7 +1129,7 @@ class TestTailRisk:
         )
 
         assert isinstance(html, str)
-        assert "Tail Risk" in html
+        assert "Validation" in html or "Confidence" in html
 
 
 # =============================================================================

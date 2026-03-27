@@ -15,35 +15,45 @@ pip install ml4t-diagnostic
 
 ML4T Diagnostic has optional dependency groups for different use cases:
 
-### Machine Learning Features
-
-For SHAP-based feature importance and trade error analysis:
-
-```bash
-pip install ml4t-diagnostic[ml]
-```
-
-Includes: `lightgbm`, `xgboost`, `shap`
-
 ### Visualization
 
-For interactive Plotly charts and report generation:
+For Plotly charts, tearsheets, and PDF export:
 
 ```bash
 pip install ml4t-diagnostic[viz]
 ```
 
-Includes: `plotly`, `matplotlib`, `kaleido`
+Includes: `plotly`, `matplotlib`, `seaborn`, `kaleido`, `pypdf`
 
-### Advanced Statistics
+### Machine Learning Backends
 
-For ARCH/GARCH volatility models:
+For LightGBM and XGBoost model analysis:
 
 ```bash
-pip install ml4t-diagnostic[advanced]
+pip install ml4t-diagnostic[ml]
 ```
 
-Includes: `arch`
+Includes: `lightgbm`, `xgboost`
+
+### Backtest Bridge
+
+For `ml4t-backtest` integration and result-to-tearsheet bridges:
+
+```bash
+pip install ml4t-diagnostic[backtest]
+```
+
+Includes: `ml4t-backtest`
+
+### Dashboard
+
+For the optional Streamlit trade diagnostics dashboard:
+
+```bash
+pip install ml4t-diagnostic[dashboard]
+```
+
+Includes: `streamlit`
 
 ### Full Installation
 
@@ -58,10 +68,22 @@ pip install ml4t-diagnostic[all]
 For contributing to ML4T Diagnostic:
 
 ```bash
-git clone https://github.com/stefan-jansen/ml4t-diagnostic
+git clone https://github.com/ml4t/diagnostic.git
 cd ml4t-diagnostic
 pip install -e ".[all,dev]"
 ```
+
+## Using The Book Code Locally
+
+If you are running the third-edition notebooks or case studies against a local checkout,
+install the library in editable mode so the book code sees your current branch:
+
+```bash
+uv pip install -e /path/to/ml4t-diagnostic
+```
+
+See the [Book Guide](../book-guide/index.md) for the chapter and case-study map.
+For the new reporting bridge, see the [Backtest Tearsheets](../user-guide/backtest-tearsheets.md) guide.
 
 ## Verify Installation
 

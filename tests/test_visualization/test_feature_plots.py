@@ -286,7 +286,7 @@ class TestPlotImportanceHeatmap:
         """Test theme customization."""
         fig = plot_importance_heatmap(mock_importance_results, theme="print")
 
-        # Print theme should have light background (case-insensitive)
+        # Print theme should have light/white background (case-insensitive)
         assert fig.layout.paper_bgcolor.lower() in ["#ffffff", "#fff", "white"]
 
     def test_diverging_colorscale(self, mock_importance_results):

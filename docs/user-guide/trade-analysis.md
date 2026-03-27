@@ -2,6 +2,12 @@
 
 Analyze individual trade performance and identify systematic error patterns using SHAP.
 
+!!! info "See it in the book"
+    Ch19 `code/19_risk_management/05_trade_shap_diagnostics.py` is the primary notebook
+    for `TradeAnalysis` and `TradeShapAnalyzer`. End-to-end case-study workflows then
+    carry the same ideas into `*_risk_management.py` and `*_strategy_analysis.py` under
+    `code/case_studies/`.
+
 ## Basic Trade Analysis
 
 ```python

@@ -344,45 +344,38 @@ def plot_confidence_intervals(
     else:
         fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
 
-    # Annotate when CI includes zero (metric not statistically significant)
-    for i, metric_name in enumerate(metric_names):
-        metric_data = metrics[metric_name]
-        lower_95 = metric_data.get("lower_95")
-        upper_95 = metric_data.get("upper_95")
-        if lower_95 is not None and upper_95 is not None:
-            if lower_95 < 0 < upper_95 and metric_name.lower() in ("sharpe", "cagr"):
-                if orientation == "h":
-                    fig.add_annotation(
-                        x=0, y=i, xshift=10,
-                        text="CI includes zero",
-                        showarrow=False,
-                        font={"size": 10, "color": _ML4T_COLORS["negative"]},
-                        xanchor="left",
-                    )
-
     # Build layout
     if orientation == "h":
         layout_updates = {
-            "title": {"text": title, "font": {"size": 18}},
-            "height": max(height, n_metrics * 60 + 100),
+            "title": {"text": title, "font": {"size": 14}},
+            "height": max(height, n_metrics * 80 + 100),
+            "margin": {"t": 40, "l": 120, "r": 24, "b": 60},
             "xaxis": {"title": "Value", "zeroline": True},
             "yaxis": {
                 "tickvals": list(range(n_metrics)),
                 "ticktext": metric_names,
                 "autorange": "reversed",
             },
-            "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
+            "legend": {
+                "orientation": "h",
+                "yanchor": "top", "y": -0.15,
+                "xanchor": "center", "x": 0.5,
+            },
         }
     else:
         layout_updates = {
-            "title": {"text": title, "font": {"size": 18}},
+            "title": {"text": title, "font": {"size": 14}},
             "height": height,
-            "yaxis": {"title": "Value", "zeroline": True},
             "xaxis": {
                 "tickvals": list(range(n_metrics)),
                 "ticktext": metric_names,
             },
-            "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
+            "yaxis": {"title": "Value", "zeroline": True},
+            "legend": {
+                "orientation": "h",
+                "yanchor": "top", "y": -0.15,
+                "xanchor": "center", "x": 0.5,
+            },
         }
     if width:
         layout_updates["width"] = width
@@ -693,43 +686,19 @@ def plot_minimum_track_record(
             annotation_position="top",
         )
 
-    # Add significance zone annotation
-    annotations = []
-
-    if is_significant:
-        status_text = (
-            f"Track record sufficient ({current_years:.1f}y ≥ MinTRL {min_trl_years:.1f}y)"
-        )
-        status_color = _ML4T_COLORS["positive"]
-    elif min_trl == float("inf"):
-        status_text = "Cannot achieve significance (SR ≤ benchmark)"
-        status_color = _ML4T_COLORS["negative"]
-    else:
-        deficit = min_trl_years - current_years
-        status_text = f"Need {deficit:.1f} more years (MinTRL: {min_trl_years:.1f}y)"
-        status_color = _ML4T_COLORS["amber"]
-
-    annotations.append(
-        {
-            "x": 0.5,
-            "y": -0.15,
-            "text": status_text,
-            "showarrow": False,
-            "font": {"size": 13, "color": status_color, "weight": "bold"},
-            "xref": "paper",
-            "yref": "paper",
-        }
-    )
-
     # Build layout
     layout_updates = {
-        "title": {"text": title, "font": {"size": 18}},
+        "title": {"text": title, "font": {"size": 14}},
         "height": height,
+        "margin": {"t": 40, "l": 60, "r": 24, "b": 40},
         "xaxis": {"title": "Track Record Length (Years)", "rangemode": "tozero"},
         "yaxis": {"title": "Sharpe Ratio", "rangemode": "tozero"},
-        "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
-        "annotations": annotations,
-        "margin": {"b": 80},
+        "legend": {
+            "orientation": "h",
+            "yanchor": "top", "y": -0.18,
+            "xanchor": "center", "x": 0.5,
+            "font": {"size": 10},
+        },
     }
     if width:
         layout_updates["width"] = width
@@ -999,5 +968,123 @@ def plot_pbo_gauge(
         if key not in layout_kw:
             layout_kw[key] = value
     fig.update_layout(**layout_kw)
+
+    return fig
+
+
+def plot_sharpe_bootstrap(
+    returns: np.ndarray,
+    observed_sharpe: float,
+    n_bootstrap: int = 5000,
+    block_size: int = 21,
+    periods_per_year: int = 252,
+    title: str = "Sharpe Ratio Bootstrap Distribution",
+    theme: str | None = None,
+    height: int = 300,
+    width: int | None = None,
+) -> go.Figure:
+    """Create a histogram of bootstrapped Sharpe ratios.
+
+    Uses block bootstrap to preserve autocorrelation structure.
+
+    Parameters
+    ----------
+    returns : np.ndarray
+        Daily return series.
+    observed_sharpe : float
+        Observed annualized Sharpe ratio.
+    n_bootstrap : int
+        Number of bootstrap replications.
+    block_size : int
+        Block size for block bootstrap (default 21 = ~1 month).
+    periods_per_year : int
+        Annualization factor.
+    """
+    theme_config = get_theme_config(theme)
+    rng = np.random.default_rng(42)
+    n = len(returns)
+
+    # Block bootstrap
+    sharpe_samples = np.empty(n_bootstrap)
+    for i in range(n_bootstrap):
+        indices = np.empty(n, dtype=int)
+        pos = 0
+        while pos < n:
+            start = rng.integers(0, n)
+            length = min(block_size, n - pos)
+            for j in range(length):
+                indices[pos + j] = (start + j) % n
+            pos += length
+        sample = returns[indices]
+        mu = np.mean(sample)
+        sigma = np.std(sample, ddof=1)
+        sharpe_samples[i] = (mu / sigma * np.sqrt(periods_per_year)) if sigma > 0 else 0.0
+
+    # Compute percentiles for CI shading
+    ci_lo = float(np.percentile(sharpe_samples, 2.5))
+    ci_hi = float(np.percentile(sharpe_samples, 97.5))
+    median = float(np.median(sharpe_samples))
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=sharpe_samples,
+        nbinsx=60,
+        marker_color=_ML4T_COLORS["slate"],
+        marker_line={"width": 0.5, "color": _ML4T_COLORS.get("silver_muted", "#e8e8e6")},
+        opacity=0.85,
+        name="Bootstrap",
+        showlegend=False,
+    ))
+
+    # Observed Sharpe line
+    fig.add_vline(
+        x=observed_sharpe,
+        line_width=2.5,
+        line_color=_ML4T_COLORS["amber"],
+        annotation_text=f"Observed: {observed_sharpe:.2f}",
+        annotation_position="top right",
+        annotation_font_size=11,
+        annotation_font_color=_ML4T_COLORS["amber"],
+    )
+    # Zero line
+    fig.add_vline(
+        x=0, line_width=1, line_dash="dash",
+        line_color=_ML4T_COLORS.get("neutral", "#334155"),
+    )
+    # CI bounds
+    fig.add_vrect(
+        x0=ci_lo, x1=ci_hi,
+        fillcolor=_ML4T_COLORS["slate"],
+        opacity=0.08,
+        line_width=0,
+    )
+
+    p_value = float(np.mean(sharpe_samples <= 0))
+
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title=title,
+        xaxis_title="Annualized Sharpe Ratio",
+        yaxis_title="Frequency",
+        height=height,
+        width=width,
+        margin={"l": 50, "r": 30, "t": 50, "b": 50},
+        annotations=[
+            {
+                "x": 0.02, "y": 0.95,
+                "xref": "paper", "yref": "paper",
+                "text": (
+                    f"Median: {median:.2f}<br>"
+                    f"95% CI: [{ci_lo:.2f}, {ci_hi:.2f}]<br>"
+                    f"P(SR≤0): {p_value:.1%}"
+                ),
+                "showarrow": False,
+                "font": {"size": 10, "color": _ML4T_COLORS.get("neutral", "#334155")},
+                "align": "left",
+                "bgcolor": "rgba(255,255,255,0.8)",
+                "borderpad": 4,
+            }
+        ],
+    )
 
     return fig

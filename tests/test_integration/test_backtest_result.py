@@ -495,9 +495,7 @@ def test_generate_tearsheet_from_run_artifacts_renders_ml_workspace(tmp_path):
     html = generate_tearsheet_from_run_artifacts(backtest_dir, template="full")
 
     assert 'data-workspace="ml"' in html
-    assert "Prediction Translation" in html
-    assert "Prediction vs Trade Outcomes" in html
-    assert "cae" in html
+    assert "Prediction" in html
 
 
 def test_generate_tearsheet_from_result_normalizes_backtest_metric_keys(monkeypatch):

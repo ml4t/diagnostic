@@ -4,6 +4,12 @@ Practical recipes for the five most common ml4t-diagnostic workflows.
 Each section starts with "I have **X**, I want **Y**" so you can jump
 straight to what you need.
 
+!!! info "See it in the book"
+    Use the [Book Guide](../book-guide/index.md) for exact notebook paths. The shortest
+    mapping is: Ch06 for cross-validation, Ch07 for multiple testing, Ch08-Ch09 for
+    feature and signal diagnostics, Ch16-Ch17 for backtest and portfolio workflows, and
+    Ch19 for trade-level diagnostics and risk analysis.
+
 ---
 
 ## 1. Signal Analysis
@@ -103,6 +109,10 @@ print(f"Top signal: {summary.signal_rankings[0]}")
 
 > **I have** a time series of daily returns (and optionally a benchmark).
 > **I want** Sharpe, drawdown analysis, rolling metrics, and a dashboard.
+
+If you need the newer multi-surface reporting flow for backtests, including
+`BacktestResult` and artifact-driven tearsheets, see
+[Backtest Tearsheets](backtest-tearsheets.md).
 
 ### Quick path
 

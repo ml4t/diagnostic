@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ml4t.diagnostic.visualization._colors import COLORS, SERIES_COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
 if TYPE_CHECKING:
@@ -79,7 +80,7 @@ def plot_activity_overview(
                     y=cost_drag.to_list(),
                     mode="lines",
                     name="Cost Drag",
-                    line={"width": 1.5, "dash": "dot", "color": "#c53030"},
+                    line={"width": 1.5, "dash": "dot", "color": COLORS["negative"]},
                     yaxis="y2",
                 ),
             )
@@ -137,36 +138,79 @@ def plot_activity_overview(
 
 
 def plot_overview_snapshot(profile: BacktestProfile, theme: str | None = None) -> go.Figure:
-    """Plot equity curve (cumulative returns) for the overview workspace."""
+    """Plot equity curve + drawdown subplot for the overview workspace.
+
+    Top panel (75%): cumulative return line.
+    Bottom panel (25%): drawdown filled area (red/salmon).
+    Shared x-axis — drawdown acts as context for the equity curve.
+    """
     theme = validate_theme(theme)
     equity = profile.equity_df
     theme_config = get_theme_config(theme)
 
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.75, 0.25],
+    )
 
     if not equity.is_empty():
         timestamps = equity["timestamp"].to_list()
+        cum_ret = equity["cumulative_return"].to_list()
+
+        # Top: equity curve
         fig.add_trace(
             go.Scatter(
                 x=timestamps,
-                y=equity["cumulative_return"].to_list(),
+                y=cum_ret,
                 mode="lines",
                 name="Strategy",
-                line={"color": theme_config["colorway"][0], "width": 2.5},
-                hovertemplate="Date: %{x}<br>Return: %{y:.2%}<extra></extra>",
+                line={"color": theme_config["colorway"][0], "width": 2},
+                hovertemplate="%{y:.1%}<extra></extra>",
+                showlegend=False,
             ),
+            row=1,
+            col=1,
+        )
+
+        # Bottom: drawdown area
+        if "drawdown" in equity.columns:
+            dd = equity["drawdown"].to_list()
+        else:
+            import numpy as np
+
+            cum_arr = np.array(cum_ret)
+            hwm = np.maximum.accumulate(cum_arr)
+            dd = ((cum_arr - hwm) / np.where(hwm > 0, hwm, 1.0)).tolist()
+
+        fig.add_trace(
+            go.Scatter(
+                x=timestamps,
+                y=dd,
+                fill="tozeroy",
+                mode="lines",
+                name="Drawdown",
+                line={"color": SERIES_COLORS["drawdown_line"], "width": 0.5},
+                fillcolor=SERIES_COLORS["drawdown"],
+                hovertemplate="%{y:.1%}<extra></extra>",
+                showlegend=False,
+            ),
+            row=2,
+            col=1,
         )
 
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title="Cumulative Return",
-        height=420,
-        margin={"t": 40, "l": 48, "r": 24, "b": 40},
+        height=450,
+        margin={"t": 40, "l": 48, "r": 24, "b": 32},
         hovermode="x unified",
-        yaxis={"tickformat": ".0%"},
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1.0},
     )
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    fig.update_yaxes(tickformat=".0%", row=1, col=1)
+    fig.update_yaxes(tickformat=".0%", row=2, col=1)
+    fig.update_xaxes(showticklabels=False, row=1, col=1)
     return fig
 
 
@@ -216,7 +260,7 @@ def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) 
 
     theme_config = get_theme_config(theme)
     fig.update_layout(theme_config["layout"])
-    fig.update_layout(title={"text": "Exposure", "font": {"size": 16}}, height=560)
+    fig.update_layout(title={"text": "Exposure", "font": {"size": 16}}, height=350)
     return fig
 
 
@@ -245,7 +289,7 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
     bar_col = "pnl_contribution_share" if "pnl_contribution_share" in top.columns else "net_pnl"
     bar_label = "PnL Contribution" if bar_col == "pnl_contribution_share" else "Net PnL"
     bar_values = top[bar_col].to_list()
-    colors = ["#10b981" if v >= 0 else "#ef4444" for v in bar_values]
+    colors = [COLORS["positive"] if v >= 0 else COLORS["negative"] for v in bar_values]
     fig.add_trace(
         go.Bar(
             x=top["symbol"].to_list(),
@@ -361,15 +405,17 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
     rolling = profile.performance["rolling"]
     returns = profile.daily_returns.to_numpy() if hasattr(profile.daily_returns, "to_numpy") else np.asarray(profile.daily_returns)
 
+    theme_config = get_theme_config(theme)
+
     fig = make_subplots(
         rows=2,
         cols=2,
         shared_xaxes=True,
         subplot_titles=(
-            "Rolling Return",
-            "Rolling Sharpe",
-            "Rolling Volatility",
-            "",
+            "Rolling Return (252d)",
+            "Rolling Sharpe (252d)",
+            "Rolling Volatility (252d)",
+            "Rolling Sortino (252d)",
         ),
         vertical_spacing=0.14,
         horizontal_spacing=0.08,
@@ -381,58 +427,72 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
         else:
             x_axis = rolling["period_index"].to_list()
 
-        # Row 1, Col 1: Rolling Return
+        line_kw = {"width": 1.5}
+        colorway = theme_config.get("colorway", ["#2563eb"])
+        line_color = colorway[0] if colorway else "#2563eb"
+
+        # Row 1, Col 1: Rolling Return (252d)
         fig.add_trace(
-            go.Scatter(x=x_axis, y=rolling["rolling_return_63"].to_list(),
-                       mode="lines", name="63d Return"),
-            row=1, col=1,
-        )
-        fig.add_trace(
-            go.Scatter(x=x_axis, y=rolling["rolling_return_252"].to_list(),
-                       mode="lines", name="252d Return"),
+            go.Scatter(
+                x=x_axis, y=rolling["rolling_return_252"].to_list(),
+                mode="lines", line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.1%}<extra></extra>", showlegend=False,
+            ),
             row=1, col=1,
         )
 
-        # Row 1, Col 2: Rolling Sharpe
+        # Row 1, Col 2: Rolling Sharpe (252d)
         fig.add_trace(
-            go.Scatter(x=x_axis, y=rolling["rolling_sharpe_63"].to_list(),
-                       mode="lines", name="63d Sharpe"),
-            row=1, col=2,
-        )
-        fig.add_trace(
-            go.Scatter(x=x_axis, y=rolling["rolling_sharpe_252"].to_list(),
-                       mode="lines", name="252d Sharpe"),
+            go.Scatter(
+                x=x_axis, y=rolling["rolling_sharpe_252"].to_list(),
+                mode="lines", line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.2f}<extra></extra>", showlegend=False,
+            ),
             row=1, col=2,
         )
 
-        # Row 2, Col 1: Rolling Volatility (computed inline)
+        # Row 2, Col 1: Rolling Volatility (252d)
         n = len(returns)
-        vol_63 = np.full(n, np.nan)
         vol_252 = np.full(n, np.nan)
         sqrt_252 = float(np.sqrt(252))
-        for i in range(62, n):
-            vol_63[i] = float(np.std(returns[i - 62 : i + 1], ddof=1)) * sqrt_252
         for i in range(251, n):
             vol_252[i] = float(np.std(returns[i - 251 : i + 1], ddof=1)) * sqrt_252
         fig.add_trace(
-            go.Scatter(x=x_axis, y=vol_63.tolist(), mode="lines", name="63d Vol"),
-            row=2, col=1,
-        )
-        fig.add_trace(
-            go.Scatter(x=x_axis, y=vol_252.tolist(), mode="lines", name="252d Vol"),
+            go.Scatter(
+                x=x_axis, y=vol_252.tolist(),
+                mode="lines", line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.1%}<extra></extra>", showlegend=False,
+            ),
             row=2, col=1,
         )
 
-    theme_config = get_theme_config(theme)
+        # Row 2, Col 2: Rolling Sortino (252d)
+        sortino_252 = np.full(n, np.nan)
+        for i in range(251, n):
+            window = returns[i - 251 : i + 1]
+            mean_r = float(np.mean(window))
+            downside = window[window < 0]
+            if len(downside) > 0:
+                downside_std = float(np.std(downside, ddof=1)) * sqrt_252
+                if downside_std > 0:
+                    sortino_252[i] = mean_r * 252 / downside_std
+        fig.add_trace(
+            go.Scatter(
+                x=x_axis, y=sortino_252.tolist(),
+                mode="lines", line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.2f}<extra></extra>", showlegend=False,
+            ),
+            row=2, col=2,
+        )
+
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
-        title={"text": "Rolling Performance", "font": {"size": 16}},
-        height=620,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "left", "x": 0.0},
-        showlegend=True,
+        height=400,
+        margin={"t": 40, "l": 48, "r": 24, "b": 32},
+        showlegend=False,
     )
     fig.update_yaxes(tickformat=".0%", row=1, col=1)
     fig.update_yaxes(tickformat=".0%", row=2, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=1, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=1, col=2)
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS["neutral"], line_width=0.5, row=1, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS["neutral"], line_width=0.5, row=1, col=2)
     return fig

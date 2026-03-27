@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.visualization._colors import get_factor_color
 from ml4t.diagnostic.visualization.core import get_theme_config
 
 if TYPE_CHECKING:
@@ -37,8 +38,9 @@ def plot_risk_attribution_pie(
     go.Figure
         Plotly donut chart.
     """
+    import numpy as np
+
     theme_config = get_theme_config(theme)
-    colorway = theme_config["colorway"]
 
     labels = list(result.factor_names) + ["Idiosyncratic"]
     values = [result.factor_contributions[f] for f in result.factor_names]
@@ -47,8 +49,12 @@ def plot_risk_attribution_pie(
     # Use absolute values for pie (can have negative factor contributions)
     abs_values = [abs(v) for v in values]
 
-    colors = [colorway[i % len(colorway)] for i in range(len(result.factor_names))]
-    colors.append("gray")
+    # Per-factor colors from canonical palette
+    colors = [get_factor_color(f) for f in result.factor_names]
+    colors.append("#94a3b8")  # Slate gray for idiosyncratic
+
+    total_vol = np.sqrt(result.total_variance) if result.total_variance > 0 else 0.0
+    ann_vol = total_vol * np.sqrt(252)
 
     fig = go.Figure(
         go.Pie(
@@ -67,9 +73,6 @@ def plot_risk_attribution_pie(
         )
     )
 
-    import numpy as np
-
-    total_vol = np.sqrt(result.total_variance) if result.total_variance > 0 else 0.0
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title="Risk Decomposition",
@@ -77,13 +80,26 @@ def plot_risk_attribution_pie(
         width=width or theme_config["defaults"]["width"],
         annotations=[
             {
-                "text": f"Vol: {total_vol:.2%}",
+                "text": f"Ann. Vol<br><b>{ann_vol:.1%}</b>",
                 "x": 0.5,
                 "y": 0.5,
-                "font_size": 14,
+                "font_size": 13,
                 "showarrow": False,
             }
         ],
+    )
+
+    # Footnote explaining interpretation
+    fig.add_annotation(
+        text=(
+            "Risk share = β² × Var(factor) / Var(portfolio). "
+            "Market dominates because its variance is ~100× that of style factors."
+        ),
+        xref="paper", yref="paper",
+        x=0, y=-0.12,
+        showarrow=False,
+        font={"size": 10, "color": "gray"},
+        align="left",
     )
 
     return fig
@@ -115,11 +131,10 @@ def plot_risk_attribution_bar(
         Plotly bar chart.
     """
     theme_config = get_theme_config(theme)
-    colorway = theme_config["colorway"]
 
     factor_names = result.factor_names
     mctr_values = [result.mctr[f] for f in factor_names]
-    colors = [colorway[i % len(colorway)] for i in range(len(factor_names))]
+    colors = [get_factor_color(f) for f in factor_names]
 
     fig = go.Figure(
         go.Bar(

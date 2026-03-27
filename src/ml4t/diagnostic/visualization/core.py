@@ -75,24 +75,35 @@ THEME_DEFAULT = {
     "name": "default",
     "description": "Clean, modern light theme for general use",
     "layout": {
-        "paper_bgcolor": "#FFFFFF",
-        "plot_bgcolor": "#FFFFFF",
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
         "font": {
-            "family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
             "size": 12,
             "color": _ML4T_COLORS["neutral"],
         },
         "title_font": {
             "size": 16,
             "color": _ML4T_COLORS["neutral"],
-            "family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            "family": "DM Sans, DejaVu Sans, sans-serif",
         },
-        "margin": {"l": 60, "r": 16, "t": 60, "b": 60},
-        "hovermode": "closest",
+        "margin": {"l": 60, "r": 20, "t": 40, "b": 40},
+        "hovermode": "x unified",
+        "showlegend": False,
+        "xaxis": {
+            "gridcolor": "rgba(0,0,0,0.06)",
+            "linecolor": "rgba(0,0,0,0.1)",
+            "zeroline": False,
+        },
+        "yaxis": {
+            "gridcolor": "rgba(0,0,0,0.06)",
+            "linecolor": "rgba(0,0,0,0.1)",
+            "zeroline": False,
+        },
         "hoverlabel": {
             "bgcolor": "white",
             "font_size": 13,
-            "font_family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            "font_family": "DM Sans, DejaVu Sans, sans-serif",
         },
     },
     "colorway": [

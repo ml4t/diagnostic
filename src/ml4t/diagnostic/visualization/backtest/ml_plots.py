@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import polars as pl
 from plotly.subplots import make_subplots
 
+from ml4t.diagnostic.visualization._colors import COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
 if TYPE_CHECKING:
@@ -59,85 +60,292 @@ def plot_prediction_signal_diagnostics(
     daily_ic = _compute_daily_ic(frame)
     if daily_ic.is_empty():
         return None
-    quantile_summary = _compute_quantile_summary(frame, n_quantiles=5)
+    quantile_summary = _compute_quantile_summary(frame, n_quantiles=10)
     regime_summary = _compute_regime_summary(profile, daily_ic)
 
+    # Compute rolling returns for IC vs Returns overlay (row 3)
+    equity = profile.equity_df
+    ic_with_ret = daily_ic.with_columns(pl.lit(None).cast(pl.Float64).alias("rolling_return_21"))
+    if not equity.is_empty() and "timestamp" in equity.columns:
+        eq = equity.select(pl.col("timestamp").cast(pl.Date, strict=False).alias("date"))
+        if "return" in equity.columns:
+            eq = eq.with_columns(equity["return"].alias("daily_ret"))
+        elif "cumulative_return" in equity.columns:
+            cum = equity["cumulative_return"]
+            eq = eq.with_columns(
+                ((1 + cum) / (1 + cum.shift(1)) - 1).alias("daily_ret")
+            )
+        elif "equity" in equity.columns:
+            eq_val = equity["equity"]
+            eq = eq.with_columns(
+                (eq_val / eq_val.shift(1) - 1).alias("daily_ret")
+            )
+        if "daily_ret" in eq.columns:
+            eq = eq.with_columns(
+                pl.col("daily_ret")
+                .rolling_mean(window_size=21, min_samples=5)
+                .alias("rolling_return_21")
+            )
+            ic_with_ret = daily_ic.join(eq.select("date", "rolling_return_21"), on="date", how="left")
+
     theme_config = get_theme_config(theme)
+
+    # 4-row layout: Daily IC, Rolling IC vs Returns, Decile Returns, Regime
     fig = make_subplots(
-        rows=3,
+        rows=4,
         cols=1,
         subplot_titles=(
             "Daily Information Coefficient",
-            "Realized Return by Prediction Quintile",
-            "Information Coefficient by Strategy Regime",
+            "Rolling IC vs Rolling Returns (21d)",
+            "Realized Return by Prediction Decile",
+            "IC by Strategy Regime",
         ),
-        vertical_spacing=0.1,
-        row_heights=[0.46, 0.24, 0.3],
+        vertical_spacing=0.08,
+        row_heights=[0.30, 0.28, 0.22, 0.20],
+        specs=[
+            [{"secondary_y": False}],
+            [{"secondary_y": True}],
+            [{}],
+            [{}],
+        ],
     )
 
+    # Row 1: Daily IC + rolling mean (no legend — title + colors are self-documenting)
+    ic_color = theme_config["colorway"][0]
     fig.add_trace(
         go.Scatter(
             x=daily_ic["date"].to_list(),
             y=daily_ic["ic"].to_list(),
-            mode="lines",
-            name="Daily IC",
-            line={"width": 1.5},
+            mode="lines", name="Daily IC",
+            line={"width": 0.8, "color": "rgba(10,22,40,0.25)"},
+            showlegend=False,
         ),
-        row=1,
-        col=1,
+        row=1, col=1,
     )
     if "rolling_ic_21" in daily_ic.columns:
         fig.add_trace(
             go.Scatter(
                 x=daily_ic["date"].to_list(),
                 y=daily_ic["rolling_ic_21"].to_list(),
-                mode="lines",
-                name="21d Mean IC",
-                line={"width": 2.5},
-            ),
-            row=1,
-            col=1,
-        )
-    if not quantile_summary.is_empty():
-        fig.add_trace(
-            go.Bar(
-                x=quantile_summary["quantile_label"].to_list(),
-                y=quantile_summary["mean_outcome"].to_list(),
-                name="Mean Realized Return",
-                marker_color=theme_config["colorway"][0],
+                mode="lines", name="21d Mean",
+                line={"width": 2, "color": ic_color},
                 showlegend=False,
             ),
-            row=2,
-            col=1,
+            row=1, col=1,
         )
+
+    # Row 2: Rolling IC (left y) vs Rolling Returns (right y) — dual axis
+    ret_color = COLORS["warning"]
+    if "rolling_ic_21" in ic_with_ret.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=ic_with_ret["date"].to_list(),
+                y=ic_with_ret["rolling_ic_21"].to_list(),
+                mode="lines", name="Rolling IC",
+                line={"width": 1.5, "color": ic_color},
+                hovertemplate="IC: %{y:.3f}<extra></extra>",
+                showlegend=False,
+            ),
+            row=2, col=1, secondary_y=False,
+        )
+    if "rolling_return_21" in ic_with_ret.columns:
+        rr = ic_with_ret["rolling_return_21"]
+        if rr.drop_nulls().len() > 0:
+            fig.add_trace(
+                go.Scatter(
+                    x=ic_with_ret["date"].to_list(),
+                    y=rr.to_list(),
+                    mode="lines", name="Rolling Return",
+                    line={"width": 1.5, "color": ret_color},
+                    hovertemplate="Return: %{y:.2%}<extra></extra>",
+                    showlegend=False,
+                ),
+                row=2, col=1, secondary_y=True,
+            )
+
+    # Row 3: Decile returns
+    if not quantile_summary.is_empty():
+        q_labels = quantile_summary["quantile_label"].to_list()
+        q_means = quantile_summary["mean_outcome"].to_list()
+        q_counts = (
+            quantile_summary["count"].to_list()
+            if "count" in quantile_summary.columns
+            else [None] * len(q_labels)
+        )
+        bar_colors = [COLORS["positive"] if v >= 0 else COLORS["negative"] for v in q_means]
+        text_labels = [f"N={c:,}" if c is not None else "" for c in q_counts]
+        fig.add_trace(
+            go.Bar(
+                x=q_labels, y=q_means, name="Mean Return",
+                marker_color=bar_colors,
+                text=text_labels, textposition="outside", textfont={"size": 9},
+                showlegend=False,
+            ),
+            row=3, col=1,
+        )
+
+    # Row 4: IC by regime — auto-scale y to data range
     if not regime_summary.is_empty():
+        regime_ics = regime_summary["mean_ic"].to_list()
+        r_colors = [COLORS["positive"] if v >= 0 else COLORS["negative"] for v in regime_ics]
         fig.add_trace(
             go.Bar(
                 x=regime_summary["regime"].to_list(),
-                y=regime_summary["mean_ic"].to_list(),
-                name="Mean IC",
-                marker_color=theme_config["colorway"][1],
-                showlegend=False,
+                y=regime_ics,
+                marker_color=r_colors, showlegend=False,
+                hovertemplate="%{x}: IC = %{y:.4f}<extra></extra>",
             ),
-            row=3,
-            col=1,
+            row=4, col=1,
         )
+        # Tight y-axis around the data with ~20% padding
+        if regime_ics:
+            y_min = min(regime_ics)
+            y_max = max(regime_ics)
+            pad = max(abs(y_min), abs(y_max)) * 0.3 + 0.001
+            fig.update_yaxes(range=[y_min - pad, y_max + pad], row=4, col=1)
 
     fig.update_layout(
         title="Prediction Diagnostics",
-        height=980,
+        height=1100,
         template=theme_config.get("template", "plotly_white"),
         paper_bgcolor=theme_config.get("paper_bgcolor"),
         plot_bgcolor=theme_config.get("plot_bgcolor"),
         font={"color": theme_config.get("font_color")},
-        margin={"l": 40, "r": 24, "t": 72, "b": 48},
+        margin={"l": 48, "r": 48, "t": 72, "b": 48},
+        showlegend=False,
     )
     fig.update_yaxes(title_text="IC", row=1, col=1)
-    fig.update_yaxes(title_text="Mean Outcome", tickformat=".2%", row=2, col=1)
-    fig.update_yaxes(title_text="Mean IC", row=3, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=1, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=2, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=3, col=1)
+    fig.update_yaxes(title_text="Rolling IC", row=2, col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Return", tickformat=".1%", row=2, col=1, secondary_y=True)
+    fig.update_yaxes(title_text="Mean Return", tickformat=".2%", row=3, col=1)
+    fig.update_yaxes(title_text="Mean IC", row=4, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS["neutral"], line_width=0.5, row=1, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS["neutral"], line_width=0.5, row=2, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS["neutral"], line_width=0.5, row=4, col=1)
+    return fig
+
+
+def plot_ic_time_series(
+    profile: BacktestProfile,
+    *,
+    theme: Literal["default", "dark", "print", "presentation"] = "default",
+) -> go.Figure | None:
+    """Plot daily IC with rolling mean — compact single-chart version."""
+    validate_theme(theme)
+    predictions = profile.predictions_df
+    if predictions.is_empty():
+        return None
+
+    date_col = _first_present_column(predictions, ("timestamp", "date", "session_date"))
+    asset_col = _first_present_column(predictions, ("asset",))
+    score_col = _first_present_column(
+        predictions,
+        ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
+    )
+    outcome_col = _first_present_column(predictions, ("y_true", "target", "realized_return", "forward_return"))
+    if date_col is None or asset_col is None or score_col is None or outcome_col is None:
+        return None
+
+    frame = (
+        predictions.select([date_col, asset_col, score_col, outcome_col])
+        .rename({date_col: "date", asset_col: "asset", score_col: "score", outcome_col: "outcome"})
+        .with_columns(pl.col("date").cast(pl.Date, strict=False))
+        .filter(pl.col("date").is_not_null() & pl.col("score").is_not_null() & pl.col("outcome").is_not_null())
+    )
+    if frame.is_empty():
+        return None
+
+    daily_ic = _compute_daily_ic(frame)
+    if daily_ic.is_empty():
+        return None
+
+    theme_config = get_theme_config(theme)
+    ic_color = theme_config["colorway"][0]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=daily_ic["date"].to_list(), y=daily_ic["ic"].to_list(),
+        mode="lines", name="Daily IC",
+        line={"width": 0.8, "color": "rgba(10,22,40,0.25)"},
+        showlegend=False,
+    ))
+    if "rolling_ic_21" in daily_ic.columns:
+        fig.add_trace(go.Scatter(
+            x=daily_ic["date"].to_list(), y=daily_ic["rolling_ic_21"].to_list(),
+            mode="lines", name="21d Rolling IC",
+            line={"width": 2, "color": ic_color},
+            showlegend=False,
+        ))
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS["neutral"], line_width=0.5)
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title="Daily Information Coefficient",
+        height=300,
+        margin={"t": 40, "l": 48, "r": 24, "b": 32},
+        yaxis_title="IC",
+    )
+    return fig
+
+
+def plot_quintile_returns(
+    profile: BacktestProfile,
+    *,
+    theme: Literal["default", "dark", "print", "presentation"] = "default",
+    n_quantiles: int = 10,
+) -> go.Figure | None:
+    """Plot realized return by prediction quantile — compact bar chart."""
+    validate_theme(theme)
+    predictions = profile.predictions_df
+    if predictions.is_empty():
+        return None
+
+    date_col = _first_present_column(predictions, ("timestamp", "date", "session_date"))
+    asset_col = _first_present_column(predictions, ("asset",))
+    score_col = _first_present_column(
+        predictions,
+        ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
+    )
+    outcome_col = _first_present_column(predictions, ("y_true", "target", "realized_return", "forward_return"))
+    if date_col is None or asset_col is None or score_col is None or outcome_col is None:
+        return None
+
+    frame = (
+        predictions.select([date_col, asset_col, score_col, outcome_col])
+        .rename({date_col: "date", asset_col: "asset", score_col: "score", outcome_col: "outcome"})
+        .with_columns(pl.col("date").cast(pl.Date, strict=False))
+        .filter(pl.col("date").is_not_null() & pl.col("score").is_not_null() & pl.col("outcome").is_not_null())
+    )
+    if frame.is_empty():
+        return None
+
+    quantile_summary = _compute_quantile_summary(frame, n_quantiles=n_quantiles)
+    if quantile_summary.is_empty():
+        return None
+
+    q_labels = quantile_summary["quantile_label"].to_list()
+    q_means = quantile_summary["mean_outcome"].to_list()
+    q_counts = (
+        quantile_summary["count"].to_list()
+        if "count" in quantile_summary.columns
+        else [None] * len(q_labels)
+    )
+    bar_colors = [COLORS["positive"] if v >= 0 else COLORS["negative"] for v in q_means]
+    text_labels = [f"N={c:,}" if c is not None else "" for c in q_counts]
+
+    theme_config = get_theme_config(theme)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=q_labels, y=q_means, marker_color=bar_colors,
+        text=text_labels, textposition="outside", textfont={"size": 9},
+        showlegend=False,
+    ))
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title="Realized Return by Prediction Decile",
+        height=300,
+        margin={"t": 40, "l": 48, "r": 24, "b": 32},
+        yaxis={"title": "Mean Return", "tickformat": ".2%"},
+    )
     return fig
 
 
@@ -196,8 +404,8 @@ def plot_prediction_trade_alignment(
     )
 
     colors = {
-        "Winning trades": "#2f855a",
-        "Losing trades": "#c53030",
+        "Winning trades": COLORS["positive"],
+        "Losing trades": COLORS["negative"],
     }
     for bucket in ("Winning trades", "Losing trades"):
         subset = aligned.filter(pl.col("_outcome_bucket") == bucket)
@@ -259,8 +467,8 @@ def plot_prediction_trade_alignment(
                     x=bin_centers, y=bin_means,
                     mode="lines+markers",
                     name="Binned Mean",
-                    line={"color": "#2b6cb0", "width": 2.5},
-                    marker={"size": 8, "color": "#2b6cb0"},
+                    line={"color": COLORS["amber"], "width": 2.5},
+                    marker={"size": 8, "color": COLORS["amber"]},
                     showlegend=True,
                 ),
                 row=1, col=2,
@@ -269,7 +477,7 @@ def plot_prediction_trade_alignment(
     fig.update_layout(
         title="Prediction-to-Trade Alignment",
         barmode="overlay",
-        height=420,
+        height=300,
         template=theme_config.get("template", "plotly_white"),
         paper_bgcolor=theme_config.get("paper_bgcolor"),
         plot_bgcolor=theme_config.get("plot_bgcolor"),
@@ -348,28 +556,43 @@ def plot_prediction_calibration(
     theme_config = get_theme_config(theme)
     fig = go.Figure()
 
+    # Build clean bin labels (D1..D10) instead of raw score values
+    bin_labels = [f"D{b}" for b in summary["bin"].to_list()]
+    win_rates = summary["actual_positive_rate"].to_list()
+    counts = summary["count"].to_list()
+    mean_scores = summary["mean_score"].to_list()
+
+    hover_text = [
+        f"Bin {label}<br>Win Rate: {wr:.1%}<br>Avg Score: {ms:.4f}<br>N: {n:,}"
+        for label, wr, ms, n in zip(bin_labels, win_rates, mean_scores, counts)
+    ]
+
     fig.add_trace(go.Bar(
-        x=summary["mean_score"].to_list(),
-        y=summary["actual_positive_rate"].to_list(),
+        x=bin_labels,
+        y=win_rates,
         name="Actual Win Rate",
         marker_color=theme_config["colorway"][0],
         opacity=0.8,
+        text=[f"{wr:.0%}" for wr in win_rates],
+        textposition="outside",
+        textfont={"size": 9},
+        hovertext=hover_text,
+        hoverinfo="text",
     ))
 
-    # Diagonal reference (perfect calibration)
-    x_range = [float(summary["mean_score"].min()), float(summary["mean_score"].max())]
-    fig.add_trace(go.Scatter(
-        x=x_range, y=[0.5, 0.5],
-        mode="lines", name="Random (50%)",
-        line={"color": "gray", "dash": "dash", "width": 1.5},
-    ))
+    # Random baseline at 50%
+    fig.add_hline(
+        y=0.5, line_dash="dash", line_color="gray", line_width=1.5,
+        annotation_text="Random (50%)", annotation_position="right",
+        annotation_font_size=10, annotation_font_color="gray",
+    )
 
     fig.update_layout(
         title="Prediction Calibration",
-        xaxis_title="Mean Prediction Score (by decile)",
+        xaxis_title="Prediction Score Decile",
         yaxis_title="Actual Win Rate",
         yaxis_tickformat=".0%",
-        height=380,
+        height=300,
         template=theme_config.get("template", "plotly_white"),
         paper_bgcolor=theme_config.get("paper_bgcolor"),
         plot_bgcolor=theme_config.get("plot_bgcolor"),
@@ -443,24 +666,40 @@ def _compute_quantile_summary(frame: pl.DataFrame, *, n_quantiles: int) -> pl.Da
     )
     summary = (
         ranked.group_by("quantile")
-        .agg(pl.col("outcome").mean().alias("mean_outcome"))
+        .agg(
+            pl.col("outcome").mean().alias("mean_outcome"),
+            pl.col("outcome").len().alias("count"),
+        )
         .sort("quantile")
-        .with_columns(pl.format("Q{}", pl.col("quantile")).alias("quantile_label"))
+        .with_columns(
+            pl.when(n_quantiles <= 5)
+            .then(pl.format("Q{}", pl.col("quantile")))
+            .otherwise(pl.format("D{}", pl.col("quantile")))
+            .alias("quantile_label")
+        )
     )
     return summary
 
 
 def _compute_regime_summary(profile: BacktestProfile, daily_ic: pl.DataFrame) -> pl.DataFrame:
     equity = profile.equity_df
-    if equity.is_empty() or "timestamp" not in equity.columns or "return" not in equity.columns:
+    if equity.is_empty() or "timestamp" not in equity.columns:
+        return pl.DataFrame()
+    # Compute daily return if missing
+    if "return" in equity.columns:
+        ret_col = equity["return"]
+    elif "cumulative_return" in equity.columns:
+        cum = equity["cumulative_return"]
+        ret_col = (1 + cum) / (1 + cum.shift(1)) - 1
+    elif "equity" in equity.columns:
+        eq_val = equity["equity"]
+        ret_col = eq_val / eq_val.shift(1) - 1
+    else:
         return pl.DataFrame()
     regime_frame = (
         equity.select(
-            [
-                pl.col("timestamp").cast(pl.Date, strict=False).alias("date"),
-                pl.col("return").alias("strategy_return"),
-            ]
-        )
+            pl.col("timestamp").cast(pl.Date, strict=False).alias("date"),
+        ).with_columns(ret_col.alias("strategy_return"))
         .with_columns(
             pl.col("strategy_return")
             .rolling_std(window_size=63, min_samples=20)

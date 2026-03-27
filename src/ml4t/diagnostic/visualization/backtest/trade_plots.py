@@ -48,7 +48,7 @@ def plot_mfe_mae_scatter(
     mfe_col: str = "mfe",
     mae_col: str = "mae",
     theme: str | None = None,
-    height: int = 600,
+    height: int = 300,
     width: int | None = None,
 ) -> go.Figure:
     """Create MFE vs MAE scatter plot with exit efficiency analysis.
@@ -723,7 +723,7 @@ def plot_trade_duration_distribution(
     bin_count: int = 30,
     show_statistics: bool = True,
     theme: str | None = None,
-    height: int = 450,
+    height: int = 300,
     width: int | None = None,
 ) -> go.Figure:
     """Plot distribution of trade holding periods.
@@ -799,7 +799,7 @@ def plot_trade_duration_distribution(
                 nbinsx=effective_bins,
             )
         )
-        fig.update_layout(barmode="overlay")
+        fig.update_layout(barmode="group")
 
     elif split_by == "exit_reason" and "exit_reason" in trades_df.columns:
         exit_reasons = trades_df["exit_reason"].unique().to_list()

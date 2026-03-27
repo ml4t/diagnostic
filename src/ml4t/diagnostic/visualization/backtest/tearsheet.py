@@ -27,6 +27,7 @@ import numpy as np
 import polars as pl
 
 from ml4t.diagnostic.integration.report_metadata import BacktestReportMetadata
+from ml4t.diagnostic.visualization._colors import COLORS, SERIES_COLORS
 
 from .dashboard_model import (
     BacktestDashboardModel,
@@ -179,53 +180,49 @@ _WORKSPACE_SPECS: dict[str, BacktestWorkspaceSpec] = {
 }
 
 _SECTION_WORKSPACE_MAP: dict[str, str] = {
-    # Overview
+    # Overview (per layout-spec.md)
     "executive_summary": "overview",
-    "credibility_box": "overview",
-    "top_contributors": "overview",
     "overview_snapshot": "overview",
+    "metrics_sidebar": "overview",
+    "credibility_box": "overview",
     "cost_summary_line": "overview",
-    "key_metrics_table": "performance",
+    "top_contributors": "overview",
     "monthly_heatmap_overview": "overview",
-    "key_insights": "overview",
     # Performance
     "equity_curve": "performance",
-    "drawdowns": "performance",
     "top_drawdowns_table": "performance",
+    "drawdowns": "performance",
     "rolling_metrics": "performance",
-    "monthly_returns": "performance",
     "annual_returns": "performance",
     "distribution": "performance",
-    "tail_risk": "performance",
-    "attribution_overview": "performance",
+    "stock_attribution": "performance",
     # Trading
-    "activity_overview": "trading",
+    "activity_strip": "trading",
     "occupancy_overview": "trading",
     "cost_waterfall": "trading",
     "cost_sensitivity": "trading",
-    "cost_by_asset": "trading",
+    "attribution_overview": "trading",
     "mfe_mae": "trading",
-    "exit_reasons": "trading",
+    "duration": "trading",
     "worst_trades_table": "trading",
     "trade_waterfall": "trading",
-    "duration": "trading",
-    "consecutive": "trading",
-    "size_return": "trading",
+    "exit_reasons": "trading",
     # Validation
-    "statistical_summary": "validation",
-    "dsr_gauge": "validation",
-    "pbo_gauge": "validation",
+    "validity_card": "validation",
     "confidence_intervals": "validation",
     "min_trl": "validation",
-    "ras_analysis": "validation",
+    "sharpe_bootstrap": "validation",
     "drawdown_anatomy": "validation",
     # Factors
     "factor_exposure": "factors",
+    "factor_legend": "factors",
     "factor_attribution": "factors",
     "factor_risk": "factors",
     # ML
+    "ml_summary_strip": "ml",
     "signal_diagnostics": "ml",
-    "ml_summary": "ml",
+    "ic_time_series": "ml",
+    "quintile_returns": "ml",
     "prediction_trade_alignment": "ml",
     "prediction_calibration": "ml",
     "shap_errors": "ml",
@@ -234,63 +231,139 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
 _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     "overview": (
         "executive_summary",
-        "credibility_box",
-        "cost_summary_line",
-        "overview_snapshot",
+        "overview_snapshot",       # equity+DD chart (paired with sidebar)
+        "metrics_sidebar",         # metrics sidebar (paired with snapshot)
+        "credibility_box",         # credibility strip (paired with cost)
+        "cost_summary_line",       # cost summary (paired with credibility)
+        "top_contributors",        # contributors + detractors
         "monthly_heatmap_overview",
     ),
     "performance": (
         "equity_curve",
-        "drawdowns",
         "top_drawdowns_table",
+        "drawdowns",               # underwater curve
         "rolling_metrics",
-        "annual_returns",
+        "annual_returns",          # paired with distribution
         "distribution",
-        "key_metrics_table",
+        "stock_attribution",       # per-symbol P&L table
     ),
     "trading": (
-        "occupancy_overview",
-        "cost_waterfall",
+        "activity_strip",
+        "occupancy_overview",      # exposure timeline
+        "cost_waterfall",          # paired with cost_sensitivity
         "cost_sensitivity",
         "attribution_overview",
-        "mfe_mae",
-        "worst_trades_table",
+        "mfe_mae",                 # paired with duration
         "duration",
+        "worst_trades_table",
+        "trade_waterfall",
         "exit_reasons",
     ),
     "validation": (
-        "confidence_intervals",
+        "validity_card",
+        "confidence_intervals",    # paired with min_trl
         "min_trl",
-        "credibility_box_validation",
-        "pbo_gauge",
-        "ras_analysis",
+        "sharpe_bootstrap",        # bootstrap distribution
         "drawdown_anatomy",
     ),
     "factors": (
         "factor_exposure",
+        "factor_legend",
         "factor_attribution",
         "factor_risk",
     ),
     "ml": (
-        "signal_diagnostics",
+        "ml_summary_strip",
+        "ic_time_series",                          # paired with quintile_returns
+        "quintile_returns",
+        "prediction_calibration",                  # paired with prediction_trade_alignment
         "prediction_trade_alignment",
-        "prediction_calibration",
-        "ml_summary",
         "shap_errors",
     ),
 }
 
+# Side-by-side pairs (50/50 split)
 _PAIRED_SECTIONS: dict[str, str] = {
-    "distribution": "tail_risk",
-    "mfe_mae": "exit_reasons",
+    "credibility_box": "cost_summary_line",       # Overview row 3
+    "annual_returns": "distribution",              # Performance row 5
+    "cost_waterfall": "cost_sensitivity",          # Trading row 3
+    "mfe_mae": "duration",                         # Trading row 5
+    "confidence_intervals": "min_trl",             # Validation row 2
+    "ic_time_series": "quintile_returns",          # ML row 2
+    "prediction_calibration": "prediction_trade_alignment",  # ML row 3
+}
+
+# Wide+narrow sidebar pairs (66/34 split)
+_SIDEBAR_SECTIONS: dict[str, str] = {
+    "overview_snapshot": "metrics_sidebar",        # Overview row 2
+    "factor_exposure": "factor_legend",            # Factors row 1
 }
 
 _COLLAPSIBLE_SECTIONS: set[str] = {
     "drawdown_anatomy",
     "trade_waterfall",
-    "size_return",
-    "consecutive",
-    "ras_analysis",
+    "shap_errors",
+}
+
+# Interpretive footnotes — brief guidance for complex charts
+_SECTION_FOOTNOTES: dict[str, str] = {
+    "rolling_metrics": (
+        "<strong>Reading:</strong> Rolling windows smooth noise. "
+        "A Sharpe consistently above the dashed zero line suggests persistent edge, "
+        "not a single lucky period."
+    ),
+    "confidence_intervals": (
+        "<strong>Reading:</strong> Wider intervals mean more uncertainty. "
+        "If the CI for Sharpe includes zero, the strategy may not have a statistically "
+        "significant edge."
+    ),
+    "sharpe_bootstrap": (
+        "<strong>Reading:</strong> This histogram shows the distribution of Sharpe ratios "
+        "from 5,000 block-bootstrap replications. The amber line marks the observed Sharpe. "
+        "P(SR\u22640) is the probability the true Sharpe is zero or negative."
+    ),
+    "mfe_mae": (
+        "<strong>Reading:</strong> Points near the diagonal captured most of their "
+        "favorable excursion. Clusters far below suggest exits are too early; "
+        "clusters far right suggest stops are too loose."
+    ),
+    "cost_sensitivity": (
+        "<strong>Reading:</strong> The breakeven point shows how much transaction costs "
+        "can increase before the strategy becomes unprofitable. "
+        "A narrow margin suggests fragility to execution costs."
+    ),
+    "factor_attribution": (
+        "<strong>Reading:</strong> Additive attribution: \u03B2 \u00D7 factor return. "
+        "Alpha is the residual manager skill after accounting for factor exposures. "
+        "Total may differ slightly from compound return."
+    ),
+    "factor_risk": (
+        "<strong>Reading:</strong> Market risk typically dominates. "
+        "A large idiosyncratic slice means the strategy has meaningful "
+        "stock-specific bets beyond factor tilts."
+    ),
+    "signal_diagnostics": (
+        "<strong>Reading:</strong> IC (Information Coefficient) measures rank correlation "
+        "between predictions and outcomes. IC > 0.02 with t-stat > 2 suggests "
+        "a meaningful signal."
+    ),
+    "ic_time_series": (
+        "<strong>Reading:</strong> IC (Information Coefficient) measures rank correlation "
+        "between predictions and outcomes. IC > 0.02 with t-stat > 2 suggests "
+        "a meaningful signal."
+    ),
+    "quintile_returns": (
+        "<strong>Reading:</strong> Bars should increase monotonically from Q1 to Q10. "
+        "A strong signal means high-prediction assets outperform low-prediction assets."
+    ),
+    "prediction_calibration": (
+        "<strong>Reading:</strong> Bars should increase monotonically from D1 to D10. "
+        "Flat bars indicate the model's scores don't meaningfully separate winners from losers."
+    ),
+    "stock_attribution": (
+        "<strong>Reading:</strong> Concentration risk: if top 3 symbols account for most P&amp;L, "
+        "the strategy may be a few lucky bets rather than a diversified edge."
+    ),
 }
 
 
@@ -338,6 +411,47 @@ def _infer_periods_per_year(returns: pl.Series | np.ndarray | None) -> int:
         return 252
     n_periods = len(returns)
     return 12 if n_periods < 100 else 252
+
+
+def _enrich_benchmark_metrics(
+    returns: pl.Series | np.ndarray,
+    benchmark_returns: pl.Series | np.ndarray,
+    metrics: dict[str, Any],
+    periods_per_year: int = 252,
+) -> None:
+    """Compute benchmark-relative metrics: Alpha, Beta, Info Ratio, Tracking Error."""
+    ret = returns if isinstance(returns, np.ndarray) else returns.to_numpy()
+    bench = benchmark_returns if isinstance(benchmark_returns, np.ndarray) else benchmark_returns.to_numpy()
+    # Align lengths (benchmark may have slightly different count)
+    n = min(len(ret), len(bench))
+    if n < 60:
+        return
+    ret, bench = ret[:n], bench[:n]
+
+    # Beta and Alpha (CAPM regression)
+    cov_matrix = np.cov(ret, bench)
+    bench_var = cov_matrix[1, 1]
+    if bench_var > 0:
+        beta = float(cov_matrix[0, 1] / bench_var)
+        alpha = float((np.mean(ret) - beta * np.mean(bench)) * periods_per_year)
+        metrics.setdefault("beta", beta)
+        metrics.setdefault("alpha", alpha)
+
+    # Tracking Error and Information Ratio
+    excess = ret - bench
+    te = float(np.std(excess, ddof=1) * np.sqrt(periods_per_year))
+    if te > 0:
+        ir = float(np.mean(excess) * periods_per_year / te)
+        metrics.setdefault("tracking_error", te)
+        metrics.setdefault("information_ratio", ir)
+
+    # Capture ratio (up/down)
+    up_mask = bench > 0
+    down_mask = bench < 0
+    if up_mask.sum() > 0:
+        metrics.setdefault("up_capture", float(np.mean(ret[up_mask]) / np.mean(bench[up_mask])))
+    if down_mask.sum() > 0:
+        metrics.setdefault("down_capture", float(np.mean(ret[down_mask]) / np.mean(bench[down_mask])))
 
 
 def _enrich_from_trades(trades: pl.DataFrame, metrics: dict[str, Any]) -> None:
@@ -595,6 +709,19 @@ def _render_report_shell(
         if skip_next:
             skip_next = False
             continue
+
+        # Check for wide+narrow sidebar pair (66/34 split)
+        sidebar_partner = _SIDEBAR_SECTIONS.get(section.name)
+        if sidebar_partner and i + 1 < len(rendered_sections):
+            next_section, next_html = rendered_sections[i + 1]
+            if next_section.name == sidebar_partner:
+                parts.append(
+                    f'<div class="report-section-sidebar">{section_html}{next_html}</div>'
+                )
+                skip_next = True
+                continue
+
+        # Check for 50/50 pair
         partner_name = _PAIRED_SECTIONS.get(section.name)
         if partner_name and i + 1 < len(rendered_sections):
             next_section, next_html = rendered_sections[i + 1]
@@ -782,6 +909,8 @@ def generate_backtest_tearsheet(
         trades = trades if trades is not None else profile.trades_df
         returns = returns if returns is not None else profile.daily_returns
         equity_curve = equity_curve if equity_curve is not None else profile.equity_df
+        if predictions is None and profile.has_predictions:
+            predictions = profile.predictions_df
         metrics = dict(metrics or {})
         for key, value in _normalize_profile_metrics(profile).items():
             metrics.setdefault(key, value)
@@ -824,6 +953,10 @@ def generate_backtest_tearsheet(
         if "sharpe" in metrics and "sharpe_ratio" not in metrics:
             metrics["sharpe_ratio"] = metrics["sharpe"]
 
+    # Enrich with benchmark-relative metrics
+    if returns is not None and benchmark_returns is not None and metrics is not None:
+        _enrich_benchmark_metrics(returns, benchmark_returns, metrics, periods_per_year)
+
     # Enrich with trade-level stats
     if trades is not None and metrics is not None:
         _enrich_from_trades(trades, metrics)
@@ -831,7 +964,11 @@ def generate_backtest_tearsheet(
     # Auto-enable ML sections when predictions are provided
     if predictions is not None and not predictions.is_empty():
         for section in tmpl.sections:
-            if section.name in ("signal_diagnostics", "prediction_calibration", "ml_summary"):
+            if section.name in (
+                "ml_summary_strip",
+                "ic_time_series", "quintile_returns",
+                "prediction_trade_alignment", "prediction_calibration",
+            ):
                 section.enabled = True
 
     # Auto-enable factor sections when factor_data is provided
@@ -962,6 +1099,34 @@ def _enrich_validation_metrics(
         except Exception:
             pass
 
+    # Compute return statistics for Sharpe validity assessment
+    try:
+        from ml4t.diagnostic.evaluation.stats.deflated_sharpe_ratio import (
+            compute_return_statistics,
+        )
+
+        # Returns tuple: (sharpe, skewness, kurtosis, autocorrelation, n_obs)
+        _sr, skew, kurt, ac, _n = compute_return_statistics(ret_arr)
+        metrics.setdefault("return_skewness", float(skew))
+        metrics.setdefault("return_kurtosis", float(kurt))
+        metrics.setdefault("return_autocorrelation", float(ac))
+        # Sharpe SE with non-normality correction (Lo 2002 / Bailey & Lopez de Prado)
+        sr = metrics.get("sharpe")
+        if sr is not None:
+            sr_f = float(sr)
+            from scipy.stats import norm
+
+            se_corrected = float(np.sqrt(
+                max(0, 1 - skew * sr_f + (kurt - 3) / 4 * sr_f**2) / n_obs
+            )) * np.sqrt(252)
+            metrics.setdefault("sharpe_se", se_corrected)
+            if se_corrected > 0:
+                z_stat = sr_f / se_corrected
+                p_value = float(2 * (1 - norm.cdf(abs(z_stat))))
+                metrics.setdefault("sharpe_pvalue", p_value)
+    except Exception:
+        pass
+
     return metrics
 
 
@@ -1079,8 +1244,11 @@ def _generate_section(
         if isinstance(content, str):
             body_html = content
         else:
-            content.update_layout(autosize=True, width=None)
-            content.update_layout(margin={"t": 40})
+            # Strip chart-level title — the section <h3> already provides the heading.
+            # This avoids "Cost Sensitivity" section title + "Cost Sensitivity Analysis" chart title.
+            # Subplot titles (e.g. "Rolling Return (252d)") are preserved — only the top-level title is cleared.
+            content.update_layout(title=None, autosize=True, width=None)
+            content.update_layout(margin={"t": 20, "l": 48, "r": 24, "b": 40})
             body_html = (
                 '<div class="chart-container">'
                 + _figure_to_clean_html(content)
@@ -1100,10 +1268,14 @@ def _generate_section(
         hide_title = section_name in {
             "executive_summary",
             "overview_snapshot",
+            "metrics_sidebar",
             "credibility_box",
             "top_contributors",
             "cost_summary_line",
-            "key_metrics_table",
+            "validity_card",
+            "activity_strip",
+            "ml_summary_strip",
+            "factor_legend",
         }
         title_html = (
             ""
@@ -1111,9 +1283,14 @@ def _generate_section(
             else f'<h3 class="section-title">{html_mod.escape(section_title)}</h3>'
         )
 
+        footnote = _SECTION_FOOTNOTES.get(section_name, "")
+        footnote_html = (
+            f'<div class="section-footnote">{footnote}</div>' if footnote else ""
+        )
+
         return (
             f'<div class="report-section" data-section="{section_name}">'
-            f'{title_html}{body_html}</div>'
+            f'{title_html}{body_html}{footnote_html}</div>'
         )
 
     except Exception:
@@ -1140,6 +1317,10 @@ def _build_portfolio_analysis(
             if isinstance(benchmark_returns, pl.Series)
             else pl.Series("benchmark", benchmark_returns)
         )
+        # Align lengths — benchmark may differ due to shift/dropna in return calc
+        if len(bench) != len(ret_series):
+            min_len = min(len(bench), len(ret_series))
+            bench = bench.tail(min_len)
 
     analysis_dates = None
     if profile is not None:
@@ -1293,15 +1474,256 @@ def _render_key_insights(ctx: _SectionContext) -> go.Figure | None:
     return fig
 
 
+def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
+    """Build 2x2 rolling metrics grid from raw returns (no BacktestProfile)."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
+
+    ret = ctx.returns
+    if ret is None:
+        return None
+    ret_arr = ret if isinstance(ret, np.ndarray) else ret.to_numpy()
+    n = len(ret_arr)
+    if n < 252:
+        return None
+
+    # Build x-axis
+    if ctx.equity_curve is not None and "timestamp" in ctx.equity_curve.columns:
+        x = ctx.equity_curve["timestamp"].to_list()
+    else:
+        x = list(range(n))
+
+    sqrt_252 = float(np.sqrt(252))
+    window = 252
+
+    # Determine if we can compute rolling beta
+    has_benchmark = ctx.benchmark_returns is not None
+    bench_arr = None
+    if has_benchmark:
+        bench_arr = (
+            ctx.benchmark_returns if isinstance(ctx.benchmark_returns, np.ndarray)
+            else ctx.benchmark_returns.to_numpy()
+        )
+        # Align lengths (benchmark may be shorter)
+        if len(bench_arr) != n:
+            min_len = min(len(bench_arr), n)
+            bench_arr = bench_arr[-min_len:]
+
+    fourth_title = "Rolling Beta (252d)" if has_benchmark else "Rolling Sortino (252d)"
+
+    # Compute rolling metrics
+    roll_ret = np.full(n, np.nan)
+    roll_sharpe = np.full(n, np.nan)
+    roll_vol = np.full(n, np.nan)
+    roll_fourth = np.full(n, np.nan)
+
+    for i in range(window - 1, n):
+        w = ret_arr[i - window + 1 : i + 1]
+        mu = float(np.mean(w))
+        sigma = float(np.std(w, ddof=1))
+        roll_ret[i] = mu * 252
+        roll_vol[i] = sigma * sqrt_252
+        if sigma > 0:
+            roll_sharpe[i] = (mu * 252) / (sigma * sqrt_252)
+
+        if has_benchmark and bench_arr is not None:
+            # Rolling beta = cov(r, b) / var(b)
+            offset = n - len(bench_arr)
+            bi = i - offset
+            if bi >= window - 1:
+                bw = bench_arr[bi - window + 1 : bi + 1]
+                bvar = float(np.var(bw, ddof=1))
+                if bvar > 0:
+                    roll_fourth[i] = float(np.cov(w, bw)[0, 1]) / bvar
+        else:
+            downside = w[w < 0]
+            if len(downside) > 0:
+                ds = float(np.std(downside, ddof=1)) * sqrt_252
+                if ds > 0:
+                    roll_fourth[i] = mu * 252 / ds
+
+    theme = validate_theme(ctx.theme)
+    theme_config = get_theme_config(theme)
+    colorway = theme_config.get("colorway", ["#2563eb"])
+    lc = colorway[0] if colorway else "#2563eb"
+
+    fig = make_subplots(
+        rows=2, cols=2, shared_xaxes=True,
+        subplot_titles=("Rolling Return (252d)", "Rolling Sharpe (252d)",
+                        "Rolling Volatility (252d)", fourth_title),
+        vertical_spacing=0.14, horizontal_spacing=0.08,
+    )
+    kw = {"mode": "lines", "showlegend": False, "line": {"width": 1.5, "color": lc}}
+    fig.add_trace(go.Scatter(x=x, y=roll_ret.tolist(), hovertemplate="%{y:.1%}<extra></extra>", **kw), row=1, col=1)
+    fig.add_trace(go.Scatter(x=x, y=roll_sharpe.tolist(), hovertemplate="%{y:.2f}<extra></extra>", **kw), row=1, col=2)
+    fig.add_trace(go.Scatter(x=x, y=roll_vol.tolist(), hovertemplate="%{y:.1%}<extra></extra>", **kw), row=2, col=1)
+    fig.add_trace(go.Scatter(x=x, y=roll_fourth.tolist(), hovertemplate="%{y:.2f}<extra></extra>", **kw), row=2, col=2)
+
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(height=420, margin={"t": 40, "l": 48, "r": 24, "b": 32}, showlegend=False)
+    fig.update_yaxes(tickformat=".0%", row=1, col=1)
+    fig.update_yaxes(tickformat=".0%", row=2, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=0.5, row=1, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=0.5, row=1, col=2)
+    return fig
+
+
+def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
+    """Build equity + drawdown subplot from raw returns (no BacktestProfile)."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
+
+    ret = ctx.returns
+    if ret is None:
+        return None
+
+    ret_arr = ret if isinstance(ret, np.ndarray) else ret.to_numpy()
+    cum = np.cumprod(1 + ret_arr)
+    hwm = np.maximum.accumulate(cum)
+    dd = (cum - hwm) / np.where(hwm > 0, hwm, 1.0)
+
+    # Build x-axis from equity_curve timestamps or integer index
+    if ctx.equity_curve is not None and "timestamp" in ctx.equity_curve.columns:
+        x = ctx.equity_curve["timestamp"].to_list()
+    else:
+        x = list(range(len(cum)))
+
+    theme = validate_theme(ctx.theme)
+    theme_config = get_theme_config(theme)
+
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        vertical_spacing=0.03, row_heights=[0.75, 0.25],
+    )
+    has_benchmark = ctx.benchmark_returns is not None and len(ctx.benchmark_returns) > 0
+    show_legend = has_benchmark
+
+    fig.add_trace(
+        go.Scatter(
+            x=x, y=(cum - 1).tolist(), mode="lines", name="Strategy",
+            line={"color": theme_config["colorway"][0], "width": 2},
+            hovertemplate="%{y:.1%}<extra></extra>", showlegend=show_legend,
+        ),
+        row=1, col=1,
+    )
+    # Benchmark overlay
+    if has_benchmark:
+        bench_arr = (
+            ctx.benchmark_returns if isinstance(ctx.benchmark_returns, np.ndarray)
+            else ctx.benchmark_returns.to_numpy()
+        )
+        bench_cum = np.cumprod(1 + bench_arr)
+        # Trim to match length (benchmark may have slightly different dates)
+        n_bench = min(len(bench_cum), len(x))
+        fig.add_trace(
+            go.Scatter(
+                x=x[:n_bench], y=(bench_cum[:n_bench] - 1).tolist(),
+                mode="lines", name=ctx.benchmark_name,
+                line={"color": "gray", "width": 1.5, "dash": "dash"},
+                hovertemplate="%{y:.1%}<extra></extra>", showlegend=True,
+            ),
+            row=1, col=1,
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=x, y=dd.tolist(), fill="tozeroy", mode="lines", name="Drawdown",
+            line={"color": SERIES_COLORS["drawdown_line"], "width": 0.5},
+            fillcolor=SERIES_COLORS["drawdown"],
+            hovertemplate="%{y:.1%}<extra></extra>", showlegend=False,
+        ),
+        row=2, col=1,
+    )
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title="Cumulative Return",
+        height=450,
+        margin={"t": 40, "l": 48, "r": 24, "b": 32},
+        hovermode="x unified",
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1.0} if show_legend else {},
+    )
+    fig.update_yaxes(tickformat=".0%", row=1, col=1)
+    fig.update_yaxes(tickformat=".0%", row=2, col=1)
+    fig.update_xaxes(showticklabels=False, row=1, col=1)
+    return fig
+
+
+def _build_position_count_from_trades(ctx: _SectionContext) -> go.Figure | None:
+    """Build open-position count timeline from trade entry/exit times."""
+    import plotly.graph_objects as go
+
+    from ml4t.diagnostic.visualization.core import get_theme_config
+
+    trades = ctx.trades
+    entry_col = next((c for c in ("entry_time", "entry_date") if c in trades.columns), None)
+    exit_col = next((c for c in ("exit_time", "exit_date") if c in trades.columns), None)
+    if entry_col is None or exit_col is None:
+        return None
+
+    entries = trades[entry_col].cast(pl.Date, strict=False).drop_nulls()
+    exits = trades[exit_col].cast(pl.Date, strict=False).drop_nulls()
+    if entries.is_empty() or exits.is_empty():
+        return None
+
+    all_dates = pl.date_range(entries.min(), exits.max(), eager=True)
+    counts = []
+    for d in all_dates:
+        n = trades.filter(
+            (pl.col(entry_col).cast(pl.Date, strict=False) <= d)
+            & (pl.col(exit_col).cast(pl.Date, strict=False) > d)
+        ).height
+        counts.append(n)
+
+    theme_config = get_theme_config(ctx.theme)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=all_dates.to_list(), y=counts,
+        mode="lines", fill="tozeroy",
+        line={"color": COLORS["slate"], "width": 1},
+        fillcolor="rgba(26,45,74,0.15)",
+        hovertemplate="%{y} positions<extra></extra>",
+    ))
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title="Open Positions",
+        height=350,
+        margin={"t": 40, "l": 48, "r": 24, "b": 32},
+        yaxis_title="Count",
+    )
+    return fig
+
+
+def _build_drawdown_anatomy_from_returns(ctx: _SectionContext) -> str | None:
+    """Compute top 5 drawdown episodes from raw returns and render as HTML table."""
+    from ml4t.diagnostic.evaluation.portfolio import PortfolioAnalysis
+
+    ret = ctx.returns
+    ret_arr = ret if isinstance(ret, np.ndarray) else ret.to_numpy()
+    pa = PortfolioAnalysis(ret_arr)
+    try:
+        dd_result = pa.compute_drawdown_analysis(top_n=5)
+    except Exception:
+        return None
+    if dd_result.top_drawdowns.is_empty():
+        return None
+
+    from .html_tables import create_top_drawdowns_table_html
+
+    return create_top_drawdowns_table_html(dd_result.top_drawdowns)
+
+
 def _render_overview_snapshot(ctx: _SectionContext) -> go.Figure | None:
     if ctx.profile is not None:
         from .profile_sections import plot_overview_snapshot
 
         return plot_overview_snapshot(ctx.profile, theme=ctx.theme)
-    # Fallback: use equity curve from returns when no profile
+    # Fallback: build equity+drawdown from raw returns
     if ctx.returns is None:
         return None
-    return _render_portfolio_section(ctx, "equity_curve")
+    return _build_equity_drawdown_figure(ctx)
 
 
 def _render_activity_overview(ctx: _SectionContext) -> go.Figure | None:
@@ -1313,11 +1735,14 @@ def _render_activity_overview(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_occupancy_overview(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.profile is None:
-        return None
-    from .profile_sections import plot_occupancy_overview
+    if ctx.profile is not None:
+        from .profile_sections import plot_occupancy_overview
 
-    return plot_occupancy_overview(ctx.profile, theme=ctx.theme)
+        return plot_occupancy_overview(ctx.profile, theme=ctx.theme)
+    # Fallback: build open-position count from trades
+    if ctx.trades is None or ctx.trades.is_empty():
+        return None
+    return _build_position_count_from_trades(ctx)
 
 
 def _render_attribution_overview(ctx: _SectionContext) -> go.Figure | None:
@@ -1329,11 +1754,33 @@ def _render_attribution_overview(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_drawdown_anatomy(ctx: _SectionContext) -> str | None:
-    if ctx.profile is None:
-        return None
-    from .profile_sections import plot_drawdown_anatomy
+    if ctx.profile is not None:
+        from .profile_sections import plot_drawdown_anatomy
 
-    return plot_drawdown_anatomy(ctx.profile, theme=ctx.theme)
+        return plot_drawdown_anatomy(ctx.profile, theme=ctx.theme)
+    # Fallback: compute drawdown episodes from raw returns
+    if ctx.returns is None:
+        return None
+    return _build_drawdown_anatomy_from_returns(ctx)
+
+
+def _render_sharpe_bootstrap(ctx: _SectionContext) -> go.Figure | None:
+    if ctx.returns is None:
+        return None
+    from .statistical_validity import plot_sharpe_bootstrap
+
+    ret_arr = ctx.returns if isinstance(ctx.returns, np.ndarray) else ctx.returns.to_numpy()
+    if len(ret_arr) < 60:
+        return None
+    observed_sr = ctx.metrics.get("sharpe_ratio", ctx.metrics.get("sharpe"))
+    if observed_sr is None:
+        vol = float(np.std(ret_arr, ddof=1) * np.sqrt(252))
+        observed_sr = float(np.mean(ret_arr) * 252 / vol) if vol > 0 else 0.0
+    return plot_sharpe_bootstrap(
+        ret_arr,
+        observed_sharpe=float(observed_sr),
+        theme=ctx.theme,
+    )
 
 
 # --- Trade Analysis renderers ---
@@ -1375,21 +1822,6 @@ def _render_duration(ctx: _SectionContext) -> go.Figure | None:
     return plot_trade_duration_distribution(ctx.trades, theme=ctx.theme)
 
 
-def _render_consecutive(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
-        return None
-    from .trade_plots import plot_consecutive_analysis
-
-    return plot_consecutive_analysis(ctx.trades, theme=ctx.theme)
-
-
-def _render_size_return(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
-        return None
-    from .trade_plots import plot_trade_size_vs_return
-
-    return plot_trade_size_vs_return(ctx.trades, theme=ctx.theme)
-
 
 # --- Cost Attribution renderers ---
 
@@ -1413,13 +1845,10 @@ def _render_cost_waterfall(ctx: _SectionContext) -> str | None:
         )
     if fig is None:
         return None
-    fig.update_layout(autosize=True, width=None, margin={"t": 40})
+    # Strip chart title (section <h3> provides the heading) and normalize margins
+    fig.update_layout(title=None, autosize=True, width=None, margin={"t": 20, "l": 48, "r": 24, "b": 40})
     chart_html = _figure_to_clean_html(fig)
-    return (
-        '<div style="max-width:560px">'
-        f'<div class="chart-container">{chart_html}</div>'
-        '</div>'
-    )
+    return f'<div class="chart-container">{chart_html}</div>'
 
 
 def _render_cost_sensitivity(ctx: _SectionContext) -> go.Figure | None:
@@ -1430,53 +1859,17 @@ def _render_cost_sensitivity(ctx: _SectionContext) -> go.Figure | None:
     return plot_cost_sensitivity(ctx.returns, theme=ctx.theme)
 
 
-def _render_cost_by_asset(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
-        return None
-    from .cost_attribution import plot_cost_by_asset
-
-    return plot_cost_by_asset(ctx.trades, theme=ctx.theme)
-
-
 # --- Statistical Validity renderers ---
-
-def _render_statistical_summary(ctx: _SectionContext) -> go.Figure | None:
-    if not any(
-        key in ctx.metrics
-        for key in (
-            "dsr_probability", "min_trl", "expected_max_sharpe",
-            "pbo", "ras_adjusted_ic",
-        )
-    ):
-        return None
-    from .statistical_validity import plot_statistical_summary_card
-
-    return plot_statistical_summary_card(ctx.metrics, theme=ctx.theme)
-
-
-def _render_dsr_gauge(ctx: _SectionContext) -> go.Figure | None:
-    dsr_prob = ctx.metrics.get("dsr_probability")
-    sharpe = ctx.metrics.get("sharpe")
-    if dsr_prob is None or sharpe is None:
-        return None
-    from .statistical_validity import plot_dsr_gauge
-
-    return plot_dsr_gauge(
-        dsr_probability=dsr_prob,
-        observed_sharpe=sharpe,
-        expected_max_sharpe=ctx.metrics.get("expected_max_sharpe"),
-        n_trials=ctx.n_trials,
-        theme=ctx.theme,
-    )
 
 
 def _render_confidence_intervals(ctx: _SectionContext) -> go.Figure | None:
+    ci_labels = {"sharpe": "Sharpe", "cagr": "CAGR", "max_drawdown": "Max Drawdown"}
     ci_metrics: dict[str, dict[str, float]] = {}
     for key in ["sharpe", "cagr", "max_drawdown"]:
         lower = ctx.metrics.get(f"{key}_lower_95")
         upper = ctx.metrics.get(f"{key}_upper_95")
         if key in ctx.metrics and lower is not None and upper is not None:
-            ci_metrics[key] = {
+            ci_metrics[ci_labels[key]] = {
                 "point": ctx.metrics[key],
                 "lower_95": lower,
                 "upper_95": upper,
@@ -1500,37 +1893,90 @@ def _render_min_trl(ctx: _SectionContext) -> go.Figure | None:
     )
 
 
-def _render_ras_analysis(ctx: _SectionContext) -> go.Figure | None:
-    original_ic = ctx.metrics.get("original_ic")
-    adjusted_ic = ctx.metrics.get("ras_adjusted_ic")
-    rademacher = ctx.metrics.get("rademacher_complexity")
-    if original_ic is None or adjusted_ic is None or rademacher is None:
-        return None
-    from .statistical_validity import plot_ras_analysis
-
-    return plot_ras_analysis(
-        original_ic=float(original_ic),
-        adjusted_ic=float(adjusted_ic),
-        rademacher_complexity=float(rademacher),
-        theme=ctx.theme,
-    )
-
-
-def _render_pbo_gauge(ctx: _SectionContext) -> go.Figure | None:
-    pbo = ctx.metrics.get("pbo")
-    if pbo is None:
-        return None
-    from .statistical_validity import plot_pbo_gauge
-
-    return plot_pbo_gauge(
-        pbo=float(pbo),
-        n_combinations=ctx.metrics.get("pbo_n_combinations"),
-        n_strategies=ctx.metrics.get("pbo_n_strategies"),
-        theme=ctx.theme,
-    )
-
 
 # --- HTML-native renderers ---
+
+def _render_metrics_sidebar(ctx: _SectionContext) -> str | None:
+    if not ctx.metrics:
+        return None
+    from .overview_elements import create_metrics_sidebar_html
+
+    return create_metrics_sidebar_html(ctx.metrics)
+
+
+def _render_validity_card(ctx: _SectionContext) -> str | None:
+    if not ctx.metrics:
+        return None
+    from .overview_elements import create_validity_card_html
+
+    return create_validity_card_html(ctx.metrics)
+
+
+def _render_activity_strip(ctx: _SectionContext) -> str | None:
+    if not ctx.metrics:
+        return None
+    from .overview_elements import create_activity_strip_html
+
+    return create_activity_strip_html(ctx.metrics)
+
+
+def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
+    """Render ML summary KPI strip from predictions data or pre-computed metrics."""
+    ml_metrics: dict[str, Any] = dict(ctx.metrics) if ctx.metrics else {}
+
+    # Compute IC stats from predictions if not already in metrics
+    if "mean_ic" not in ml_metrics:
+        adapter = _get_prediction_adapter(ctx)
+        if adapter is not None:
+            try:
+                from .ml_plots import _compute_daily_ic, _first_present_column
+
+                preds = adapter.predictions_df
+                score_col = _first_present_column(
+                    preds, ("prediction_value", "score", "prediction", "y_pred", "y_score"),
+                )
+                outcome_col = _first_present_column(
+                    preds, ("y_true", "target", "realized_return", "forward_return"),
+                )
+                date_col = _first_present_column(preds, ("timestamp", "date", "session_date"))
+                asset_col = _first_present_column(preds, ("asset",))
+                if score_col and outcome_col and date_col and asset_col:
+                    frame = (
+                        preds.select([date_col, asset_col, score_col, outcome_col])
+                        .rename({date_col: "date", asset_col: "asset",
+                                 score_col: "score", outcome_col: "outcome"})
+                        .with_columns(pl.col("date").cast(pl.Date, strict=False))
+                        .filter(pl.col("date").is_not_null()
+                                & pl.col("score").is_not_null()
+                                & pl.col("outcome").is_not_null())
+                    )
+                    daily_ic = _compute_daily_ic(frame)
+                    if not daily_ic.is_empty():
+                        ic_arr = daily_ic["ic"].to_numpy()
+                        ml_metrics["mean_ic"] = float(np.mean(ic_arr))
+                        std_ic = float(np.std(ic_arr, ddof=1))
+                        if std_ic > 0:
+                            ml_metrics["ic_tstat"] = float(
+                                np.mean(ic_arr) / std_ic * np.sqrt(len(ic_arr))
+                            )
+                    # Hit rate
+                    if not frame.is_empty():
+                        correct = (
+                            (frame["score"] > 0) & (frame["outcome"] > 0)
+                        ) | (
+                            (frame["score"] <= 0) & (frame["outcome"] <= 0)
+                        )
+                        ml_metrics["hit_rate"] = float(correct.mean())
+            except Exception:
+                pass
+
+    if not any(k in ml_metrics for k in ("mean_ic", "ic_tstat", "hit_rate")):
+        return None
+
+    from .overview_elements import create_ml_summary_strip_html
+
+    return create_ml_summary_strip_html(ml_metrics)
+
 
 def _render_credibility_box(ctx: _SectionContext) -> str | None:
     if not ctx.metrics:
@@ -1541,11 +1987,28 @@ def _render_credibility_box(ctx: _SectionContext) -> str | None:
 
 
 def _render_top_contributors(ctx: _SectionContext) -> str | None:
-    if ctx.profile is None:
-        return None
     from .html_tables import create_top_contributors_html
 
-    return create_top_contributors_html(ctx.profile.attribution)
+    if ctx.profile is not None:
+        return create_top_contributors_html(ctx.profile.attribution)
+
+    # Fallback: compute from raw trades
+    if ctx.trades is None or ctx.trades.is_empty():
+        return None
+    sym_col = None
+    for candidate in ("symbol", "asset", "ticker"):
+        if candidate in ctx.trades.columns:
+            sym_col = candidate
+            break
+    if sym_col is None or "pnl" not in ctx.trades.columns:
+        return None
+    by_symbol = (
+        ctx.trades.group_by(sym_col)
+        .agg(pl.col("pnl").sum())
+        .rename({sym_col: "symbol"})
+        .sort("pnl", descending=True)
+    )
+    return create_top_contributors_html({"by_symbol": by_symbol})
 
 
 def _render_cost_summary_line(ctx: _SectionContext) -> str | None:
@@ -1562,6 +2025,14 @@ def _render_worst_trades_table(ctx: _SectionContext) -> str | None:
     from .html_tables import create_worst_trades_table_html
 
     return create_worst_trades_table_html(ctx.trades, max_rows=10)
+
+
+def _render_stock_attribution(ctx: _SectionContext) -> str | None:
+    if ctx.trades is None:
+        return None
+    from .html_tables import create_stock_attribution_table_html
+
+    return create_stock_attribution_table_html(ctx.trades, max_rows=20)
 
 
 # --- Portfolio-level renderers ---
@@ -1584,10 +2055,10 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
 
     if section_name == "drawdowns":
         from ml4t.diagnostic.visualization.portfolio.drawdown_plots import (
-            plot_drawdown_summary,
+            plot_drawdown_underwater,
         )
 
-        return plot_drawdown_summary(pa, theme=ctx.theme, height=620)
+        return plot_drawdown_underwater(pa, theme=ctx.theme, height=200)
 
     if section_name == "top_drawdowns_table":
         from .html_tables import create_top_drawdowns_table_html
@@ -1612,12 +2083,8 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
             from .profile_sections import plot_stability_overview
 
             return plot_stability_overview(ctx.profile, theme=ctx.theme)
-        from ml4t.diagnostic.visualization.portfolio import plot_rolling_sharpe
-
-        rolling = pa.compute_rolling_metrics(windows=[63, 252], metrics=["sharpe"])
-        return plot_rolling_sharpe(
-            rolling_result=rolling, windows=[63, 252], theme=ctx.theme,
-        )
+        # Fallback: build 2x2 grid from raw returns
+        return _build_rolling_2x2(ctx)
 
     if section_name == "distribution":
         from ml4t.diagnostic.visualization.portfolio import plot_returns_distribution
@@ -1714,13 +2181,38 @@ def _render_signal_diagnostics(ctx: _SectionContext) -> go.Figure | None:
     return plot_prediction_signal_diagnostics(adapter, theme=ctx.theme)
 
 
+def _render_ic_time_series(ctx: _SectionContext) -> go.Figure | None:
+    adapter = _get_prediction_adapter(ctx)
+    if adapter is None:
+        return None
+    from .ml_plots import plot_ic_time_series
+
+    return plot_ic_time_series(adapter, theme=ctx.theme)
+
+
+def _render_quintile_returns(ctx: _SectionContext) -> go.Figure | None:
+    adapter = _get_prediction_adapter(ctx)
+    if adapter is None:
+        return None
+    from .ml_plots import plot_quintile_returns
+
+    return plot_quintile_returns(adapter, theme=ctx.theme)
+
+
 def _render_prediction_trade_alignment(ctx: _SectionContext) -> go.Figure | None:
     adapter = _get_prediction_adapter(ctx)
     if adapter is None:
         return None
+
+    # Try profile-based enriched trades first
     from .ml_plots import plot_prediction_trade_alignment
 
-    return plot_prediction_trade_alignment(adapter, theme=ctx.theme)
+    fig = plot_prediction_trade_alignment(adapter, theme=ctx.theme)
+    if fig is not None:
+        return fig
+
+    # Fallback: build prediction-vs-outcome scatter from raw predictions
+    return _build_prediction_vs_outcome_scatter(adapter, ctx.theme)
 
 
 def _render_prediction_calibration(ctx: _SectionContext) -> go.Figure | None:
@@ -1730,6 +2222,87 @@ def _render_prediction_calibration(ctx: _SectionContext) -> go.Figure | None:
     from .ml_plots import plot_prediction_calibration
 
     return plot_prediction_calibration(adapter, theme=ctx.theme)
+
+
+def _build_prediction_vs_outcome_scatter(
+    adapter: Any,
+    theme: str = "default",
+) -> go.Figure | None:
+    """Build prediction score vs realized outcome scatter from raw predictions."""
+    import plotly.graph_objects as go
+
+    from .ml_plots import _first_present_column
+
+    preds = adapter.predictions_df
+    if preds.is_empty():
+        return None
+
+    score_col = _first_present_column(
+        preds, ("prediction_value", "score", "prediction", "y_pred", "y_score"),
+    )
+    outcome_col = _first_present_column(
+        preds, ("y_true", "target", "realized_return", "forward_return"),
+    )
+    if score_col is None or outcome_col is None:
+        return None
+
+    # Sample if too many points
+    df = preds.filter(
+        pl.col(score_col).is_not_null() & pl.col(outcome_col).is_not_null()
+    )
+    if df.is_empty():
+        return None
+    if df.height > 5000:
+        df = df.sample(5000, seed=42)
+
+    scores = df[score_col].to_numpy()
+    outcomes = df[outcome_col].to_numpy()
+    winners = outcomes >= 0
+
+    from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
+
+    validate_theme(theme)
+    theme_config = get_theme_config(theme)
+
+    fig = go.Figure()
+    for mask, name, color in [
+        (winners, "Winners", COLORS["positive"]),
+        (~winners, "Losers", COLORS["negative"]),
+    ]:
+        if mask.sum() > 0:
+            fig.add_trace(go.Scatter(
+                x=scores[mask], y=outcomes[mask],
+                mode="markers", name=name,
+                marker={"color": color, "size": 4, "opacity": 0.4},
+                hovertemplate="Score: %{x:.4f}<br>Return: %{y:.4f}<extra></extra>",
+            ))
+
+    # Binned mean overlay
+    n_bins = min(20, max(5, len(scores) // 50))
+    edges = np.percentile(scores, np.linspace(0, 100, n_bins + 1))
+    bin_centers, bin_means = [], []
+    for j in range(n_bins):
+        mask = (scores >= edges[j]) & (scores <= edges[j + 1])
+        if mask.sum() > 0:
+            bin_centers.append(float(np.mean(scores[mask])))
+            bin_means.append(float(np.mean(outcomes[mask])))
+    if bin_centers:
+        fig.add_trace(go.Scatter(
+            x=bin_centers, y=bin_means,
+            mode="lines+markers", name="Binned Mean",
+            line={"color": COLORS["amber"], "width": 2.5},
+            marker={"size": 6, "color": COLORS["amber"]},
+        ))
+
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        xaxis_title="Prediction Score",
+        yaxis_title="Realized Return",
+        height=360,
+        showlegend=True,
+        legend={"orientation": "h", "y": -0.15, "x": 0.5, "xanchor": "center"},
+    )
+    return fig
 
 
 # --- Factor renderers ---
@@ -1742,6 +2315,9 @@ def _render_factor_section(ctx: _SectionContext, section_name: str) -> Any:
         from ml4t.diagnostic.visualization.factor import plot_factor_betas_bar
 
         return plot_factor_betas_bar(ctx.factor_analysis.static_model(), theme=ctx.theme)
+
+    if section_name == "factor_legend":
+        return _render_factor_legend(ctx)
 
     if section_name == "factor_attribution":
         from ml4t.diagnostic.visualization.factor import plot_return_attribution_waterfall
@@ -1760,59 +2336,69 @@ def _render_factor_section(ctx: _SectionContext, section_name: str) -> Any:
     return None
 
 
+def _render_factor_legend(ctx: _SectionContext) -> str | None:
+    """Render factor legend sidebar with descriptions, betas, R², and source."""
+    if ctx.factor_analysis is None or ctx.factor_data is None:
+        return None
+
+    from .overview_elements import create_factor_legend_html
+
+    model = ctx.factor_analysis.static_model()
+    return create_factor_legend_html(
+        factor_names=model.factor_names,
+        betas=model.betas,
+        r_squared=model.r_squared,
+        source=ctx.factor_data.source,
+    )
+
+
 # --- Registry ---
 
 _SECTION_REGISTRY: dict[str, Any] = {
-    # Executive / Overview
+    # Overview
     "executive_summary": _render_executive_summary,
-    "key_metrics_table": _render_key_metrics_table,
-    "key_insights": _render_key_insights,
     "overview_snapshot": _render_overview_snapshot,
-    "activity_overview": _render_activity_overview,
+    "metrics_sidebar": _render_metrics_sidebar,
+    "credibility_box": _render_credibility_box,
+    "cost_summary_line": _render_cost_summary_line,
+    "top_contributors": _render_top_contributors,
+    "monthly_heatmap_overview": lambda ctx: _render_portfolio_section(ctx, "monthly_heatmap_overview"),
+    # Performance
+    "equity_curve": lambda ctx: _render_portfolio_section(ctx, "equity_curve"),
+    "top_drawdowns_table": lambda ctx: _render_portfolio_section(ctx, "top_drawdowns_table"),
+    "drawdowns": lambda ctx: _render_portfolio_section(ctx, "drawdowns"),
+    "rolling_metrics": lambda ctx: _render_portfolio_section(ctx, "rolling_metrics"),
+    "annual_returns": lambda ctx: _render_portfolio_section(ctx, "annual_returns"),
+    "distribution": lambda ctx: _render_portfolio_section(ctx, "distribution"),
+    "stock_attribution": _render_stock_attribution,
+    # Trading
+    "activity_strip": _render_activity_strip,
     "occupancy_overview": _render_occupancy_overview,
-    "attribution_overview": _render_attribution_overview,
-    "drawdown_anatomy": _render_drawdown_anatomy,
-    # Trade Analysis
-    "mfe_mae": _render_mfe_mae,
-    "exit_reasons": _render_exit_reasons,
-    "trade_waterfall": _render_trade_waterfall,
-    "duration": _render_duration,
-    "consecutive": _render_consecutive,
-    "size_return": _render_size_return,
-    # Cost Attribution
     "cost_waterfall": _render_cost_waterfall,
     "cost_sensitivity": _render_cost_sensitivity,
-    "cost_by_asset": _render_cost_by_asset,
-    # Statistical Validity
-    "statistical_summary": _render_statistical_summary,
-    "dsr_gauge": _render_dsr_gauge,
+    "attribution_overview": _render_attribution_overview,
+    "mfe_mae": _render_mfe_mae,
+    "duration": _render_duration,
+    "worst_trades_table": _render_worst_trades_table,
+    "trade_waterfall": _render_trade_waterfall,
+    "exit_reasons": _render_exit_reasons,
+    # Validation
+    "validity_card": _render_validity_card,
     "confidence_intervals": _render_confidence_intervals,
     "min_trl": _render_min_trl,
-    "ras_analysis": _render_ras_analysis,
-    "pbo_gauge": _render_pbo_gauge,
-    # HTML-native
-    "credibility_box": _render_credibility_box,
-    "top_contributors": _render_top_contributors,
-    "cost_summary_line": _render_cost_summary_line,
-    "worst_trades_table": _render_worst_trades_table,
-    # Portfolio-level (partial-application wrappers)
-    "equity_curve": lambda ctx: _render_portfolio_section(ctx, "equity_curve"),
-    "drawdowns": lambda ctx: _render_portfolio_section(ctx, "drawdowns"),
-    "top_drawdowns_table": lambda ctx: _render_portfolio_section(ctx, "top_drawdowns_table"),
-    "monthly_returns": lambda ctx: _render_portfolio_section(ctx, "monthly_returns"),
-    "monthly_heatmap_overview": lambda ctx: _render_portfolio_section(ctx, "monthly_heatmap_overview"),
-    "annual_returns": lambda ctx: _render_portfolio_section(ctx, "annual_returns"),
-    "rolling_metrics": lambda ctx: _render_portfolio_section(ctx, "rolling_metrics"),
-    "distribution": lambda ctx: _render_portfolio_section(ctx, "distribution"),
-    "tail_risk": lambda ctx: _render_portfolio_section(ctx, "tail_risk"),
+    "sharpe_bootstrap": _render_sharpe_bootstrap,
+    "drawdown_anatomy": _render_drawdown_anatomy,
     # ML
-    "shap_errors": _render_shap_errors,
-    "ml_summary": _render_ml_summary,
+    "ml_summary_strip": _render_ml_summary_strip,
     "signal_diagnostics": _render_signal_diagnostics,
+    "ic_time_series": _render_ic_time_series,
+    "quintile_returns": _render_quintile_returns,
     "prediction_trade_alignment": _render_prediction_trade_alignment,
     "prediction_calibration": _render_prediction_calibration,
-    # Factors (partial-application wrappers)
+    "shap_errors": _render_shap_errors,
+    # Factors
     "factor_exposure": lambda ctx: _render_factor_section(ctx, "factor_exposure"),
+    "factor_legend": lambda ctx: _render_factor_section(ctx, "factor_legend"),
     "factor_attribution": lambda ctx: _render_factor_section(ctx, "factor_attribution"),
     "factor_risk": lambda ctx: _render_factor_section(ctx, "factor_risk"),
 }

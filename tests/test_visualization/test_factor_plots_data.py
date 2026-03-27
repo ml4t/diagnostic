@@ -112,27 +112,30 @@ class TestWaterfallDataCorrectness:
         attr = compute_return_attribution(returns, fd, window=63)
         fig = plot_return_attribution_waterfall(attr)
 
-        # Waterfall trace
-        wf = fig.data[0]
-        labels = list(wf.x)
-        values = list(wf.y)
+        # Extract labels and values from individual Bar traces
+        labels = []
+        values = []
+        for trace in fig.data:
+            if hasattr(trace, "x") and trace.x is not None:
+                labels.append(trace.x[0])
+                values.append(trace.y[0])
 
         # Check each factor's cumulative contribution
         for f in fd.factor_names:
             assert f in labels
             idx = labels.index(f)
             expected = attr.cumulative_factor[f][-1]
-            assert abs(values[idx] - expected) < 1e-10, (
+            assert abs(values[idx] - abs(expected)) < 1e-10, (
                 f"Waterfall {f}: plotted={values[idx]}, expected={expected}"
             )
 
         # Check alpha
         alpha_idx = labels.index("Alpha")
-        assert abs(values[alpha_idx] - attr.cumulative_alpha[-1]) < 1e-10
+        assert abs(values[alpha_idx] - abs(attr.cumulative_alpha[-1])) < 1e-10
 
         # Check total
         total_idx = labels.index("Total")
-        assert abs(values[total_idx] - attr.cumulative_total[-1]) < 1e-10
+        assert abs(values[total_idx] - abs(attr.cumulative_total[-1])) < 1e-10
 
 
 class TestRiskPieDataCorrectness:

@@ -1,5 +1,9 @@
 # Combinatorial Purged Cross-Validation (CPCV)
 
+Use CPCV when a single walk-forward path is not enough and you need a
+distribution of out-of-sample outcomes to judge robustness, path dependence, and
+backtest overfitting.
+
 ## The Problem
 
 You backtested a strategy on 5 years of daily data and got a Sharpe ratio of 1.8.
@@ -78,7 +82,7 @@ $$
 
 A PBO > 0.50 indicates the strategy is more likely overfit than genuine.
 
-## ml4t-diagnostic API
+## Minimal Working Example
 
 ```python
 from ml4t.diagnostic.splitters import CombinatorialCV
@@ -153,6 +157,9 @@ for train_idx, test_idx in cv.split(X, groups=df["symbol"]):
 | `embargo_size` | Buffer after test groups | 1-5 typical; higher for strongly autocorrelated data |
 | `max_combinations` | Cap on number of splits | Use when C(N,k) is very large (e.g., C(12,4) = 495) |
 
+For serialized configs and saved fold artifacts, see the
+[CV Configuration](../user-guide/cv-configuration.md) guide.
+
 ## Interpreting Results
 
 ### Probability of Backtest Overfitting (PBO)
@@ -204,6 +211,16 @@ Beyond PBO, examine the full distribution of backtest scores:
     It means "30% of backtest paths showed negative performance."
     The interpretation depends on the strategy and market conditions.
 
+## See It In The Book
+
+CPCV is introduced in the validation foundations material and then reused in the
+case studies for production-style training and evaluation:
+
+- `code/06_strategy_definition/01_cv_foundations.py`
+- case-study training workflows under `code/case_studies/*/`
+
+Use the [Book Guide](../book-guide/index.md) for the broader chapter map.
+
 ## References
 
 - **Lopez de Prado, M. (2018)**.
@@ -224,3 +241,10 @@ Beyond PBO, examine the full distribution of backtest scores:
 | Detects overfitting | Limited | Yes (PBO) |
 | Calendar-aware | Yes (trading sessions) | Yes (with calendar config) |
 | Computational cost | Low | Higher (more paths) |
+
+## Next Steps
+
+- [Cross-Validation](../user-guide/cross-validation.md) - Apply CPCV and compare it to walk-forward validation
+- [CV Configuration](../user-guide/cv-configuration.md) - Serialize configs and persist folds for reruns
+- [Deflated Sharpe Ratio](deflated-sharpe-ratio.md) - Combine path distributions with multiple-testing correction
+- [Book Guide](../book-guide/index.md) - Jump to the chapter and case-study implementations

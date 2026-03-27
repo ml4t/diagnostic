@@ -94,7 +94,7 @@ class TearsheetTemplate:
                 ),
                 TearsheetSection("key_metrics_table", "Performance Table", band="hero", priority=3, enabled=False),
                 TearsheetSection(
-                    "activity_overview", "Activity", band="implementation", priority=3
+                    "activity_strip", "Activity", band="implementation", priority=3
                 ),
                 TearsheetSection(
                     "occupancy_overview",
@@ -217,7 +217,7 @@ class TearsheetTemplate:
                 TearsheetSection(
                     "annual_returns", "Annual Returns", band="implementation", priority=8
                 ),
-                TearsheetSection("activity_overview", "Activity", band="burden", priority=10),
+                TearsheetSection("activity_strip", "Activity", band="burden", priority=10),
                 TearsheetSection("occupancy_overview", "Exposure", band="burden", priority=11),
                 TearsheetSection("attribution_overview", "Attribution", band="burden", priority=12),
                 TearsheetSection("cost_waterfall", "Cost Attribution", band="burden", priority=13),
@@ -384,243 +384,63 @@ class TearsheetTemplate:
 
     @classmethod
     def full(cls) -> TearsheetTemplate:
-        """Complete template with all available sections."""
+        """Complete template per layout-spec.md (2026-03-26)."""
         return cls(
             name="full",
-            description="Comprehensive analysis with all available visualizations",
+            description="Comprehensive analysis — structured argument, not analytics dump",
             bands=[
-                TearsheetBand(
-                    "hero",
-                    "Summary",
-                    "",
-                    tone="hero",
-                ),
-                TearsheetBand(
-                    "implementation",
-                    "Performance",
-                    "",
-                ),
-                TearsheetBand(
-                    "burden",
-                    "Implementation",
-                    "",
-                    tone="secondary",
-                ),
-                TearsheetBand(
-                    "appendix",
-                    "Statistics & Detail",
-                    "",
-                    tone="appendix",
-                ),
+                TearsheetBand("hero", "Overview", "", tone="hero"),
+                TearsheetBand("performance", "Performance", ""),
+                TearsheetBand("trading", "Trading", "", tone="secondary"),
+                TearsheetBand("validation", "Validation", "", tone="appendix"),
             ],
             sections=[
-                # Overview
+                # === Overview ===
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
-                TearsheetSection(
-                    "credibility_box", "Strategy Credibility", band="hero", priority=1
-                ),
-                TearsheetSection(
-                    "top_contributors", "Top / Bottom", band="hero", priority=2
-                ),
-                TearsheetSection(
-                    "overview_snapshot", "Performance Snapshot", band="hero", priority=3
-                ),
-                TearsheetSection(
-                    "cost_summary_line", "Cost Summary", band="hero", priority=3
-                ),
-                TearsheetSection(
-                    "key_metrics_table", "Summary Statistics", band="hero", priority=4,
-                ),
-                TearsheetSection(
-                    "monthly_heatmap_overview",
-                    "Monthly Returns",
-                    band="hero",
-                    priority=5,
-                ),
-                TearsheetSection(
-                    "key_insights", "Key Insights", band="hero", priority=6, enabled=False
-                ),
-                # Performance
-                TearsheetSection(
-                    "equity_curve", "Equity Curve", band="implementation", priority=10
-                ),
-                TearsheetSection(
-                    "rolling_metrics",
-                    "Rolling Performance",
-                    band="implementation",
-                    priority=11,
-                ),
-                TearsheetSection(
-                    "drawdowns",
-                    "Drawdowns",
-                    band="implementation",
-                    priority=12,
-                ),
-                TearsheetSection(
-                    "top_drawdowns_table",
-                    "Top Drawdowns",
-                    band="implementation",
-                    priority=13,
-                ),
-                TearsheetSection(
-                    "drawdown_anatomy",
-                    "Drawdown Anatomy",
-                    band="implementation",
-                    priority=14,
-                    enabled=False,  # Drawdowns already shown; enable via validation tab
-                ),
-                TearsheetSection(
-                    "cost_waterfall", "Cost Attribution", band="implementation", priority=15
-                ),
-                TearsheetSection(
-                    "cost_sensitivity", "Cost Sensitivity", band="implementation", priority=16
-                ),
-                TearsheetSection("activity_overview", "Activity", band="burden", priority=20),
-                TearsheetSection("occupancy_overview", "Exposure", band="burden", priority=21),
-                TearsheetSection("attribution_overview", "Attribution", band="burden", priority=22),
-                TearsheetSection(
-                    "statistical_summary", "Statistical Summary", band="appendix", priority=40,
-                    enabled=False,
-                ),
-                TearsheetSection(
-                    "dsr_gauge", "Statistical Validity", band="appendix", priority=41,
-                    enabled=False,
-                ),
-                TearsheetSection(
-                    "pbo_gauge", "Overfitting Probability", band="appendix", priority=42
-                ),
-                TearsheetSection(
-                    "confidence_intervals", "Confidence Intervals", band="appendix", priority=43
-                ),
-                TearsheetSection("min_trl", "Minimum Track Record", band="appendix", priority=44),
-                TearsheetSection("tail_risk", "Tail Risk", band="appendix", priority=45, enabled=False),
-                TearsheetSection(
-                    "monthly_returns",
-                    "Monthly Returns",
-                    band="appendix",
-                    priority=46,
-                    enabled=False,  # Only on Overview as monthly_heatmap_overview
-                ),
-                TearsheetSection(
-                    "annual_returns",
-                    "Annual Returns",
-                    band="appendix",
-                    priority=47,
-                ),
-                # Return distribution (Performance workspace)
-                TearsheetSection(
-                    "distribution",
-                    "Return Distribution",
-                    band="appendix",
-                    priority=48,
-                ),
-                # Trading sections — enabled per reviewer recommendations
-                TearsheetSection(
-                    "mfe_mae",
-                    "Exit Efficiency (MFE/MAE)",
-                    band="appendix",
-                    priority=50,
-                ),
-                TearsheetSection(
-                    "exit_reasons",
-                    "Exit Reason Breakdown",
-                    band="appendix",
-                    priority=51,
-                ),
-                TearsheetSection(
-                    "worst_trades_table",
-                    "Worst Trades",
-                    band="appendix",
-                    priority=52,
-                ),
-                TearsheetSection(
-                    "trade_waterfall",
-                    "Trade-by-Trade PnL",
-                    band="appendix",
-                    priority=52,
-                    enabled=False,
-                ),
-                TearsheetSection(
-                    "duration",
-                    "Trade Duration",
-                    band="appendix",
-                    priority=53,
-                ),
-                # Demoted per reviewer recommendations
-                TearsheetSection(
-                    "consecutive",
-                    "Win/Loss Streaks",
-                    band="appendix",
-                    priority=54,
-                    enabled=False,
-                ),
-                TearsheetSection(
-                    "size_return",
-                    "Position Size Analysis",
-                    band="appendix",
-                    priority=55,
-                    enabled=False,
-                ),
-                TearsheetSection(
-                    "ras_analysis", "RAS Analysis", band="appendix", priority=44, enabled=False
-                ),
-                TearsheetSection(
-                    "cost_by_asset", "Costs by Asset", band="appendix", priority=56, enabled=False
-                ),
-                # SHAP (optional, requires model)
-                TearsheetSection(
-                    "signal_diagnostics",
-                    "Signal Diagnostics",
-                    band="appendix",
-                    priority=60,
-                ),
-                TearsheetSection(
-                    "ml_summary",
-                    "Prediction Translation",
-                    band="appendix",
-                    priority=61,
-                ),
-                TearsheetSection(
-                    "prediction_trade_alignment",
-                    "Prediction vs Trade Outcomes",
-                    band="appendix",
-                    priority=62,
-                ),
-                TearsheetSection(
-                    "prediction_calibration",
-                    "Prediction Calibration",
-                    band="appendix",
-                    priority=63,
-                ),
-                TearsheetSection(
-                    "shap_errors",
-                    "SHAP Error Patterns",
-                    band="appendix",
-                    priority=64,
-                    enabled=False,
-                ),
-                # Factor analysis (optional, requires factor_data)
-                TearsheetSection(
-                    "factor_exposure",
-                    "Factor Exposures",
-                    band="appendix",
-                    priority=70,
-                    enabled=False,
-                ),
-                TearsheetSection(
-                    "factor_attribution",
-                    "Factor Attribution",
-                    band="appendix",
-                    priority=71,
-                    enabled=False,
-                ),
-                TearsheetSection(
-                    "factor_risk",
-                    "Factor Risk Decomposition",
-                    band="appendix",
-                    priority=72,
-                    enabled=False,
-                ),
+                TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
+                TearsheetSection("metrics_sidebar", "Key Metrics", band="hero", priority=2),
+                TearsheetSection("credibility_box", "Credibility", band="hero", priority=3),
+                TearsheetSection("cost_summary_line", "Cost Summary", band="hero", priority=4),
+                TearsheetSection("top_contributors", "Contributors", band="hero", priority=5),
+                TearsheetSection("monthly_heatmap_overview", "Monthly Returns", band="hero", priority=6),
+                # === Performance ===
+                TearsheetSection("equity_curve", "Cumulative Return", band="performance", priority=10),
+                TearsheetSection("top_drawdowns_table", "Top Drawdowns", band="performance", priority=11),
+                TearsheetSection("drawdowns", "Underwater", band="performance", priority=12),
+                TearsheetSection("rolling_metrics", "Rolling Metrics", band="performance", priority=13),
+                TearsheetSection("annual_returns", "Annual Returns", band="performance", priority=14),
+                TearsheetSection("distribution", "Return Distribution", band="performance", priority=15),
+                TearsheetSection("stock_attribution", "Stock Attribution", band="performance", priority=16),
+                # === Trading ===
+                TearsheetSection("activity_strip", "Activity", band="trading", priority=20),
+                TearsheetSection("occupancy_overview", "Exposure", band="trading", priority=21),
+                TearsheetSection("cost_waterfall", "Cost Bridge", band="trading", priority=22),
+                TearsheetSection("cost_sensitivity", "Cost Sensitivity", band="trading", priority=23),
+                TearsheetSection("attribution_overview", "Attribution", band="trading", priority=24),
+                TearsheetSection("mfe_mae", "MFE/MAE", band="trading", priority=25),
+                TearsheetSection("duration", "Trade Duration", band="trading", priority=26),
+                TearsheetSection("worst_trades_table", "Worst Trades", band="trading", priority=27),
+                TearsheetSection("trade_waterfall", "Trade PnL Waterfall", band="trading", priority=28, enabled=False),
+                TearsheetSection("exit_reasons", "Exit Reasons", band="trading", priority=29),
+                # === Validation ===
+                TearsheetSection("validity_card", "Statistical Validity", band="validation", priority=30),
+                TearsheetSection("confidence_intervals", "Confidence Intervals", band="validation", priority=31),
+                TearsheetSection("min_trl", "Minimum Track Record", band="validation", priority=32),
+                TearsheetSection("sharpe_bootstrap", "Sharpe Bootstrap Distribution", band="validation", priority=33),
+                TearsheetSection("drawdown_anatomy", "Drawdown Anatomy", band="validation", priority=34),
+                # === ML (conditional) ===
+                TearsheetSection("ml_summary_strip", "ML Summary", band="validation", priority=60, enabled=False),
+                TearsheetSection("signal_diagnostics", "Signal Diagnostics", band="validation", priority=61, enabled=False),
+                TearsheetSection("ic_time_series", "IC Time Series", band="validation", priority=61, enabled=False),
+                TearsheetSection("quintile_returns", "Quintile Returns", band="validation", priority=61, enabled=False),
+                TearsheetSection("prediction_trade_alignment", "Prediction vs Outcomes", band="validation", priority=62, enabled=False),
+                TearsheetSection("prediction_calibration", "Prediction Calibration", band="validation", priority=63, enabled=False),
+                TearsheetSection("shap_errors", "SHAP Error Patterns", band="validation", priority=64, enabled=False),
+                # === Factors (conditional) ===
+                TearsheetSection("factor_exposure", "Factor Exposures", band="validation", priority=70, enabled=False),
+                TearsheetSection("factor_legend", "Factor Legend", band="validation", priority=70, enabled=False),
+                TearsheetSection("factor_attribution", "Factor Attribution", band="validation", priority=71, enabled=False),
+                TearsheetSection("factor_risk", "Factor Risk Decomposition", band="validation", priority=72, enabled=False),
             ],
         )
 
@@ -693,22 +513,39 @@ def get_template(
 TEARSHEET_CSS = """
 <style>
     :root {
+        /* Typography */
         --c-text: #1a1a2e;
-        --c-text-secondary: #555;
-        --c-text-muted: #888;
+        --c-text-secondary: #475569;
+        --c-text-muted: #64748b;
+        /* Surfaces */
         --c-bg: #ffffff;
-        --c-surface: #fafafa;
-        --c-border: #e0e0e0;
-        --c-border-light: #f0f0f0;
+        --c-surface: #fafaf9;
+        --c-border: #e2e8f0;
+        --c-border-light: #f1f5f9;
+        /* Brand */
         --c-accent: #2563eb;
         --c-accent-light: #eff6ff;
+        --c-header-bg: #0a1628;
+        --c-header-text: #f8f8f6;
+        /* Semantic: status */
         --c-positive: #10b981;
         --c-negative: #ef4444;
         --c-warning: #f59e0b;
-        --c-neutral: #6b7280;
-        --c-header-bg: #1a1a2e;
-        --c-header-text: #ffffff;
-        --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+        --c-neutral: #64748b;
+        /* Semantic: data */
+        --c-series-primary: #0a1628;
+        --c-series-secondary: #d4a84b;
+        --c-series-tertiary: #1a2d4a;
+        --c-benchmark: #d4a84b;
+        --c-fill-light: rgba(10,22,40,0.06);
+        /* Quantile ramp (red→green, 5 steps) */
+        --c-q1: #ef4444;
+        --c-q2: #c87533;
+        --c-q3: #e4b85b;
+        --c-q4: #6b9f9e;
+        --c-q5: #10b981;
+        /* Fonts */
+        --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
         --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
     }
 
@@ -716,14 +553,23 @@ TEARSHEET_CSS = """
         --c-text: #e8e8ec;
         --c-text-secondary: #a0a0b0;
         --c-text-muted: #707080;
-        --c-bg: #0f0f1a;
-        --c-surface: #1a1a2e;
-        --c-border: #2a2a40;
-        --c-border-light: #222238;
+        --c-bg: #0a1628;
+        --c-surface: #152238;
+        --c-border: #1a2d4a;
+        --c-border-light: #152238;
         --c-accent: #60a5fa;
         --c-accent-light: #1e293b;
-        --c-header-bg: #1a1a2e;
+        --c-header-bg: #0a1628;
         --c-header-text: #e8e8ec;
+        --c-positive: #34d399;
+        --c-negative: #f87171;
+        --c-warning: #fbbf24;
+        --c-neutral: #94a3b8;
+        --c-series-primary: #e8e8ec;
+        --c-series-secondary: #d4a84b;
+        --c-series-tertiary: #60a5fa;
+        --c-benchmark: #d4a84b;
+        --c-fill-light: rgba(255,255,255,0.06);
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -881,6 +727,13 @@ TEARSHEET_CSS = """
         border-bottom: none;
     }
 
+    /* Compact strip sections — reduce vertical padding */
+    .report-section[data-section="credibility_box"],
+    .report-section[data-section="cost_summary_line"],
+    .report-section[data-section="top_contributors"] {
+        padding: 8px 24px;
+    }
+
     .section-title {
         font-size: 13px;
         font-weight: 700;
@@ -968,12 +821,15 @@ TEARSHEET_CSS = """
         display: flex;
         gap: 0;
         border-bottom: 1px solid var(--c-border-light);
+        align-items: stretch;
     }
 
     .report-section-pair > .report-section {
         flex: 1 1 50%;
         border-bottom: none;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
     }
 
     .report-section-pair > .report-section:first-child {
@@ -1000,15 +856,17 @@ TEARSHEET_CSS = """
         border-radius: 6px;
         overflow: hidden;
         background: var(--c-surface);
-        padding: 2px 0;
+        padding: 0;
+        min-height: 40px;
+        align-items: center;
     }
 
     .credibility-item {
-        flex: 1 1 200px;
+        flex: 1 1 180px;
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 10px 16px;
+        gap: 8px;
+        padding: 8px 14px;
         border-right: 1px solid var(--c-border-light);
     }
 
@@ -1041,14 +899,16 @@ TEARSHEET_CSS = """
     .cost-summary-line {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px 24px;
-        padding: 10px 16px;
+        gap: 6px 20px;
+        padding: 8px 14px;
         border: 1px solid var(--c-border);
         border-radius: 6px;
         background: var(--c-surface);
         font-size: 12px;
         font-variant-numeric: tabular-nums;
         color: var(--c-text-secondary);
+        min-height: 40px;
+        align-items: center;
     }
 
     .cost-summary-item {
@@ -1063,6 +923,21 @@ TEARSHEET_CSS = """
     .cost-summary-value {
         font-weight: 700;
         color: var(--c-text);
+    }
+
+    /* -- Section Footnotes ------------------------------- */
+    .section-footnote {
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--c-text-muted);
+        margin-top: 8px;
+        padding: 6px 0 0;
+        border-top: 1px solid var(--c-border-light);
+    }
+
+    .section-footnote strong {
+        color: var(--c-text-secondary);
+        font-weight: 600;
     }
 
     /* -- Metrics Table ----------------------------------- */
@@ -1185,6 +1060,217 @@ TEARSHEET_CSS = """
         margin: 0;
         padding: 12px;
         color: var(--c-text-muted);
+    }
+
+    /* -- Wide + Narrow (sidebar layout) ------------------ */
+    .report-section-sidebar {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--c-border-light);
+    }
+
+    .report-section-sidebar > .report-section:first-child {
+        flex: 2 1 66%;
+        border-bottom: none;
+        min-width: 0;
+    }
+
+    .report-section-sidebar > .report-section:last-child {
+        flex: 1 1 34%;
+        border-bottom: none;
+        border-left: 1px solid var(--c-border-light);
+        min-width: 0;
+    }
+
+    @media (max-width: 900px) {
+        .report-section-sidebar {
+            flex-direction: column;
+        }
+        .report-section-sidebar > .report-section:last-child {
+            border-left: none;
+            border-top: 1px solid var(--c-border-light);
+        }
+    }
+
+    /* -- Metrics Sidebar --------------------------------- */
+    .metrics-sidebar {
+        padding: 12px 16px;
+        font-size: 12px;
+        line-height: 1.6;
+        overflow-y: auto;
+    }
+
+    .metrics-sidebar-group {
+        margin-bottom: 10px;
+    }
+
+    .metrics-sidebar-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .metrics-sidebar-header {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--c-text-muted);
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--c-border-light);
+        margin-bottom: 4px;
+    }
+
+    .metrics-sidebar-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 1px 0;
+    }
+
+    .metrics-sidebar-label {
+        color: var(--c-text-secondary);
+        white-space: nowrap;
+    }
+
+    .metrics-sidebar-value {
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        padding-left: 8px;
+    }
+
+    .metrics-sidebar-value.negative {
+        color: var(--c-negative);
+    }
+
+    /* -- Validity Card ----------------------------------- */
+    .validity-card {
+        border: 1px solid var(--c-border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--c-surface);
+    }
+
+    .validity-card-header {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--c-text-muted);
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--c-border-light);
+    }
+
+    .validity-card-body {
+        display: flex;
+    }
+
+    .validity-column {
+        flex: 1;
+        padding: 12px 16px;
+        border-right: 1px solid var(--c-border-light);
+    }
+
+    .validity-column:last-child {
+        border-right: none;
+    }
+
+    .validity-column-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--c-text);
+        margin-bottom: 8px;
+    }
+
+    .validity-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .validity-metric {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 2px 0;
+        font-size: 12px;
+    }
+
+    .validity-metric-label {
+        color: var(--c-text-secondary);
+    }
+
+    .validity-metric-value {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .validity-context {
+        font-size: 11px;
+        color: var(--c-text-muted);
+        margin-top: 6px;
+        font-style: italic;
+    }
+
+    @media (max-width: 900px) {
+        .validity-card-body {
+            flex-direction: column;
+        }
+        .validity-column {
+            border-right: none;
+            border-bottom: 1px solid var(--c-border-light);
+        }
+        .validity-column:last-child {
+            border-bottom: none;
+        }
+    }
+
+    /* -- Data Tables (dense, financial) ------------------ */
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .data-table th {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        color: var(--c-text-muted);
+        padding: 8px 12px;
+        border-bottom: 2px solid var(--c-border);
+        text-align: left;
+    }
+
+    .data-table th.num {
+        text-align: right;
+    }
+
+    .data-table td {
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--c-border-light);
+    }
+
+    .data-table tr:nth-child(even) {
+        background: var(--c-surface);
+    }
+
+    .data-table .num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .data-table .negative {
+        color: var(--c-negative);
+    }
+
+    .data-table .positive {
+        color: var(--c-positive);
     }
 
     /* -- Collapsible Detail ------------------------------ */

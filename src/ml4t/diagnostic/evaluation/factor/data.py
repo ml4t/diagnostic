@@ -144,48 +144,10 @@ class FactorData:
             ) from e
 
         provider = FamaFrenchProvider()
-
-        dataset_map = {
-            "ff3": "F-F_Research_Data_Factors",
-            "ff5": "F-F_Research_Data_5_Factors_2x3",
-            "momentum": "F-F_Momentum_Factor",
-        }
-        ff_dataset = dataset_map.get(dataset, dataset)
-        suffix = "_daily" if frequency == "daily" else ""
-        full_name = ff_dataset + suffix
-
-        raw = provider.get_data(full_name)
-
-        # Fama-French data is in percent, convert to decimal
-        if isinstance(raw, pl.DataFrame):
-            df = raw
-        else:
-            df = pl.from_pandas(raw)
-
-        # Identify timestamp column
-        ts_col = None
-        for c in df.columns:
-            if c.lower() in ("date", "timestamp", "period"):
-                ts_col = c
-                break
-        if ts_col is None:
-            ts_col = df.columns[0]
-
-        df = df.rename({ts_col: "timestamp"})
-
-        # Convert percent to decimal for numeric columns
-        numeric_cols = [
-            c
-            for c in df.columns
-            if c != "timestamp" and df[c].dtype in (pl.Float64, pl.Float32, pl.Int64)
-        ]
-        df = df.with_columns([(pl.col(c) / 100.0).alias(c) for c in numeric_cols])
-
-        # Filter date range
-        if start_date:
-            df = df.filter(pl.col("timestamp") >= pl.lit(start_date).str.to_date())
-        if end_date:
-            df = df.filter(pl.col("timestamp") <= pl.lit(end_date).str.to_date())
+        try:
+            df = provider.fetch(dataset, frequency=frequency, start=start_date, end=end_date)
+        finally:
+            provider.close()
 
         rf_column = "RF" if "RF" in df.columns else None
         return cls.from_dataframe(

@@ -2,6 +2,14 @@
 
 Analyze feature quality, importance, and interactions before modeling.
 
+!!! info "See it in the book"
+    Ch08 `code/08_feature_engineering/06_robustness_sensitivity.py` shows HAC-aware
+    robustness checks, while Ch09 `code/09_model_based_features/01_visual_diagnostics.py`,
+    `07_arima_features.py`, `08_garch_volatility.py`, and `12_wasserstein_regimes.py`
+    connect the diagnostic primitives here to model-based features and regime analysis.
+    Case-study evaluation notebooks under `code/case_studies/*/05_evaluation.py` apply the
+    same ideas to real cross-sectional datasets.
+
 ## Quick Start
 
 ```python
@@ -10,7 +18,7 @@ from ml4t.diagnostic.config import DiagnosticConfig
 
 config = DiagnosticConfig.for_research()
 fd = FeatureDiagnostics(config=config)
-result = fd.analyze(features_df, target, dates)
+result = fd.run_diagnostics(features_df["feature_1"], name="feature_1")
 ```
 
 ## Information Coefficient (IC)
@@ -170,7 +178,7 @@ print(f"PSI: {result.psi:.4f}")
 from ml4t.diagnostic.evaluation import FeatureDiagnostics
 
 fd = FeatureDiagnostics()
-result = fd.analyze(features_df, target, dates)
+result = fd.run_diagnostics(features_df["feature_1"], name="feature_1")
 
 # Review all diagnostics
 print(result.summary())

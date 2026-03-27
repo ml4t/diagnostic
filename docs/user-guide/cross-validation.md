@@ -116,18 +116,18 @@ print(f"Is Significant: {result.is_significant}")
 
 ---
 
-## Book Examples
+## See It In The Book
 
-Cross-validation methods are demonstrated in the book:
+Cross-validation methods are taught in the book and then reused in the case studies:
 
-- **WalkForwardCV and CPCV**: `06_machine_learning_process/code/01_cv_foundations.ipynb` —
-  interactive visualization of fold boundaries, purge gaps, and embargo zones.
+- **WalkForwardCV and CPCV**:
+  `code/06_strategy_definition/01_cv_foundations.py`
+- **Fold visualization with `plot_cv_folds()`**:
+  `code/06_strategy_definition/01_cv_foundations.py`
+- **Calendar-first splitting in production-style workflows**:
+  case-study training pipelines under `code/case_studies/*/`
 
-- **Fold visualization**: `06_machine_learning_process/code/01_cv_foundations.ipynb` —
-  uses `plot_cv_folds()` to render train/validation/test timelines.
-
-- **Calendar-first splitting**: All case study model training notebooks use
-  `WalkForwardCV` with NYSE calendar alignment for trading-day-aware folds.
+For the broader chapter map, see the [Book Guide](../book-guide/index.md).
 
 ## References
 

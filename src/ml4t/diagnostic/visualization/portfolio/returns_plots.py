@@ -262,11 +262,18 @@ def plot_annual_returns_bar(
         # Compute benchmark annual returns
         import polars as pl
 
+        # Align lengths — benchmark may be shorter than dates
+        bench_arr = analysis.benchmark
+        dates_arr = analysis.dates
+        if dates_arr is not None and len(bench_arr) != len(dates_arr):
+            n = min(len(bench_arr), len(dates_arr))
+            bench_arr = bench_arr[-n:]
+            dates_arr = dates_arr[-n:]
         bench_df = (
             pl.DataFrame(
                 {
-                    "date": analysis.dates,
-                    "return": analysis.benchmark,
+                    "date": dates_arr,
+                    "return": bench_arr,
                 }
             )
             .with_columns(

@@ -6,6 +6,22 @@ Statistical validation and diagnostics for ML-based quantitative trading strateg
 
 ML4T Diagnostic is the **modern Alphalens + Pyfolio replacement** for the machine learning era. It provides rigorous validation tools implementing a Four-Tier Validation Framework to combat data leakage, backtest overfitting, and statistical fallacies.
 
+## Where It Fits in the ML4T Workflow
+
+`ml4t.diagnostic` sits between feature engineering and backtesting. It is the
+part of the stack where you check whether a signal, model, or backtest result is
+actually robust before promoting it to portfolio construction or live trading.
+
+```text
+ml4t-data -> ml4t-engineer -> ml4t-diagnostic -> ml4t-backtest -> ml4t-live
+```
+
+## Who It's For
+
+- Researchers validating alpha signals, feature sets, and model-selection decisions
+- Strategy developers who need defensible backtest statistics, tearsheets, and attribution
+- Readers of *Machine Learning for Trading, Third Edition* moving from notebooks to the production API
+
 ## Key Features
 
 - **Cross-Validation**: CPCV, Purged Walk-Forward with proper embargo/purging
@@ -55,14 +71,21 @@ pip install ml4t-diagnostic
 
 ## Next Steps
 
-- [Installation Guide](getting-started/installation.md) - Detailed setup instructions
-- [Quickstart](getting-started/quickstart.md) - Get running in 5 minutes
-- [API Reference](api/index.md) - Complete API documentation
+- [Getting Started](getting-started/quickstart.md) - Install the library and run your first validation workflow
+- [User Guide](user-guide/cross-validation.md) - Learn the main research and reporting workflows
+- [API Reference](api/index.md) - Browse the stable public import surface
+- [Book Guide](book-guide/index.md) - Map chapters and case studies to the production API
+- [Backtest Tearsheets](user-guide/backtest-tearsheets.md) - Start with the reporting bridge for `BacktestResult` and run artifacts
 
-## Part of the ML4T Library Suite
+## See It In The Book
 
-ML4T Diagnostic integrates seamlessly with other ML4T libraries:
+`ml4t.diagnostic` is used throughout *Machine Learning for Trading, Third Edition*:
 
-```
-ml4t-data → ml4t-engineer → ml4t-diagnostic → ml4t-backtest → ml4t-live
-```
+- Ch06 for purged walk-forward CV and CPCV
+- Ch07 for HAC-adjusted IC, FDR, DSR, and PBO
+- Ch08-Ch09 for feature triage, robustness checks, and diagnostics
+- Ch16-Ch19 for performance reporting, allocator analysis, factor attribution, and trade-SHAP
+- Nine case studies under `third_edition/code/case_studies/`
+
+Use the [Book Guide](book-guide/index.md) when you want the exact notebook and
+case-study entry points.

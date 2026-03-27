@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.visualization._colors import (
+    get_factor_color,
+)
 from ml4t.diagnostic.visualization.core import get_theme_config
 
 if TYPE_CHECKING:
@@ -46,7 +49,6 @@ def plot_factor_betas_bar(
         Plotly figure.
     """
     theme_config = get_theme_config(theme)
-    colorway = theme_config["colorway"]
 
     factor_names = result.factor_names
     betas = [result.betas[f] for f in factor_names]
@@ -57,8 +59,8 @@ def plot_factor_betas_bar(
     error_minus = [b - cl for b, cl in zip(betas, ci_lower)]
     error_plus = [cu - b for b, cu in zip(betas, ci_upper)]
 
-    # Color by sign
-    colors = [colorway[0] if b >= 0 else colorway[2] for b in betas]
+    # Per-factor colors from canonical palette
+    colors = [get_factor_color(f) for f in factor_names]
 
     fig = go.Figure()
     fig.add_trace(
@@ -78,7 +80,8 @@ def plot_factor_betas_bar(
             hovertemplate=(
                 "<b>%{y}</b><br>"
                 "Beta: %{x:.4f}<br>"
-                f"CI ({result.confidence_level:.0%}): [%{{customdata[0]:.4f}}, %{{customdata[1]:.4f}}]"
+                f"CI ({result.confidence_level:.0%}): "
+                "[%{customdata[0]:.4f}, %{customdata[1]:.4f}]"
                 "<extra></extra>"
             ),
             customdata=list(zip(ci_lower, ci_upper)),
@@ -132,7 +135,6 @@ def plot_rolling_betas(
     from plotly.subplots import make_subplots
 
     theme_config = get_theme_config(theme)
-    colorway = theme_config["colorway"]
 
     if show_r_squared:
         fig = make_subplots(
@@ -148,8 +150,8 @@ def plot_rolling_betas(
 
     timestamps = result.timestamps
 
-    for i, f in enumerate(result.factor_names):
-        color = colorway[i % len(colorway)]
+    for _i, f in enumerate(result.factor_names):
+        color = get_factor_color(f)
         betas = result.rolling_betas[f]
 
         trace = go.Scatter(
@@ -158,7 +160,9 @@ def plot_rolling_betas(
             mode="lines",
             name=f,
             line={"color": color, "width": 1.5},
-            hovertemplate=f"<b>{f}</b><br>Date: %{{x}}<br>Beta: %{{y:.4f}}<extra></extra>",
+            hovertemplate=(
+                f"<b>{f}</b><br>Date: %{{x}}<br>Beta: %{{y:.4f}}<extra></extra>"
+            ),
         )
 
         if show_r_squared:
@@ -168,7 +172,9 @@ def plot_rolling_betas(
 
     # Zero line for betas
     if show_r_squared:
-        fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=0.5, row=1, col=1)
+        fig.add_hline(
+            y=0, line_dash="dash", line_color="gray", line_width=0.5, row=1, col=1,
+        )
 
         # R² subplot
         fig.add_trace(
@@ -195,7 +201,10 @@ def plot_rolling_betas(
         title=title,
         height=height,
         width=width or theme_config["defaults"]["width"],
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+        legend={
+            "orientation": "h", "yanchor": "bottom", "y": 1.02,
+            "xanchor": "right", "x": 1,
+        },
     )
 
     return fig
