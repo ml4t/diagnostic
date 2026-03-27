@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b6] - 2026-03-27
+
+### Added
+- **Rebalance timeline chart** on Trading tab: bar chart of filled notional per rebalance event
+  with implementation cost overlay and symbols-touched annotations
+- **Execution quality chart** on Trading tab: implementation shortfall distribution histogram
+  with median/mean annotations per trade
+- **`load_fama_french_5factor()`** convenience function for one-line FF5 data loading
+- **`[factors]` optional extra**: `pip install ml4t-diagnostic[factors]` pulls in ml4t-data
+  for automatic Fama-French/AQR data sourcing
+- FF5 daily test fixture (`tests/fixtures/ff5_daily.parquet`) — Factors tab now renders
+  in all matrix test scenarios
+
+### Fixed
+- **Turnover metric**: AVG TURNOVER was 0.00 due to mean being diluted by non-trading days.
+  Now computed from rebalance-day rows only (e.g., 0.13 instead of 0.00)
+
 ## [0.1.0b4] - 2026-03-27
 
 ### Added

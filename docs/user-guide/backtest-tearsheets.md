@@ -165,7 +165,9 @@ The reporting work committed in the latest tearsheet pass added or strengthened:
 - six-tab layout: Overview, Performance, Trading, Validation, ML (conditional), Factors (conditional)
 - credibility-oriented reporting with DSR, PBO, MinTRL, and confidence intervals
 - ML tab with IC time series, decile returns, prediction-trade alignment, and signal utilization
+- Trading tab with rebalance event timeline, execution quality (implementation shortfall), and cost sensitivity
 - factor tab with exposure bars, regression statistics, attribution waterfall, and risk decomposition
+- `load_fama_french_5factor()` for one-line factor data loading (`pip install ml4t-diagnostic[factors]`)
 - artifact-driven tearsheet generation for case-study workflows
 
 ## Related APIs
