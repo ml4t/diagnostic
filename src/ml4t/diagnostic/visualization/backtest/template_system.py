@@ -117,7 +117,7 @@ class TearsheetTemplate:
                 ),
                 TearsheetSection(
                     "quintile_returns",
-                    "Quintile Returns",
+                    "Decile Returns",
                     band="appendix",
                     priority=14,
                     enabled=False,
@@ -234,7 +234,7 @@ class TearsheetTemplate:
                 ),
                 TearsheetSection(
                     "quintile_returns",
-                    "Quintile Returns",
+                    "Decile Returns",
                     band="appendix",
                     priority=21,
                     enabled=False,
@@ -346,7 +346,7 @@ class TearsheetTemplate:
                 ),
                 TearsheetSection(
                     "quintile_returns",
-                    "Quintile Returns",
+                    "Decile Returns",
                     band="appendix",
                     priority=18,
                     enabled=False,
@@ -396,7 +396,7 @@ class TearsheetTemplate:
                 TearsheetSection("mfe_mae", "MFE/MAE", band="trading", priority=25),
                 TearsheetSection("duration", "Trade Duration", band="trading", priority=26),
                 TearsheetSection("worst_trades_table", "Worst Trades", band="trading", priority=27),
-                TearsheetSection("trade_waterfall", "Trade PnL Waterfall", band="trading", priority=28, enabled=False),
+                TearsheetSection("trade_waterfall", "Trade PnL Waterfall", band="trading", priority=28),
                 TearsheetSection("exit_reasons", "Exit Reasons", band="trading", priority=29),
                 # === Validation ===
                 TearsheetSection("validity_card", "Statistical Validity", band="validation", priority=30),
@@ -408,9 +408,8 @@ class TearsheetTemplate:
                 TearsheetSection("ml_summary_strip", "ML Summary", band="validation", priority=60, enabled=False),
                 TearsheetSection("signal_diagnostics", "Signal Diagnostics", band="validation", priority=61, enabled=False),
                 TearsheetSection("ic_time_series", "IC Time Series", band="validation", priority=61, enabled=False),
-                TearsheetSection("quintile_returns", "Quintile Returns", band="validation", priority=61, enabled=False),
+                TearsheetSection("quintile_returns", "Decile Returns", band="validation", priority=62, enabled=False),
                 TearsheetSection("prediction_trade_alignment", "Prediction vs Outcomes", band="validation", priority=62, enabled=False),
-                TearsheetSection("prediction_calibration", "Prediction Calibration", band="validation", priority=63, enabled=False),
                 TearsheetSection("shap_errors", "SHAP Error Patterns", band="validation", priority=64, enabled=False),
                 # === Factors (conditional) ===
                 TearsheetSection("factor_exposure", "Factor Exposures", band="validation", priority=70, enabled=False),

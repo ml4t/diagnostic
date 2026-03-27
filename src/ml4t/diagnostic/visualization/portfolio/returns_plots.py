@@ -357,6 +357,19 @@ def plot_monthly_returns_heatmap(
         z_array = z_array[first_active:]
         years = years[first_active:]
 
+    # Add Annual total column (compounded monthly returns)
+    annual_returns = []
+    for row in z_array:
+        valid = row[~np.isnan(row)]
+        if len(valid) > 0:
+            annual = float(np.prod(1 + valid) - 1)
+        else:
+            annual = np.nan
+        annual_returns.append(annual)
+    annual_col = np.array(annual_returns).reshape(-1, 1)
+    z_array = np.hstack([z_array, annual_col])
+    months.append("Annual")
+
     # Color scale: red for negative, green for positive
     colorscale = [
         [0.0, "#d73027"],

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
+import polars as pl
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS, SERIES_COLORS
@@ -277,6 +278,20 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
             height=220,
         )
 
+    # Filter to symbols with actual trades or non-zero PnL
+    if "trade_count" in by_symbol.columns:
+        by_symbol = by_symbol.filter(pl.col("trade_count") > 0)
+    elif "net_pnl" in by_symbol.columns:
+        by_symbol = by_symbol.filter(pl.col("net_pnl").abs() > 1e-10)
+    if by_symbol.is_empty():
+        return _table_figure(
+            ["Message"],
+            [["No traded symbols for attribution"]],
+            title="Attribution",
+            theme=theme,
+            height=220,
+        )
+    by_symbol = by_symbol.sort("net_pnl", descending=True)
     top = by_symbol.head(8)
     fig = make_subplots(
         rows=2,

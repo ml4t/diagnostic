@@ -341,10 +341,11 @@ def plot_quintile_returns(
     ))
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
-        title="Realized Return by Prediction Decile",
+        title="Mean Realized Return by Prediction Decile",
         height=300,
-        margin={"t": 40, "l": 48, "r": 24, "b": 32},
-        yaxis={"title": "Mean Return", "tickformat": ".2%"},
+        margin={"t": 40, "l": 48, "r": 24, "b": 48},
+        xaxis={"title": "Prediction Score Decile (D1=lowest, D10=highest)"},
+        yaxis={"title": "Mean Forward Return", "tickformat": ".2%"},
     )
     return fig
 

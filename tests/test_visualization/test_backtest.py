@@ -439,7 +439,7 @@ class TestCostAttribution:
         assert any(isinstance(trace, go.Waterfall) for trace in fig.data)
         trace = fig.data[0]
         assert list(trace.x) == ["Gross PnL", "Commission", "Slippage", "Net PnL"]
-        assert list(trace.measure) == ["absolute", "relative", "relative", "total"]
+        assert list(trace.measure) == ["relative", "relative", "relative", "total"]
         assert trace.y[0] == 50000.0
         assert trace.y[-1] == pytest.approx(48500.0)
 

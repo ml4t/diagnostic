@@ -291,8 +291,7 @@ _PAIRED_SECTIONS: dict[str, str] = {
     "cost_waterfall": "cost_sensitivity",          # Trading row 3
     "mfe_mae": "duration",                         # Trading row 5
     "confidence_intervals": "min_trl",             # Validation row 2
-    "ic_time_series": "quintile_returns",          # ML row 2
-    "prediction_calibration": "prediction_trade_alignment",  # ML row 3
+    "quintile_returns": "prediction_trade_alignment",  # ML row 2 (decile returns + scatter)
 }
 
 # Wide+narrow sidebar pairs (66/34 split)
@@ -355,12 +354,9 @@ _SECTION_FOOTNOTES: dict[str, str] = {
         "a meaningful signal."
     ),
     "quintile_returns": (
-        "<strong>Reading:</strong> Bars should increase monotonically from Q1 to Q10. "
-        "A strong signal means high-prediction assets outperform low-prediction assets."
-    ),
-    "prediction_calibration": (
         "<strong>Reading:</strong> Bars should increase monotonically from D1 to D10. "
-        "Flat bars indicate the model's scores don't meaningfully separate winners from losers."
+        "A strong signal means high-prediction assets outperform low-prediction assets. "
+        "Returns are mean realized forward returns per prediction decile."
     ),
     "stock_attribution": (
         "<strong>Reading:</strong> Concentration risk: if top 3 symbols account for most P&amp;L, "
@@ -969,7 +965,7 @@ def generate_backtest_tearsheet(
             if section.name in (
                 "ml_summary_strip",
                 "ic_time_series", "quintile_returns",
-                "prediction_trade_alignment", "prediction_calibration",
+                "prediction_trade_alignment",
             ):
                 section.enabled = True
 
