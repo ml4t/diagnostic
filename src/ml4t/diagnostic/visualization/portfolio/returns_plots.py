@@ -509,8 +509,8 @@ def plot_returns_distribution(
         line_dash="dot",
         line_color="orange",
         annotation_text=f"VaR 95%: {var_95:.2%}",
-        annotation_position="top left",
-        annotation={"yshift": -60},
+        annotation_position="right",
+        annotation={"font": {"size": 10, "color": "orange"}},
     )
 
     fig.add_vline(
@@ -518,8 +518,8 @@ def plot_returns_distribution(
         line_dash="dot",
         line_color="red",
         annotation_text=f"VaR 99%: {var_99:.2%}",
-        annotation_position="top left",
-        annotation={"yshift": -100},
+        annotation_position="right",
+        annotation={"font": {"size": 10, "color": "red"}, "yshift": -20},
     )
 
     fig.update_layout(

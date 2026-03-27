@@ -225,7 +225,6 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     "ic_time_series": "ml",
     "quintile_returns": "ml",
     "prediction_trade_alignment": "ml",
-    "prediction_calibration": "ml",
     "shap_errors": "ml",
 }
 
@@ -276,9 +275,8 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     ),
     "ml": (
         "ml_summary_strip",
-        "ic_time_series",                          # paired with quintile_returns
+        "ic_time_series",
         "quintile_returns",
-        "prediction_calibration",                  # paired with prediction_trade_alignment
         "prediction_trade_alignment",
         "shap_errors",
     ),
@@ -537,150 +535,6 @@ def _format_optional_ratio(value: Any) -> str:
     if np.isnan(numeric):
         return "N/A"
     return f"{numeric:.1%}"
-
-
-def _create_ml_summary_html(profile: BacktestProfile) -> str | None:
-    predictions_df = profile.predictions_df
-    signals_df = profile.signals_df
-    strategy_metadata = profile.strategy_metadata
-    if predictions_df.is_empty() and signals_df.is_empty() and not strategy_metadata:
-        return None
-
-    metadata_chips: list[str] = []
-    for key, label in (
-        ("strategy_type", "Strategy"),
-        ("model_name", "Model"),
-        ("prediction_type", "Prediction"),
-        ("signal_type", "Signal"),
-        ("mapping_name", "Mapping"),
-    ):
-        value = strategy_metadata.get(key)
-        if value:
-            metadata_chips.append(
-                f'<div class="metrics-table-intro-chip">{html_mod.escape(label)}: '
-                f"{html_mod.escape(str(value))}</div>"
-            )
-
-    n_pred = predictions_df.height if not predictions_df.is_empty() else 0
-    n_assets_pred = (
-        predictions_df["asset"].n_unique()
-        if "asset" in predictions_df.columns and not predictions_df.is_empty()
-        else 0
-    )
-    trade_coverage = profile.ml["metrics"].get("trade_prediction_coverage")
-
-    # Compute IC stats if predictions have score + outcome
-    mean_ic_str = "N/A"
-    ic_tstat_str = "N/A"
-    hit_rate_str = "N/A"
-    try:
-        from .ml_plots import _compute_daily_ic, _first_present_column
-
-        score_col = _first_present_column(
-            predictions_df,
-            ("prediction_value", "score", "prediction", "y_pred", "y_score", "probability"),
-        )
-        outcome_col = _first_present_column(
-            predictions_df, ("y_true", "actual", "target", "realized_return", "forward_return"),
-        )
-        if score_col and outcome_col:
-            date_col = _first_present_column(predictions_df, ("timestamp", "date", "session_date"))
-            asset_col = _first_present_column(predictions_df, ("asset",))
-            if date_col and asset_col:
-                frame = (
-                    predictions_df.select([date_col, asset_col, score_col, outcome_col])
-                    .rename({date_col: "date", asset_col: "asset",
-                             score_col: "score", outcome_col: "outcome"})
-                    .with_columns(pl.col("date").cast(pl.Date, strict=False))
-                    .filter(pl.col("date").is_not_null()
-                            & pl.col("score").is_not_null()
-                            & pl.col("outcome").is_not_null())
-                )
-                daily_ic = _compute_daily_ic(frame)
-                if not daily_ic.is_empty():
-                    ic_arr = daily_ic["ic"].to_numpy()
-                    mean_ic = float(np.mean(ic_arr))
-                    std_ic = float(np.std(ic_arr, ddof=1))
-                    mean_ic_str = f"{mean_ic:.4f}"
-                    if std_ic > 0:
-                        ic_tstat_str = f"{mean_ic / std_ic * np.sqrt(len(ic_arr)):.2f}"
-                # Hit rate: % of predictions where sign(score) == sign(outcome)
-                if not frame.is_empty():
-                    correct = (
-                        (frame["score"] > 0) & (frame["outcome"] > 0)
-                    ) | (
-                        (frame["score"] <= 0) & (frame["outcome"] <= 0)
-                    )
-                    hit_rate_str = f"{correct.mean():.1%}"
-    except Exception:
-        pass
-
-    # Signal utilization: how many predictions actually became trades
-    n_trades = 0
-    utilization_str = "N/A"
-    enriched_trades = profile.prediction_enriched_trades_df
-    if not enriched_trades.is_empty():
-        n_trades = enriched_trades.height
-        if n_pred > 0:
-            utilization_str = f"{n_trades:,} / {n_pred:,} ({n_trades / n_pred:.2%})"
-        else:
-            utilization_str = f"{n_trades:,} trades"
-
-    rows = [
-        ("Predictions", f"{n_pred:,}", f"{n_assets_pred:,} assets", ""),
-        ("Signal Utilization", utilization_str, "", "Predictions that led to trade entries"),
-        (
-            "Period",
-            _format_timestamp_span(predictions_df) if n_pred else "N/A",
-            "",
-            "",
-        ),
-        ("Mean IC", mean_ic_str, "", "Daily Spearman rank correlation"),
-        ("IC t-stat", ic_tstat_str, "", "Mean / SE, > 2 is significant"),
-        ("Hit Rate", hit_rate_str, "", "Fraction where sign(pred) == sign(outcome)"),
-        (
-            "Trade Coverage",
-            _format_optional_ratio(trade_coverage) if trade_coverage else "N/A",
-            "",
-            "Fraction of trades matched to a prediction at entry",
-        ),
-    ]
-
-    table_rows = "".join(
-        f"""
-        <tr class="metrics-table-row">
-            <td>{html_mod.escape(label)}</td>
-            <td>{html_mod.escape(prediction_value)}</td>
-            <td>{html_mod.escape(signal_value)}</td>
-            <td>{html_mod.escape(notes)}</td>
-        </tr>
-        """
-        for label, prediction_value, signal_value, notes in rows
-    )
-    chips_html = "".join(metadata_chips)
-    if not chips_html:
-        chips_html = '<div class="metrics-table-intro-chip">ML Pipeline</div>'
-
-    return f"""
-    <div class="metrics-table-wrap">
-        <div class="metrics-table-intro">
-            {chips_html}
-        </div>
-        <table class="metrics-table">
-            <thead>
-                <tr>
-                    <th>Metric</th>
-                    <th>Value</th>
-                    <th>Detail</th>
-                    <th>Notes</th>
-                </tr>
-            </thead>
-            <tbody>
-                {table_rows}
-            </tbody>
-        </table>
-    </div>
-    """
 
 
 def _render_report_shell(
@@ -1420,48 +1274,6 @@ def _render_executive_summary(ctx: _SectionContext) -> str | None:
     )
 
 
-def _render_key_metrics_table(ctx: _SectionContext) -> str | None:
-    if not ctx.metrics:
-        return None
-    from .executive_summary import create_key_metrics_table_html
-
-    selected = (
-        _profile_selected_metrics(ctx.profile, ctx.preset)
-        if ctx.profile is not None
-        else list(ctx.preset.hero_metrics)
-    )
-    return create_key_metrics_table_html(
-        ctx.metrics,
-        selected_metrics=selected,
-        benchmark_metrics=ctx.benchmark_metrics,
-        benchmark_label=ctx.benchmark_name,
-    )
-
-
-def _render_key_insights(ctx: _SectionContext) -> go.Figure | None:
-    if not ctx.metrics:
-        return None
-    import plotly.graph_objects as go
-
-    from .executive_summary import create_key_insights
-
-    insights = create_key_insights(ctx.metrics, profile=ctx.profile)
-    fig = go.Figure()
-    insight_text = "<br>".join(
-        [f"• [{i.category.upper()}] {i.message}" for i in insights]
-    )
-    fig.add_annotation(
-        text=insight_text or "No insights available",
-        xref="paper", yref="paper", x=0.5, y=0.5,
-        showarrow=False, font={"size": 14}, align="left",
-    )
-    fig.update_layout(
-        height=max(150, len(insights) * 40 + 50),
-        xaxis={"visible": False}, yaxis={"visible": False},
-    )
-    return fig
-
-
 def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
     """Build 2x2 rolling metrics grid from raw returns (no BacktestProfile)."""
     import plotly.graph_objects as go
@@ -1712,14 +1524,6 @@ def _render_overview_snapshot(ctx: _SectionContext) -> go.Figure | None:
     if ctx.returns is None:
         return None
     return _build_equity_drawdown_figure(ctx)
-
-
-def _render_activity_overview(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.profile is None:
-        return None
-    from .profile_sections import plot_activity_overview
-
-    return plot_activity_overview(ctx.profile, theme=ctx.theme)
 
 
 def _render_occupancy_overview(ctx: _SectionContext) -> go.Figure | None:
@@ -2165,11 +1969,6 @@ def _render_shap_errors(ctx: _SectionContext) -> go.Figure | None:
     return plot_shap_error_patterns(ctx.shap_result, theme=ctx.theme)
 
 
-def _render_ml_summary(ctx: _SectionContext) -> str | None:
-    adapter = _get_prediction_adapter(ctx)
-    if adapter is None:
-        return None
-    return _create_ml_summary_html(adapter)
 
 
 def _render_signal_diagnostics(ctx: _SectionContext) -> go.Figure | None:
@@ -2213,15 +2012,6 @@ def _render_prediction_trade_alignment(ctx: _SectionContext) -> go.Figure | None
 
     # Fallback: build prediction-vs-outcome scatter from raw predictions
     return _build_prediction_vs_outcome_scatter(adapter, ctx.theme)
-
-
-def _render_prediction_calibration(ctx: _SectionContext) -> go.Figure | None:
-    adapter = _get_prediction_adapter(ctx)
-    if adapter is None:
-        return None
-    from .ml_plots import plot_prediction_calibration
-
-    return plot_prediction_calibration(adapter, theme=ctx.theme)
 
 
 def _build_prediction_vs_outcome_scatter(
@@ -2465,7 +2255,6 @@ _SECTION_REGISTRY: dict[str, Any] = {
     "ic_time_series": _render_ic_time_series,
     "quintile_returns": _render_quintile_returns,
     "prediction_trade_alignment": _render_prediction_trade_alignment,
-    "prediction_calibration": _render_prediction_calibration,
     "shap_errors": _render_shap_errors,
     # Factors
     "factor_exposure": lambda ctx: _render_factor_section(ctx, "factor_exposure"),
