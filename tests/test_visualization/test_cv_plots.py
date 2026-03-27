@@ -348,8 +348,8 @@ class TestPlotCvFoldsTheme:
         """Test default theme."""
         fig = plot_cv_folds(walk_forward_cv, sample_data_numpy, theme="default")
 
-        # Default theme has light background
-        assert fig.layout.paper_bgcolor.upper() == "#FFFFFF"
+        # Default theme has transparent background
+        assert fig.layout.paper_bgcolor.lower() in ["rgba(0,0,0,0)", "#ffffff"]
 
     def test_dark_theme(
         self,

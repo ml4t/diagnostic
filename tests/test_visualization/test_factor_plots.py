@@ -5,16 +5,16 @@ from __future__ import annotations
 from datetime import date
 
 import numpy as np
-import polars as pl
 import plotly.graph_objects as go
+import polars as pl
 import pytest
 
 from ml4t.diagnostic.evaluation.factor.analysis import FactorAnalysis
+from ml4t.diagnostic.evaluation.factor.attribution import compute_return_attribution
 from ml4t.diagnostic.evaluation.factor.data import FactorData
+from ml4t.diagnostic.evaluation.factor.risk import compute_risk_attribution
 from ml4t.diagnostic.evaluation.factor.rolling_model import compute_rolling_exposures
 from ml4t.diagnostic.evaluation.factor.static_model import compute_factor_model
-from ml4t.diagnostic.evaluation.factor.attribution import compute_return_attribution
-from ml4t.diagnostic.evaluation.factor.risk import compute_risk_attribution
 from ml4t.diagnostic.visualization.factor import (
     plot_factor_betas_bar,
     plot_factor_correlation_heatmap,

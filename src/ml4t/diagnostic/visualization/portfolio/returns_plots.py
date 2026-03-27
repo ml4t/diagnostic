@@ -32,8 +32,9 @@ def plot_cumulative_returns(
     analysis: PortfolioAnalysis,
     theme: str | None = None,
     show_benchmark: bool = True,
+    benchmark_label: str = "Benchmark",
     log_scale: bool = False,
-    height: int = 500,
+    height: int = 560,
     width: int | None = None,
 ) -> go.Figure:
     """Plot cumulative returns over time.
@@ -71,7 +72,7 @@ def plot_cumulative_returns(
     )
 
     # Compute cumulative returns
-    cum_returns = (1 + analysis.returns).cumprod()
+    cum_returns = (1 + analysis.returns).cumprod() - 1.0
     dates = analysis.dates.to_list()
 
     # Strategy line
@@ -81,21 +82,21 @@ def plot_cumulative_returns(
             y=cum_returns,
             mode="lines",
             name="Strategy",
-            line={"color": theme_config["colorway"][0], "width": 2},
+            line={"color": theme_config["colorway"][0], "width": 2.5},
             hovertemplate="Date: %{x}<br>Return: %{y:.2%}<extra></extra>",
         )
     )
 
     # Benchmark line
     if show_benchmark and analysis.has_benchmark and analysis.benchmark is not None:
-        bench_cum = (1 + analysis.benchmark).cumprod()
+        bench_cum = (1 + analysis.benchmark).cumprod() - 1.0
         fig.add_trace(
             go.Scatter(
                 x=dates,
                 y=bench_cum,
                 mode="lines",
-                name="Benchmark",
-                line={"color": theme_config["colorway"][1], "width": 2, "dash": "dash"},
+                name=benchmark_label,
+                line={"color": theme_config["colorway"][1], "width": 2.0, "dash": "dash"},
                 hovertemplate="Date: %{x}<br>Return: %{y:.2%}<extra></extra>",
             )
         )
@@ -106,7 +107,9 @@ def plot_cumulative_returns(
     fig.update_layout(
         legend={"yanchor": "top", "y": 0.99, "xanchor": "left", "x": 0.01},
         hovermode="x unified",
+        yaxis={"tickformat": ".0%"},
     )
+    fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
 
     return fig
 
@@ -198,6 +201,7 @@ def plot_annual_returns_bar(
     analysis: PortfolioAnalysis,
     theme: str | None = None,
     show_benchmark: bool = True,
+    benchmark_label: str = "Benchmark",
     height: int = 400,
     width: int | None = None,
 ) -> go.Figure:
@@ -226,7 +230,7 @@ def plot_annual_returns_bar(
 
     # Compute annual returns
     annual = analysis.compute_annual_returns()
-    years = annual["year"].to_list()
+    years = [str(y) for y in annual["year"].to_list()]  # String for categorical x-axis
     returns = annual["annual_return"].to_numpy()
 
     fig = create_base_figure(
@@ -258,11 +262,18 @@ def plot_annual_returns_bar(
         # Compute benchmark annual returns
         import polars as pl
 
+        # Align lengths — benchmark may be shorter than dates
+        bench_arr = analysis.benchmark
+        dates_arr = analysis.dates
+        if dates_arr is not None and len(bench_arr) != len(dates_arr):
+            n = min(len(bench_arr), len(dates_arr))
+            bench_arr = bench_arr[-n:]
+            dates_arr = dates_arr[-n:]
         bench_df = (
             pl.DataFrame(
                 {
-                    "date": analysis.dates,
-                    "return": analysis.benchmark,
+                    "date": dates_arr,
+                    "return": bench_arr,
                 }
             )
             .with_columns(
@@ -280,7 +291,7 @@ def plot_annual_returns_bar(
                 x=bench_df["year"].to_list(),
                 y=bench_df["annual_return"].to_numpy(),
                 mode="lines+markers",
-                name="Benchmark",
+                name=benchmark_label,
                 line={"color": theme_config["colorway"][1], "width": 2},
                 marker={"size": 8},
                 hovertemplate="Year: %{x}<br>Return: %{y:.2%}<extra></extra>",
@@ -292,6 +303,8 @@ def plot_annual_returns_bar(
     fig.update_layout(
         legend={"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
         bargap=0.3,
+        xaxis={"type": "category"},
+        yaxis={"tickformat": ".1%"},
     )
 
     return fig
@@ -336,6 +349,27 @@ def plot_monthly_returns_heatmap(
 
     z_array = np.array(z_values)
 
+    # Crop years where all monthly returns are effectively zero
+    row_activity = np.nansum(np.abs(z_array), axis=1)
+    active_mask = row_activity > 1e-8
+    if active_mask.any() and not active_mask.all():
+        first_active = int(np.argmax(active_mask))
+        z_array = z_array[first_active:]
+        years = years[first_active:]
+
+    # Add Annual total column (compounded monthly returns)
+    annual_returns = []
+    for row in z_array:
+        valid = row[~np.isnan(row)]
+        if len(valid) > 0:
+            annual = float(np.prod(1 + valid) - 1)
+        else:
+            annual = np.nan
+        annual_returns.append(annual)
+    annual_col = np.array(annual_returns).reshape(-1, 1)
+    z_array = np.hstack([z_array, annual_col])
+    months.append("Annual")
+
     # Color scale: red for negative, green for positive
     colorscale = [
         [0.0, "#d73027"],
@@ -345,10 +379,15 @@ def plot_monthly_returns_heatmap(
         [1.0, "#1a9850"],
     ]
 
-    # Find symmetric range for color scale
+    # Find symmetric range for color scale, clamped to robust percentile
+    # so extreme outliers (e.g., crypto ±240%) don't wash out normal cells
     max_abs = np.nanmax(np.abs(z_array))
     if np.isnan(max_abs):
         max_abs = 0.1
+    elif max_abs > 0:
+        p95 = float(np.nanpercentile(np.abs(z_array), 95))
+        if p95 > 0 and max_abs > 2 * p95:
+            max_abs = p95 * 1.5
 
     fig = go.Figure(
         data=go.Heatmap(
@@ -369,13 +408,15 @@ def plot_monthly_returns_heatmap(
         )
     )
 
+    theme_config = get_theme_config(theme)
+    fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title="Monthly Returns",
         xaxis_title="Month",
-        yaxis_title="Year",
-        height=height,
+        yaxis_title="",
+        height=max(height, 50 + len(years) * 28),
         width=width,
-        yaxis={"autorange": "reversed"},  # Most recent year at top
+        yaxis={"autorange": "reversed", "type": "category"},
     )
 
     return fig
@@ -432,8 +473,8 @@ def plot_returns_distribution(
             x=clean_returns,
             nbinsx=bins,
             name="Returns",
-            marker_color=theme_config["colorway"][0],
-            opacity=0.7,
+            marker_color="#4a90d9",
+            opacity=0.85,
             histnorm="probability density",
             hovertemplate="Return: %{x:.2%}<br>Density: %{y:.4f}<extra></extra>",
         )
@@ -468,7 +509,8 @@ def plot_returns_distribution(
         line_dash="dot",
         line_color="orange",
         annotation_text=f"VaR 95%: {var_95:.2%}",
-        annotation_position="top",
+        annotation_position="right",
+        annotation={"font": {"size": 10, "color": "orange"}},
     )
 
     fig.add_vline(
@@ -476,12 +518,14 @@ def plot_returns_distribution(
         line_dash="dot",
         line_color="red",
         annotation_text=f"VaR 99%: {var_99:.2%}",
-        annotation_position="bottom",
+        annotation_position="right",
+        annotation={"font": {"size": 10, "color": "red"}, "yshift": -20},
     )
 
     fig.update_layout(
         legend={"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
         bargap=0.05,
+        xaxis={"tickformat": ".1%"},
     )
 
     return fig

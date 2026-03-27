@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.visualization._colors import get_factor_color
 from ml4t.diagnostic.visualization.core import get_theme_config
 
 if TYPE_CHECKING:
@@ -22,6 +24,7 @@ def plot_return_attribution_waterfall(
     """Waterfall chart of cumulative return attribution.
 
     Shows how each factor, alpha, and residual contribute to total return.
+    Uses per-factor colors from the canonical factor palette.
 
     Parameters
     ----------
@@ -41,60 +44,91 @@ def plot_return_attribution_waterfall(
     """
     theme_config = get_theme_config(theme)
 
-    # Build waterfall data
-    labels = list(result.factor_names) + ["Alpha", "Residual", "Total"]
-    values = []
+    # Use additive (sum of daily) contributions — these are exactly additive:
+    # sum(factor_contributions[f]) + sum(alpha) + sum(residual) == sum(total_returns)
+    all_labels = list(result.factor_names) + ["Alpha", "Residual", "Total"]
+    values: list[float] = []
     for f in result.factor_names:
-        values.append(result.cumulative_factor[f][-1])
-    values.append(result.cumulative_alpha[-1])
-    values.append(result.cumulative_residual[-1])
-    total_val = result.cumulative_total[-1]
-
-    measures = ["relative"] * (len(result.factor_names) + 2) + ["total"]
+        values.append(float(np.sum(result.factor_contributions[f])))
+    alpha_sum = float(np.sum(result.alpha_contribution))
+    residual_sum = float(np.sum(result.residual))
+    values.append(alpha_sum)
+    values.append(residual_sum)
+    total_val = sum(values)  # exact sum of additive components
     values.append(total_val)
 
-    # Hover text with CI where available
-    text = []
+    measures = ["relative"] * (len(result.factor_names) + 2) + ["total"]
+
+    # Text labels
+    text = [f"{v:.2%}" for v in values]
+
+    # Per-bar colors
+    bar_colors = [get_factor_color(f) for f in result.factor_names]
+    bar_colors.append(get_factor_color("Alpha"))
+    bar_colors.append(get_factor_color("Residual"))
+    bar_colors.append(get_factor_color("Total"))
+
+    # Hover with CI where available
+    hover_texts = []
     for f in result.factor_names:
-        val = result.cumulative_factor[f][-1]
+        val = float(np.sum(result.factor_contributions[f]))
         ci = result.attribution_ci.get(f)
         if ci:
-            text.append(f"{val:.4f} [{ci[0]:.4f}, {ci[1]:.4f}]")
+            hover_texts.append(
+                f"<b>{f}</b><br>Contribution: {val:.4f}<br>"
+                f"CI: [{ci[0]:.4f}, {ci[1]:.4f}]"
+            )
         else:
-            text.append(f"{val:.4f}")
-    text.append(f"{result.cumulative_alpha[-1]:.4f}")
-    text.append(f"{result.cumulative_residual[-1]:.4f}")
-    text.append(f"{total_val:.4f}")
+            hover_texts.append(f"<b>{f}</b><br>Contribution: {val:.4f}")
+    hover_texts.append(f"<b>Alpha</b><br>Contribution: {alpha_sum:.4f}")
+    hover_texts.append(f"<b>Residual</b><br>Contribution: {residual_sum:.4f}")
+    hover_texts.append(f"<b>Total</b><br>Sum of contributions: {total_val:.4f}")
 
-    fig = go.Figure(
-        go.Waterfall(
-            x=labels,
-            y=values[:-1] + [values[-1]],
-            measure=measures,
-            text=text,
+    # Build waterfall with per-bar coloring via individual Bar traces
+    fig = go.Figure()
+
+    base = 0.0
+    for i, (label, val) in enumerate(zip(all_labels, values)):
+        is_total = measures[i] == "total"
+        bar_base = 0.0 if is_total else base
+
+        fig.add_trace(go.Bar(
+            x=[label],
+            y=[abs(val)],
+            base=[bar_base if val >= 0 else bar_base + val],
+            marker_color=bar_colors[i],
+            text=[text[i]],
             textposition="outside",
-            increasing={"marker_color": theme_config["colorway"][0]},
-            decreasing={
-                "marker_color": theme_config["colorway"][2]
-                if len(theme_config["colorway"]) > 2
-                else "#ef4444"
-            },
-            totals={
-                "marker_color": theme_config["colorway"][1]
-                if len(theme_config["colorway"]) > 1
-                else "#D4A84B"
-            },
-            connector={"line": {"color": "gray", "width": 0.5, "dash": "dot"}},
-        )
-    )
+            hovertext=[hover_texts[i]],
+            hoverinfo="text",
+            showlegend=False,
+        ))
+
+        if not is_total:
+            base += val
 
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
-        title="Return Attribution (Cumulative)",
-        yaxis_title="Cumulative Return",
+        title="Return Attribution (Additive)",
+        yaxis_title="Contribution (sum of daily \u03b2 \u00d7 factor return)",
+        yaxis_tickformat=".2%",
         height=height,
         width=width or theme_config["defaults"]["width"],
-        showlegend=False,
+        barmode="overlay",
+        bargap=0.3,
+    )
+
+    # Footnote
+    fig.add_annotation(
+        text=(
+            "Additive decomposition: \u03a3 \u03b2[t\u22121] \u00d7 f[t]. "
+            "Components sum exactly to Total. Hover for confidence intervals."
+        ),
+        xref="paper", yref="paper",
+        x=0, y=-0.15,
+        showarrow=False,
+        font={"size": 10, "color": "gray"},
+        align="left",
     )
 
     return fig
@@ -126,15 +160,14 @@ def plot_return_attribution_area(
         Plotly stacked area figure.
     """
     theme_config = get_theme_config(theme)
-    colorway = theme_config["colorway"]
 
     fig = go.Figure()
 
     timestamps = result.timestamps
 
     # Factors
-    for i, f in enumerate(result.factor_names):
-        color = colorway[i % len(colorway)]
+    for _i, f in enumerate(result.factor_names):
+        color = get_factor_color(f)
         fig.add_trace(
             go.Scatter(
                 x=timestamps,
@@ -143,12 +176,14 @@ def plot_return_attribution_area(
                 name=f,
                 stackgroup="one",
                 line={"width": 0.5, "color": color},
-                hovertemplate=f"<b>{f}</b><br>Date: %{{x}}<br>Cumulative: %{{y:.4f}}<extra></extra>",
+                hovertemplate=(
+                    f"<b>{f}</b><br>Date: %{{x}}<br>"
+                    "Cumulative: %{y:.4f}<extra></extra>"
+                ),
             )
         )
 
     # Alpha
-    alpha_color = colorway[len(result.factor_names) % len(colorway)]
     fig.add_trace(
         go.Scatter(
             x=timestamps,
@@ -156,12 +191,11 @@ def plot_return_attribution_area(
             mode="lines",
             name="Alpha",
             stackgroup="one",
-            line={"width": 0.5, "color": alpha_color},
+            line={"width": 0.5, "color": get_factor_color("Alpha")},
         )
     )
 
     # Residual
-    resid_color = "gray"
     fig.add_trace(
         go.Scatter(
             x=timestamps,
@@ -169,7 +203,7 @@ def plot_return_attribution_area(
             mode="lines",
             name="Residual",
             stackgroup="one",
-            line={"width": 0.5, "color": resid_color},
+            line={"width": 0.5, "color": get_factor_color("Residual")},
         )
     )
 
@@ -181,7 +215,9 @@ def plot_return_attribution_area(
             mode="lines",
             name="Total",
             line={"color": "black", "width": 2, "dash": "dash"},
-            hovertemplate="<b>Total</b><br>Date: %{x}<br>Return: %{y:.4f}<extra></extra>",
+            hovertemplate=(
+                "<b>Total</b><br>Date: %{x}<br>Return: %{y:.4f}<extra></extra>"
+            ),
         )
     )
 
@@ -191,7 +227,10 @@ def plot_return_attribution_area(
         yaxis_title="Cumulative Return",
         height=height,
         width=width or theme_config["defaults"]["width"],
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+        legend={
+            "orientation": "h", "yanchor": "bottom", "y": 1.02,
+            "xanchor": "right", "x": 1,
+        },
     )
 
     return fig

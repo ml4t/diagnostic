@@ -48,7 +48,7 @@ def plot_mfe_mae_scatter(
     mfe_col: str = "mfe",
     mae_col: str = "mae",
     theme: str | None = None,
-    height: int = 600,
+    height: int = 300,
     width: int | None = None,
 ) -> go.Figure:
     """Create MFE vs MAE scatter plot with exit efficiency analysis.
@@ -104,9 +104,15 @@ def plot_mfe_mae_scatter(
     theme = validate_theme(theme)
 
     # Extract data
-    mfe = trades_df[mfe_col].to_numpy()
-    mae = np.abs(trades_df[mae_col].to_numpy())  # MAE as positive values
-    pnl = trades_df["pnl"].to_numpy() if "pnl" in trades_df.columns else np.zeros(len(mfe))
+    mfe_raw = trades_df[mfe_col].to_numpy()
+    mae_raw = np.abs(trades_df[mae_col].to_numpy())  # MAE as positive values
+    pnl = trades_df["pnl"].to_numpy() if "pnl" in trades_df.columns else np.zeros(len(mfe_raw))
+
+    # Auto-detect scale: if max values exceed 2.0, data is in dollar terms, not fractions
+    _max_val = max(np.nanmax(np.abs(mfe_raw)), np.nanmax(mae_raw), 1e-10)
+    is_dollar = _max_val > 2.0
+    mfe = mfe_raw
+    mae = mae_raw
 
     # Color encoding
     if color_by == "pnl" and "pnl" in trades_df.columns:
@@ -145,27 +151,43 @@ def plot_mfe_mae_scatter(
         notional = np.abs(trades_df["entry_price"].to_numpy() * trades_df["quantity"].to_numpy())
         sizes = 5 + 20 * (notional - notional.min()) / (notional.max() - notional.min() + 1e-10)
     else:
-        sizes = 10  # Uniform size
+        sizes = 12  # Uniform size
 
     # Create figure
+    if is_dollar:
+        x_title = "MAE (Max Adverse Excursion) — $"
+        y_title = "MFE (Max Favorable Excursion) — $"
+    else:
+        x_title = "MAE (Max Adverse Excursion) — % Loss from Entry"
+        y_title = "MFE (Max Favorable Excursion) — % Gain from Entry"
+
     fig = create_base_figure(
         title="MFE vs MAE Analysis (Exit Efficiency)",
-        xaxis_title="MAE (Max Adverse Excursion) - % Loss from Entry",
-        yaxis_title="MFE (Max Favorable Excursion) - % Gain from Entry",
+        xaxis_title=x_title,
+        yaxis_title=y_title,
         height=height,
         width=width,
         theme=theme,
     )
 
     # Hover template
-    hover_template = (
-        "<b>Trade</b><br>"
-        "MFE: %{y:.2%}<br>"
-        "MAE: %{x:.2%}<br>"
-        "PnL: $%{customdata[0]:.2f}<br>"
-        "Return: %{customdata[1]:.2%}<br>"
-        "<extra></extra>"
-    )
+    if is_dollar:
+        hover_template = (
+            "<b>Trade</b><br>"
+            "MFE: $%{y:,.0f}<br>"
+            "MAE: $%{x:,.0f}<br>"
+            "PnL: $%{customdata[0]:.2f}<br>"
+            "<extra></extra>"
+        )
+    else:
+        hover_template = (
+            "<b>Trade</b><br>"
+            "MFE: %{y:.2%}<br>"
+            "MAE: %{x:.2%}<br>"
+            "PnL: $%{customdata[0]:.2f}<br>"
+            "Return: %{customdata[1]:.2%}<br>"
+            "<extra></extra>"
+        )
 
     # Custom data for hover
     custom_data = np.column_stack(
@@ -259,33 +281,50 @@ def plot_mfe_mae_scatter(
             )
         )
 
-    # Add quadrant annotations
+    # Add quadrant shading and annotations
     if show_quadrants:
+        med_mae = float(np.median(mae))
+        med_mfe = float(np.median(mfe))
+        x_max = float(mae.max()) * 1.1
+        y_max = float(mfe.max()) * 1.1
+
+        # Median crosshair lines
+        fig.add_hline(
+            y=med_mfe, line_dash="dot", line_color="gray",
+            line_width=1, opacity=0.5,
+        )
+        fig.add_vline(
+            x=med_mae, line_dash="dot", line_color="gray",
+            line_width=1, opacity=0.5,
+        )
+
+        # Quadrant background shading
+        quadrant_specs = [
+            # Q1: High MAE, High MFE — healthy winners
+            (med_mae, x_max, med_mfe, y_max, "rgba(16,185,129,0.04)"),
+            # Q2: Low MAE, High MFE — lucky recovery
+            (0, med_mae, med_mfe, y_max, "rgba(245,158,11,0.04)"),
+            # Q3: Low MAE, Low MFE — no opportunity
+            (0, med_mae, 0, med_mfe, "rgba(239,68,68,0.04)"),
+            # Q4: High MAE, Low MFE — poor exit
+            (med_mae, x_max, 0, med_mfe, "rgba(239,68,68,0.04)"),
+        ]
+        for x0, x1, y0, y1, fill_color in quadrant_specs:
+            fig.add_shape(
+                type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
+                fillcolor=fill_color, line_width=0, layer="below",
+            )
+
+        # Quadrant labels
         annotations = [
-            {
-                "x": mae.max() * 0.8,
-                "y": mfe.max() * 0.9,
-                "text": "Q1: Healthy Winners",
-                "color": _ML4T_COLORS["positive"],
-            },
-            {
-                "x": mae.max() * 0.2,
-                "y": mfe.max() * 0.9,
-                "text": "Q2: Lucky Recovery",
-                "color": _ML4T_COLORS["amber"],
-            },
-            {
-                "x": mae.max() * 0.2,
-                "y": mfe.max() * 0.1,
-                "text": "Q3: No Opportunity",
-                "color": _ML4T_COLORS["negative"],
-            },
-            {
-                "x": mae.max() * 0.8,
-                "y": mfe.max() * 0.1,
-                "text": "Q4: Poor Exit",
-                "color": _ML4T_COLORS["negative"],
-            },
+            {"x": mae.max() * 0.8, "y": mfe.max() * 0.9,
+             "text": "Q1: Healthy Winners", "color": _ML4T_COLORS["positive"]},
+            {"x": mae.max() * 0.2, "y": mfe.max() * 0.9,
+             "text": "Q2: Lucky Recovery", "color": _ML4T_COLORS["amber"]},
+            {"x": mae.max() * 0.2, "y": mfe.max() * 0.1,
+             "text": "Q3: No Opportunity", "color": _ML4T_COLORS["negative"]},
+            {"x": mae.max() * 0.8, "y": mfe.max() * 0.1,
+             "text": "Q4: Poor Exit", "color": _ML4T_COLORS["negative"]},
         ]
 
         for ann in annotations:
@@ -298,10 +337,24 @@ def plot_mfe_mae_scatter(
                 opacity=0.7,
             )
 
-    # Add edge ratio annotation
+    # Add edge ratio and exit efficiency annotation
     if show_edge_ratio:
         edge_ratio = np.mean(mfe) / np.mean(mae) if np.mean(mae) > 0 else np.inf
-        efficiency = np.mean(pnl[pnl > 0] / mfe[pnl > 0]) if (pnl > 0).sum() > 0 else 0
+        # Exit efficiency = realised_return / mfe (both as fractions or both as dollars)
+        if is_dollar:
+            ret_arr = pnl
+        else:
+            # MFE is fractional → use fractional PnL for same units
+            ret_arr = (
+                trades_df["pnl_pct"].to_numpy() / 100
+                if "pnl_pct" in trades_df.columns
+                else (trades_df["exit_price"].to_numpy() / trades_df["entry_price"].to_numpy() - 1)
+            )
+        positive_mask = (ret_arr > 0) & (mfe > 0)
+        efficiency = (
+            np.mean(ret_arr[positive_mask] / mfe[positive_mask])
+            if positive_mask.sum() > 0 else 0.0
+        )
 
         fig.add_annotation(
             x=0.02,
@@ -317,8 +370,11 @@ def plot_mfe_mae_scatter(
             borderwidth=1,
         )
 
+    tick_fmt = "$,.0f" if is_dollar else ".0%"
     fig.update_layout(
         legend={"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
+        xaxis={"tickformat": tick_fmt},
+        yaxis={"tickformat": tick_fmt},
     )
 
     return fig
@@ -703,7 +759,7 @@ def plot_trade_duration_distribution(
     bin_count: int = 30,
     show_statistics: bool = True,
     theme: str | None = None,
-    height: int = 450,
+    height: int = 300,
     width: int | None = None,
 ) -> go.Figure:
     """Plot distribution of trade holding periods.
@@ -753,6 +809,9 @@ def plot_trade_duration_distribution(
     )
 
     durations = trades_df[duration_col].to_numpy()
+    # Auto-size bins: aim for ~5 trades per bin minimum
+    n_trades = len(durations)
+    effective_bins = min(bin_count, max(8, n_trades // 5))
 
     if split_by == "outcome" and pnl_col in trades_df.columns:
         winners = durations[trades_df[pnl_col].to_numpy() > 0]
@@ -764,7 +823,7 @@ def plot_trade_duration_distribution(
                 name="Winners",
                 marker_color=_ML4T_COLORS["positive"],
                 opacity=0.7,
-                nbinsx=bin_count,
+                nbinsx=effective_bins,
             )
         )
         fig.add_trace(
@@ -773,10 +832,10 @@ def plot_trade_duration_distribution(
                 name="Losers",
                 marker_color=_ML4T_COLORS["negative"],
                 opacity=0.7,
-                nbinsx=bin_count,
+                nbinsx=effective_bins,
             )
         )
-        fig.update_layout(barmode="overlay")
+        fig.update_layout(barmode="group")
 
     elif split_by == "exit_reason" and "exit_reason" in trades_df.columns:
         exit_reasons = trades_df["exit_reason"].unique().to_list()

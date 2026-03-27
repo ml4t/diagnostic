@@ -1,7 +1,7 @@
 # Cross-Validation Configuration Guide
 
-This guide documents the JSON/YAML configuration format for ml4t-diagnostic's
-cross-validation splitters, enabling reproducible experiments.
+Use this page when you need reproducible splitter definitions, serialized
+JSON/YAML configs, or exact fold persistence for research and production reruns.
 
 **See also**: [cross-validation.md](cross-validation.md) - Conceptual guide to CV methods
 
@@ -12,6 +12,26 @@ The splitters module uses Pydantic-based configuration classes that support:
 - **Serialization**: Save/load configs as JSON or YAML
 - **Validation**: Automatic validation with clear error messages
 - **Reproducibility**: Exact fold recreation from saved configs
+
+## Minimal Example
+
+```python
+from ml4t.diagnostic.splitters import WalkForwardConfig, WalkForwardCV
+
+config = WalkForwardConfig(
+    n_splits=5,
+    train_size=252,
+    test_size=63,
+    label_horizon=5,
+)
+config.to_yaml("cv_config.yaml")
+
+reloaded = WalkForwardConfig.from_file("cv_config.yaml")
+cv = WalkForwardCV.from_config(reloaded)
+
+for train_idx, test_idx in cv.split(X):
+    pass
+```
 
 ## Configuration Classes
 
@@ -582,3 +602,22 @@ All config classes inherit these methods from `BaseConfig`:
 | `save_config(config, path)` | Save config (wrapper) |
 | `load_config(path, cls)` | Load config (wrapper) |
 | `verify_folds(folds, n_samples)` | Validate fold integrity |
+
+---
+
+## See It In The Book
+
+Configuration-heavy splitter workflows appear in the cross-validation chapter and
+then show up again in the case-study training pipelines:
+
+- `code/06_strategy_definition/01_cv_foundations.py` for walk-forward and CPCV setup
+- case-study notebooks under `code/case_studies/*/` for reusable training and evaluation configs
+
+Use the [Book Guide](../book-guide/index.md) when you want the chapter-level map.
+
+## Next Steps
+
+- [Cross-Validation](cross-validation.md) - Choose between walk-forward and CPCV
+- [Validation Tiers](validation-tiers.md) - See how splitter choices fit the wider validation stack
+- [Methods: CPCV](../methods/cpcv.md) - Review the statistical rationale behind combinatorial purged CV
+- [Book Guide](../book-guide/index.md) - Jump from config patterns to exact notebooks and case studies

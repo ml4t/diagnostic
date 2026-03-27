@@ -1,5 +1,8 @@
 # Deflated Sharpe Ratio (DSR)
 
+Use DSR when you evaluated multiple strategy variants and need to know whether
+the best Sharpe ratio still looks credible after accounting for selection bias.
+
 ## The Problem
 
 You tested 50 parameter combinations for a momentum strategy and selected the one
@@ -67,45 +70,55 @@ $$
 The output is a probability in [0, 1]. Values above 0.95 indicate the strategy
 survives multiple testing correction at the 5% level.
 
-## ml4t-diagnostic API
+## Minimal Working Example
 
 ```python
-from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+from ml4t.diagnostic.evaluation.stats import (
+    deflated_sharpe_ratio,
+    deflated_sharpe_ratio_from_statistics,
+)
 import numpy as np
 
-# You tested 50 strategies and selected the best one
-# First, compute the variance across ALL strategies tested
+# Recommended path: pass raw returns for each trial
 np.random.seed(42)
-all_sharpe_ratios = np.random.normal(0.5, 0.8, 50)
-best_sharpe = np.max(all_sharpe_ratios)
-variance_trials = np.var(all_sharpe_ratios, ddof=1)
+trial_returns = [
+    np.random.normal(0.0005, 0.01, 252),
+    np.random.normal(0.0008, 0.01, 252),
+    np.random.normal(0.0002, 0.012, 252),
+]
 
-result = deflated_sharpe_ratio(
-    observed_sharpe=best_sharpe,    # Best strategy's SR
-    n_trials=50,                    # Total strategies tested
-    variance_trials=variance_trials, # Var[{SR_1, ..., SR_50}]
-    n_samples=252,                  # Trading days of data
-    skewness=0.0,                   # Return skewness (Fisher)
-    excess_kurtosis=0.0,            # Excess kurtosis (Fisher, normal=0)
-    return_components=True
+result = deflated_sharpe_ratio(trial_returns, frequency="daily")
+
+print(f"Probability of skill: {result.probability:.3f}")
+print(f"P-value: {result.p_value:.3f}")
+print(f"Expected max from noise: {result.expected_max_sharpe:.3f}")
+print(f"Deflated Sharpe: {result.deflated_sharpe:.3f}")
+
+# Secondary path: use pre-computed statistics if your pipeline already has them
+stats_result = deflated_sharpe_ratio_from_statistics(
+    observed_sharpe=0.12,
+    n_samples=252,
+    n_trials=50,
+    variance_trials=0.03,
+    frequency="daily",
 )
-
-print(f"Observed Sharpe: {best_sharpe:.3f}")
-print(f"DSR probability: {result['dsr']:.3f}")
-print(f"p-value: {result['p_value']:.3f}")
-print(f"Expected max under null: {result['expected_max_sharpe']:.3f}")
 ```
+
+`deflated_sharpe_ratio()` is the recommended entry point for most users because
+it derives the required moments directly from raw returns. Use
+`deflated_sharpe_ratio_from_statistics()` when your pipeline already computes the
+Sharpe moments and trial variance upstream.
 
 ### Key Parameters
 
 | Parameter | Description | Guidance |
 |-----------|-------------|----------|
-| `observed_sharpe` | Best strategy's annualized Sharpe ratio | Must be the selected maximum |
-| `n_trials` | Total number of strategies tested | Include ALL, even failures |
-| `variance_trials` | Var[{SR_1, ..., SR_K}] across all strategies | **Must be computed, not assumed** |
+| `returns` | Single return series or sequence of trial return series | Pass multiple trials for DSR, one series for PSR |
+| `frequency` | Return frequency | `"daily"` by default; affects annualized display values |
+| `benchmark_sharpe` | Null-hypothesis Sharpe threshold | Leave at `0.0` unless you need a stricter hurdle |
+| `n_trials` | Total strategies tested | Relevant for the statistics-based helper; include all trials |
+| `variance_trials` | Var[{SR_1, ..., SR_K}] across all strategies | Must be computed, not assumed, when using the statistics-based helper |
 | `n_samples` | Number of return observations | T >= 50 minimum, >= 252 recommended |
-| `skewness` | Fisher skewness of returns | 0.0 for normal assumption |
-| `excess_kurtosis` | Fisher excess kurtosis (normal = 0) | Matches scipy/pandas convention |
 
 ## Interpreting Results
 
@@ -149,6 +162,16 @@ and realistic transaction cost modeling.
     With T < 50 observations, the standard error of the Sharpe ratio estimator
     is so large that DSR becomes unreliable regardless of the observed value.
 
+## See It In The Book
+
+DSR appears in the validation chapters and in reporting workflows that compare
+many model or parameter variants:
+
+- Ch07 for the statistical foundations
+- Ch16-Ch19 for backtest evaluation and reporting pipelines
+
+Use the [Book Guide](../book-guide/index.md) for exact notebook and case-study paths.
+
 ## References
 
 - **Lopez de Prado, M., Lipton, A., & Zoonekynd, V. (2025)**.
@@ -168,3 +191,10 @@ and realistic transaction cost modeling.
 | **RAS** | Handles correlated strategies, non-asymptotic bounds | Computationally expensive |
 | **FDR** | Controls false discovery proportion, not just best strategy | No correlation handling |
 | **PSR** | Simpler (single strategy) | No multiple testing correction |
+
+## Next Steps
+
+- [Statistical Tests](../user-guide/statistical-tests.md) - Place DSR alongside FDR, RAS, and related checks
+- [Cross-Validation](../user-guide/cross-validation.md) - Pair DSR with leakage-safe model evaluation
+- [Validation Tiers](../user-guide/validation-tiers.md) - See where DSR fits in the full validation framework
+- [Book Guide](../book-guide/index.md) - Jump to the notebook and case-study usage

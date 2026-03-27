@@ -11,8 +11,8 @@ from ml4t.diagnostic.errors import (
     ComputationError,
     ConfigurationError,
     DataError,
-    IntegrationError,
     DiagnosticError,
+    IntegrationError,
     ValidationError,
 )
 
@@ -413,8 +413,8 @@ class TestErrorExports:
             ComputationError,
             ConfigurationError,
             DataError,
-            IntegrationError,
             DiagnosticError,
+            IntegrationError,
             ValidationError,
         )
 

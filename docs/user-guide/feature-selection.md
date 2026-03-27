@@ -3,6 +3,10 @@
 Reduce a large set of candidate features to a focused, production-ready
 set using systematic filtering.
 
+Use this page after you have already computed feature-outcome diagnostics such as
+IC, ML importance, and drift. The goal is to turn those diagnostics into a
+repeatable selection pipeline that you can defend and rerun.
+
 ---
 
 ## Quick Start
@@ -295,11 +299,11 @@ selector.run_pipeline([
 
 ---
 
-## See It in Action
+## See It In The Book
 
 The `FeatureSelector` pipeline is demonstrated in the book at multiple levels:
 
-- **Teaching demo**: `08_feature_engineering/code/08_feature_selection.ipynb` (Ch08, Section 12) —
+- **Teaching demo**: `code/08_feature_engineering/05_feature_selection.py` —
   builds `FeatureOutcomeResult` from scratch and runs the full IC → correlation → importance pipeline.
 
 - **Production usage**: Each case study evaluation notebook includes a "Library Convenience Functions"
@@ -314,3 +318,14 @@ The `FeatureSelector` pipeline is demonstrated in the book at multiple levels:
   | Crypto Perps | `crypto_perps_funding/code/05_evaluation.py` | 0.005 | symbol |
   | FX Pairs | `fx_pairs/code/05_evaluation.py` | 0.005 | symbol |
   | Nasdaq100 | `nasdaq100_microstructure/code/05_evaluation.py` | 0.003 | symbol |
+
+For the broader chapter and case-study map, see the [Book Guide](../book-guide/index.md).
+
+---
+
+## Next Steps
+
+- [Feature Diagnostics](feature-diagnostics.md) - Generate the IC, distribution, and robustness inputs used here
+- [Statistical Tests](statistical-tests.md) - Check significance and multiple-testing corrections before promoting features
+- [Workflows](workflows.md) - Place feature triage inside a full research pipeline
+- [Book Guide](../book-guide/index.md) - Find the matching notebook and case-study implementations

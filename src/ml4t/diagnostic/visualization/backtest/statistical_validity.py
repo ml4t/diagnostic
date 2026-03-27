@@ -38,14 +38,14 @@ def plot_dsr_gauge(
     """Create a gauge chart showing DSR probability.
 
     The Deflated Sharpe Ratio corrects for selection bias when choosing
-    the best strategy from multiple tests. A DSR probability < 0.05
-    suggests the performance is statistically significant.
+    the best strategy from multiple tests. The probability represents
+    P(true SR > benchmark) — higher values indicate stronger evidence of skill.
 
     Parameters
     ----------
     dsr_probability : float
-        DSR probability value (0-1), where lower is more significant.
-        Typically displayed as 1 - dsr for "confidence" interpretation.
+        Probability of skill (0-1). Higher is better.
+        This is P(SR > benchmark), NOT a p-value.
     observed_sharpe : float
         The observed Sharpe ratio being tested
     expected_max_sharpe : float, optional
@@ -79,9 +79,9 @@ def plot_dsr_gauge(
     """
     theme_config = get_theme_config(theme)
 
-    # Convert to "confidence" (1 - p-value style)
-    # High confidence = good, Low confidence = bad
-    confidence = (1 - dsr_probability) * 100
+    # dsr_probability is P(SR > benchmark) — probability of skill.
+    # High = good (strong evidence), Low = bad (likely noise).
+    confidence = dsr_probability * 100
 
     # Color zones: Red (not significant) -> Yellow (marginal) -> Green (significant)
     # Standard thresholds: p < 0.05 (95%), p < 0.01 (99%)
@@ -133,7 +133,7 @@ def plot_dsr_gauge(
         {
             "x": 0.5,
             "y": 0.25,
-            "text": f"DSR p-value: {dsr_probability:.4f}",
+            "text": f"p-value: {1 - dsr_probability:.4f}",
             "showarrow": False,
             "font": {"size": 14},
             "xref": "paper",
@@ -347,26 +347,35 @@ def plot_confidence_intervals(
     # Build layout
     if orientation == "h":
         layout_updates = {
-            "title": {"text": title, "font": {"size": 18}},
-            "height": max(height, n_metrics * 60 + 100),
+            "title": {"text": title, "font": {"size": 14}},
+            "height": max(height, n_metrics * 80 + 100),
+            "margin": {"t": 40, "l": 120, "r": 24, "b": 60},
             "xaxis": {"title": "Value", "zeroline": True},
             "yaxis": {
                 "tickvals": list(range(n_metrics)),
                 "ticktext": metric_names,
                 "autorange": "reversed",
             },
-            "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
+            "legend": {
+                "orientation": "h",
+                "yanchor": "top", "y": -0.15,
+                "xanchor": "center", "x": 0.5,
+            },
         }
     else:
         layout_updates = {
-            "title": {"text": title, "font": {"size": 18}},
+            "title": {"text": title, "font": {"size": 14}},
             "height": height,
-            "yaxis": {"title": "Value", "zeroline": True},
             "xaxis": {
                 "tickvals": list(range(n_metrics)),
                 "ticktext": metric_names,
             },
-            "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
+            "yaxis": {"title": "Value", "zeroline": True},
+            "legend": {
+                "orientation": "h",
+                "yanchor": "top", "y": -0.15,
+                "xanchor": "center", "x": 0.5,
+            },
         }
     if width:
         layout_updates["width"] = width
@@ -677,43 +686,19 @@ def plot_minimum_track_record(
             annotation_position="top",
         )
 
-    # Add significance zone annotation
-    annotations = []
-
-    if is_significant:
-        status_text = (
-            f"Track record sufficient ({current_years:.1f}y ≥ MinTRL {min_trl_years:.1f}y)"
-        )
-        status_color = _ML4T_COLORS["positive"]
-    elif min_trl == float("inf"):
-        status_text = "Cannot achieve significance (SR ≤ benchmark)"
-        status_color = _ML4T_COLORS["negative"]
-    else:
-        deficit = min_trl_years - current_years
-        status_text = f"Need {deficit:.1f} more years (MinTRL: {min_trl_years:.1f}y)"
-        status_color = _ML4T_COLORS["amber"]
-
-    annotations.append(
-        {
-            "x": 0.5,
-            "y": -0.15,
-            "text": status_text,
-            "showarrow": False,
-            "font": {"size": 13, "color": status_color, "weight": "bold"},
-            "xref": "paper",
-            "yref": "paper",
-        }
-    )
-
     # Build layout
     layout_updates = {
-        "title": {"text": title, "font": {"size": 18}},
+        "title": {"text": title, "font": {"size": 14}},
         "height": height,
+        "margin": {"t": 40, "l": 60, "r": 24, "b": 40},
         "xaxis": {"title": "Track Record Length (Years)", "rangemode": "tozero"},
         "yaxis": {"title": "Sharpe Ratio", "rangemode": "tozero"},
-        "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
-        "annotations": annotations,
-        "margin": {"b": 80},
+        "legend": {
+            "orientation": "h",
+            "yanchor": "top", "y": -0.18,
+            "xanchor": "center", "x": 0.5,
+            "font": {"size": 10},
+        },
     }
     if width:
         layout_updates["width"] = width
@@ -883,5 +868,223 @@ def plot_statistical_summary_card(
             layout_updates[key] = value
 
     fig.update_layout(**layout_updates)
+
+    return fig
+
+
+def plot_pbo_gauge(
+    pbo: float,
+    n_combinations: int | None = None,
+    n_strategies: int | None = None,
+    title: str = "Probability of Backtest Overfitting",
+    theme: str | None = None,
+    height: int = 350,
+    width: int = 500,
+) -> go.Figure:
+    """Create a gauge chart for Probability of Backtest Overfitting (PBO).
+
+    PBO measures the probability that the best in-sample strategy
+    performs below median out-of-sample. High PBO indicates overfitting.
+
+    Parameters
+    ----------
+    pbo : float
+        Probability of overfitting (0-1). Lower is better.
+    n_combinations : int, optional
+        Number of IS/OOS combinations evaluated.
+    n_strategies : int, optional
+        Number of strategies compared.
+    """
+    theme_config = get_theme_config(theme)
+    pbo_pct = pbo * 100
+
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=pbo_pct,
+            number={"suffix": "%", "font": {"size": 36}},
+            title={"text": title, "font": {"size": 18}},
+            gauge={
+                "axis": {
+                    "range": [0, 100],
+                    "tickwidth": 1, "tickcolor": "darkgray",
+                    "tickvals": [0, 10, 25, 40, 50, 75, 100],
+                    "ticktext": ["0%", "10%", "25%", "40%", "50%", "75%", "100%"],
+                },
+                "bar": {"color": "darkblue"},
+                "bgcolor": "white",
+                "borderwidth": 2, "bordercolor": "gray",
+                "steps": [
+                    {"range": [0, 10], "color": _ML4T_COLORS["positive"]},
+                    {"range": [10, 25], "color": _ML4T_COLORS["sage"]},
+                    {"range": [25, 40], "color": _ML4T_COLORS["amber_light"]},
+                    {"range": [40, 60], "color": _ML4T_COLORS["amber"]},
+                    {"range": [60, 100], "color": _ML4T_COLORS["negative"]},
+                ],
+                "threshold": {
+                    "line": {"color": "black", "width": 4},
+                    "thickness": 0.75,
+                    "value": pbo_pct,
+                },
+            },
+        )
+    )
+
+    if pbo < 0.10:
+        verdict = "Low overfitting risk"
+    elif pbo < 0.25:
+        verdict = "Moderate overfitting risk"
+    elif pbo < 0.40:
+        verdict = "Elevated overfitting risk"
+    else:
+        verdict = "High overfitting risk"
+
+    annotations = [
+        {"x": 0.5, "y": 0.25, "text": verdict,
+         "showarrow": False, "font": {"size": 14},
+         "xref": "paper", "yref": "paper"},
+    ]
+    if n_combinations is not None:
+        annotations.append(
+            {"x": 0.5, "y": 0.15,
+             "text": f"{n_combinations} IS/OOS combinations",
+             "showarrow": False, "font": {"size": 12, "color": "gray"},
+             "xref": "paper", "yref": "paper"}
+        )
+    if n_strategies is not None:
+        annotations.append(
+            {"x": 0.5, "y": 0.08,
+             "text": f"{n_strategies} strategies compared",
+             "showarrow": False, "font": {"size": 12, "color": "gray"},
+             "xref": "paper", "yref": "paper"}
+        )
+
+    layout_kw: dict[str, Any] = {
+        "height": height, "width": width,
+        "annotations": annotations,
+        "margin": {"l": 40, "r": 40, "t": 60, "b": 40},
+    }
+    for key, value in theme_config["layout"].items():
+        if key not in layout_kw:
+            layout_kw[key] = value
+    fig.update_layout(**layout_kw)
+
+    return fig
+
+
+def plot_sharpe_bootstrap(
+    returns: np.ndarray,
+    observed_sharpe: float,
+    n_bootstrap: int = 5000,
+    block_size: int = 21,
+    periods_per_year: int = 252,
+    title: str = "Sharpe Ratio Bootstrap Distribution",
+    theme: str | None = None,
+    height: int = 300,
+    width: int | None = None,
+) -> go.Figure:
+    """Create a histogram of bootstrapped Sharpe ratios.
+
+    Uses block bootstrap to preserve autocorrelation structure.
+
+    Parameters
+    ----------
+    returns : np.ndarray
+        Daily return series.
+    observed_sharpe : float
+        Observed annualized Sharpe ratio.
+    n_bootstrap : int
+        Number of bootstrap replications.
+    block_size : int
+        Block size for block bootstrap (default 21 = ~1 month).
+    periods_per_year : int
+        Annualization factor.
+    """
+    theme_config = get_theme_config(theme)
+    rng = np.random.default_rng(42)
+    n = len(returns)
+
+    # Block bootstrap
+    sharpe_samples = np.empty(n_bootstrap)
+    for i in range(n_bootstrap):
+        indices = np.empty(n, dtype=int)
+        pos = 0
+        while pos < n:
+            start = rng.integers(0, n)
+            length = min(block_size, n - pos)
+            for j in range(length):
+                indices[pos + j] = (start + j) % n
+            pos += length
+        sample = returns[indices]
+        mu = np.mean(sample)
+        sigma = np.std(sample, ddof=1)
+        sharpe_samples[i] = (mu / sigma * np.sqrt(periods_per_year)) if sigma > 0 else 0.0
+
+    # Compute percentiles for CI shading
+    ci_lo = float(np.percentile(sharpe_samples, 2.5))
+    ci_hi = float(np.percentile(sharpe_samples, 97.5))
+    median = float(np.median(sharpe_samples))
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=sharpe_samples,
+        nbinsx=60,
+        marker_color=_ML4T_COLORS["slate"],
+        marker_line={"width": 0.5, "color": _ML4T_COLORS.get("silver_muted", "#e8e8e6")},
+        opacity=0.85,
+        name="Bootstrap",
+        showlegend=False,
+    ))
+
+    # Observed Sharpe line
+    fig.add_vline(
+        x=observed_sharpe,
+        line_width=2.5,
+        line_color=_ML4T_COLORS["amber"],
+        annotation_text=f"Observed: {observed_sharpe:.2f}",
+        annotation_position="top right",
+        annotation_font_size=11,
+        annotation_font_color=_ML4T_COLORS["amber"],
+    )
+    # Zero line
+    fig.add_vline(
+        x=0, line_width=1, line_dash="dash",
+        line_color=_ML4T_COLORS.get("neutral", "#334155"),
+    )
+    # CI bounds
+    fig.add_vrect(
+        x0=ci_lo, x1=ci_hi,
+        fillcolor=_ML4T_COLORS["slate"],
+        opacity=0.08,
+        line_width=0,
+    )
+
+    p_value = float(np.mean(sharpe_samples <= 0))
+
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title=title,
+        xaxis_title="Annualized Sharpe Ratio",
+        yaxis_title="Frequency",
+        height=height,
+        width=width,
+        margin={"l": 50, "r": 30, "t": 50, "b": 50},
+        annotations=[
+            {
+                "x": 0.02, "y": 0.95,
+                "xref": "paper", "yref": "paper",
+                "text": (
+                    f"Median: {median:.2f}<br>"
+                    f"95% CI: [{ci_lo:.2f}, {ci_hi:.2f}]<br>"
+                    f"P(SR≤0): {p_value:.1%}"
+                ),
+                "showarrow": False,
+                "font": {"size": 10, "color": _ML4T_COLORS.get("neutral", "#334155")},
+                "align": "left",
+                "bgcolor": "rgba(255,255,255,0.8)",
+                "borderpad": 4,
+            }
+        ],
+    )
 
     return fig

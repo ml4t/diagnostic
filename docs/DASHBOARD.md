@@ -1,6 +1,7 @@
 # Trade-SHAP Dashboard
 
-Interactive Streamlit dashboard for Trade-SHAP analysis visualization and systematic trade debugging.
+Interactive Streamlit dashboard for Trade-SHAP analysis visualization and systematic
+trade debugging.
 
 ## Overview
 
@@ -49,18 +50,18 @@ pip install streamlit
 ### Command Line
 
 ```bash
-# Run with default settings
+# Recommended compatibility entry point
 streamlit run -m ml4t.diagnostic.evaluation.trade_shap_dashboard
 
-# Or use the module directly
-python -m streamlit run path/to/trade_shap_dashboard.py
+# Visualization namespace also re-exports the dashboard helpers
+python -c "from ml4t.diagnostic.visualization.trade_shap import run_diagnostics_dashboard"
 ```
 
 ### Programmatic
 
 ```python
 from ml4t.diagnostic.evaluation import TradeShapAnalyzer
-from ml4t.diagnostic.evaluation.trade_shap_dashboard import run_diagnostics_dashboard
+from ml4t.diagnostic.visualization.trade_shap import run_diagnostics_dashboard
 
 # Analyze trades
 analyzer = TradeShapAnalyzer(model, features_df, shap_values)
@@ -162,10 +163,17 @@ ml4t.diagnostic.evaluation.trade_dashboard/
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - Streamlit >= 1.0.0
 - ml4t-diagnostic (core library)
 - SHAP (for explanations)
+
+## Notes
+
+- `ml4t.diagnostic.evaluation.trade_shap_dashboard` remains the backward-compatible
+  module path for scripts and tests.
+- `ml4t.diagnostic.visualization.trade_shap` is the cleaner import surface for
+  dashboard-related helpers.
 
 ## See Also
 

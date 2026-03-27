@@ -82,10 +82,10 @@ def plot_cost_waterfall(
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
-    # Build cost categories
+    # Build cost categories (use "relative" for Gross PnL so color follows sign)
     labels = ["Gross PnL"]
     values = [gross_pnl]
-    measures = ["absolute"]
+    measures = ["relative"]
 
     # Add commission
     labels.append("Commission")
@@ -125,11 +125,9 @@ def plot_cost_waterfall(
     else:
         text = [f"${v:,.0f}" for v in values]
 
-    # Determine colors
-    colors = theme_config["colorway"]
-    increasing_color = colors[0]  # Usually green/blue
-    decreasing_color = colors[1] if len(colors) > 1 else _ML4T_COLORS["negative"]
-    totals_color = colors[2] if len(colors) > 2 else _ML4T_COLORS["blue"]
+    # Colors: green for positive, red for negative
+    positive_color = _ML4T_COLORS.get("positive", "#10b981")
+    negative_color = _ML4T_COLORS.get("negative", "#ef4444")
 
     fig = go.Figure(
         go.Waterfall(
@@ -140,9 +138,9 @@ def plot_cost_waterfall(
             measure=measures,
             text=text,
             textposition="outside",
-            increasing={"marker": {"color": increasing_color}},
-            decreasing={"marker": {"color": decreasing_color}},
-            totals={"marker": {"color": totals_color}},
+            increasing={"marker": {"color": positive_color}},
+            decreasing={"marker": {"color": negative_color}},
+            totals={"marker": {"color": positive_color if net_pnl >= 0 else negative_color}},
             connector={"line": {"color": "rgba(128, 128, 128, 0.5)", "width": 2}},
         )
     )
@@ -264,8 +262,8 @@ def plot_cost_sensitivity(
     fig = make_subplots(
         rows=1,
         cols=2,
-        subplot_titles=("Sharpe Ratio vs Costs", "CAGR vs Costs"),
-        horizontal_spacing=0.12,
+        subplot_titles=("Sharpe", "CAGR"),
+        horizontal_spacing=0.08,
     )
 
     # Sharpe trace
@@ -330,8 +328,8 @@ def plot_cost_sensitivity(
                     x=breakeven,
                     line_dash="dot",
                     line_color="red",
-                    annotation_text=f"Breakeven: {breakeven:.1f} bps",
-                    annotation_position="top",
+                    annotation_text=f"Breakeven {breakeven:.1f} bps",
+                    annotation_position="top left",
                     row=1,
                     col=1,
                 )
@@ -346,6 +344,7 @@ def plot_cost_sensitivity(
             text="Current",
             showarrow=True,
             arrowhead=2,
+            ay=-28,
             row=1,
             col=1,
         )

@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b4] - 2026-03-27
+
+### Added
+- **Backtest tearsheet overhaul** — 6-tab layout (Overview, Performance, Trading, Validation, ML, Factors):
+  - Overview: KPI strip, equity+sidebar (66/34), credibility/cost pair, top/bottom contributors, monthly heatmap with annual column
+  - Performance: equity curve, drawdowns table, underwater, rolling 2x2, annual+distribution pair, stock attribution
+  - Trading: activity strip, exposure timeline, cost bridge+sensitivity, attribution, MFE/MAE+duration, worst trades, trade waterfall (collapsible)
+  - Validation: validity card, CI+MinTRL pair, Sharpe bootstrap, drawdown anatomy (collapsible)
+  - ML (conditional): IC time series (full width), decile returns + prediction-trade alignment pair, signal utilization KPI
+  - Factors (conditional): exposures+legend sidebar, regression stats table, attribution waterfall, risk donut
+- **ML prediction-trade bridge**: signal utilization rate in KPI strip, trade outcome by entry prediction decile chart
+- **Export system**: `export_workspaces()` with 7 named bundles (executive, full_report, etc.)
+- **Factor regression table**: Beta, SE, t-stat, p-value, R², Adj R² per factor
+
+### Fixed
+- Heatmap color scale: percentile-based clamping for extreme returns (crypto ±240%)
+- ML column detection: `actual` added as outcome column candidate
+- Sidebar drawdown >100%: `_is_fraction` heuristic removed, always format as fraction
+- Cost bridge: Gross PnL bar now red when strategy loses money
+- Attribution: filtered to traded symbols only (was showing entire portfolio)
+- VaR annotation positioning: placed right of vertical lines, no overlap with axes
+- MFE/MAE axis scaling, factor waterfall additivity, exit efficiency units
+- Polars join datetime precision alignment (μs vs ms)
+
+### Changed
+- **BREAKING**: Prediction calibration "win rate" chart removed from ML tab (misleading for predictions)
+- ML tab restructured: IC time series full width, "Quintile Returns" → "Decile Returns", paired with prediction scatter
+- Trade waterfall enabled by default (collapsible for >100 trades)
+
+### Removed
+- 324 lines dead code: stale renderers (`_render_activity_overview`, `_render_key_insights`,
+  `_render_key_metrics_table`, `_render_ml_summary`), orphaned `plot_prediction_calibration`,
+  `_create_ml_summary_html`, broken `_is_fraction` heuristic
+
 ## [0.1.0b1] - 2026-03-03
 
 ### Added

@@ -14,6 +14,10 @@ import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 import pytest
+from ml4t.backtest import BacktestResult
+from ml4t.backtest.types import Fill, OrderSide, Trade
+
+from ml4t.diagnostic.integration import BacktestReportMetadata
 
 # =============================================================================
 # Fixtures
@@ -90,6 +94,83 @@ def sample_returns() -> np.ndarray:
     return np.random.normal(0.001, 0.02, 252)
 
 
+@pytest.fixture
+def sample_backtest_profile():
+    """Create a sample BacktestProfile."""
+    from datetime import datetime, timedelta
+
+    from ml4t.diagnostic.integration import analyze_backtest_result
+
+    base = datetime(2024, 1, 1, 9, 30)
+    result = BacktestResult(
+        trades=[
+            Trade(
+                symbol="AAPL",
+                entry_time=base,
+                exit_time=base + timedelta(days=1),
+                entry_price=100.0,
+                exit_price=102.0,
+                quantity=10.0,
+                pnl=20.0,
+                pnl_percent=0.02,
+                bars_held=1,
+                fees=1.0,
+                exit_slippage=0.1,
+            ),
+            Trade(
+                symbol="MSFT",
+                entry_time=base + timedelta(days=1),
+                exit_time=base + timedelta(days=2),
+                entry_price=200.0,
+                exit_price=195.0,
+                quantity=10.0,
+                pnl=-50.0,
+                pnl_percent=-0.025,
+                bars_held=1,
+                fees=2.0,
+                exit_slippage=0.2,
+            ),
+        ],
+        fills=[
+            Fill(
+                order_id="1",
+                asset="AAPL",
+                side=OrderSide.BUY,
+                quantity=10.0,
+                price=100.0,
+                timestamp=base,
+                rebalance_id="rebalance-1",
+                commission=1.0,
+                slippage=0.1,
+                quote_mid_price=100.0,
+            ),
+            Fill(
+                order_id="2",
+                asset="MSFT",
+                side=OrderSide.BUY,
+                quantity=10.0,
+                price=200.0,
+                timestamp=base,
+                rebalance_id="rebalance-1",
+                commission=2.0,
+                slippage=0.2,
+            ),
+        ],
+        portfolio_state=[
+            (base, 1000.0, 0.0, 1000.0, 1000.0, 2),
+            (base + timedelta(days=1), 1020.0, 20.0, 1000.0, 1000.0, 2),
+            (base + timedelta(days=2), 970.0, 970.0, 0.0, 0.0, 0),
+        ],
+        equity_curve=[
+            (base, 1000.0),
+            (base + timedelta(days=1), 1020.0),
+            (base + timedelta(days=2), 970.0),
+        ],
+        metrics={},
+    )
+    return analyze_backtest_result(result, calendar="NYSE")
+
+
 # =============================================================================
 # Executive Summary Tests
 # =============================================================================
@@ -130,6 +211,49 @@ class TestExecutiveSummary:
         assert fig.layout.height == 600
         assert fig.layout.width == 1200
 
+    def test_create_executive_summary_supports_profile_kpis(self):
+        """Test executive summary can render profile-native KPI metrics."""
+        from ml4t.diagnostic.visualization.backtest import create_executive_summary
+
+        fig = create_executive_summary(
+            {
+                "sharpe_ratio": 1.2,
+                "total_return": 0.12,
+                "max_drawdown": 0.08,
+                "avg_turnover": 0.45,
+                "num_rebalance_events": 24,
+                "avg_open_positions": 12.0,
+            },
+            selected_metrics=[
+                "sharpe_ratio",
+                "avg_turnover",
+                "num_rebalance_events",
+                "avg_open_positions",
+            ],
+        )
+
+        assert isinstance(fig, go.Figure)
+        values = {trace.value for trace in fig.data}
+        assert 0.45 in values
+        assert 24 in values
+        assert 12.0 in values
+
+    def test_create_executive_summary_html_supports_benchmark_context(self, sample_metrics):
+        """Test HTML executive strip renders compact benchmark context."""
+        from ml4t.diagnostic.visualization.backtest import create_executive_summary_html
+
+        html = create_executive_summary_html(
+            sample_metrics,
+            selected_metrics=["sharpe_ratio", "cagr", "profit_factor"],
+            benchmark_metrics={"sharpe_ratio": 1.25, "cagr": 0.11},
+            benchmark_label="SPY",
+        )
+
+        assert "executive-strip" in html
+        assert "Sharpe Ratio" in html
+        assert "SPY" in html
+        assert "Spread" in html
+
     def test_get_traffic_light_color(self):
         """Test traffic light color selection."""
         from ml4t.diagnostic.visualization.backtest import get_traffic_light_color
@@ -146,6 +270,52 @@ class TestExecutiveSummary:
         # Max drawdown - lower magnitude is better
         color = get_traffic_light_color(-0.15, "max_drawdown")
         assert color in ["green", "yellow", "red", "neutral"]
+
+    def test_create_key_insights_uses_profile_native_signals(self, sample_backtest_profile):
+        """Test profile-native burden and availability insights."""
+        from ml4t.diagnostic.visualization.backtest import create_key_insights
+
+        insights = create_key_insights(
+            sample_backtest_profile.summary, profile=sample_backtest_profile
+        )
+        messages = [insight.message for insight in insights]
+
+        assert any("implementation cost" in message for message in messages)
+        assert any("Quote-aware execution audit" in message for message in messages)
+
+    def test_create_key_metrics_table_html_with_benchmark(self, sample_metrics):
+        """Test HTML metrics table renders dense grid with available metrics."""
+        from ml4t.diagnostic.visualization.backtest import create_key_metrics_table_html
+
+        html = create_key_metrics_table_html(
+            sample_metrics,
+            benchmark_metrics={"sharpe_ratio": 1.25, "cagr": 0.11, "max_drawdown": 0.09},
+            benchmark_label="SPY",
+        )
+
+        # Dense grid layout — no table elements, uses flexbox
+        assert "display:flex" in html
+        assert "Sharpe Ratio" in html
+        # No subjective labels
+        assert "Better" not in html
+        assert "Worse" not in html
+        assert "Favorable" not in html
+
+    def test_create_key_metrics_table_html_tolerates_non_numeric_benchmark_values(
+        self,
+        sample_metrics,
+    ):
+        """Test HTML metrics table does not fail on non-numeric benchmark values."""
+        from ml4t.diagnostic.visualization.backtest import create_key_metrics_table_html
+
+        html = create_key_metrics_table_html(
+            sample_metrics,
+            benchmark_metrics={"sharpe_ratio": "N/A", "cagr": 0.11},
+            benchmark_label="SPY",
+        )
+
+        assert "display:flex" in html
+        assert "Sharpe Ratio" in html
 
 
 # =============================================================================
@@ -269,7 +439,7 @@ class TestCostAttribution:
         assert any(isinstance(trace, go.Waterfall) for trace in fig.data)
         trace = fig.data[0]
         assert list(trace.x) == ["Gross PnL", "Commission", "Slippage", "Net PnL"]
-        assert list(trace.measure) == ["absolute", "relative", "relative", "total"]
+        assert list(trace.measure) == ["relative", "relative", "relative", "total"]
         assert trace.y[0] == 50000.0
         assert trace.y[-1] == pytest.approx(48500.0)
 
@@ -441,6 +611,17 @@ class TestTearsheetGeneration:
         assert "<html>" in html.lower() or "<!doctype" in html.lower()
         # Should contain embedded Plotly charts
         assert "plotly" in html.lower()
+        assert "workspace-tabs" in html
+        assert 'data-workspace="overview"' in html
+        assert 'data-workspace="performance"' in html
+        assert "report-section" in html
+        assert "executive-strip" in html
+        assert "Benchmark Context" not in html
+        assert "Backtest Diagnostics" not in html
+        assert "State-of-the-art" not in html
+        # Trade waterfall and position size disabled per content architecture review
+        assert "Trade-by-Trade PnL" not in html
+        assert "Position Size Analysis" not in html
 
     def test_generate_backtest_tearsheet_templates(
         self, sample_metrics, sample_trades, sample_returns
@@ -486,6 +667,188 @@ class TestTearsheetGeneration:
         assert isinstance(html, str)
         assert len(html) > 0
 
+    def test_generate_backtest_tearsheet_from_profile(self, sample_backtest_profile):
+        """Test tearsheet generation directly from BacktestProfile."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        html = generate_backtest_tearsheet(
+            profile=sample_backtest_profile,
+            template="hedge_fund",
+        )
+
+        assert isinstance(html, str)
+        assert "Exposure" in html
+        assert "Drawdown Anatomy" in html
+        assert 'data-workspace="trading"' in html
+        assert "report-section" in html
+
+    def test_generate_backtest_tearsheet_renders_ml_workspace_when_prediction_surface_exists(
+        self,
+        sample_backtest_profile,
+    ):
+        """Test ML workspace becomes visible when prediction and signal surfaces exist."""
+        from datetime import datetime
+
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        sample_backtest_profile.result.to_predictions_df = lambda: pl.DataFrame(
+            {
+                "timestamp": [datetime(2024, 1, 1, 9, 30)] * 5,
+                "asset": ["AAPL", "MSFT", "GOOG", "AMZN", "META"],
+                "prediction_value": [0.7, 0.3, -0.2, 0.5, -0.1],
+                "y_true": [0.02, -0.01, -0.03, 0.01, 0.005],
+            }
+        )
+        sample_backtest_profile.result.to_signals_df = lambda: pl.DataFrame(
+            {
+                "timestamp": [datetime(2024, 1, 1, 9, 30)],
+                "asset": ["AAPL"],
+                "signal_value": [1.0],
+                "selected": [True],
+            }
+        )
+        sample_backtest_profile.result.strategy_metadata = {
+            "strategy_type": "ml",
+            "mapping_name": "threshold",
+        }
+
+        html = generate_backtest_tearsheet(
+            profile=sample_backtest_profile,
+            template="full",
+        )
+
+        assert 'data-workspace="ml"' in html
+        assert "Signal Diagnostics" in html or "Prediction" in html
+
+    def test_generate_backtest_tearsheet_renders_dense_overview_without_details(
+        self,
+        sample_backtest_profile,
+    ):
+        """Test the integrated dashboard renders a visible overview table and no details blocks."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        html = generate_backtest_tearsheet(
+            profile=sample_backtest_profile,
+            benchmark_returns=np.array([0.01, -0.02, 0.005]),
+            benchmark_name="SPY",
+            template="full",
+        )
+
+        assert "metrics-table" in html
+        assert "Overview" in html
+        assert 'data-workspace="performance"' in html
+
+    def test_generate_backtest_tearsheet_with_benchmark_summary(
+        self,
+        sample_metrics,
+        sample_trades,
+        sample_returns,
+    ):
+        """Test benchmark-aware tearsheet shows benchmark table context."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        benchmark = sample_returns * 0.8
+        html = generate_backtest_tearsheet(
+            metrics=sample_metrics,
+            trades=sample_trades,
+            returns=sample_returns,
+            benchmark_returns=benchmark,
+            benchmark_name="SPY",
+            template="full",
+        )
+
+        assert "SPY" in html
+        # key_metrics_table disabled — benchmark context no longer in main table
+        assert "Assessment" not in html
+        assert "Better" not in html
+        assert "Worse" not in html
+
+    def test_generate_backtest_tearsheet_uses_structured_report_metadata(
+        self,
+        sample_metrics,
+        sample_trades,
+        sample_returns,
+    ):
+        """Test report metadata populates the visible shell and benchmark label."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        html = generate_backtest_tearsheet(
+            metrics=sample_metrics,
+            trades=sample_trades,
+            returns=sample_returns,
+            benchmark_returns=sample_returns * 0.8,
+            report_metadata=BacktestReportMetadata(
+                strategy_name="Statistical Arbitrage",
+                benchmark_name="SPY",
+            ),
+            template="full",
+        )
+
+        assert "Statistical Arbitrage" in html
+        assert "SPY" in html
+
+    def test_generate_backtest_tearsheet_allows_date_only_masthead(
+        self,
+        sample_metrics,
+        sample_trades,
+        sample_returns,
+    ):
+        """Test visible masthead can omit the title when metadata is absent."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        html = generate_backtest_tearsheet(
+            metrics=sample_metrics,
+            trades=sample_trades,
+            returns=sample_returns,
+            title=None,
+            subtitle=None,
+            template="full",
+        )
+
+        assert '<h1 class="report-title"></h1>' in html
+        assert 'report-meta-label">Report Date' in html
+
+    def test_portfolio_sections_use_profile_daily_dates_for_intraday_equity(self):
+        """Test portfolio plots inherit real daily dates from an intraday profile."""
+        from datetime import UTC, datetime, timedelta
+
+        from ml4t.diagnostic.integration import analyze_backtest_result
+        from ml4t.diagnostic.visualization.backtest.tearsheet import _create_section_figure
+
+        base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
+        result = BacktestResult(
+            trades=[],
+            fills=[],
+            portfolio_state=[],
+            equity_curve=[
+                (base, 100_000.0),
+                (base + timedelta(hours=8), 101_000.0),
+                (base + timedelta(hours=16), 102_500.0),
+                (base + timedelta(days=1), 101_500.0),
+                (base + timedelta(days=1, hours=8), 103_000.0),
+                (base + timedelta(days=1, hours=16), 104_500.0),
+            ],
+            metrics={},
+        )
+        profile = analyze_backtest_result(result, calendar="crypto")
+        returns = result.to_daily_returns(calendar="crypto")
+
+        equity_fig = _create_section_figure(
+            "equity_curve",
+            profile=profile,
+            returns=returns,
+        )
+        drawdown_fig = _create_section_figure(
+            "drawdowns",
+            profile=profile,
+            returns=returns,
+        )
+
+        assert equity_fig is not None
+        assert drawdown_fig is not None
+        assert str(equity_fig.data[0].x[0]).startswith("2024-01-01")
+        assert str(drawdown_fig.data[0].x[0]).startswith("2024-01-01")
+
 
 # =============================================================================
 # Template System Tests
@@ -522,6 +885,7 @@ class TestTemplateSystem:
         first_section = sections[0]
         assert hasattr(first_section, "name")
         assert hasattr(first_section, "enabled")
+        assert hasattr(first_section, "band")
 
     def test_template_priority_ordering(self):
         """Test templates have different section priorities."""
@@ -766,7 +1130,7 @@ class TestTailRisk:
         )
 
         assert isinstance(html, str)
-        assert "Tail Risk" in html
+        assert "Validation" in html or "Confidence" in html
 
 
 # =============================================================================
@@ -931,6 +1295,37 @@ class TestShapPatterns:
         html = ts.generate()
         assert isinstance(html, str)
         assert "SHAP Error Patterns" in html
+        assert "report-section" in html
+
+    def test_backtest_tearsheet_builder_accepts_profile(self, sample_backtest_profile):
+        """Test BacktestTearsheet can be hydrated from BacktestProfile."""
+        from ml4t.diagnostic.visualization.backtest import BacktestTearsheet
+
+        html = BacktestTearsheet(template="full").add_profile(sample_backtest_profile).generate()
+
+        assert isinstance(html, str)
+        assert "Attribution" in html
+
+    def test_backtest_tearsheet_builder_adds_benchmark_context(
+        self,
+        sample_metrics,
+        sample_trades,
+        sample_returns,
+    ):
+        """Test builder benchmark input reaches the report shell."""
+        from ml4t.diagnostic.visualization.backtest import BacktestTearsheet
+
+        html = (
+            BacktestTearsheet(template="full")
+            .add_metrics(sample_metrics)
+            .add_trades(sample_trades)
+            .add_returns(sample_returns)
+            .add_benchmark(sample_returns * 0.7, name="SPY")
+            .generate()
+        )
+
+        assert "SPY" in html
+        assert "Assessment" not in html
 
     def test_shap_errors_none_graceful(self, sample_returns):
         """Test that shap_errors section returns None when no shap_result."""

@@ -1,10 +1,12 @@
 # ml4t-diagnostic
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/ml4t-diagnostic)](https://pypi.org/project/ml4t-diagnostic/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Statistical validation and diagnostics for quantitative trading strategies: signal analysis, backtest evaluation, and overfitting detection.
+
+Documentation: https://ml4trading.io/docs/diagnostic/
 
 ## Part of the ML4T Library Ecosystem
 
@@ -23,7 +25,7 @@ Evaluating whether a signal or strategy has genuine predictive power requires st
 - Combinatorial purged cross-validation (CPCV) with calendar-aware splitting
 - Feature importance analysis (MDI, PFI, MDA, SHAP) with consensus ranking
 - Trade-level diagnostics with SHAP-based error pattern discovery
-- Backtest tear sheets: 4 templates, 22 sections, PDF/HTML export
+- Backtest reporting: `BacktestProfile`, report metadata, and template-based HTML tearsheets
 - Portfolio analysis: 16 performance metrics (Sharpe, Sortino, Calmar, VaR, CVaR, ...)
 - Systematic feature selection with IC, importance, correlation, and drift filtering
 - 65+ Plotly visualizations with 4 themes (default, dark, print, presentation)
@@ -43,6 +45,8 @@ Optional dependencies:
 ```bash
 pip install ml4t-diagnostic[ml]   # SHAP, importance analysis
 pip install ml4t-diagnostic[viz]  # Plotly visualizations
+pip install ml4t-diagnostic[backtest]  # ml4t-backtest bridge
+pip install ml4t-diagnostic[dashboard]  # Streamlit dashboard
 pip install ml4t-diagnostic[all]  # Everything
 ```
 
@@ -77,6 +81,26 @@ html = generate_backtest_tearsheet(
     theme="default",          # or "dark", "print", "presentation"
     output_path="report.html",
     n_trials=100,             # for DSR multiple-testing correction
+)
+```
+
+### Backtest Reporting From `ml4t-backtest`
+
+```python
+from ml4t.diagnostic.integration import (
+    BacktestReportMetadata,
+    generate_tearsheet_from_result,
+)
+
+html = generate_tearsheet_from_result(
+    result=backtest_result,
+    template="risk_manager",
+    report_metadata=BacktestReportMetadata(
+        strategy_name="ETF Momentum",
+        benchmark_name="SPY",
+        evaluation_window="2018-01-01 to 2025-12-31",
+    ),
+    output_path="backtest_result_report.html",
 )
 ```
 
@@ -160,24 +184,30 @@ fig.show()
 
 ## Backtest Tear Sheets
 
-Four templates covering different analysis needs:
+The current tearsheet pipeline supports direct rendering from normalized surfaces,
+`BacktestResult`, or artifact directories.
+
+Four presets covering different analysis needs:
 
 | Template | Focus | Sections |
 |----------|-------|----------|
-| `quant_trader` | Trade-level analysis | MFE/MAE, exit optimization, trade waterfall |
-| `hedge_fund` | Risk-adjusted returns | Cost attribution, drawdowns, monthly heatmap |
-| `risk_manager` | Statistical validity | DSR gauge, confidence intervals, RAS analysis |
-| `full` | Everything | All 22 sections |
+| `quant_trader` | Trade-level analysis | overview, trading, performance, validation, ML, factors |
+| `hedge_fund` | Performance and costs | overview, performance, trading, validation, factors, ML |
+| `risk_manager` | Statistical credibility | overview, validation, performance, trading, factors, ML |
+| `full` | Comprehensive presentation | overview, performance, trading, validation, factors, ML |
 
 Object-oriented API for custom tearsheets:
 
 ```python
 from ml4t.diagnostic.visualization.backtest import BacktestTearsheet
+from ml4t.diagnostic.integration import BacktestReportMetadata
 
 tearsheet = BacktestTearsheet(template="quant_trader", theme="dark")
-tearsheet.add_trades(trades_df)
-tearsheet.add_metrics(metrics_dict)
-tearsheet.enable_section("tail_risk")
+tearsheet.add_profile(profile)
+tearsheet.add_report_metadata(
+    BacktestReportMetadata(strategy_name="ETF Momentum", benchmark_name="SPY")
+)
+tearsheet.enable_section("shap_errors")
 html = tearsheet.generate(output_path="report.html")
 ```
 
@@ -260,6 +290,9 @@ aligned_features, shap_values = compute_fold_shap(
 
 ## Documentation
 
+- [Docs Site](https://ml4trading.io/docs/diagnostic/) — deployed documentation
+- [Backtest Tearsheets](docs/user-guide/backtest-tearsheets.md) — `BacktestResult`, artifact, and profile-driven reporting
+- [Book Guide](docs/book-guide/index.md) — chapter and case-study map
 - [Workflows](docs/user-guide/workflows.md) — end-to-end analysis patterns
 - [Validation Tiers](docs/user-guide/validation-tiers.md) — four-tier diagnostic framework
 - [Cross-Validation](docs/user-guide/cross-validation.md) — CPCV and walk-forward splitting
@@ -290,7 +323,7 @@ aligned_features, shap_values = compute_fold_shap(
 ## Development
 
 ```bash
-git clone https://github.com/ml4t/ml4t-diagnostic.git
+git clone https://github.com/ml4t/diagnostic.git
 cd ml4t-diagnostic
 uv sync
 uv run pytest tests/ -q -n auto

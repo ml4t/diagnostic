@@ -89,7 +89,7 @@ class TimestampAligner:
             and timestamps.dtype.tz is not None
         ):
             timestamps = pd.DatetimeIndex(timestamps).tz_localize(None)
-        elif isinstance(timestamps, (list, tuple)) and len(timestamps) > 0:
+        elif isinstance(timestamps, list | tuple) and len(timestamps) > 0:
             first = timestamps[0]
             if hasattr(first, "tzinfo") and first.tzinfo is not None:
                 timestamps = [t.replace(tzinfo=None) for t in timestamps]

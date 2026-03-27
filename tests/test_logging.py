@@ -5,10 +5,10 @@ import time
 import pytest
 
 from ml4t.diagnostic.logging import (
+    DiagnosticLogger,
     LogLevel,
     PerformanceMonitor,
     PerformanceTracker,
-    DiagnosticLogger,
     configure_logging,
     get_log_level,
     get_logger,

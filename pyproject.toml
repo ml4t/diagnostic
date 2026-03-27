@@ -56,18 +56,21 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Financial :: Investment",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Typing :: Typed",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 # Core dependencies
 dependencies = [
+    "ml4t-data>=0.1.0b7",
+    "ml4t-engineer>=0.1.0b1",
+
     # Data processing
     "polars>=0.20.0",
     "pandas>=2.0.0",
@@ -130,6 +133,11 @@ dashboard = [
     "streamlit>=1.28.0",
 ]
 
+# Backtest integration bridge
+backtest = [
+    "ml4t-backtest>=0.1.0b10",
+]
+
 # Experiment tracking integrations
 tracking = [
     "wandb>=0.16.0",
@@ -168,13 +176,14 @@ all = [
     "pypdf>=5.0.0",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
+    "ml4t-backtest>=0.1.0b10",
     "streamlit>=1.28.0",
     "wandb>=0.16.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/ml4t/diagnostic"
-Documentation = "https://ml4t-diagnostic.readthedocs.io"
+Homepage = "https://ml4trading.io/"
+Documentation = "https://ml4trading.io/docs/diagnostic/"
 Repository = "https://github.com/ml4t/diagnostic"
 Issues = "https://github.com/ml4t/diagnostic/issues"
 Changelog = "https://github.com/ml4t/diagnostic/blob/main/CHANGELOG.md"
@@ -197,6 +206,7 @@ dev = [
     "seaborn>=0.12.0",
     "kaleido>=0.2.0",
     "pypdf>=5.0.0",
+    "ml4t-backtest>=0.1.0b10",
     # ML backends needed for SHAP/importance test coverage
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
@@ -235,7 +245,7 @@ filterwarnings = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 fix = true
 exclude = ["examples", "scripts"]
 
@@ -296,7 +306,7 @@ extend-ignore-names = [
 # ty - High-performance type checker (Astral)
 # Run: uv run ty check src/
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.12"
 root = ["src"]
 
 [tool.ty.src]
@@ -347,3 +357,8 @@ suppress_health_check = ["too_slow", "data_too_large"]
 [tool.hypothesis.profiles.ci]
 max_examples = 50
 deadline = 10000
+
+[tool.uv.sources]
+ml4t-data = { path = "../ml4t-data", editable = true }
+ml4t-engineer = { path = "../ml4t-engineer", editable = true }
+ml4t-backtest = { path = "../ml4t-backtest", editable = true }

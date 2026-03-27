@@ -3,9 +3,9 @@
 
 site_name: ML4T Diagnostic
 site_description: Statistical validation and diagnostics for ML-based quantitative trading
-site_url: https://ml4t.io/docs/diagnostic/
-repo_url: https://github.com/stefan-jansen/ml4t-diagnostic
-repo_name: stefan-jansen/ml4t-diagnostic
+site_url: https://ml4trading.io/docs/diagnostic/
+repo_url: https://github.com/ml4t/diagnostic
+repo_name: ml4t/diagnostic
 
 # Theme configuration - Picasso Blue Period palette
 theme:
@@ -125,8 +125,14 @@ nav:
     - Feature Diagnostics: user-guide/feature-diagnostics.md
     - Feature Selection: user-guide/feature-selection.md
     - Workflows: user-guide/workflows.md
+    - Backtest Tearsheets: user-guide/backtest-tearsheets.md
     - Trade Analysis: user-guide/trade-analysis.md
     - Trade-SHAP Dashboard: DASHBOARD.md
+  - API Reference:
+    - api/index.md
+  - Book Guide:
+    - Overview: book-guide/index.md
+    - Case Studies: book-guide/case-studies.md
   - Methods:
     - Overview: methods/index.md
     - Deflated Sharpe Ratio: methods/deflated-sharpe-ratio.md
@@ -135,8 +141,6 @@ nav:
   - Reference:
     - Architecture: reference/architecture.md
     - Academic References: reference/references.md
-  - API Reference:
-    - api/index.md
 
 # Extra configuration
 extra:

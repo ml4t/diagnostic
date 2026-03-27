@@ -108,5 +108,7 @@ config = DiagnosticConfig.for_production()
 ## Next Steps
 
 - [Cross-Validation Guide](../user-guide/cross-validation.md) - CPCV and walk-forward details
+- [Backtest Tearsheets](../user-guide/backtest-tearsheets.md) - Reporting from results and run artifacts
 - [Statistical Tests](../user-guide/statistical-tests.md) - DSR, RAS, FDR explained
-- [Examples](https://github.com/stefan-jansen/ml4t-diagnostic/tree/main/examples) - Jupyter notebooks
+- [Book Guide](../book-guide/index.md) - Exact chapter and case-study entry points
+- [Examples](https://github.com/ml4t/diagnostic/tree/main/examples) - Repository examples

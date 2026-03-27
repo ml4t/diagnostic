@@ -163,26 +163,23 @@ print(f"PBO: {result.pbo:.1%}")  # e.g., "32.5%"
 
 ---
 
-## Book Examples
+## See It In The Book
 
-These statistical tests are demonstrated across several book notebooks:
+These statistical tests appear repeatedly in the book:
 
-- **FDR (Benjamini-Hochberg)**: `07_defining_learning_task/code/07_multiple_testing.ipynb` —
-  full walkthrough of BH-FDR, Holm, and BY corrections with visual comparison.
+- **FDR, DSR, MinTRL, and PBO**:
+  `code/07_defining_learning_task/07_multiple_testing.py`
+- **HAC-adjusted IC in causal and robustness checks**:
+  `code/07_defining_learning_task/08_causal_sanity_checks.py`
+- **HAC-adjusted IC plus FDR in the case studies**:
+  `code/case_studies/*/05_evaluation.py`
+- **DSR on real backtest returns**:
+  `code/16_strategy_simulation/12_dsr_validation.py`
+- **Sharpe inference and RAS workflow**:
+  `code/16_strategy_simulation/11_sharpe_ratio_inference.py`,
+  `code/16_strategy_simulation/13_ras_protocol.py`
 
-- **DSR and MinTRL**: `07_defining_learning_task/code/07_multiple_testing.ipynb` —
-  Deflated Sharpe Ratio and Minimum Track Record Length with worked examples.
-
-- **PBO**: `07_defining_learning_task/code/07_multiple_testing.ipynb` —
-  Probability of Backtest Overfitting estimation using combinatorial paths.
-
-- **HAC-adjusted IC**: Every case study evaluation notebook
-  (`case_studies/*/code/05_evaluation.py`) uses `compute_ic_hac_stats()` for
-  overlap-corrected IC inference, followed by `benjamini_hochberg_fdr()` for
-  multiple testing across features.
-
-- **DSR on real backtest**: `16_backtesting/code/07_dsr_validation.ipynb` —
-  applies DSR to actual strategy returns from the backtesting engine.
+For the chapter-level map, see the [Book Guide](../book-guide/index.md).
 
 ## References
 

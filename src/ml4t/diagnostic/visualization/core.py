@@ -75,20 +75,31 @@ THEME_DEFAULT = {
     "name": "default",
     "description": "Clean, modern light theme for general use",
     "layout": {
-        "paper_bgcolor": "#FFFFFF",
-        "plot_bgcolor": _ML4T_COLORS["bg_light"],
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
         "font": {
             "family": "DM Sans, DejaVu Sans, sans-serif",
             "size": 12,
             "color": _ML4T_COLORS["neutral"],
         },
         "title_font": {
-            "size": 18,
+            "size": 16,
             "color": _ML4T_COLORS["neutral"],
             "family": "DM Sans, DejaVu Sans, sans-serif",
         },
-        "margin": {"l": 80, "r": 20, "t": 100, "b": 80},
-        "hovermode": "closest",
+        "margin": {"l": 60, "r": 20, "t": 40, "b": 40},
+        "hovermode": "x unified",
+        "showlegend": False,
+        "xaxis": {
+            "gridcolor": "rgba(0,0,0,0.06)",
+            "linecolor": "rgba(0,0,0,0.1)",
+            "zeroline": False,
+        },
+        "yaxis": {
+            "gridcolor": "rgba(0,0,0,0.06)",
+            "linecolor": "rgba(0,0,0,0.1)",
+            "zeroline": False,
+        },
         "hoverlabel": {
             "bgcolor": "white",
             "font_size": 13,

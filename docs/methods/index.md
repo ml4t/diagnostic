@@ -5,6 +5,11 @@ to address the specific challenges of evaluating ML-based trading strategies.
 Each method page explains the problem it solves, the mathematics behind it,
 and how to use it in practice.
 
+Use this section when you want the statistical rationale and assumptions behind a
+workflow. If you are looking for the fastest path to a working implementation,
+start with the [User Guide](../user-guide/cross-validation.md) and return here
+when you need method-level justification.
+
 ## Why These Methods Matter
 
 Standard evaluation metrics (Sharpe ratio, accuracy, R-squared) are misleading
@@ -63,8 +68,20 @@ Is your Sharpe ratio "too good to be true"?
     └── Validate with CPCV backtest paths
 ```
 
-## Further Reading
+## See It In The Book
 
-- [Academic References](../reference/references.md) -- full citation list with 10+ papers
-- [Statistical Tests Guide](../user-guide/statistical-tests.md) -- stationarity, normality, ARCH tests
-- [Four-Tier Validation](../user-guide/validation-tiers.md) -- how methods compose into validation tiers
+The book introduces these methods in the validation chapters and then reuses them
+throughout the case studies:
+
+- Ch06 for walk-forward validation and CPCV
+- Ch07 for HAC-adjusted IC, DSR, and related significance testing
+- Ch08-Ch09 for feature triage and robustness workflows
+
+Use the [Book Guide](../book-guide/index.md) for the notebook and case-study map.
+
+## Next Steps
+
+- [Cross-Validation](../user-guide/cross-validation.md) -- apply CPCV and walk-forward validation in practice
+- [Statistical Tests Guide](../user-guide/statistical-tests.md) -- see how these methods fit a broader testing workflow
+- [Four-Tier Validation](../user-guide/validation-tiers.md) -- place each method inside the full validation stack
+- [Academic References](../reference/references.md) -- review the underlying papers and citations
