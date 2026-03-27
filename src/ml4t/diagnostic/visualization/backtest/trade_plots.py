@@ -337,37 +337,31 @@ def plot_mfe_mae_scatter(
                 opacity=0.7,
             )
 
-    # Add edge ratio annotation
+    # Add edge ratio and exit efficiency annotation
     if show_edge_ratio:
         edge_ratio = np.mean(mfe) / np.mean(mae) if np.mean(mae) > 0 else np.inf
-        # Exit efficiency: fraction of MFE captured as realised PnL
-        # Only meaningful when both are in the same units
+        # Exit efficiency = realised_return / mfe (both as fractions or both as dollars)
         if is_dollar:
-            # Both pnl and mfe in dollars
-            positive_mask = (pnl > 0) & (mfe > 0)
-            efficiency = (
-                np.mean(pnl[positive_mask] / mfe[positive_mask])
-                if positive_mask.sum() > 0 else 0
-            )
-            eff_text = f"{efficiency:.1%}"
-        elif "pnl_pct" in trades_df.columns:
-            # Use pnl_pct (fraction) / mfe (fraction) for comparable units
-            pnl_frac = trades_df["pnl_pct"].to_numpy() / 100
-            positive_mask = (pnl_frac > 0) & (mfe > 0)
-            efficiency = (
-                np.mean(pnl_frac[positive_mask] / mfe[positive_mask])
-                if positive_mask.sum() > 0 else 0
-            )
-            eff_text = f"{efficiency:.1%}"
+            ret_arr = pnl
         else:
-            eff_text = "—"
+            # MFE is fractional → use fractional PnL for same units
+            ret_arr = (
+                trades_df["pnl_pct"].to_numpy() / 100
+                if "pnl_pct" in trades_df.columns
+                else (trades_df["exit_price"].to_numpy() / trades_df["entry_price"].to_numpy() - 1)
+            )
+        positive_mask = (ret_arr > 0) & (mfe > 0)
+        efficiency = (
+            np.mean(ret_arr[positive_mask] / mfe[positive_mask])
+            if positive_mask.sum() > 0 else 0.0
+        )
 
         fig.add_annotation(
             x=0.02,
             y=0.98,
             xref="paper",
             yref="paper",
-            text=f"<b>Edge Ratio:</b> {edge_ratio:.2f}<br><b>Exit Efficiency:</b> {eff_text}",
+            text=f"<b>Edge Ratio:</b> {edge_ratio:.2f}<br><b>Exit Efficiency:</b> {efficiency:.1%}",
             showarrow=False,
             font={"size": 12},
             align="left",
