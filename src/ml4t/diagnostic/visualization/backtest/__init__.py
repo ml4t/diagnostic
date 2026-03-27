@@ -25,6 +25,7 @@ from .executive_summary import (
     create_metric_card,
     get_traffic_light_color,
 )
+from .export import EXPORT_BUNDLES, export_workspaces
 from .html_tables import (
     create_cost_summary_line_html,
     create_credibility_box_html,
@@ -121,6 +122,8 @@ __all__ = [
     "plot_shap_worst_trades",
     # Unified Tearsheet (Phase 5)
     "generate_backtest_tearsheet",
+    "export_workspaces",
+    "EXPORT_BUNDLES",
     "BacktestTearsheet",
     "get_template",
     "TearsheetTemplate",
