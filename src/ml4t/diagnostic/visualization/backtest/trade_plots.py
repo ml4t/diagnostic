@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
@@ -29,7 +30,7 @@ from ml4t.diagnostic.visualization.core import (
 )
 
 if TYPE_CHECKING:
-    import polars as pl
+    pass
 
 
 # =============================================================================
@@ -1236,4 +1237,66 @@ def plot_consecutive_analysis(
     fig.update_yaxes(title_text="Frequency", row=1, col=1)
     fig.update_yaxes(title_text="Frequency", row=1, col=2)
 
+    return fig
+
+
+def plot_execution_quality(
+    trades: pl.DataFrame,
+    *,
+    theme: Literal["default", "dark", "print", "presentation"] = "default",
+    height: int = 320,
+) -> go.Figure | None:
+    """Plot implementation shortfall distribution across trades.
+
+    Shows a histogram of per-trade cost_drag (total implementation cost as a
+    fraction of notional) with median, mean, and 95th-percentile annotations.
+
+    Returns None if ``cost_drag`` column is missing or fewer than 10 trades
+    have non-null values.
+    """
+    theme = validate_theme(theme)
+    if "cost_drag" not in trades.columns:
+        return None
+    valid = trades.filter(pl.col("cost_drag").is_not_null())
+    if valid.height < 10:
+        return None
+
+    drag = valid["cost_drag"].to_numpy()
+    median_drag = float(np.median(drag))
+    mean_drag = float(np.mean(drag))
+
+    theme_config = get_theme_config(theme)
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=drag,
+        nbinsx=min(50, max(15, int(np.sqrt(len(drag))))),
+        marker_color=theme_config["colorway"][0],
+        opacity=0.8,
+        name="Trades",
+        hovertemplate="Cost Drag: %{x:.4f}<br>Count: %{y}<extra></extra>",
+    ))
+
+    # Median line
+    fig.add_vline(
+        x=median_drag, line_dash="dash", line_color=_ML4T_COLORS.get("amber", "#f59e0b"),
+        annotation_text=f"Median: {median_drag:.2%}",
+        annotation_position="right",
+        annotation={"font": {"size": 10}},
+    )
+    # Mean line
+    fig.add_vline(
+        x=mean_drag, line_dash="dot", line_color=_ML4T_COLORS.get("copper", "#c87533"),
+        annotation_text=f"Mean: {mean_drag:.2%}",
+        annotation_position="right",
+        annotation={"font": {"size": 10}, "yshift": -20},
+    )
+
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title="Implementation Shortfall Distribution",
+        xaxis={"title": "Cost Drag (fraction of notional)", "tickformat": ".2%"},
+        yaxis={"title": "Number of Trades"},
+        height=height,
+        showlegend=False,
+    )
     return fig

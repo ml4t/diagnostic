@@ -265,6 +265,68 @@ def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) 
     return fig
 
 
+def plot_rebalance_timeline(
+    profile: BacktestProfile, theme: str | None = None,
+) -> go.Figure | None:
+    """Plot rebalance events as a bar timeline with notional and cost."""
+    theme = validate_theme(theme)
+    activity = profile.activity
+    rebalance_summary = activity.get("rebalance_summary")
+    if rebalance_summary is None or rebalance_summary.height < 2:
+        return None
+
+    timestamps = rebalance_summary["timestamp"].to_list()
+    notional = rebalance_summary["filled_notional"].to_list()
+    symbols = rebalance_summary["symbols_touched"].to_list()
+    costs = rebalance_summary["implementation_cost"].to_list()
+
+    theme_config = get_theme_config(theme)
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=timestamps,
+        y=notional,
+        name="Filled Notional",
+        marker_color=COLORS["blue"],
+        text=[f"{s} sym" for s in symbols],
+        textposition="outside",
+        textfont={"size": 8},
+        hovertemplate=(
+            "Date: %{x}<br>Notional: $%{y:,.0f}<br>"
+            "Cost: $%{customdata:,.0f}<extra></extra>"
+        ),
+        customdata=costs,
+    ))
+
+    # Cost overlay as markers if any non-zero costs
+    if any(c > 0 for c in costs):
+        fig.add_trace(go.Scatter(
+            x=timestamps,
+            y=costs,
+            name="Implementation Cost",
+            mode="markers",
+            marker={"color": COLORS["negative"], "size": 6, "symbol": "diamond"},
+            yaxis="y2",
+            hovertemplate="Cost: $%{y:,.0f}<extra></extra>",
+        ))
+
+    fig.update_layout(theme_config["layout"])
+    fig.update_layout(
+        title={"text": "Rebalance Events", "font": {"size": 16}},
+        height=320,
+        yaxis={"title": "Filled Notional ($)", "tickformat": "$,.0f"},
+        yaxis2={
+            "title": "Cost ($)",
+            "overlaying": "y",
+            "side": "right",
+            "tickformat": "$,.0f",
+            "showgrid": False,
+        } if any(c > 0 for c in costs) else {},
+        bargap=0.3,
+    )
+    return fig
+
+
 def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None) -> go.Figure:
     """Plot symbol contribution and burden diagnostics."""
     theme = validate_theme(theme)

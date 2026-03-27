@@ -351,7 +351,11 @@ def compute_activity_metrics(
                 ]
             )
         )
-        avg_turnover = float(turnover_timeline["turnover"].mean())
+        # Average turnover on rebalance days only (not diluted by non-trading days)
+        rebalance_days = turnover_timeline.filter(pl.col("filled_notional") > 0)
+        avg_turnover = (
+            float(rebalance_days["turnover"].mean()) if rebalance_days.height > 0 else None
+        )
         max_turnover = float(turnover_timeline["turnover"].max())
 
     metrics = {

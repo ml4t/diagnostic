@@ -199,8 +199,10 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     # Trading
     "activity_strip": "trading",
     "occupancy_overview": "trading",
+    "rebalance_timeline": "trading",
     "cost_waterfall": "trading",
     "cost_sensitivity": "trading",
+    "execution_quality": "trading",
     "attribution_overview": "trading",
     "mfe_mae": "trading",
     "duration": "trading",
@@ -250,8 +252,10 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     "trading": (
         "activity_strip",
         "occupancy_overview",      # exposure timeline
+        "rebalance_timeline",      # rebalance events bar chart
         "cost_waterfall",          # paired with cost_sensitivity
         "cost_sensitivity",
+        "execution_quality",       # per-trade implementation shortfall
         "attribution_overview",
         "mfe_mae",                 # paired with duration
         "duration",
@@ -359,6 +363,16 @@ _SECTION_FOOTNOTES: dict[str, str] = {
     "stock_attribution": (
         "<strong>Reading:</strong> Concentration risk: if top 3 symbols account for most P&amp;L, "
         "the strategy may be a few lucky bets rather than a diversified edge."
+    ),
+    "rebalance_timeline": (
+        "<strong>Reading:</strong> Each bar is one rebalance event. "
+        "Taller bars indicate more notional traded. Frequent small rebalances "
+        "suggest a responsive strategy; infrequent large ones suggest periodic rebalancing."
+    ),
+    "execution_quality": (
+        "<strong>Reading:</strong> Implementation shortfall measures total execution cost "
+        "as a fraction of trade notional. Values near zero indicate efficient execution. "
+        "A long right tail suggests occasional high-impact trades."
     ),
 }
 
@@ -1537,6 +1551,24 @@ def _render_occupancy_overview(ctx: _SectionContext) -> go.Figure | None:
     return _build_position_count_from_trades(ctx)
 
 
+def _render_rebalance_timeline(ctx: _SectionContext) -> go.Figure | None:
+    if ctx.profile is None:
+        return None
+    from .profile_sections import plot_rebalance_timeline
+
+    return plot_rebalance_timeline(ctx.profile, theme=ctx.theme)
+
+
+def _render_execution_quality(ctx: _SectionContext) -> go.Figure | None:
+    if ctx.trades is None or ctx.trades.is_empty():
+        return None
+    if "cost_drag" not in ctx.trades.columns:
+        return None
+    from .trade_plots import plot_execution_quality
+
+    return plot_execution_quality(ctx.trades, theme=ctx.theme)
+
+
 def _render_attribution_overview(ctx: _SectionContext) -> go.Figure | None:
     if ctx.profile is None:
         return None
@@ -2235,8 +2267,10 @@ _SECTION_REGISTRY: dict[str, Any] = {
     # Trading
     "activity_strip": _render_activity_strip,
     "occupancy_overview": _render_occupancy_overview,
+    "rebalance_timeline": _render_rebalance_timeline,
     "cost_waterfall": _render_cost_waterfall,
     "cost_sensitivity": _render_cost_sensitivity,
+    "execution_quality": _render_execution_quality,
     "attribution_overview": _render_attribution_overview,
     "mfe_mae": _render_mfe_mae,
     "duration": _render_duration,
