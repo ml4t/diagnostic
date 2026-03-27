@@ -162,9 +162,10 @@ The reporting work committed in the latest tearsheet pass added or strengthened:
 
 - an explicit `BacktestProfile` bridge for lazy analytics families
 - structured `BacktestReportMetadata`
-- an integrated overview, performance, trading, validation, ML, and factor layout
+- six-tab layout: Overview, Performance, Trading, Validation, ML (conditional), Factors (conditional)
 - credibility-oriented reporting with DSR, PBO, MinTRL, and confidence intervals
-- ML translation views such as prediction/trade alignment and calibration-oriented plots
+- ML tab with IC time series, decile returns, prediction-trade alignment, and signal utilization
+- factor tab with exposure bars, regression statistics, attribution waterfall, and risk decomposition
 - artifact-driven tearsheet generation for case-study workflows
 
 ## Related APIs
