@@ -203,9 +203,24 @@ def profile_from_run_artifacts(
             start=active_start,
         )
 
-    equity_curve = _equity_curve_from_daily_returns(daily_returns_df, spec)
-    portfolio_state = _portfolio_state_from_weights(weights_df, equity_curve)
-    fills = _fills_from_weights(weights_df, equity_curve)
+    # Prefer real artifacts when available; fall back to reconstruction
+    equity_path = artifact_dir / "equity.parquet"
+    if equity_path.exists():
+        equity_curve = _equity_curve_from_parquet(equity_path)
+    else:
+        equity_curve = _equity_curve_from_daily_returns(daily_returns_df, spec)
+
+    portfolio_state_path = artifact_dir / "portfolio_state.parquet"
+    if portfolio_state_path.exists():
+        portfolio_state = _portfolio_state_from_parquet(portfolio_state_path)
+    else:
+        portfolio_state = _portfolio_state_from_weights(weights_df, equity_curve)
+
+    fills_path = artifact_dir / "fills.parquet"
+    if fills_path.exists():
+        fills = _fills_from_parquet(fills_path)
+    else:
+        fills = _fills_from_weights(weights_df, equity_curve)
 
     result = BacktestResult(
         trades=_trades_from_dataframe(trades_df),
@@ -349,7 +364,14 @@ def _load_artifact_config(spec: dict[str, Any]) -> BacktestConfig | None:
         return None
     try:
         return BacktestConfig.from_dict(config_data)
-    except Exception:
+    except Exception as exc:
+        import warnings
+
+        warnings.warn(
+            f"BacktestConfig parsing failed: {exc}. "
+            "Initial capital, calendar, and trading hours will use defaults.",
+            stacklevel=2,
+        )
         return None
 
 
@@ -428,6 +450,70 @@ def _trades_from_dataframe(trades_df: pl.DataFrame) -> list[Trade]:
             )
         )
     return trades
+
+
+def _equity_curve_from_parquet(path: Path) -> list[tuple[datetime, float]]:
+    """Load equity curve from a real equity.parquet artifact."""
+    df = pl.read_parquet(path)
+    ts_col = "timestamp" if "timestamp" in df.columns else df.columns[0]
+    eq_col = "equity" if "equity" in df.columns else df.columns[1]
+    return [
+        (_to_datetime(row[ts_col]), float(row[eq_col]))
+        for row in df.select([ts_col, eq_col]).iter_rows(named=True)
+    ]
+
+
+def _portfolio_state_from_parquet(
+    path: Path,
+) -> list[tuple[datetime, float, float, float, float, int]]:
+    """Load portfolio state from a real portfolio_state.parquet artifact."""
+    df = pl.read_parquet(path)
+    rows: list[tuple[datetime, float, float, float, float, int]] = []
+    for row in df.iter_rows(named=True):
+        rows.append((
+            _to_datetime(row["timestamp"]),
+            float(row.get("equity", 0.0) or 0.0),
+            float(row.get("cash", 0.0) or 0.0),
+            float(row.get("gross_exposure", 0.0) or 0.0),
+            float(row.get("net_exposure", 0.0) or 0.0),
+            int(row.get("open_positions", 0) or 0),
+        ))
+    return rows
+
+
+def _fills_from_parquet(path: Path) -> list[Fill]:
+    """Load fills from a real fills.parquet artifact."""
+    df = pl.read_parquet(path)
+    fills: list[Fill] = []
+    for row in df.iter_rows(named=True):
+        side_val = row.get("side", "buy")
+        side = OrderSide.BUY if side_val == "buy" else OrderSide.SELL
+        fills.append(
+            Fill(
+                order_id=str(row.get("order_id", "")),
+                asset=str(row.get("asset", row.get("symbol", ""))),
+                side=side,
+                quantity=float(row.get("quantity", 0.0) or 0.0),
+                price=float(row.get("price", 0.0) or 0.0),
+                timestamp=_to_datetime(row["timestamp"]),
+                rebalance_id=row.get("rebalance_id"),
+                commission=float(row.get("commission", 0.0) or 0.0),
+                slippage=float(row.get("slippage", 0.0) or 0.0),
+                order_type=str(row.get("order_type", "") or ""),
+                limit_price=_optional_float(row.get("limit_price")),
+                stop_price=_optional_float(row.get("stop_price")),
+                price_source=str(row.get("price_source", "") or ""),
+                reference_price=_optional_float(row.get("reference_price")),
+                quote_mid_price=_optional_float(row.get("quote_mid_price")),
+                bid_price=_optional_float(row.get("bid_price")),
+                ask_price=_optional_float(row.get("ask_price")),
+                spread=_optional_float(row.get("spread")),
+                bid_size=_optional_float(row.get("bid_size")),
+                ask_size=_optional_float(row.get("ask_size")),
+                available_size=_optional_float(row.get("available_size")),
+            )
+        )
+    return fills
 
 
 def _equity_curve_from_daily_returns(

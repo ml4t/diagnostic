@@ -202,7 +202,14 @@ class BacktestProfile:
                             timestamp_col=timestamp_col,
                             asset_col=asset_col,
                         )
-                    except Exception:
+                    except Exception as exc:
+                        import warnings
+
+                        warnings.warn(
+                            f"Prediction enrichment failed: {exc}. "
+                            "ML trade-alignment charts will be unavailable.",
+                            stacklevel=2,
+                        )
                         self._prediction_trades_cache = pl.DataFrame()
         return self._prediction_trades_cache
 
