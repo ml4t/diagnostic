@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b7] - 2026-03-28
+
+### Added
+- **Methodology tab**: 7th tearsheet tab documenting computation methods, data sources,
+  and active fallbacks per section. Live ⚠/✓ badges show whether each data surface
+  comes from a real artifact or reconstruction.
+- **Data provenance footnotes**: Inline warnings on every section that uses reconstructed
+  data (e.g., "⚠ Data source: reconstructed from weights (no real execution data)")
+- **Real artifact preference**: `profile_from_run_artifacts()` now loads `fills.parquet`,
+  `equity.parquet`, and `portfolio_state.parquet` when present on disk
+
+### Fixed
+- **Silent fallback elimination**: All 12 silent `except Exception: return empty` patterns
+  now emit `warnings.warn()` with the actual error. Covers: prediction enrichment,
+  config parsing, surface coercion, SQLite registry lookup, metadata extraction.
+- **Turnover metric**: AVG TURNOVER was 0.00 due to dilution by non-trading days
+- Weights-as-signals semantic mismatch now tracked in `data_sources`
+
+### Changed
+- `BacktestProfile` gains `data_sources: dict[str, str]` field tracking provenance
+  of each data surface ("artifact" vs "reconstructed from ...")
+
 ## [0.1.0b6] - 2026-03-27
 
 ### Added
