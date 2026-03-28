@@ -71,6 +71,7 @@ class BacktestProfile:
     predictions_override: Any = None
     signals_override: Any = None
     strategy_metadata_override: dict[str, Any] | None = None
+    data_sources: dict[str, str] = field(default_factory=dict)
     _performance_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _edge_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _activity_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)

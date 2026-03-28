@@ -377,6 +377,48 @@ _SECTION_FOOTNOTES: dict[str, str] = {
 }
 
 
+# Map sections to the data sources they depend on.
+# If a source is reconstructed (not "artifact"), a provenance footnote is shown.
+_SECTION_DATA_DEPENDENCIES: dict[str, tuple[str, ...]] = {
+    # Fills-dependent (costs, turnover, rebalancing)
+    "activity_strip": ("fills",),
+    "rebalance_timeline": ("fills",),
+    "cost_waterfall": ("fills",),
+    "cost_sensitivity": ("fills",),
+    "execution_quality": ("fills",),
+    "attribution_overview": ("fills",),
+    # Portfolio-state-dependent (exposure, occupancy)
+    "occupancy_overview": ("portfolio_state",),
+    # Equity-dependent (performance, drawdown)
+    "overview_snapshot": ("equity",),
+    "equity_curve": ("equity",),
+    "drawdowns": ("equity",),
+    "drawdown_anatomy": ("equity",),
+}
+
+
+def _build_provenance_warning(
+    section_name: str, data_sources: dict[str, str],
+) -> str:
+    """Build an HTML warning if any dependency uses reconstructed data."""
+    deps = _SECTION_DATA_DEPENDENCIES.get(section_name)
+    if not deps or not data_sources:
+        return ""
+    warnings = []
+    for dep in deps:
+        source = data_sources.get(dep, "")
+        if source and source != "artifact":
+            warnings.append(source)
+    if not warnings:
+        return ""
+    msg = "; ".join(warnings)
+    return (
+        f'<div class="section-provenance" style="font-size:11px;color:#94a3b8;'
+        f'margin-top:4px;font-style:italic;">'
+        f'\u26a0 Data source: {msg}</div>'
+    )
+
+
 def _section_workspace_name(section_name: str) -> str:
     return _SECTION_WORKSPACE_MAP.get(section_name, "validation")
 
@@ -1143,9 +1185,13 @@ def _generate_section(
             f'<div class="section-footnote">{footnote}</div>' if footnote else ""
         )
 
+        # Data-provenance warnings for sections using reconstructed data
+        data_sources = profile.data_sources if profile is not None else {}
+        provenance_html = _build_provenance_warning(section_name, data_sources)
+
         return (
             f'<div class="report-section" data-section="{section_name}">'
-            f'{title_html}{body_html}{footnote_html}</div>'
+            f'{title_html}{body_html}{footnote_html}{provenance_html}</div>'
         )
 
     except Exception:
@@ -1230,6 +1276,7 @@ class _SectionContext:
         "preset", "profile", "trades", "returns", "equity_curve", "metrics",
         "predictions", "benchmark_returns", "benchmark_metrics", "benchmark_name",
         "n_trials", "shap_result", "factor_data", "factor_analysis", "theme",
+        "data_sources",
     )
 
     def __init__(
@@ -1250,6 +1297,7 @@ class _SectionContext:
         factor_data: FactorData | None,
         factor_analysis: Any | None,
         theme: str,
+        data_sources: dict[str, str] | None = None,
     ):
         self.preset = preset
         self.profile = profile
@@ -1266,6 +1314,7 @@ class _SectionContext:
         self.factor_data = factor_data
         self.factor_analysis = factor_analysis
         self.theme = theme
+        self.data_sources = data_sources or {}
 
 
 # --- Executive / Overview renderers ---
@@ -2341,6 +2390,7 @@ def _create_section_figure(
         factor_data=factor_data,
         factor_analysis=factor_analysis,
         theme=theme,
+        data_sources=profile.data_sources if profile is not None else None,
     )
     return renderer(ctx)
 

@@ -203,24 +203,33 @@ def profile_from_run_artifacts(
             start=active_start,
         )
 
-    # Prefer real artifacts when available; fall back to reconstruction
+    # Prefer real artifacts when available; fall back to reconstruction.
+    # Track provenance so the tearsheet can show data-source footnotes.
+    data_sources: dict[str, str] = {}
+
     equity_path = artifact_dir / "equity.parquet"
     if equity_path.exists():
         equity_curve = _equity_curve_from_parquet(equity_path)
+        data_sources["equity"] = "artifact"
     else:
         equity_curve = _equity_curve_from_daily_returns(daily_returns_df, spec)
+        data_sources["equity"] = "reconstructed from daily returns"
 
     portfolio_state_path = artifact_dir / "portfolio_state.parquet"
     if portfolio_state_path.exists():
         portfolio_state = _portfolio_state_from_parquet(portfolio_state_path)
+        data_sources["portfolio_state"] = "artifact"
     else:
         portfolio_state = _portfolio_state_from_weights(weights_df, equity_curve)
+        data_sources["portfolio_state"] = "reconstructed from weights"
 
     fills_path = artifact_dir / "fills.parquet"
     if fills_path.exists():
         fills = _fills_from_parquet(fills_path)
+        data_sources["fills"] = "artifact"
     else:
         fills = _fills_from_weights(weights_df, equity_curve)
+        data_sources["fills"] = "reconstructed from weights (no real execution data)"
 
     result = BacktestResult(
         trades=_trades_from_dataframe(trades_df),
@@ -260,6 +269,7 @@ def profile_from_run_artifacts(
         predictions_override=predictions_df,
         signals_override=signals_df,
         strategy_metadata_override=_build_strategy_metadata(spec, predictions_df, artifact_dir),
+        data_sources=data_sources,
     )
 
 
