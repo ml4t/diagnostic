@@ -419,6 +419,8 @@ class TearsheetTemplate:
                 TearsheetSection("factor_regression_table", "Regression Statistics", band="validation", priority=71, enabled=False),
                 TearsheetSection("factor_attribution", "Factor Attribution", band="validation", priority=72, enabled=False),
                 TearsheetSection("factor_risk", "Factor Risk Decomposition", band="validation", priority=73, enabled=False),
+                # === Methodology (always present) ===
+                TearsheetSection("methodology_notes", "Methodology & Data Sources", band="appendix", priority=99),
             ],
         )
 

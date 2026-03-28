@@ -177,6 +177,11 @@ _WORKSPACE_SPECS: dict[str, BacktestWorkspaceSpec] = {
         title="ML",
         description="Prediction translation and model-error diagnostics.",
     ),
+    "methodology": BacktestWorkspaceSpec(
+        id="methodology",
+        title="Methodology",
+        description="Data sources, computation methods, and fallback documentation.",
+    ),
 }
 
 _SECTION_WORKSPACE_MAP: dict[str, str] = {
@@ -228,6 +233,8 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     "quintile_returns": "ml",
     "prediction_trade_alignment": "ml",
     "shap_errors": "ml",
+    # Methodology
+    "methodology_notes": "methodology",
 }
 
 _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
@@ -283,6 +290,9 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
         "quintile_returns",
         "prediction_trade_alignment",
         "shap_errors",
+    ),
+    "methodology": (
+        "methodology_notes",
     ),
 }
 
@@ -2294,6 +2304,104 @@ def _render_factor_legend(ctx: _SectionContext) -> str | None:
     )
 
 
+# --- Methodology renderer ---
+
+_METHODOLOGY_SECTIONS: list[tuple[str, str, str, tuple[str, ...]]] = [
+    # (tab, title, description, data_source_keys)
+    ("Overview", "KPI Strip & Equity Curve",
+     "Sharpe, Sortino, Calmar, CAGR computed from daily returns via "
+     "PortfolioAnalysis. Equity curve from equity.parquet if available, "
+     "otherwise compounded from daily returns and initial capital from spec.json.",
+     ("equity",)),
+    ("Overview", "Metrics Sidebar",
+     "24 metrics across 6 groups (Returns, Risk-Adjusted, Benchmark, Drawdown, "
+     "Trading, Tail &amp; Shape). All derived from daily returns and trade records.",
+     ()),
+    ("Performance", "Rolling Metrics",
+     "21-day and 252-day rolling windows for Sharpe, Sortino, Calmar, and return. "
+     "Annualization uses the resolved calendar (default NYSE = 252 days/year).",
+     ("equity",)),
+    ("Trading", "Activity &amp; Rebalancing",
+     "Fill counts, turnover, and rebalance events from fills.parquet if available. "
+     "Otherwise reconstructed from portfolio weight changes (price=1.0, commission=0, "
+     "slippage=0). Turnover averaged over rebalance days only.",
+     ("fills",)),
+    ("Trading", "Cost Bridge &amp; Execution Quality",
+     "Gross PnL decomposed into commission and slippage costs. Implementation "
+     "shortfall computed as total_slippage_cost / trade_notional per trade. "
+     "When fills are reconstructed, all cost metrics show zero.",
+     ("fills",)),
+    ("Trading", "Exposure Timeline",
+     "Gross and net exposure fractions from portfolio_state.parquet if available. "
+     "Otherwise derived from weight sums per timestamp.",
+     ("portfolio_state",)),
+    ("Validation", "Deflated Sharpe Ratio",
+     "Bailey &amp; L\u00f3pez de Prado (2014). Adjusts observed Sharpe for multiple "
+     "testing. Requires n_trials parameter (number of strategy variations tested).",
+     ()),
+    ("Validation", "Sharpe Bootstrap",
+     "5,000 block-bootstrap replications (block size = 252) of the Sharpe ratio. "
+     "Reports P(SR\u22640) — probability the true Sharpe is zero or negative.",
+     ()),
+    ("ML", "IC &amp; Decile Returns",
+     "Information Coefficient: daily Spearman rank correlation between prediction "
+     "scores and realized forward returns. Decile returns: mean realized return "
+     "per prediction score decile (D1=lowest, D10=highest).",
+     ()),
+    ("ML", "Signal Utilization",
+     "Fraction of predictions that matched a trade entry (joined by timestamp + asset). "
+     "Requires prediction_enriched_trades from ml4t-backtest.",
+     ()),
+    ("Factors", "Factor Model",
+     "Fama-French 5-factor OLS regression with Newey-West HAC standard errors (3 lags). "
+     "Attribution: \u03b2 \u00d7 factor return (additive). Risk: variance decomposition "
+     "via \u03b2\u03a3\u03b2' per Paleologo (2025).",
+     ()),
+]
+
+
+def _render_methodology_notes(ctx: _SectionContext) -> str | None:
+    """Render structured methodology documentation with active data-source flags."""
+    data_sources = ctx.data_sources or {}
+
+    rows: list[str] = []
+    for tab, title, description, source_keys in _METHODOLOGY_SECTIONS:
+        # Build source status badges
+        badges = ""
+        for key in source_keys:
+            source = data_sources.get(key, "")
+            if source and source != "artifact":
+                badges += (
+                    f' <span style="color:#ef4444;font-size:10px;">'
+                    f'\u26a0 {source}</span>'
+                )
+            elif source == "artifact":
+                badges += (
+                    ' <span style="color:#10b981;font-size:10px;">'
+                    '\u2713 from artifact</span>'
+                )
+
+        rows.append(
+            f"<tr>"
+            f'<td style="font-weight:600;white-space:nowrap">{tab}</td>'
+            f"<td><strong>{title}</strong>{badges}<br>"
+            f'<span style="color:#64748b;font-size:12px">{description}</span></td>'
+            f"</tr>"
+        )
+
+    return (
+        '<div class="metrics-table-wrap">'
+        '<table class="metrics-table">'
+        "<thead><tr><th>Tab</th><th>Section &amp; Methodology</th></tr></thead>"
+        f'<tbody>{"".join(rows)}</tbody>'
+        "</table>"
+        '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">'
+        "Sections marked \u26a0 use reconstructed data. Re-run the backtest with "
+        "engine-path artifact saving to replace reconstructions with measured values."
+        "</div></div>"
+    )
+
+
 # --- Registry ---
 
 _SECTION_REGISTRY: dict[str, Any] = {
@@ -2345,6 +2453,8 @@ _SECTION_REGISTRY: dict[str, Any] = {
     "factor_regression_table": lambda ctx: _render_factor_section(ctx, "factor_regression_table"),
     "factor_attribution": lambda ctx: _render_factor_section(ctx, "factor_attribution"),
     "factor_risk": lambda ctx: _render_factor_section(ctx, "factor_risk"),
+    # Methodology
+    "methodology_notes": _render_methodology_notes,
 }
 
 

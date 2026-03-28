@@ -163,13 +163,25 @@ class BacktestProfile:
             try:
                 dumped = metadata.model_dump()
                 return dumped if isinstance(dumped, dict) else {}
-            except Exception:
+            except Exception as exc:
+                import warnings
+
+                warnings.warn(
+                    f"Strategy metadata model_dump() failed: {exc}",
+                    stacklevel=2,
+                )
                 return {}
         if hasattr(metadata, "to_dict"):
             try:
                 dumped = metadata.to_dict()
                 return dumped if isinstance(dumped, dict) else {}
-            except Exception:
+            except Exception as exc:
+                import warnings
+
+                warnings.warn(
+                    f"Strategy metadata to_dict() failed: {exc}",
+                    stacklevel=2,
+                )
                 return {}
         if hasattr(metadata, "__dict__"):
             return {
@@ -593,12 +605,26 @@ def _coerce_optional_surface(surface: Any) -> pl.DataFrame:
     if hasattr(surface, "to_pandas"):
         try:
             return pl.from_pandas(surface)  # pragma: no cover - optional pandas path
-        except Exception:
+        except Exception as exc:
+            import warnings
+
+            warnings.warn(
+                f"Failed to convert pandas surface to Polars: {exc}. "
+                "Surface will be treated as unavailable.",
+                stacklevel=2,
+            )
             return pl.DataFrame()
     if isinstance(surface, list):
         try:
             return pl.DataFrame(surface)
-        except Exception:
+        except Exception as exc:
+            import warnings
+
+            warnings.warn(
+                f"Failed to convert list surface to Polars DataFrame: {exc}. "
+                "Surface will be treated as unavailable.",
+                stacklevel=2,
+            )
             return pl.DataFrame()
     return pl.DataFrame()
 

@@ -260,6 +260,8 @@ def profile_from_run_artifacts(
             start=active_start,
         )
     signals_df = _load_weights_as_signal_surface_from_dataframe(weights_df)
+    if not signals_df.is_empty() and "signal_value" in signals_df.columns:
+        data_sources["signals"] = "derived from portfolio weights (not model signals)"
 
     return BacktestProfile(
         result=result,
@@ -420,7 +422,14 @@ def _resolve_prediction_artifact_path(backtest_dir: Path, spec: dict[str, Any]) 
                 candidate = run_log_dir / "predictions" / row[0] / "predictions.parquet"
                 if candidate.exists():
                     return candidate
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            import warnings
+
+            warnings.warn(
+                f"Registry lookup for prediction_hash failed: {exc}. "
+                "Predictions may be unavailable.",
+                stacklevel=2,
+            )
             return None
     return None
 

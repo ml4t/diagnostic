@@ -32,7 +32,7 @@ _PRESETS: dict[PresetName, BacktestDashboardPreset] = {
             "n_trades",
             "avg_turnover",
         ),
-        workspace_order=("overview", "trading", "performance", "validation", "ml", "factors"),
+        workspace_order=("overview", "trading", "performance", "validation", "ml", "factors", "methodology"),
     ),
     "hedge_fund": BacktestDashboardPreset(
         name="hedge_fund",
@@ -44,7 +44,7 @@ _PRESETS: dict[PresetName, BacktestDashboardPreset] = {
             "total_commission",
             "total_slippage",
         ),
-        workspace_order=("overview", "performance", "trading", "validation", "factors", "ml"),
+        workspace_order=("overview", "performance", "trading", "validation", "factors", "ml", "methodology"),
     ),
     "risk_manager": BacktestDashboardPreset(
         name="risk_manager",
@@ -56,7 +56,7 @@ _PRESETS: dict[PresetName, BacktestDashboardPreset] = {
             "min_trl",
             "profit_factor",
         ),
-        workspace_order=("overview", "validation", "performance", "trading", "factors", "ml"),
+        workspace_order=("overview", "validation", "performance", "trading", "factors", "ml", "methodology"),
     ),
     "full": BacktestDashboardPreset(
         name="full",
@@ -68,7 +68,7 @@ _PRESETS: dict[PresetName, BacktestDashboardPreset] = {
             "win_rate",
             "profit_factor",
         ),
-        workspace_order=("overview", "performance", "trading", "validation", "factors", "ml"),
+        workspace_order=("overview", "performance", "trading", "validation", "factors", "ml", "methodology"),
     ),
 }
 
