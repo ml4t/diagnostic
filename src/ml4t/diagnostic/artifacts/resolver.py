@@ -6,14 +6,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ml4t.data.artifacts import (
+from ml4t.engineer.artifacts import FeatureSpec, LabelSpec, PredictionSpec
+from ml4t.specs import (
     ArtifactKind,
     ArtifactSpec,
     MarketDataSpec,
     read_spec_payload,
     write_spec_payload,
 )
-from ml4t.engineer.artifacts import FeatureSpec, LabelSpec, PredictionSpec
 
 
 def spec_from_mapping(mapping: Mapping[str, Any]) -> ArtifactSpec:

@@ -23,7 +23,8 @@ from ml4t.diagnostic.integration.report_metadata import BacktestReportMetadata
 
 if TYPE_CHECKING:
     from ml4t.backtest import BacktestConfig, BacktestResult
-    from ml4t.backtest.types import Trade
+    from ml4t.backtest.analytics.annualization import get_annualization_factor
+    from ml4t.backtest.types import Fill, OrderSide, Trade
 else:
     try:
         from ml4t.backtest import BacktestConfig, BacktestResult
@@ -423,7 +424,7 @@ def _resolve_prediction_artifact_path(backtest_dir: Path, spec: dict[str, Any]) 
                     "SELECT prediction_hash FROM backtest_runs WHERE backtest_hash = ?",
                     (backtest_dir.name,),
                 ).fetchone()
-            if row and row[0]:
+            if row and row[0] and run_log_dir is not None:
                 candidate = run_log_dir / "predictions" / row[0] / "predictions.parquet"
                 if candidate.exists():
                     return candidate

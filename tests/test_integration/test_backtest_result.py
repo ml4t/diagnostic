@@ -11,7 +11,7 @@ import polars as pl
 import pytest
 from ml4t.backtest import BacktestConfig, BacktestResult
 from ml4t.backtest.types import Trade
-from ml4t.data.artifacts.market_data import FeedSpec
+from ml4t.specs import FeedSpec
 
 from ml4t.diagnostic.integration import (
     BacktestReportMetadata,
