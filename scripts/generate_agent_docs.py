@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate AGENT.md documentation from Python module introspection.
+"""Generate AGENTS.md documentation from Python module introspection.
 
 This script extracts function signatures and docstrings to create
 agent-friendly navigation documentation. Uses AST for static analysis
@@ -10,7 +10,7 @@ Usage:
 
 Example:
     python generate_agent_docs.py src/ml4t/diagnostic/splitters
-    python generate_agent_docs.py src/ml4t/diagnostic/evaluation/stats --output stats_docs.md
+    python generate_agent_docs.py src/ml4t/diagnostic/evaluation/stats --output AGENTS.md
 """
 
 from __future__ import annotations
@@ -307,7 +307,7 @@ def analyze_directory(dir_path: Path, recursive: bool = True, include_private: b
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate AGENT.md documentation")
+    parser = argparse.ArgumentParser(description="Generate AGENTS.md documentation")
     parser.add_argument("path", type=Path, help="Module or directory to analyze")
     parser.add_argument("--output", "-o", type=Path, help="Output file (default: stdout)")
     parser.add_argument(

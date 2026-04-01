@@ -102,34 +102,39 @@ except ImportError:
 
 
 def get_agent_docs() -> dict[str, str]:
-    """Get AGENT.md documentation for AI agent navigation.
+    """Get packaged agent-guide documentation for AI agent navigation.
 
-    Returns a dictionary mapping relative paths to AGENT.md content.
+    Returns a dictionary mapping relative paths to `AGENTS.md` content.
     Useful for AI agents to understand the library structure.
 
     Returns
     -------
     dict[str, str]
-        Mapping of relative path to AGENT.md content.
+        Mapping of relative path to agent-guide content.
 
     Example
     -------
     >>> docs = get_agent_docs()
     >>> print(docs.keys())
-    dict_keys(['AGENT.md', 'signal/AGENT.md', 'splitters/AGENT.md', ...])
+    dict_keys(['AGENTS.md', 'signal/AGENTS.md', 'splitters/AGENTS.md', ...])
     """
     from pathlib import Path
 
     package_dir = Path(__file__).parent
     agent_docs = {}
 
-    # Find all AGENT.md files
-    for agent_file in package_dir.rglob("AGENT.md"):
-        rel_path = agent_file.relative_to(package_dir)
-        try:
-            agent_docs[str(rel_path)] = agent_file.read_text()
-        except OSError:
-            continue
+    # Prefer canonical AGENTS.md files, but fall back to legacy singular filenames
+    # if an older build artifact is still present somewhere on disk.
+    for pattern in ("AGENTS.md", "AGENT.md"):
+        for agent_file in package_dir.rglob(pattern):
+            rel_path = agent_file.relative_to(package_dir)
+            rel_key = str(rel_path)
+            if rel_key in agent_docs:
+                continue
+            try:
+                agent_docs[rel_key] = agent_file.read_text()
+            except OSError:
+                continue
 
     return agent_docs
 

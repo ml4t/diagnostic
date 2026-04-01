@@ -11,7 +11,7 @@ path = "src/ml4t/diagnostic/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ml4t"]
 namespaces = true
-# Include AGENT.md files for AI agent navigation
+# Include AGENTS.md files for AI agent navigation
 artifacts = ["src/ml4t/**/*.md"]
 
 [tool.hatch.build.targets.sdist]
