@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b8] - 2026-04-01
+
+### Added
+- **Feed-contract-aware run artifact normalization**: `profile_from_run_artifacts()`
+  now normalizes prediction and signal surfaces using the feed's configured
+  timestamp and entity columns before downstream profile and tearsheet logic runs
+- **Regression coverage for custom feed columns**: integration tests now cover
+  artifact directories where surfaces use non-default column names such as
+  `ts_event` and `ticker`
+
+### Changed
+- **Artifact contract dependency**: artifact resolver and feed-related integration
+  tests now use `ml4t-specs`, and the package declares `ml4t-specs` as a core dependency
+- **Docs landing page rewrite**: the homepage now leads with the practical
+  validation questions practitioners need answered instead of feature positioning copy
+- **Agent guide standardization**: packaged navigation docs now use the canonical
+  `AGENTS.md` filename throughout the repository, with updated discovery in
+  `get_agent_docs()`
+
 ## [0.1.0b7] - 2026-03-28
 
 ### Added
