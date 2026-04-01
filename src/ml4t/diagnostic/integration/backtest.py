@@ -180,6 +180,8 @@ def profile_from_run_artifacts(
     weights_df = _load_weights_dataframe(_default_signals_artifact_path(artifact_dir))
     spec = _load_artifact_spec(artifact_dir)
     config = _load_artifact_config(spec)
+    feed_spec = config.resolved_feed_spec if config is not None else None
+    weights_df = _normalize_surface_from_feed_spec(weights_df, feed_spec)
 
     active_start = _infer_active_start_timestamp(
         daily_returns_df=daily_returns_df,
@@ -246,10 +248,13 @@ def profile_from_run_artifacts(
         else _resolve_prediction_artifact_path(artifact_dir, spec)
     )
     if signals_path is not None:
-        weights_df = _load_weights_dataframe(Path(signals_path))
+        weights_df = _normalize_surface_from_feed_spec(
+            _load_weights_dataframe(Path(signals_path)),
+            feed_spec,
+        )
 
     predictions_df = (
-        pl.read_parquet(resolved_predictions_path)
+        _normalize_surface_from_feed_spec(pl.read_parquet(resolved_predictions_path), feed_spec)
         if resolved_predictions_path is not None and resolved_predictions_path.exists()
         else None
     )
@@ -569,6 +574,50 @@ def _load_weights_as_signal_surface_from_dataframe(weights_df: pl.DataFrame) -> 
     if "selected" not in weights_df.columns and "signal_value" in weights_df.columns:
         weights_df = weights_df.with_columns((pl.col("signal_value").abs() > 1e-9).alias("selected"))
     return weights_df
+
+
+def _normalize_surface_from_feed_spec(
+    surface: pl.DataFrame,
+    feed_spec: Any | None,
+) -> pl.DataFrame:
+    if surface.is_empty() or feed_spec is None:
+        return surface
+
+    rename_map: dict[str, str] = {}
+    timestamp_col = getattr(feed_spec, "timestamp_col", None)
+    if (
+        isinstance(timestamp_col, str)
+        and timestamp_col
+        and timestamp_col != "timestamp"
+        and timestamp_col in surface.columns
+        and "timestamp" not in surface.columns
+    ):
+        rename_map[timestamp_col] = "timestamp"
+
+    entity_col = _feed_entity_col(feed_spec)
+    if (
+        entity_col is not None
+        and entity_col != "asset"
+        and entity_col in surface.columns
+        and "asset" not in surface.columns
+    ):
+        rename_map[entity_col] = "asset"
+
+    return surface.rename(rename_map) if rename_map else surface
+
+
+def _feed_entity_col(feed_spec: Any | None) -> str | None:
+    if feed_spec is None:
+        return None
+    entity_col = getattr(feed_spec, "entity_col", None)
+    if entity_col is None:
+        return None
+    if isinstance(entity_col, str):
+        return entity_col
+    entity_values = [str(value) for value in entity_col]
+    if len(entity_values) != 1:
+        return None
+    return entity_values[0]
 
 
 def _load_weights_as_signal_surface(weights_path: Path) -> pl.DataFrame:

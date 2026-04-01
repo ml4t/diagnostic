@@ -350,6 +350,87 @@ def test_profile_from_run_artifacts_resolves_predictions_and_weights(tmp_path):
     assert profile.activity["metrics"]["num_rebalance_events"] > 0
 
 
+def test_profile_from_run_artifacts_respects_feed_column_contract(tmp_path):
+    run_log = tmp_path / "run_log"
+    backtest_hash = "abc123def456"
+    prediction_hash = "pred987654321"
+    backtest_dir = run_log / "backtest" / backtest_hash
+    prediction_dir = run_log / "predictions" / prediction_hash
+    backtest_dir.mkdir(parents=True)
+    prediction_dir.mkdir(parents=True)
+
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "entry_time": [datetime(2024, 1, 1, 0, 0)],
+            "exit_time": [datetime(2024, 1, 2, 0, 0)],
+            "entry_price": [100.0],
+            "exit_price": [102.0],
+            "quantity": [10.0],
+            "direction": ["long"],
+            "pnl": [20.0],
+            "pnl_percent": [0.02],
+            "bars_held": [1],
+            "fees": [1.0],
+            "exit_slippage": [0.1],
+            "mfe": [0.03],
+            "mae": [-0.01],
+            "entry_slippage": [0.1],
+            "multiplier": [1.0],
+            "gross_pnl": [22.0],
+            "net_return": [0.019],
+            "total_slippage_cost": [2.0],
+            "cost_drag": [0.001],
+            "exit_reason": ["signal"],
+            "status": ["closed"],
+        }
+    ).write_parquet(backtest_dir / "trades.parquet")
+    pl.DataFrame(
+        {
+            "timestamp": [date(2024, 1, 1), date(2024, 1, 2)],
+            "daily_return": [0.01, -0.005],
+        }
+    ).write_parquet(backtest_dir / "daily_returns.parquet")
+    pl.DataFrame(
+        {
+            "ts_event": [datetime(2024, 1, 1, 0, 0)],
+            "ticker": ["AAPL"],
+            "weight": [0.2],
+        }
+    ).write_parquet(backtest_dir / "weights.parquet")
+    (backtest_dir / "spec.json").write_text(
+        json.dumps(
+            {
+                "backtest_config": {
+                    "cash": {"initial": 100000.0},
+                    "calendar": {"calendar": "NYSE"},
+                    "feed": {
+                        "timestamp_col": "ts_event",
+                        "entity_col": "ticker",
+                    },
+                    "metadata": {"prediction_hash": prediction_hash},
+                }
+            }
+        )
+    )
+    pl.DataFrame(
+        {
+            "ts_event": ["2024-01-01"],
+            "ticker": ["AAPL"],
+            "y_true": [0.02],
+            "y_score": [0.8],
+        }
+    ).write_parquet(prediction_dir / "predictions.parquet")
+
+    profile = profile_from_run_artifacts(backtest_dir)
+
+    assert profile.predictions_df["asset"].to_list() == ["AAPL"]
+    assert profile.signals_df["asset"].to_list() == ["AAPL"]
+    assert profile.signals_df["signal_value"].to_list() == [0.2]
+    assert "timestamp" in profile.predictions_df.columns
+    assert "timestamp" in profile.signals_df.columns
+
+
 def test_profile_from_run_artifacts_trims_pre_live_warmup_window(tmp_path):
     run_log = tmp_path / "run_log"
     backtest_hash = "abc123def456"
