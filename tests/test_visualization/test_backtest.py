@@ -720,6 +720,35 @@ class TestTearsheetGeneration:
         assert 'data-workspace="ml"' in html
         assert "Signal Diagnostics" in html or "Prediction" in html
 
+    def test_prediction_diagnostics_use_normalized_prediction_surface(
+        self,
+        sample_backtest_profile,
+    ):
+        """Prediction diagnostics should rely on normalized prediction_value surfaces."""
+        from datetime import datetime
+
+        from ml4t.diagnostic.visualization.backtest.ml_plots import (
+            plot_prediction_signal_diagnostics,
+        )
+
+        sample_backtest_profile.result.to_predictions_df = lambda: pl.DataFrame(
+            {
+                "timestamp": [datetime(2024, 1, 1, 9, 30)] * 5,
+                "symbol": ["AAPL", "MSFT", "GOOG", "AMZN", "META"],
+                "score": [0.7, 0.3, -0.2, 0.5, -0.1],
+                "y_true": [0.02, -0.01, -0.03, 0.01, 0.005],
+            }
+        )
+
+        fig = plot_prediction_signal_diagnostics(sample_backtest_profile)
+
+        assert fig is not None
+        assert sample_backtest_profile.predictions_df.columns[:3] == [
+            "timestamp",
+            "asset",
+            "prediction_value",
+        ]
+
     def test_generate_backtest_tearsheet_renders_dense_overview_without_details(
         self,
         sample_backtest_profile,

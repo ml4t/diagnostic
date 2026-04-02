@@ -144,6 +144,8 @@ def test_analyze_backtest_result_detects_prediction_surface(sample_result: Backt
 
     assert profile.has_predictions is True
     assert profile.predictions_df.height == 2
+    assert "prediction_value" in profile.predictions_df.columns
+    assert "score" not in profile.predictions_df.columns
     assert profile.ml["available"] is True
     assert profile.ml["metrics"]["n_prediction_assets"] == 2
     assert profile.availability.surfaces["predictions"].status.value == "available"
@@ -209,8 +211,10 @@ def test_analyze_backtest_result_normalizes_real_prediction_surface_schema(
     assert profile.has_predictions is True
     assert "asset" in profile.predictions_df.columns
     assert profile.predictions_df.schema["timestamp"] == pl.Datetime
+    assert "prediction_value" in profile.predictions_df.columns
+    assert "y_score" not in profile.predictions_df.columns
     assert profile.ml["metrics"]["trade_prediction_coverage"] == pytest.approx(1.0)
-    assert "entry_y_score" in profile.ml["metrics"]["entry_prediction_columns"]
+    assert "entry_prediction_value" in profile.ml["metrics"]["entry_prediction_columns"]
 
 
 def test_analyze_backtest_result_drawdown_contributors_use_peak_to_trough_window(

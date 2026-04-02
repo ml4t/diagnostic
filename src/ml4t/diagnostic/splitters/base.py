@@ -301,6 +301,7 @@ class BaseSplitter(ABC):
                 f"  # df now has '{session_col}' column automatically\n"
                 f"\n"
                 f"Option 2 - Using SessionAssigner directly:\n"
+                f"  # Install with: pip install 'ml4t-diagnostic[data]'\n"
                 f"  from ml4t.data.sessions import SessionAssigner\n"
                 f"  assigner = SessionAssigner.from_exchange('CME')\n"
                 f"  df_with_sessions = assigner.assign_sessions(df)\n"

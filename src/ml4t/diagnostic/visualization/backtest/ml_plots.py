@@ -27,12 +27,9 @@ def plot_prediction_signal_diagnostics(
     if predictions.is_empty():
         return None
 
-    date_col = _first_present_column(predictions, ("timestamp", "date", "session_date"))
-    asset_col = _first_present_column(predictions, ("asset",))
-    score_col = _first_present_column(
-        predictions,
-        ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
-    )
+    date_col = "timestamp" if "timestamp" in predictions.columns else None
+    asset_col = "asset" if "asset" in predictions.columns else None
+    score_col = "prediction_value" if "prediction_value" in predictions.columns else None
     outcome_col = _first_present_column(predictions, ("y_true", "actual", "target", "realized_return", "forward_return"))
     if date_col is None or asset_col is None or score_col is None or outcome_col is None:
         return None

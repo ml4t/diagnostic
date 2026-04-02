@@ -7,6 +7,7 @@ Integration with qdata
 ----------------------
 Session-aware splitting consumes `session_date` column from qdata library:
 
+    # Install with: pip install 'ml4t-diagnostic[data]'
     from ml4t.data.sessions import SessionAssigner
     assigner = SessionAssigner.from_exchange('CME')
     df_with_sessions = assigner.assign_sessions(df)

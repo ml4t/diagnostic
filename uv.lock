@@ -1492,9 +1492,9 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'all'", specifier = ">=0.24.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
-    { name = "ml4t-diagnostic", marker = "extra == 'all'", editable = "." },
-    { name = "ml4t-diagnostic", marker = "extra == 'dev'", editable = "." },
-    { name = "ml4t-specs", editable = "../ml4t-specs" },
+    { name = "ml4t-diagnostic", marker = "extra == 'all'", specifier = ">=0.1.0b4" },
+    { name = "ml4t-diagnostic", marker = "extra == 'dev'", specifier = ">=0.1.0b4" },
+    { name = "ml4t-specs", specifier = ">=0.1.0b0" },
     { name = "networkx", marker = "extra == 'advanced'", specifier = ">=3.0" },
     { name = "networkx", marker = "extra == 'all'", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=1.24.0" },
@@ -1532,7 +1532,7 @@ provides-extras = ["advanced", "all", "comparison", "dev", "docs", "viz"]
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis", specifier = ">=6.80.0" },
-    { name = "ml4t-diagnostic", editable = "." },
+    { name = "ml4t-diagnostic", specifier = ">=0.1.0b4" },
     { name = "pre-commit", specifier = ">=3.3.0" },
     { name = "pytest", specifier = ">=7.4.0" },
     { name = "pytest-benchmark", specifier = ">=4.0.0" },
@@ -1599,8 +1599,6 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'all'", specifier = ">=0.24.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
-    { name = "ml4t-docs-theme", marker = "extra == 'all'", editable = "../ml4t-docs-theme" },
-    { name = "ml4t-docs-theme", marker = "extra == 'docs'", editable = "../ml4t-docs-theme" },
     { name = "ml4t-specs", editable = "../ml4t-specs" },
     { name = "mypy", marker = "extra == 'all'", specifier = ">=1.5.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
@@ -1669,7 +1667,6 @@ dependencies = [
     { name = "arch" },
     { name = "jinja2" },
     { name = "joblib" },
-    { name = "ml4t-data" },
     { name = "ml4t-engineer" },
     { name = "ml4t-specs" },
     { name = "numba" },
@@ -1706,6 +1703,9 @@ backtest = [
 ]
 dashboard = [
     { name = "streamlit" },
+]
+data = [
+    { name = "ml4t-data" },
 ]
 dev = [
     { name = "hypothesis" },
@@ -1792,8 +1792,8 @@ requires-dist = [
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
     { name = "ml4t-backtest", marker = "extra == 'all'", editable = "../ml4t-backtest" },
     { name = "ml4t-backtest", marker = "extra == 'backtest'", editable = "../ml4t-backtest" },
-    { name = "ml4t-data", editable = "../ml4t-data" },
     { name = "ml4t-data", marker = "extra == 'all'", editable = "../ml4t-data" },
+    { name = "ml4t-data", marker = "extra == 'data'", editable = "../ml4t-data" },
     { name = "ml4t-data", marker = "extra == 'factors'", editable = "../ml4t-data" },
     { name = "ml4t-engineer", editable = "../ml4t-engineer" },
     { name = "ml4t-specs", editable = "../ml4t-specs" },
@@ -1831,7 +1831,7 @@ requires-dist = [
     { name = "xgboost", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["all", "backtest", "dashboard", "dev", "docs", "factors", "gpu", "ml", "tracking", "viz"]
+provides-extras = ["all", "backtest", "dashboard", "data", "dev", "docs", "factors", "gpu", "ml", "tracking", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1900,7 +1900,7 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'all'", specifier = ">=0.24.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
-    { name = "ml4t-specs", editable = "../ml4t-specs" },
+    { name = "ml4t-specs", specifier = ">=0.1.0b0" },
     { name = "numba", specifier = ">=0.57.0" },
     { name = "numpy", specifier = ">=1.24.0,<2.3" },
     { name = "pandas", specifier = ">=2.0.0" },

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -117,26 +118,32 @@ class BacktestProfile:
     def predictions_df(self) -> pl.DataFrame:
         """Return the optional prediction surface if the result exposes one."""
         if self.predictions_override is not None:
-            surface = _normalize_optional_surface(_coerce_optional_surface(self.predictions_override))
+            surface = _normalize_prediction_surface(
+                _normalize_optional_surface(_coerce_optional_surface(self.predictions_override))
+            )
             if not surface.is_empty():
                 return surface
         return _extract_optional_surface(
             self.result,
             method_names=("to_predictions_df", "to_predictions_dataframe"),
             attr_names=("predictions_df", "predictions"),
+            normalizer=_normalize_prediction_surface,
         )
 
     @property
     def signals_df(self) -> pl.DataFrame:
         """Return the optional mapped-signal surface if the result exposes one."""
         if self.signals_override is not None:
-            surface = _normalize_optional_surface(_coerce_optional_surface(self.signals_override))
+            surface = _normalize_signal_surface(
+                _normalize_optional_surface(_coerce_optional_surface(self.signals_override))
+            )
             if not surface.is_empty():
                 return surface
         return _extract_optional_surface(
             self.result,
             method_names=("to_signals_df", "to_signals_dataframe"),
             attr_names=("signals_df", "signals"),
+            normalizer=_normalize_signal_surface,
         )
 
     @property
@@ -581,16 +588,21 @@ def _extract_optional_surface(
     *,
     method_names: tuple[str, ...],
     attr_names: tuple[str, ...],
+    normalizer: Callable[[pl.DataFrame], pl.DataFrame] | None = None,
 ) -> pl.DataFrame:
     for method_name in method_names:
         surface_method = getattr(result, method_name, None)
         if callable(surface_method):
             surface = _normalize_optional_surface(_coerce_optional_surface(surface_method()))
+            if normalizer is not None:
+                surface = normalizer(surface)
             if not surface.is_empty():
                 return surface
 
     for attr_name in attr_names:
         surface = _normalize_optional_surface(_coerce_optional_surface(getattr(result, attr_name, None)))
+        if normalizer is not None:
+            surface = normalizer(surface)
         if not surface.is_empty():
             return surface
 
@@ -663,6 +675,38 @@ def _normalize_optional_surface(surface: pl.DataFrame) -> pl.DataFrame:
         surface = surface.rename({timestamp_col: "timestamp"})
 
     return surface
+
+
+def _normalize_prediction_surface(surface: pl.DataFrame) -> pl.DataFrame:
+    if surface.is_empty():
+        return surface
+    rename_map: dict[str, str] = {}
+    if "prediction_value" not in surface.columns:
+        if "prediction" in surface.columns:
+            rename_map["prediction"] = "prediction_value"
+        elif "score" in surface.columns:
+            rename_map["score"] = "prediction_value"
+        elif "y_score" in surface.columns:
+            rename_map["y_score"] = "prediction_value"
+        elif "y_pred" in surface.columns:
+            rename_map["y_pred"] = "prediction_value"
+        elif "ml_score" in surface.columns:
+            rename_map["ml_score"] = "prediction_value"
+        elif "probability" in surface.columns:
+            rename_map["probability"] = "prediction_value"
+    return surface.rename(rename_map) if rename_map else surface
+
+
+def _normalize_signal_surface(surface: pl.DataFrame) -> pl.DataFrame:
+    if surface.is_empty():
+        return surface
+    rename_map: dict[str, str] = {}
+    if "signal_value" not in surface.columns:
+        if "signal" in surface.columns:
+            rename_map["signal"] = "signal_value"
+        elif "weight" in surface.columns:
+            rename_map["weight"] = "signal_value"
+    return surface.rename(rename_map) if rename_map else surface
 
 
 def analyze_backtest_result(

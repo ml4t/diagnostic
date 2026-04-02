@@ -1815,14 +1815,12 @@ def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
                 from .ml_plots import _compute_daily_ic, _first_present_column
 
                 preds = adapter.predictions_df
-                score_col = _first_present_column(
-                    preds, ("prediction_value", "score", "prediction", "y_pred", "y_score"),
-                )
+                score_col = "prediction_value" if "prediction_value" in preds.columns else None
                 outcome_col = _first_present_column(
                     preds, ("y_true", "actual", "target", "realized_return", "forward_return"),
                 )
-                date_col = _first_present_column(preds, ("timestamp", "date", "session_date"))
-                asset_col = _first_present_column(preds, ("asset",))
+                date_col = "timestamp" if "timestamp" in preds.columns else None
+                asset_col = "asset" if "asset" in preds.columns else None
                 if score_col and outcome_col and date_col and asset_col:
                     frame = (
                         preds.select([date_col, asset_col, score_col, outcome_col])
@@ -2118,9 +2116,7 @@ def _build_prediction_vs_outcome_scatter(
     if preds.is_empty():
         return None
 
-    score_col = _first_present_column(
-        preds, ("prediction_value", "score", "prediction", "y_pred", "y_score"),
-    )
+    score_col = "prediction_value" if "prediction_value" in preds.columns else None
     outcome_col = _first_present_column(
         preds, ("y_true", "actual", "target", "realized_return", "forward_return"),
     )
