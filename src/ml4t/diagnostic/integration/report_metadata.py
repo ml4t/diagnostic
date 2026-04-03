@@ -17,6 +17,12 @@ class BacktestReportMetadata:
     benchmark_name: str | None = None
     evaluation_window: str | None = None
     run_id: str | None = None
+    library_version: str | None = None
+    calendar: str | None = None
+    execution_summary: str | None = None
+    cost_summary: str | None = None
+    data_summary: str | None = None
+    ml_summary: str | None = None
 
     def resolve_title(self) -> str:
         """Return the visible report title without inventing one."""
@@ -30,3 +36,13 @@ class BacktestReportMetadata:
         """Return the benchmark label for comparison surfaces."""
         value = (self.benchmark_name or "").strip()
         return value or fallback
+
+    def merged_with(self, fallback: BacktestReportMetadata | None) -> BacktestReportMetadata:
+        """Return metadata with missing fields filled from a fallback."""
+        if fallback is None:
+            return self
+        data = {}
+        for field_name in self.__dataclass_fields__:
+            value = getattr(self, field_name)
+            data[field_name] = value if value not in (None, "") else getattr(fallback, field_name)
+        return BacktestReportMetadata(**data)

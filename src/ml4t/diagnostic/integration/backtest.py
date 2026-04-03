@@ -41,6 +41,173 @@ def _resolve_calendar(result: BacktestResult, calendar: str | None) -> str | Non
     return calendar or (result.config.resolved_calendar if result.config else None)
 
 
+def _compact_rate(value: float | None) -> str | None:
+    if value is None:
+        return None
+    if abs(value) >= 0.01:
+        return f"{value:.2%}"
+    if abs(value) >= 0.0001:
+        return f"{value:.3%}"
+    return f"{value:.6f}"
+
+
+def _summarize_config_execution(result: BacktestResult) -> tuple[str | None, str | None]:
+    config = result.config
+    if config is None:
+        return None, None
+
+    account_summary = (
+        f"{config.get_effective_account_type()} account, {config.share_type.value} shares"
+    )
+    execution_summary = (
+        f"{config.execution_mode.value}/{config.execution_price.value}, "
+        f"{config.rebalance_mode.value} rebalance, {config.fill_ordering.value} fills"
+    )
+    if config.preset_name:
+        execution_summary = f"{config.preset_name}: {execution_summary}"
+
+    commission_summary = config.commission_type.value
+    commission_rate = None
+    if config.commission_type.value == "percentage":
+        commission_rate = _compact_rate(config.commission_rate)
+    elif config.commission_type.value == "per_share":
+        commission_rate = f"${config.commission_per_share:.4f}/share"
+    elif config.commission_type.value == "per_trade":
+        commission_rate = f"${config.commission_per_trade:.2f}/trade"
+    if commission_rate:
+        commission_summary = f"{commission_summary} {commission_rate}"
+
+    slippage_summary = config.slippage_type.value
+    slippage_rate = None
+    if config.slippage_type.value == "percentage":
+        slippage_rate = _compact_rate(config.slippage_rate)
+    elif config.slippage_type.value == "fixed":
+        slippage_rate = f"${config.slippage_fixed:.4f}/share"
+    if slippage_rate:
+        slippage_summary = f"{slippage_summary} {slippage_rate}"
+
+    return (
+        f"{account_summary}; {execution_summary}",
+        f"commission {commission_summary}; slippage {slippage_summary}",
+    )
+
+
+def _format_evaluation_window(result: BacktestResult) -> str | None:
+    if not result.equity_curve:
+        return None
+    start = result.equity_curve[0][0]
+    end = result.equity_curve[-1][0]
+    if start.date() == end.date():
+        return start.date().isoformat()
+    return f"{start.date().isoformat()} -> {end.date().isoformat()}"
+
+
+def _build_data_summary(profile: BacktestProfile) -> str | None:
+    surface_names = {
+        "trades": "trades",
+        "fills": "fills",
+        "equity": "equity",
+        "portfolio_state": "portfolio_state",
+        "predictions": "predictions",
+        "signals": "signals",
+    }
+    available = [
+        label
+        for key, label in surface_names.items()
+        if profile.availability.surfaces[key].status.value == "available"
+    ]
+    summary_parts: list[str] = []
+    if available:
+        summary_parts.append("surfaces: " + ", ".join(available))
+
+    execution_info = profile.availability.metrics["execution_audit"]
+    if execution_info.coverage is not None:
+        summary_parts.append(f"quote coverage {execution_info.coverage:.1%}")
+
+    reconstructed = [
+        f"{key}={source}"
+        for key, source in sorted(profile.data_sources.items())
+        if source and source != "artifact"
+    ]
+    if reconstructed:
+        summary_parts.append("reconstructed: " + "; ".join(reconstructed))
+
+    return " | ".join(summary_parts) if summary_parts else None
+
+
+def _build_ml_summary(profile: BacktestProfile) -> str | None:
+    ml = profile.ml
+    if not ml.get("available"):
+        return None
+    metrics = ml.get("metrics", {})
+    summary_parts: list[str] = []
+    if metrics.get("n_predictions"):
+        summary_parts.append(f"{int(metrics['n_predictions'])} predictions")
+    if metrics.get("n_signals"):
+        summary_parts.append(f"{int(metrics['n_signals'])} signals")
+    if "translation_ready" in metrics:
+        state = "ready" if metrics["translation_ready"] else "partial"
+        summary_parts.append(f"translation {state}")
+    if metrics.get("trade_prediction_coverage") is not None:
+        summary_parts.append(
+            f"trade coverage {float(metrics['trade_prediction_coverage']):.1%}"
+        )
+    return " | ".join(summary_parts) if summary_parts else None
+
+
+def _build_report_metadata_from_result(
+    result: BacktestResult,
+    profile: BacktestProfile,
+    benchmark_name: str,
+) -> BacktestReportMetadata:
+    strategy_metadata = profile.strategy_metadata
+    spec_dict: dict[str, Any] = {}
+    to_spec_dict = getattr(result, "to_spec_dict", None)
+    if callable(to_spec_dict):
+        try:
+            maybe_spec = to_spec_dict()
+            if isinstance(maybe_spec, dict):
+                spec_dict = maybe_spec
+        except Exception:
+            spec_dict = {}
+
+    execution_summary, cost_summary = _summarize_config_execution(result)
+    return BacktestReportMetadata(
+        strategy_name=(
+            str(strategy_metadata.get("strategy_name"))
+            if strategy_metadata.get("strategy_name")
+            else None
+        ),
+        strategy_id=(
+            str(strategy_metadata.get("strategy_id"))
+            if strategy_metadata.get("strategy_id")
+            else None
+        ),
+        universe=(
+            str(strategy_metadata.get("universe"))
+            if strategy_metadata.get("universe")
+            else None
+        ),
+        benchmark_name=benchmark_name,
+        evaluation_window=_format_evaluation_window(result),
+        run_id=(
+            str(result.config.metadata.get("run_id"))
+            if result.config is not None and result.config.metadata.get("run_id") is not None
+            else None
+        ),
+        library_version=(
+            str(spec_dict.get("library_version"))
+            if spec_dict.get("library_version") is not None
+            else None
+        ),
+        calendar=_resolve_calendar(result, None),
+        execution_summary=execution_summary,
+        cost_summary=cost_summary,
+        data_summary=_build_data_summary(profile),
+        ml_summary=_build_ml_summary(profile),
+    )
+
+
 def _extract_daily_frame(result: BacktestResult, calendar: str | None) -> pl.DataFrame:
     resolved_calendar = _resolve_calendar(result, calendar)
     session_aligned = result._auto_session_aligned(resolved_calendar)
@@ -298,6 +465,13 @@ def generate_tearsheet_from_result(
     from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
     profile = analyze_backtest_result(result, calendar=calendar, benchmark=benchmark)
+    effective_metadata = _build_report_metadata_from_result(
+        result,
+        profile,
+        benchmark_name,
+    )
+    if report_metadata is not None:
+        effective_metadata = report_metadata.merged_with(effective_metadata)
     trades_df = result.to_trades_dataframe()
     returns = result.to_daily_returns(calendar=calendar).to_numpy()
     tearsheet_metrics = _normalize_tearsheet_metrics(result, calendar=calendar)
@@ -318,7 +492,7 @@ def generate_tearsheet_from_result(
         title=title,
         benchmark_returns=benchmark,
         benchmark_name=benchmark_name,
-        report_metadata=report_metadata,
+        report_metadata=effective_metadata,
     )
 
     if output_path is not None:
@@ -352,10 +526,17 @@ def generate_tearsheet_from_run_artifacts(
         calendar=calendar,
         benchmark=benchmark,
     )
-    effective_metadata = report_metadata or _build_report_metadata_from_artifacts(
+    effective_metadata = _build_report_metadata_from_result(
+        profile.result,
+        profile,
+        benchmark_name,
+    )
+    effective_metadata = _build_report_metadata_from_artifacts(
         Path(backtest_dir),
         profile.strategy_metadata,
-    )
+    ).merged_with(effective_metadata)
+    if report_metadata is not None:
+        effective_metadata = report_metadata.merged_with(effective_metadata)
 
     html = generate_backtest_tearsheet(
         profile=profile,

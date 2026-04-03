@@ -900,6 +900,7 @@ def generate_backtest_tearsheet(
         n_trials=n_trials,
         shap_result=shap_result,
         factor_data=factor_data,
+        report_metadata=report_metadata,
         theme=theme,
         interactive=interactive,
     )
@@ -1052,6 +1053,7 @@ def _generate_sections(
     n_trials: int | None = None,
     shap_result: TradeShapResult | None = None,
     factor_data: FactorData | None = None,
+    report_metadata: BacktestReportMetadata | None = None,
     theme: str = "default",
     interactive: bool = True,
 ) -> str:
@@ -1087,6 +1089,7 @@ def _generate_sections(
             shap_result=shap_result,
             factor_data=factor_data,
             factor_analysis=factor_analysis,
+            report_metadata=report_metadata,
             theme=theme,
             interactive=interactive,
         )
@@ -1114,6 +1117,7 @@ def _generate_section(
     shap_result: TradeShapResult | None = None,
     factor_data: FactorData | None = None,
     factor_analysis: Any | None = None,
+    report_metadata: BacktestReportMetadata | None = None,
     theme: str = "default",
     interactive: bool = True,
 ) -> str | None:
@@ -1142,6 +1146,7 @@ def _generate_section(
             shap_result=shap_result,
             factor_data=factor_data,
             factor_analysis=factor_analysis,
+            report_metadata=report_metadata,
             theme=theme,
         )
 
@@ -1286,7 +1291,7 @@ class _SectionContext:
         "preset", "profile", "trades", "returns", "equity_curve", "metrics",
         "predictions", "benchmark_returns", "benchmark_metrics", "benchmark_name",
         "n_trials", "shap_result", "factor_data", "factor_analysis", "theme",
-        "data_sources",
+        "data_sources", "report_metadata",
     )
 
     def __init__(
@@ -1306,6 +1311,7 @@ class _SectionContext:
         shap_result: TradeShapResult | None,
         factor_data: FactorData | None,
         factor_analysis: Any | None,
+        report_metadata: BacktestReportMetadata | None,
         theme: str,
         data_sources: dict[str, str] | None = None,
     ):
@@ -1323,6 +1329,7 @@ class _SectionContext:
         self.shap_result = shap_result
         self.factor_data = factor_data
         self.factor_analysis = factor_analysis
+        self.report_metadata = report_metadata
         self.theme = theme
         self.data_sources = data_sources or {}
 
@@ -2361,6 +2368,61 @@ def _render_methodology_notes(ctx: _SectionContext) -> str | None:
     data_sources = ctx.data_sources or {}
 
     rows: list[str] = []
+    metadata = ctx.report_metadata
+    if metadata is not None:
+        metadata_rows = [
+            (
+                "Methodology",
+                "Run Provenance",
+                " | ".join(
+                    part
+                    for part in (
+                        f"window {metadata.evaluation_window}" if metadata.evaluation_window else None,
+                        f"run_id {metadata.run_id}" if metadata.run_id else None,
+                        (
+                            f"ml4t-backtest {metadata.library_version}"
+                            if metadata.library_version
+                            else None
+                        ),
+                    )
+                    if part
+                ),
+            ),
+            (
+                "Methodology",
+                "Execution Contract",
+                " | ".join(
+                    part
+                    for part in (
+                        f"calendar {metadata.calendar}" if metadata.calendar else None,
+                        metadata.execution_summary,
+                        metadata.cost_summary,
+                    )
+                    if part
+                ),
+            ),
+            (
+                "Methodology",
+                "Surface Availability",
+                metadata.data_summary,
+            ),
+            (
+                "ML",
+                "Prediction Translation Surface",
+                metadata.ml_summary,
+            ),
+        ]
+        for tab, title, description in metadata_rows:
+            if not description:
+                continue
+            rows.append(
+                f"<tr>"
+                f'<td style="font-weight:600;white-space:nowrap">{tab}</td>'
+                f"<td><strong>{title}</strong><br>"
+                f'<span style="color:#64748b;font-size:12px">{html_mod.escape(description)}</span>'
+                f"</td></tr>"
+            )
+
     for tab, title, description, source_keys in _METHODOLOGY_SECTIONS:
         # Build source status badges
         badges = ""
@@ -2470,6 +2532,7 @@ def _create_section_figure(
     shap_result: TradeShapResult | None = None,
     factor_data: FactorData | None = None,
     factor_analysis: Any | None = None,
+    report_metadata: BacktestReportMetadata | None = None,
     theme: str = "default",
 ) -> go.Figure | str | None:
     """Create the Plotly figure for a specific section.
@@ -2495,6 +2558,7 @@ def _create_section_figure(
         shap_result=shap_result,
         factor_data=factor_data,
         factor_analysis=factor_analysis,
+        report_metadata=report_metadata,
         theme=theme,
         data_sources=profile.data_sources if profile is not None else None,
     )
@@ -2684,6 +2748,7 @@ class BacktestTearsheet:
             n_trials=self.n_trials,
             shap_result=self.shap_result,
             factor_data=self.factor_data,
+            report_metadata=self.report_metadata,
             theme=self.theme,
             interactive=interactive,
         )

@@ -837,6 +837,39 @@ class TestTearsheetGeneration:
         assert '<h1 class="report-title"></h1>' in html
         assert 'report-meta-label">Report Date' in html
 
+    def test_generate_backtest_tearsheet_renders_methodology_provenance(
+        self,
+        sample_backtest_profile,
+    ):
+        """Methodology tab should surface report provenance and data availability."""
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        html = generate_backtest_tearsheet(
+            profile=sample_backtest_profile,
+            report_metadata=BacktestReportMetadata(
+                strategy_name="Statistical Arbitrage",
+                evaluation_window="2024-01-01 -> 2024-01-03",
+                run_id="run-456",
+                library_version="0.1.0b12",
+                calendar="NYSE",
+                execution_summary="lean: next_bar/open, incremental rebalance, exit_first fills",
+                cost_summary="commission percentage 0.100%; slippage percentage 0.100%",
+                data_summary="surfaces: trades, fills, equity, portfolio_state | quote coverage 50.0%",
+                ml_summary="4 predictions | 4 signals | translation ready",
+            ),
+            template="full",
+        )
+
+        assert "Run Provenance" in html
+        assert "2024-01-01 -&gt; 2024-01-03" in html
+        assert "ml4t-backtest 0.1.0b12" in html
+        assert "Execution Contract" in html
+        assert "lean: next_bar/open" in html
+        assert "Surface Availability" in html
+        assert "quote coverage 50.0%" in html
+        assert "Prediction Translation Surface" in html
+        assert "translation ready" in html
+
     def test_portfolio_sections_use_profile_daily_dates_for_intraday_equity(self):
         """Test portfolio plots inherit real daily dates from an intraday profile."""
         from datetime import UTC, datetime, timedelta

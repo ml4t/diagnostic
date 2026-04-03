@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -649,4 +650,86 @@ def test_generate_tearsheet_from_result_forwards_report_metadata(monkeypatch):
 
     generate_tearsheet_from_result(result, report_metadata=metadata)
 
-    assert captured["report_metadata"] == metadata
+    effective = captured["report_metadata"]
+    assert isinstance(effective, BacktestReportMetadata)
+    assert effective.strategy_name == "Momentum Rotation"
+    assert effective.benchmark_name == "SPY"
+    assert effective.evaluation_window == "2024-01-01 -> 2024-01-02"
+
+
+def test_generate_tearsheet_from_result_auto_populates_report_metadata(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def _generate_backtest_tearsheet(**kwargs):
+        captured.update(kwargs)
+        return "<html></html>"
+
+    monkeypatch.setattr(
+        "ml4t.diagnostic.visualization.backtest.generate_backtest_tearsheet",
+        _generate_backtest_tearsheet,
+    )
+
+    base = datetime(2024, 1, 2, 9, 30)
+    result = BacktestResult(
+        trades=[
+            Trade(
+                symbol="AAPL",
+                entry_time=base,
+                exit_time=base + timedelta(days=1),
+                entry_price=100.0,
+                exit_price=102.0,
+                quantity=10.0,
+                pnl=20.0,
+                pnl_percent=0.02,
+                bars_held=1,
+                fees=1.0,
+                exit_slippage=0.1,
+            )
+        ],
+        equity_curve=[
+            (base, 100000.0),
+            (base + timedelta(days=1), 101000.0),
+        ],
+        fills=[],
+        metrics={},
+        predictions=pl.DataFrame(
+            {
+                "timestamp": [base],
+                "asset": ["AAPL"],
+                "prediction_value": [0.7],
+            }
+        ),
+        config=replace(
+            BacktestConfig.from_preset("lean"),
+            calendar="NYSE",
+            metadata={"run_id": "run-123"},
+        ),
+    )
+    result.signals = pl.DataFrame(
+        {
+            "timestamp": [base],
+            "asset": ["AAPL"],
+            "signal_value": [0.25],
+            "selected": [True],
+        }
+    )
+    result.strategy_metadata = {
+        "strategy_name": "Momentum Rotation",
+        "universe": "US Large Cap",
+    }
+
+    generate_tearsheet_from_result(result, benchmark_name="SPY")
+
+    metadata = captured["report_metadata"]
+    assert isinstance(metadata, BacktestReportMetadata)
+    assert metadata.strategy_name == "Momentum Rotation"
+    assert metadata.universe == "US Large Cap"
+    assert metadata.benchmark_name == "SPY"
+    assert metadata.evaluation_window == "2024-01-02 -> 2024-01-03"
+    assert metadata.run_id == "run-123"
+    assert metadata.library_version
+    assert metadata.calendar == "NYSE"
+    assert "lean:" in (metadata.execution_summary or "")
+    assert "commission" in (metadata.cost_summary or "")
+    assert "surfaces:" in (metadata.data_summary or "")
+    assert "predictions" in (metadata.ml_summary or "")

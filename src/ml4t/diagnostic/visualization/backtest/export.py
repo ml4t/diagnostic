@@ -203,6 +203,7 @@ def export_workspaces(
         n_trials=n_trials,
         shap_result=shap_result,
         factor_data=factor_data,
+        report_metadata=report_metadata,
         theme=theme,
         interactive=True,
     )
