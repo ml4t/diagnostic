@@ -439,6 +439,80 @@ class WalkForwardCV(BaseSplitter):
             raise ValueError("test_indices_ not available. Call split() first to compute indices.")
         return self._test_indices
 
+    def _record_fold(
+        self,
+        fold_i: int,
+        train_idx: NDArray[np.intp],
+        val_idx: NDArray[np.intp],
+        timestamps: pd.DatetimeIndex | None,
+    ) -> None:
+        """Record fold metadata for the fold summary."""
+        record: dict[str, Any] = {
+            "fold": fold_i,
+            "train_rows": len(train_idx),
+            "val_rows": len(val_idx),
+        }
+        if timestamps is not None and len(train_idx) > 0 and len(val_idx) > 0:
+            train_ts = timestamps[train_idx]
+            val_ts = timestamps[val_idx]
+            record["train_start"] = train_ts[0]
+            record["train_end"] = train_ts[-1]
+            record["val_start"] = val_ts[0]
+            record["val_end"] = val_ts[-1]
+            record["train_timestamps"] = len(train_ts.unique())
+            record["val_timestamps"] = len(val_ts.unique())
+            record["train_span"] = str(train_ts[-1] - train_ts[0])
+            record["val_span"] = str(val_ts[-1] - val_ts[0])
+            # Buffer gap: timestamps strictly between train_end and val_start
+            buffer_mask = (timestamps > train_ts[-1]) & (timestamps < val_ts[0])
+            record["buffer_gap_timestamps"] = int(buffer_mask.sum())
+            record["buffer_gap_duration"] = str(val_ts[0] - train_ts[-1])
+        self._fold_records.append(record)
+
+    @property
+    def fold_summary_(self) -> pd.DataFrame:
+        """Per-fold summary of train/val boundaries, sizes, and buffer gaps.
+
+        Available after ``split()`` has been fully consumed (all folds yielded).
+
+        Returns
+        -------
+        pd.DataFrame
+            One row per fold with columns: fold, train_start, train_end,
+            val_start, val_end, train_rows, val_rows, train_timestamps,
+            val_timestamps, train_span, val_span, buffer_gap_timestamps,
+            buffer_gap_duration.
+
+        Raises
+        ------
+        ValueError
+            If ``split()`` has not been called yet.
+
+        Examples
+        --------
+        >>> cv = WalkForwardCV(n_splits=5, label_horizon=21)
+        >>> for train_idx, val_idx in cv.split(X):
+        ...     pass
+        >>> print(cv.fold_summary_)
+        >>> cv.fold_summary_to_csv("folds.csv")
+        """
+        if not hasattr(self, "_fold_records") or not self._fold_records:
+            raise ValueError(
+                "fold_summary_ not available. Call split() first and consume all folds."
+            )
+        return pd.DataFrame(self._fold_records)
+
+    def fold_summary_to_csv(self, path: str) -> None:
+        """Write fold summary to CSV for verification.
+
+        Parameters
+        ----------
+        path : str
+            Output CSV file path.
+        """
+        self.fold_summary_.to_csv(path, index=False)
+        logger.info("Fold summary written to %s", path)
+
     def _has_held_out_test(self) -> bool:
         """Check if a held-out test period is configured."""
         return self.config.test_period is not None or self.config.test_start is not None
@@ -642,29 +716,28 @@ class WalkForwardCV(BaseSplitter):
         # Extract timestamps for held-out test computation
         timestamps = self._extract_timestamps(X, self.timestamp_col)
 
-        # Compute held-out test period if configured
+        # Initialize fold summary tracking
+        self._fold_records: list[dict[str, Any]] = []
+        self._split_timestamps = timestamps
+
+        # Select the appropriate splitting generator
         if self._has_held_out_test():
             test_start_idx, test_end_idx = self._compute_test_period(n_samples, timestamps)
             self._test_start_idx = test_start_idx
             self._test_end_idx = test_end_idx
             self._test_indices = np.arange(test_start_idx, test_end_idx, dtype=np.intp)
 
-            # Use backward or forward splitting for validation folds
             if self.fold_direction == "backward":
-                yield from self._split_backward(X, y, groups, n_samples, test_start_idx, timestamps)
+                inner = self._split_backward(X, y, groups, n_samples, test_start_idx, timestamps)
             else:
-                # Forward direction with held-out test: traditional walk-forward up to test boundary
-                yield from self._split_forward_with_test(
+                inner = self._split_forward_with_test(
                     X, y, groups, n_samples, test_start_idx, timestamps
                 )
         else:
-            # Legacy behavior: no held-out test, standard walk-forward
             self._test_indices = None
             self._test_start_idx = None
             self._test_end_idx = None
 
-            # Dispatch: calendar-first > session-based > sample-based
-            # Calendar splitting requires timestamps; fall back for numpy arrays
             has_timestamps = self._extract_timestamps(X, self.timestamp_col) is not None
             if self._should_use_calendar_splitting() and has_timestamps:
                 if self.align_to_sessions:
@@ -674,13 +747,18 @@ class WalkForwardCV(BaseSplitter):
                         DeprecationWarning,
                         stacklevel=2,
                     )
-                yield from self._split_by_calendar(X, y, groups, n_samples)
+                inner = self._split_by_calendar(X, y, groups, n_samples)
             elif self.align_to_sessions:
-                yield from self._split_by_sessions(
+                inner = self._split_by_sessions(
                     cast(pl.DataFrame | pd.DataFrame, X), y, groups, n_samples
                 )
             else:
-                yield from self._split_by_samples(X, y, groups, n_samples)
+                inner = self._split_by_samples(X, y, groups, n_samples)
+
+        # Yield from inner generator while recording fold metadata
+        for fold_i, (train_idx, val_idx) in enumerate(inner):
+            self._record_fold(fold_i, train_idx, val_idx, timestamps)
+            yield train_idx, val_idx
 
     def _split_by_samples(
         self,
