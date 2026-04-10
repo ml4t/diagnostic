@@ -231,29 +231,75 @@ def compute_ic_series(
     # Merge predictions and returns
     df = predictions_pl.join(returns_pl, on=join_on, how="inner")
 
-    # Use group_by().map_groups() for efficient per-group processing
-    def compute_group_ic(group: pl.DataFrame) -> pl.DataFrame:
-        """Compute IC for a single date group."""
-        pred_array = group[pred_col].to_numpy()
-        ret_array = group[ret_col].to_numpy()
+    if method not in ("spearman", "pearson"):
+        raise ValueError(f"Unknown method: {method!r}. Use 'spearman' or 'pearson'.")
 
-        # Remove NaN pairs
-        valid_mask = ~(np.isnan(pred_array) | np.isnan(ret_array))
-        pred_clean = pred_array[valid_mask]
-        ret_clean = ret_array[valid_mask]
+    # Vectorized per-date IC via polars. Previous implementation looped
+    # dates in Python via ``group_by().map_groups()``; this rewrite ports
+    # the same pattern used by ``case_studies/utils/dl_metrics.cross_sectional_ic``
+    # which benchmarked ~100x faster on large panels.
+    valid_expr = pl.col(pred_col).is_finite() & pl.col(ret_col).is_finite()
 
-        n_obs = len(pred_clean)
+    if method == "spearman":
+        # Set invalid rows to null so rank() leaves them as null within
+        # each date group; pl.corr ignores null pairs.
+        df_valid = df.with_columns(
+            [
+                pl.when(valid_expr)
+                .then(pl.col(pred_col))
+                .otherwise(None)
+                .alias("__pred_valid"),
+                pl.when(valid_expr)
+                .then(pl.col(ret_col))
+                .otherwise(None)
+                .alias("__ret_valid"),
+            ]
+        ).with_columns(
+            [
+                pl.col("__pred_valid").rank(method="average").over(date_col).alias("__pred_r"),
+                pl.col("__ret_valid").rank(method="average").over(date_col).alias("__ret_r"),
+            ]
+        )
+        p_col, r_col = "__pred_r", "__ret_r"
+    else:
+        df_valid = df.with_columns(
+            [
+                pl.when(valid_expr)
+                .then(pl.col(pred_col))
+                .otherwise(None)
+                .alias("__pred_valid"),
+                pl.when(valid_expr)
+                .then(pl.col(ret_col))
+                .otherwise(None)
+                .alias("__ret_valid"),
+            ]
+        )
+        p_col, r_col = "__pred_valid", "__ret_valid"
 
-        if n_obs >= min_periods:
-            ic_val = information_coefficient(
-                pred_clean, ret_clean, method=method, confidence_intervals=False
-            )
-        else:
-            ic_val = np.nan
+    # Preserve every date present in the join, even those where all rows
+    # were invalid (matches the old per-group behavior of emitting a row
+    # with n_obs=0 and ic=NaN).
+    all_dates = df.select(date_col).unique().sort(date_col)
+    grouped = df_valid.group_by(date_col, maintain_order=False).agg(
+        [
+            valid_expr.sum().alias("n_obs"),
+            pl.corr(pl.col(p_col), pl.col(r_col)).alias("ic"),
+        ]
+    )
+    ic_series_pl = (
+        all_dates.join(grouped, on=date_col, how="left")
+        .with_columns(
+            [
+                pl.col("n_obs").fill_null(0),
+                pl.when(pl.col("n_obs") >= min_periods)
+                .then(pl.col("ic"))
+                .otherwise(None)
+                .alias("ic"),
+            ]
+        )
+        .sort(date_col)
+    )
 
-        return pl.DataFrame({date_col: [group[date_col][0]], "ic": [ic_val], "n_obs": [n_obs]})
-
-    ic_series_pl = df.group_by(date_col).map_groups(compute_group_ic).sort(date_col)
     if output_as_pandas:
         return ic_series_pl.to_pandas()
     return ic_series_pl
