@@ -79,6 +79,7 @@ class TradingCalendar:
 
         self.config = config
         self.calendar = mcal.get_calendar(config.exchange)
+        self._calendar_tz = getattr(self.calendar, "tz", None)
         try:
             self.tz = ZoneInfo(config.timezone)
         except ZoneInfoNotFoundError as exc:
@@ -86,6 +87,15 @@ class TradingCalendar:
                 f"Invalid timezone '{config.timezone}'. Use an IANA timezone name "
                 "(e.g., 'UTC', 'America/New_York')."
             ) from exc
+        if self._calendar_tz is None:
+            self._calendar_tz = self.tz
+
+    def _schedule(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        """Return an exchange schedule after restoring calendar timezone state."""
+        if getattr(self.calendar, "tz", None) is None:
+            self.calendar = mcal.get_calendar(self.config.exchange)
+            self._calendar_tz = getattr(self.calendar, "tz", None) or self._calendar_tz
+        return self.calendar.schedule(*args, **kwargs)
 
     def _ensure_timezone_aware(self, timestamps: pd.DatetimeIndex) -> pd.DatetimeIndex:
         """Ensure timestamps are timezone-aware.
@@ -144,7 +154,7 @@ class TradingCalendar:
         end_date = timestamps_tz[-1].normalize() + pd.Timedelta(days=7)
 
         # Get schedule (~250 sessions/year, very small)
-        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+        schedule = self._schedule(start_date=start_date, end_date=end_date)
 
         # Ensure schedule is in calendar timezone
         if schedule["market_open"].dt.tz is None:
@@ -219,10 +229,8 @@ class TradingCalendar:
         start_date = timestamps_tz[0].normalize() - pd.Timedelta(days=7)
         end_date = timestamps_tz[-1].normalize() + pd.Timedelta(days=7)
 
-        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
-
-        # Get the set of trading dates from the schedule
-        trading_dates = set(schedule.index.normalize())
+        valid_days = self.calendar.valid_days(start_date=start_date, end_date=end_date, tz="UTC")
+        trading_dates = set(valid_days.tz_localize(None).normalize())
 
         # Normalize each timestamp to its date and check if it's a trading day
         ts_dates = timestamps_tz.normalize()  # type: ignore[unresolved-attribute]
@@ -231,13 +239,8 @@ class TradingCalendar:
 
         trading_mask = np.array([d in trading_dates for d in ts_dates_naive], dtype=bool)
 
-        # Assign sessions using get_sessions() for trading rows, NaT for non-trading
-        # Use positional indexing to handle duplicate timestamps (panel data)
         session_values = np.full(len(timestamps), np.datetime64("NaT"), dtype="datetime64[ns]")
-        if trading_mask.any():
-            trading_timestamps = timestamps[trading_mask]
-            trading_sessions = self.get_sessions(trading_timestamps)
-            session_values[trading_mask] = trading_sessions.values
+        session_values[trading_mask] = ts_dates_naive[trading_mask].to_numpy(dtype="datetime64[ns]")
 
         sessions = pd.Series(session_values, index=timestamps)
         return sessions, trading_mask
@@ -286,7 +289,7 @@ class TradingCalendar:
         ref_year = 2024
         year_start = pd.Timestamp(f"{ref_year}-01-01")
         year_end = pd.Timestamp(f"{ref_year}-12-31")
-        schedule = self.calendar.schedule(start_date=year_start, end_date=year_end)
+        schedule = self._schedule(start_date=year_start, end_date=year_end)
         sessions_per_year = len(schedule)
 
         if freq == "W":
@@ -498,7 +501,7 @@ class TradingCalendar:
         start_date = from_date_normalized - pd.Timedelta(days=lookback_days)
         end_date = from_date_normalized
 
-        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+        schedule = self._schedule(start_date=start_date, end_date=end_date)
 
         # Filter to dates strictly before from_date (schedule.index is tz-naive dates)
         valid_dates = schedule.index[schedule.index < from_date_normalized]
@@ -557,7 +560,7 @@ class TradingCalendar:
         start_date = from_date_normalized
         end_date = from_date_normalized + pd.Timedelta(days=lookahead_days)
 
-        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+        schedule = self._schedule(start_date=start_date, end_date=end_date)
 
         # Filter to dates strictly after from_date (schedule.index is tz-naive dates)
         valid_dates = schedule.index[schedule.index > from_date_normalized]
@@ -613,7 +616,7 @@ class TradingCalendar:
         if start_normalized >= end_normalized:
             return 0
 
-        schedule = self.calendar.schedule(
+        schedule = self._schedule(
             start_date=start_normalized - pd.Timedelta(days=1),
             end_date=end_normalized + pd.Timedelta(days=1),
         )

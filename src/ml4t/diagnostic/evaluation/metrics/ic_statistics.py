@@ -324,7 +324,7 @@ def compute_ic_decay(
     prices : Union[pl.DataFrame, pd.DataFrame]
         DataFrame with prices, must have price_col, date_col, and optionally group_col
     horizons : list[int] | None, default None
-        List of forward horizons in days. If None, uses [1, 2, 5, 10, 21]
+        List of forward horizons in days. If None, uses 1, 2, 5, 10, and 21.
     pred_col : str, default "prediction"
         Column name for predictions
     price_col : str, default "close"
@@ -358,8 +358,8 @@ def compute_ic_decay(
     ...     horizons=[1, 2, 5, 10, 21],
     ...     group_col="symbol"
     ... )
-    >>> print(f"IC at 1-day: {decay['ic_by_horizon'][1]:.3f}")
-    >>> print(f"IC at 21-day: {decay['ic_by_horizon'][21]:.3f}")
+    >>> print(f"IC at 1-day: {decay['ic_by_horizon'].get(1):.3f}")
+    >>> print(f"IC at 21-day: {decay['ic_by_horizon'].get(21):.3f}")
     >>> print(f"Half-life: {decay['half_life']:.1f} days")
     >>> print(f"Optimal horizon: {decay['optimal_horizon']} days")
     IC at 1-day: 0.045

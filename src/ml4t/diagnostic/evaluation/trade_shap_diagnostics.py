@@ -184,7 +184,7 @@ class TradeShapAnalyzer:
 
     def _compute_shap_values(self) -> None:
         """Compute SHAP values on-demand if not provided."""
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         feature_cols = [col for col in self.features_df.columns if col != "timestamp"]
         features_df = self.features_df.select(feature_cols)

@@ -37,11 +37,11 @@ COLORS = {
 
 # Semantic aliases — use these for chart data series
 SERIES_COLORS = {
-    "strategy": COLORS["blue"],       # Primary data line
-    "benchmark": COLORS["amber"],     # Benchmark overlay
-    "fill": "rgba(10,22,40,0.06)",    # Light fill under curves
-    "winner": COLORS["positive"],     # Winning trades/periods
-    "loser": COLORS["negative"],      # Losing trades/periods
+    "strategy": COLORS["blue"],  # Primary data line
+    "benchmark": COLORS["amber"],  # Benchmark overlay
+    "fill": "rgba(10,22,40,0.06)",  # Light fill under curves
+    "winner": COLORS["positive"],  # Winning trades/periods
+    "loser": COLORS["negative"],  # Losing trades/periods
     "drawdown": "rgba(239,68,68,0.15)",  # Drawdown fill
     "drawdown_line": "rgba(239,68,68,0.6)",  # Drawdown line
 }
@@ -49,14 +49,14 @@ SERIES_COLORS = {
 # Fama-French factor palette — consistent across all factor charts
 # Hierarchy: Alpha (bright) > Mkt-RF (dark anchor) > style factors (muted) > Residual (gray)
 FACTOR_COLORS: dict[str, str] = {
-    "Mkt-RF": "#1a2d4a",   # Dark navy — dominant, matches header identity
-    "SMB": "#6b9f9e",      # Muted sage — blends in
-    "HML": "#c4a872",      # Warm sand — blends in
-    "RMW": "#8b7fb5",      # Muted lavender — blends in
-    "CMA": "#b87d8b",      # Dusty rose — blends in
-    "Alpha": "#2563eb",    # Bright blue — the star (manager skill)
-    "Residual": "#94a3b8", # Slate gray — unexplained noise
-    "Total": "#3d3d3d",    # Dark charcoal — distinct from all factors
+    "Mkt-RF": "#1a2d4a",  # Dark navy — dominant, matches header identity
+    "SMB": "#6b9f9e",  # Muted sage — blends in
+    "HML": "#c4a872",  # Warm sand — blends in
+    "RMW": "#8b7fb5",  # Muted lavender — blends in
+    "CMA": "#b87d8b",  # Dusty rose — blends in
+    "Alpha": "#2563eb",  # Bright blue — the star (manager skill)
+    "Residual": "#94a3b8",  # Slate gray — unexplained noise
+    "Total": "#3d3d3d",  # Dark charcoal — distinct from all factors
 }
 
 # Human-readable factor descriptions

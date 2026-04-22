@@ -16,8 +16,12 @@ from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_by_horizon,
     compute_ic_ir,
     compute_ic_series,
+    cross_sectional_ic,
+    cross_sectional_ic_series,
     information_coefficient,
+    pooled_ic,
 )
+from ml4t.diagnostic.metrics import cross_sectional_ic as public_cross_sectional_ic
 
 
 class TestInformationCoefficient:
@@ -31,6 +35,13 @@ class TestInformationCoefficient:
         ic = information_coefficient(predictions, returns, method="spearman")
 
         assert ic == pytest.approx(1.0, abs=1e-10)
+
+    def test_pooled_ic_alias_matches_information_coefficient(self):
+        """Test explicit pooled IC name matches the compatibility function."""
+        predictions = np.array([1, 2, 3, 4, 5])
+        returns = np.array([0.01, 0.02, 0.03, 0.04, 0.05])
+
+        assert pooled_ic(predictions, returns) == information_coefficient(predictions, returns)
 
     def test_perfect_negative_correlation_spearman(self):
         """Test IC = -1 for perfect negative correlation."""
@@ -329,6 +340,57 @@ class TestComputeICSeries:
         assert "ic" in result.columns
         assert "n_obs" in result.columns
         assert len(result) == 20  # One row per date
+
+    def test_cross_sectional_ic_series_joins_on_entity(self, sample_data_polars):
+        """Test explicit cross-sectional API avoids per-date Cartesian products."""
+        pred_df, ret_df = sample_data_polars
+
+        result = cross_sectional_ic_series(
+            pred_df,
+            ret_df,
+            pred_col="prediction",
+            ret_col="forward_return",
+            entity_col="asset",
+            min_obs=5,
+        )
+
+        assert isinstance(result, pl.DataFrame)
+        assert result["n_obs"].to_list() == [10] * 20
+        assert np.isfinite(result["ic"].to_numpy()).all()
+
+    def test_cross_sectional_ic_aggregate_summary(self, sample_data_polars):
+        """Test aggregate cross-sectional IC convenience function."""
+        pred_df, ret_df = sample_data_polars
+
+        result = cross_sectional_ic(
+            pred_df,
+            ret_df,
+            pred_col="prediction",
+            ret_col="forward_return",
+            entity_col="asset",
+            min_obs=5,
+        )
+
+        assert result["n_periods"] == 20
+        assert result["ic_mean"] > 0
+        assert result["ic_std"] >= 0
+        assert "ic_t" in result
+        assert "ic_ir" in result
+
+    def test_short_metrics_namespace_exports_cross_sectional_ic(self, sample_data_polars):
+        """Test ml4t.diagnostic.metrics exposes the explicit IC API."""
+        pred_df, ret_df = sample_data_polars
+
+        result = public_cross_sectional_ic(
+            pred_df,
+            ret_df,
+            pred_col="prediction",
+            ret_col="forward_return",
+            entity_col="asset",
+            min_obs=5,
+        )
+
+        assert result["n_periods"] == 20
 
     def test_ic_series_pandas(self, sample_data_pandas):
         """Test IC series computation with Pandas DataFrames."""

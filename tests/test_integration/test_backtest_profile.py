@@ -153,7 +153,9 @@ def test_analyze_backtest_result_detects_prediction_surface(sample_result: Backt
     assert profile.availability.metrics["prediction_translation"].status.value == "degraded"
 
 
-def test_analyze_backtest_result_supports_new_prediction_method_names(sample_result: BacktestResult):
+def test_analyze_backtest_result_supports_new_prediction_method_names(
+    sample_result: BacktestResult,
+):
     sample_result.to_predictions_df = lambda: pl.DataFrame(
         {
             "timestamp": [

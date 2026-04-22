@@ -10,12 +10,12 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import polars as pl
 
-from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
     annual_return,
     calmar_ratio,
     max_drawdown,
 )
+from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio, sortino_ratio
 
 
 def _filled_notional_expr() -> pl.Expr:

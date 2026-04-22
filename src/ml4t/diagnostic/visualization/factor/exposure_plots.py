@@ -160,9 +160,7 @@ def plot_rolling_betas(
             mode="lines",
             name=f,
             line={"color": color, "width": 1.5},
-            hovertemplate=(
-                f"<b>{f}</b><br>Date: %{{x}}<br>Beta: %{{y:.4f}}<extra></extra>"
-            ),
+            hovertemplate=(f"<b>{f}</b><br>Date: %{{x}}<br>Beta: %{{y:.4f}}<extra></extra>"),
         )
 
         if show_r_squared:
@@ -173,7 +171,12 @@ def plot_rolling_betas(
     # Zero line for betas
     if show_r_squared:
         fig.add_hline(
-            y=0, line_dash="dash", line_color="gray", line_width=0.5, row=1, col=1,
+            y=0,
+            line_dash="dash",
+            line_color="gray",
+            line_width=0.5,
+            row=1,
+            col=1,
         )
 
         # R² subplot
@@ -202,8 +205,11 @@ def plot_rolling_betas(
         height=height,
         width=width or theme_config["defaults"]["width"],
         legend={
-            "orientation": "h", "yanchor": "bottom", "y": 1.02,
-            "xanchor": "right", "x": 1,
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
         },
     )
 

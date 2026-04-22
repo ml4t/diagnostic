@@ -75,8 +75,7 @@ def plot_return_attribution_waterfall(
         ci = result.attribution_ci.get(f)
         if ci:
             hover_texts.append(
-                f"<b>{f}</b><br>Contribution: {val:.4f}<br>"
-                f"CI: [{ci[0]:.4f}, {ci[1]:.4f}]"
+                f"<b>{f}</b><br>Contribution: {val:.4f}<br>CI: [{ci[0]:.4f}, {ci[1]:.4f}]"
             )
         else:
             hover_texts.append(f"<b>{f}</b><br>Contribution: {val:.4f}")
@@ -92,17 +91,19 @@ def plot_return_attribution_waterfall(
         is_total = measures[i] == "total"
         bar_base = 0.0 if is_total else base
 
-        fig.add_trace(go.Bar(
-            x=[label],
-            y=[abs(val)],
-            base=[bar_base if val >= 0 else bar_base + val],
-            marker_color=bar_colors[i],
-            text=[text[i]],
-            textposition="outside",
-            hovertext=[hover_texts[i]],
-            hoverinfo="text",
-            showlegend=False,
-        ))
+        fig.add_trace(
+            go.Bar(
+                x=[label],
+                y=[abs(val)],
+                base=[bar_base if val >= 0 else bar_base + val],
+                marker_color=bar_colors[i],
+                text=[text[i]],
+                textposition="outside",
+                hovertext=[hover_texts[i]],
+                hoverinfo="text",
+                showlegend=False,
+            )
+        )
 
         if not is_total:
             base += val
@@ -124,8 +125,10 @@ def plot_return_attribution_waterfall(
             "Additive decomposition: \u03a3 \u03b2[t\u22121] \u00d7 f[t]. "
             "Components sum exactly to Total. Hover for confidence intervals."
         ),
-        xref="paper", yref="paper",
-        x=0, y=-0.15,
+        xref="paper",
+        yref="paper",
+        x=0,
+        y=-0.15,
         showarrow=False,
         font={"size": 10, "color": "gray"},
         align="left",
@@ -177,8 +180,7 @@ def plot_return_attribution_area(
                 stackgroup="one",
                 line={"width": 0.5, "color": color},
                 hovertemplate=(
-                    f"<b>{f}</b><br>Date: %{{x}}<br>"
-                    "Cumulative: %{y:.4f}<extra></extra>"
+                    f"<b>{f}</b><br>Date: %{{x}}<br>Cumulative: %{{y:.4f}}<extra></extra>"
                 ),
             )
         )
@@ -215,9 +217,7 @@ def plot_return_attribution_area(
             mode="lines",
             name="Total",
             line={"color": "black", "width": 2, "dash": "dash"},
-            hovertemplate=(
-                "<b>Total</b><br>Date: %{x}<br>Return: %{y:.4f}<extra></extra>"
-            ),
+            hovertemplate=("<b>Total</b><br>Date: %{x}<br>Return: %{y:.4f}<extra></extra>"),
         )
     )
 
@@ -228,8 +228,11 @@ def plot_return_attribution_area(
         height=height,
         width=width or theme_config["defaults"]["width"],
         legend={
-            "orientation": "h", "yanchor": "bottom", "y": 1.02,
-            "xanchor": "right", "x": 1,
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
         },
     )
 

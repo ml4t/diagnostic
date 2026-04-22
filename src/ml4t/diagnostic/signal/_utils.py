@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from ml4t.diagnostic.config.signal_config import QuantileMethod
-from ml4t.diagnostic.evaluation.metrics.basic import (
+from ml4t.diagnostic.metrics.basic import (
     compute_forward_returns as compute_forward_returns_core,
 )
 

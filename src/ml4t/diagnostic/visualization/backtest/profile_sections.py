@@ -47,7 +47,8 @@ def _table_figure(
 
 
 def plot_activity_overview(
-    profile: BacktestProfile, theme: str | None = None,
+    profile: BacktestProfile,
+    theme: str | None = None,
 ) -> go.Figure | str:
     """Plot profile-native activity diagnostics.
 
@@ -115,19 +116,18 @@ def plot_activity_overview(
         cost = f"{float(rebalance['implementation_cost'][i]):,.2f}"
         syms = str(rebalance["symbols_touched"][i])
         rows_html += (
-            f"<tr><td>{key}</td><td>{ts}</td>"
-            f"<td>{notional}</td><td>{cost}</td><td>{syms}</td></tr>"
+            f"<tr><td>{key}</td><td>{ts}</td><td>{notional}</td><td>{cost}</td><td>{syms}</td></tr>"
         )
 
     table_html = (
         f'<details class="section-detail" style="margin-top:8px">'
         f'<summary class="section-detail-summary">'
-        f'Rebalance Events ({n_events})</summary>'
+        f"Rebalance Events ({n_events})</summary>"
         f'<div class="metrics-table-wrap">'
         f'<table class="metrics-table">'
-        f'<thead><tr><th>Rebalance</th><th>Timestamp</th>'
-        f'<th>Notional</th><th>Cost</th><th>Symbols</th></tr></thead>'
-        f'<tbody>{rows_html}</tbody></table></div></details>'
+        f"<thead><tr><th>Rebalance</th><th>Timestamp</th>"
+        f"<th>Notional</th><th>Cost</th><th>Symbols</th></tr></thead>"
+        f"<tbody>{rows_html}</tbody></table></div></details>"
     )
 
     # Serialize chart to HTML and combine with table
@@ -266,7 +266,8 @@ def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) 
 
 
 def plot_rebalance_timeline(
-    profile: BacktestProfile, theme: str | None = None,
+    profile: BacktestProfile,
+    theme: str | None = None,
 ) -> go.Figure | None:
     """Plot rebalance events as a bar timeline with notional and cost."""
     theme = validate_theme(theme)
@@ -283,32 +284,35 @@ def plot_rebalance_timeline(
     theme_config = get_theme_config(theme)
     fig = go.Figure()
 
-    fig.add_trace(go.Bar(
-        x=timestamps,
-        y=notional,
-        name="Filled Notional",
-        marker_color=COLORS["blue"],
-        text=[f"{s} sym" for s in symbols],
-        textposition="outside",
-        textfont={"size": 8},
-        hovertemplate=(
-            "Date: %{x}<br>Notional: $%{y:,.0f}<br>"
-            "Cost: $%{customdata:,.0f}<extra></extra>"
-        ),
-        customdata=costs,
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=timestamps,
+            y=notional,
+            name="Filled Notional",
+            marker_color=COLORS["blue"],
+            text=[f"{s} sym" for s in symbols],
+            textposition="outside",
+            textfont={"size": 8},
+            hovertemplate=(
+                "Date: %{x}<br>Notional: $%{y:,.0f}<br>Cost: $%{customdata:,.0f}<extra></extra>"
+            ),
+            customdata=costs,
+        )
+    )
 
     # Cost overlay as markers if any non-zero costs
     if any(c > 0 for c in costs):
-        fig.add_trace(go.Scatter(
-            x=timestamps,
-            y=costs,
-            name="Implementation Cost",
-            mode="markers",
-            marker={"color": COLORS["negative"], "size": 6, "symbol": "diamond"},
-            yaxis="y2",
-            hovertemplate="Cost: $%{y:,.0f}<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=timestamps,
+                y=costs,
+                name="Implementation Cost",
+                mode="markers",
+                marker={"color": COLORS["negative"], "size": 6, "symbol": "diamond"},
+                yaxis="y2",
+                hovertemplate="Cost: $%{y:,.0f}<extra></extra>",
+            )
+        )
 
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
@@ -321,7 +325,9 @@ def plot_rebalance_timeline(
             "side": "right",
             "tickformat": "$,.0f",
             "showgrid": False,
-        } if any(c > 0 for c in costs) else {},
+        }
+        if any(c > 0 for c in costs)
+        else {},
         bargap=0.3,
     )
     return fig
@@ -480,7 +486,11 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
 
     theme = validate_theme(theme)
     rolling = profile.performance["rolling"]
-    returns = profile.daily_returns.to_numpy() if hasattr(profile.daily_returns, "to_numpy") else np.asarray(profile.daily_returns)
+    returns = (
+        profile.daily_returns.to_numpy()
+        if hasattr(profile.daily_returns, "to_numpy")
+        else np.asarray(profile.daily_returns)
+    )
 
     theme_config = get_theme_config(theme)
 
@@ -511,21 +521,29 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
         # Row 1, Col 1: Rolling Return (252d)
         fig.add_trace(
             go.Scatter(
-                x=x_axis, y=rolling["rolling_return_252"].to_list(),
-                mode="lines", line={**line_kw, "color": line_color},
-                hovertemplate="%{y:.1%}<extra></extra>", showlegend=False,
+                x=x_axis,
+                y=rolling["rolling_return_252"].to_list(),
+                mode="lines",
+                line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.1%}<extra></extra>",
+                showlegend=False,
             ),
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
         # Row 1, Col 2: Rolling Sharpe (252d)
         fig.add_trace(
             go.Scatter(
-                x=x_axis, y=rolling["rolling_sharpe_252"].to_list(),
-                mode="lines", line={**line_kw, "color": line_color},
-                hovertemplate="%{y:.2f}<extra></extra>", showlegend=False,
+                x=x_axis,
+                y=rolling["rolling_sharpe_252"].to_list(),
+                mode="lines",
+                line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.2f}<extra></extra>",
+                showlegend=False,
             ),
-            row=1, col=2,
+            row=1,
+            col=2,
         )
 
         # Row 2, Col 1: Rolling Volatility (252d)
@@ -536,11 +554,15 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
             vol_252[i] = float(np.std(returns[i - 251 : i + 1], ddof=1)) * sqrt_252
         fig.add_trace(
             go.Scatter(
-                x=x_axis, y=vol_252.tolist(),
-                mode="lines", line={**line_kw, "color": line_color},
-                hovertemplate="%{y:.1%}<extra></extra>", showlegend=False,
+                x=x_axis,
+                y=vol_252.tolist(),
+                mode="lines",
+                line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.1%}<extra></extra>",
+                showlegend=False,
             ),
-            row=2, col=1,
+            row=2,
+            col=1,
         )
 
         # Row 2, Col 2: Rolling Sortino (252d)
@@ -555,11 +577,15 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
                     sortino_252[i] = mean_r * 252 / downside_std
         fig.add_trace(
             go.Scatter(
-                x=x_axis, y=sortino_252.tolist(),
-                mode="lines", line={**line_kw, "color": line_color},
-                hovertemplate="%{y:.2f}<extra></extra>", showlegend=False,
+                x=x_axis,
+                y=sortino_252.tolist(),
+                mode="lines",
+                line={**line_kw, "color": line_color},
+                hovertemplate="%{y:.2f}<extra></extra>",
+                showlegend=False,
             ),
-            row=2, col=2,
+            row=2,
+            col=2,
         )
 
     fig.update_layout(theme_config["layout"])

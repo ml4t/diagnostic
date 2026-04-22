@@ -84,7 +84,7 @@ Use HAC-adjusted Information Coefficient statistics when naive IC t-stats are
 too optimistic because the signal is autocorrelated across time.
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_ic_hac_stats
+from ml4t.diagnostic.metrics import compute_ic_hac_stats
 
 stats = compute_ic_hac_stats(ic_series, ic_col="ic")
 print(f"Mean IC: {stats['mean_ic']:.4f}")

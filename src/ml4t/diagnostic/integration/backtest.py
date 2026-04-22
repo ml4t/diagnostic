@@ -149,9 +149,7 @@ def _build_ml_summary(profile: BacktestProfile) -> str | None:
         state = "ready" if metrics["translation_ready"] else "partial"
         summary_parts.append(f"translation {state}")
     if metrics.get("trade_prediction_coverage") is not None:
-        summary_parts.append(
-            f"trade coverage {float(metrics['trade_prediction_coverage']):.1%}"
-        )
+        summary_parts.append(f"trade coverage {float(metrics['trade_prediction_coverage']):.1%}")
     return " | ".join(summary_parts) if summary_parts else None
 
 
@@ -184,9 +182,7 @@ def _build_report_metadata_from_result(
             else None
         ),
         universe=(
-            str(strategy_metadata.get("universe"))
-            if strategy_metadata.get("universe")
-            else None
+            str(strategy_metadata.get("universe")) if strategy_metadata.get("universe") else None
         ),
         benchmark_name=benchmark_name,
         evaluation_window=_format_evaluation_window(result),
@@ -429,7 +425,9 @@ def profile_from_run_artifacts(
     if active_start is not None and predictions_df is not None:
         predictions_df = _trim_dataframe_from_timestamp(
             predictions_df,
-            timestamp_col=_first_present_column(predictions_df, ("timestamp", "date", "session_date")),
+            timestamp_col=_first_present_column(
+                predictions_df, ("timestamp", "date", "session_date")
+            ),
             start=active_start,
         )
     signals_df = _load_weights_as_signal_surface_from_dataframe(weights_df)
@@ -586,11 +584,7 @@ def _load_weights_dataframe(weights_path: Path | None) -> pl.DataFrame:
 
 
 def _resolve_prediction_artifact_path(backtest_dir: Path, spec: dict[str, Any]) -> Path | None:
-    prediction_hash = (
-        spec.get("backtest_config", {})
-        .get("metadata", {})
-        .get("prediction_hash")
-    )
+    prediction_hash = spec.get("backtest_config", {}).get("metadata", {}).get("prediction_hash")
     run_log_dir = backtest_dir.parent.parent if backtest_dir.parent.name == "backtest" else None
     if prediction_hash and run_log_dir is not None:
         candidate = run_log_dir / "predictions" / prediction_hash / "predictions.parquet"
@@ -676,14 +670,16 @@ def _portfolio_state_from_parquet(
     df = pl.read_parquet(path)
     rows: list[tuple[datetime, float, float, float, float, int]] = []
     for row in df.iter_rows(named=True):
-        rows.append((
-            _to_datetime(row["timestamp"]),
-            float(row.get("equity", 0.0) or 0.0),
-            float(row.get("cash", 0.0) or 0.0),
-            float(row.get("gross_exposure", 0.0) or 0.0),
-            float(row.get("net_exposure", 0.0) or 0.0),
-            int(row.get("open_positions", 0) or 0),
-        ))
+        rows.append(
+            (
+                _to_datetime(row["timestamp"]),
+                float(row.get("equity", 0.0) or 0.0),
+                float(row.get("cash", 0.0) or 0.0),
+                float(row.get("gross_exposure", 0.0) or 0.0),
+                float(row.get("net_exposure", 0.0) or 0.0),
+                int(row.get("open_positions", 0) or 0),
+            )
+        )
     return rows
 
 
@@ -728,13 +724,15 @@ def _equity_curve_from_daily_returns(
 ) -> list[tuple[datetime, float]]:
     if daily_returns_df.is_empty():
         return []
-    timestamp_col = "timestamp" if "timestamp" in daily_returns_df.columns else daily_returns_df.columns[0]
-    return_col = "daily_return" if "daily_return" in daily_returns_df.columns else daily_returns_df.columns[1]
-    initial_cash = (
-        spec.get("backtest_config", {})
-        .get("cash", {})
-        .get("initial", 100_000.0)
+    timestamp_col = (
+        "timestamp" if "timestamp" in daily_returns_df.columns else daily_returns_df.columns[0]
     )
+    return_col = (
+        "daily_return"
+        if "daily_return" in daily_returns_df.columns
+        else daily_returns_df.columns[1]
+    )
+    initial_cash = spec.get("backtest_config", {}).get("cash", {}).get("initial", 100_000.0)
     equity = float(initial_cash)
     curve: list[tuple[datetime, float]] = []
     for row in daily_returns_df.select([timestamp_col, return_col]).iter_rows(named=True):
@@ -754,7 +752,9 @@ def _load_weights_as_signal_surface_from_dataframe(weights_df: pl.DataFrame) -> 
     if rename_map:
         weights_df = weights_df.rename(rename_map)
     if "selected" not in weights_df.columns and "signal_value" in weights_df.columns:
-        weights_df = weights_df.with_columns((pl.col("signal_value").abs() > 1e-9).alias("selected"))
+        weights_df = weights_df.with_columns(
+            (pl.col("signal_value").abs() > 1e-9).alias("selected")
+        )
     return weights_df
 
 
@@ -896,22 +896,23 @@ def _portfolio_state_from_weights(
     if weights_df.is_empty() or not equity_curve:
         return []
 
-    weights = weights_df.rename(
-        {
-            "symbol": "asset",
-            "weight": "signal_value",
-        }
-    ) if "symbol" in weights_df.columns else weights_df.rename({"weight": "signal_value"})
+    weights = (
+        weights_df.rename(
+            {
+                "symbol": "asset",
+                "weight": "signal_value",
+            }
+        )
+        if "symbol" in weights_df.columns
+        else weights_df.rename({"weight": "signal_value"})
+    )
     summary = (
         weights.group_by("timestamp")
         .agg(
             [
                 pl.col("signal_value").abs().sum().alias("gross_weight"),
                 pl.col("signal_value").sum().alias("net_weight"),
-                (pl.col("signal_value").abs() > 1e-9)
-                .sum()
-                .cast(pl.Int32)
-                .alias("open_positions"),
+                (pl.col("signal_value").abs() > 1e-9).sum().cast(pl.Int32).alias("open_positions"),
             ]
         )
         .sort("timestamp")
@@ -963,9 +964,9 @@ def _fills_from_weights(
     weights = (
         weights_df.sort(["symbol", "timestamp"])
         .with_columns(
-            (
-                pl.col("weight") - pl.col("weight").shift(1).fill_null(0.0).over("symbol")
-            ).alias("weight_delta")
+            (pl.col("weight") - pl.col("weight").shift(1).fill_null(0.0).over("symbol")).alias(
+                "weight_delta"
+            )
         )
         .filter(pl.col("weight_delta").abs() > 1e-6)
     )
@@ -1012,7 +1013,11 @@ def _build_strategy_metadata(
     signal_spec = strategy_spec.get("signal", {})
     allocation_spec = strategy_spec.get("allocation", {})
     config_name = None
-    if predictions_df is not None and "config_name" in predictions_df.columns and predictions_df.height > 0:
+    if (
+        predictions_df is not None
+        and "config_name" in predictions_df.columns
+        and predictions_df.height > 0
+    ):
         config_name = predictions_df["config_name"][0]
 
     metadata = {

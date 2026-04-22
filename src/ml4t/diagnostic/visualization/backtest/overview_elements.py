@@ -458,7 +458,7 @@ def create_factor_legend_html(
             f'<div style="display:flex;align-items:baseline;gap:8px;'
             f'padding:4px 0;line-height:1.5">'
             f'<span style="display:inline-block;width:10px;height:10px;'
-            f'border-radius:50%;background:{color};flex-shrink:0;'
+            f"border-radius:50%;background:{color};flex-shrink:0;"
             f'margin-top:3px"></span>'
             f'<div style="flex:1;min-width:0">'
             f'<div style="display:flex;justify-content:space-between;'
@@ -500,7 +500,7 @@ def create_factor_legend_html(
         '<div style="margin-top:16px;padding-top:8px;'
         'border-top:1px solid var(--c-border-light,#e2e8f0)">'
         '<div style="font-size:9px;text-transform:uppercase;'
-        'letter-spacing:0.5px;color:var(--c-text-muted,#64748b);'
+        "letter-spacing:0.5px;color:var(--c-text-muted,#64748b);"
         'margin-bottom:2px">Data Source</div>'
         f'<div style="font-size:11px;color:var(--c-text-secondary,#475569)">'
         f"{html_mod.escape(source_label)}</div>"
@@ -515,6 +515,7 @@ def create_factor_legend_html(
         f"{source_html}"
         f"</div>"
     )
+
 
 # =============================================================================
 # 4. ML Summary Strip (ML tab)
@@ -553,10 +554,12 @@ def create_ml_summary_strip_html(metrics: dict[str, Any]) -> str:
     utilization = _get(metrics, "signal_utilization")
     n_trades = _get(metrics, "n_enriched_trades")
     if utilization is not None and n_trades is not None:
-        cards.append(_kpi_card(
-            "SIGNAL UTILIZATION",
-            f"{int(n_trades):,} ({float(utilization):.2%})",
-        ))
+        cards.append(
+            _kpi_card(
+                "SIGNAL UTILIZATION",
+                f"{int(n_trades):,} ({float(utilization):.2%})",
+            )
+        )
 
     if not cards:
         return ""

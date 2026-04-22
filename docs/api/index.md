@@ -8,6 +8,7 @@ This reference is organized by import surface rather than by source tree alone.
 |---|---|
 | Stable application code | `ml4t.diagnostic.api` |
 | Notebook and exploratory work | `ml4t.diagnostic` |
+| Metrics and feature statistics | `ml4t.diagnostic.metrics` |
 | Statistical primitives | `ml4t.diagnostic.evaluation.stats` |
 | Splitters and fold persistence | `ml4t.diagnostic.splitters` |
 | Signal analysis | `ml4t.diagnostic.signal` |
@@ -25,7 +26,7 @@ cleanup at the package root.
 | Diagnostics | `FeatureDiagnostics`, `FeatureDiagnosticsResult`, `TradeAnalysis`, `PortfolioAnalysis`, `BarrierAnalysis` |
 | Signal analysis | `analyze_signal`, `SignalResult` |
 | Splitters | `CombinatorialCV`, `WalkForwardCV` |
-| Metrics | `compute_ic_series`, `compute_ic_hac_stats`, `compute_mdi_importance`, `compute_permutation_importance`, `compute_shap_importance`, `compute_h_statistic`, `compute_shap_interactions`, `analyze_ml_importance`, `analyze_interactions` |
+| Metrics | `cross_sectional_ic_series`, `cross_sectional_ic`, `pooled_ic`, `compute_ic_hac_stats`, `compute_mdi_importance`, `compute_permutation_importance`, `compute_shap_importance`, `compute_h_statistic`, `compute_shap_interactions`, `analyze_ml_importance`, `analyze_interactions` |
 
 ## Package-Level Convenience API (`ml4t.diagnostic`)
 
@@ -70,6 +71,39 @@ The package root re-exports the most common classes and configs for interactive 
         - compute_spread
         - compute_turnover
         - estimate_half_life
+
+## Metrics
+
+Use `ml4t.diagnostic.metrics` for reusable metric and feature-statistic helpers.
+The older `ml4t.diagnostic.evaluation.metrics` path remains available as a
+compatibility surface, but new examples and applications should import from
+`ml4t.diagnostic.metrics`.
+
+::: ml4t.diagnostic.metrics
+    options:
+      show_root_heading: true
+      members:
+        - pooled_ic
+        - cross_sectional_ic_series
+        - cross_sectional_ic
+        - compute_ic_summary_stats
+        - compute_ic_hac_stats
+        - compute_ic_decay
+        - compute_conditional_ic
+        - compute_monotonicity
+        - compute_mdi_importance
+        - compute_permutation_importance
+        - compute_shap_importance
+        - compute_mda_importance
+        - analyze_ml_importance
+        - compute_h_statistic
+        - compute_shap_interactions
+        - analyze_interactions
+        - sharpe_ratio
+        - sortino_ratio
+        - maximum_drawdown
+        - hit_rate
+        - compute_forward_returns
 
 ## Cross-Validation
 

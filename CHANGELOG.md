@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Canonical `ml4t.diagnostic.metrics` namespace for reusable metrics, including
+  explicit IC helpers: `cross_sectional_ic_series()`, `cross_sectional_ic()`,
+  and `pooled_ic()`.
+
+### Changed
+- Documentation examples now use `ml4t.diagnostic.metrics` for metrics imports.
+- `ml4t.diagnostic.evaluation.metrics` remains available as a compatibility
+  import surface.
+
 ## [0.1.0b8] - 2026-04-01
 
 ### Added

@@ -178,7 +178,7 @@ class MetricRegistry:
         # Core metrics with tier assignments
         self.register(
             "ic",
-            lambda pred, actual, _returns: metrics.information_coefficient(pred, actual),
+            lambda pred, actual, _returns: metrics.pooled_ic(pred, actual),
             maximize=True,
             tiers=[1, 2, 3],
         )

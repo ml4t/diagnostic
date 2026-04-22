@@ -26,9 +26,9 @@ result = fd.run_diagnostics(features_df["feature_1"], name="feature_1")
 Measure predictive power via rank correlation:
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_ic_series
+from ml4t.diagnostic.metrics import cross_sectional_ic_series
 
-ic_result = compute_ic_series(
+ic_result = cross_sectional_ic_series(
     predictions=pred_df,          # date, symbol, prediction
     returns=ret_df,               # date, symbol, forward_return
     pred_col="prediction",
@@ -57,7 +57,7 @@ Seven methods with consensus ranking:
 ### Mean Decrease Impurity (MDI)
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_mdi_importance
+from ml4t.diagnostic.metrics import compute_mdi_importance
 
 importance = compute_mdi_importance(
     model=trained_tree_model,
@@ -68,7 +68,7 @@ importance = compute_mdi_importance(
 ### Permutation Feature Importance (PFI)
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_permutation_importance
+from ml4t.diagnostic.metrics import compute_permutation_importance
 
 importance = compute_permutation_importance(
     model=model,
@@ -81,7 +81,7 @@ importance = compute_permutation_importance(
 ### SHAP Importance
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+from ml4t.diagnostic.metrics import compute_shap_importance
 
 importance = compute_shap_importance(
     model=model,
@@ -95,7 +95,7 @@ importance = compute_shap_importance(
 Run a combined tear-sheet style comparison:
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+from ml4t.diagnostic.metrics import analyze_ml_importance
 
 analysis = analyze_ml_importance(
     model=model,
@@ -112,7 +112,7 @@ print(analysis["top_features_consensus"])
 Detect non-linear interactions using H-statistic:
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_h_statistic
+from ml4t.diagnostic.metrics import compute_h_statistic
 
 h_stat = compute_h_statistic(
     model=model,

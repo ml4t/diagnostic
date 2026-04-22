@@ -11,7 +11,7 @@ import pandas as pd
 import polars as pl
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
-from ml4t.diagnostic.evaluation.metrics.information_coefficient import information_coefficient
+from ml4t.diagnostic.evaluation.metrics.information_coefficient import pooled_ic
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -220,7 +220,7 @@ def compute_conditional_ic(
                 continue
 
             # Compute IC for this quantile (confidence_intervals=False returns float)
-            ic_result = information_coefficient(feat_a_clean[mask], ret_clean[mask], method=method)
+            ic_result = pooled_ic(feat_a_clean[mask], ret_clean[mask], method=method)
             # When confidence_intervals=False, returns float; otherwise dict
             if isinstance(ic_result, dict):
                 ic_val = float(ic_result.get("ic", np.nan))
@@ -329,7 +329,7 @@ def compute_conditional_ic(
                 n_obs_per_quantile[q_label] = n_obs
                 continue
 
-            ic_result = information_coefficient(feat_a_quant[mask], ret_quant[mask], method=method)
+            ic_result = pooled_ic(feat_a_quant[mask], ret_quant[mask], method=method)
             if isinstance(ic_result, dict):
                 ic_val = float(ic_result.get("ic", np.nan))
             else:

@@ -240,31 +240,31 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
 _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     "overview": (
         "executive_summary",
-        "overview_snapshot",       # equity+DD chart (paired with sidebar)
-        "metrics_sidebar",         # metrics sidebar (paired with snapshot)
-        "credibility_box",         # credibility strip (paired with cost)
-        "cost_summary_line",       # cost summary (paired with credibility)
-        "top_contributors",        # contributors + detractors
+        "overview_snapshot",  # equity+DD chart (paired with sidebar)
+        "metrics_sidebar",  # metrics sidebar (paired with snapshot)
+        "credibility_box",  # credibility strip (paired with cost)
+        "cost_summary_line",  # cost summary (paired with credibility)
+        "top_contributors",  # contributors + detractors
         "monthly_heatmap_overview",
     ),
     "performance": (
         "equity_curve",
         "top_drawdowns_table",
-        "drawdowns",               # underwater curve
+        "drawdowns",  # underwater curve
         "rolling_metrics",
-        "annual_returns",          # paired with distribution
+        "annual_returns",  # paired with distribution
         "distribution",
-        "stock_attribution",       # per-symbol P&L table
+        "stock_attribution",  # per-symbol P&L table
     ),
     "trading": (
         "activity_strip",
-        "occupancy_overview",      # exposure timeline
-        "rebalance_timeline",      # rebalance events bar chart
-        "cost_waterfall",          # paired with cost_sensitivity
+        "occupancy_overview",  # exposure timeline
+        "rebalance_timeline",  # rebalance events bar chart
+        "cost_waterfall",  # paired with cost_sensitivity
         "cost_sensitivity",
-        "execution_quality",       # per-trade implementation shortfall
+        "execution_quality",  # per-trade implementation shortfall
         "attribution_overview",
-        "mfe_mae",                 # paired with duration
+        "mfe_mae",  # paired with duration
         "duration",
         "worst_trades_table",
         "trade_waterfall",
@@ -272,9 +272,9 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     ),
     "validation": (
         "validity_card",
-        "confidence_intervals",    # paired with min_trl
+        "confidence_intervals",  # paired with min_trl
         "min_trl",
-        "sharpe_bootstrap",        # bootstrap distribution
+        "sharpe_bootstrap",  # bootstrap distribution
         "drawdown_anatomy",
     ),
     "factors": (
@@ -291,25 +291,23 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
         "prediction_trade_alignment",
         "shap_errors",
     ),
-    "methodology": (
-        "methodology_notes",
-    ),
+    "methodology": ("methodology_notes",),
 }
 
 # Side-by-side pairs (50/50 split)
 _PAIRED_SECTIONS: dict[str, str] = {
-    "credibility_box": "cost_summary_line",       # Overview row 3
-    "annual_returns": "distribution",              # Performance row 5
-    "cost_waterfall": "cost_sensitivity",          # Trading row 3
-    "mfe_mae": "duration",                         # Trading row 5
-    "confidence_intervals": "min_trl",             # Validation row 2
+    "credibility_box": "cost_summary_line",  # Overview row 3
+    "annual_returns": "distribution",  # Performance row 5
+    "cost_waterfall": "cost_sensitivity",  # Trading row 3
+    "mfe_mae": "duration",  # Trading row 5
+    "confidence_intervals": "min_trl",  # Validation row 2
     "quintile_returns": "prediction_trade_alignment",  # ML row 2 (decile returns + scatter)
 }
 
 # Wide+narrow sidebar pairs (66/34 split)
 _SIDEBAR_SECTIONS: dict[str, str] = {
-    "overview_snapshot": "metrics_sidebar",        # Overview row 2
-    "factor_exposure": "factor_legend",            # Factors row 1
+    "overview_snapshot": "metrics_sidebar",  # Overview row 2
+    "factor_exposure": "factor_legend",  # Factors row 1
 }
 
 _COLLAPSIBLE_SECTIONS: set[str] = {
@@ -346,7 +344,7 @@ _SECTION_FOOTNOTES: dict[str, str] = {
         "A narrow margin suggests fragility to execution costs."
     ),
     "factor_attribution": (
-        "<strong>Reading:</strong> Additive attribution: \u03B2 \u00D7 factor return. "
+        "<strong>Reading:</strong> Additive attribution: \u03b2 \u00d7 factor return. "
         "Alpha is the residual manager skill after accounting for factor exposures. "
         "Total may differ slightly from compound return."
     ),
@@ -408,7 +406,8 @@ _SECTION_DATA_DEPENDENCIES: dict[str, tuple[str, ...]] = {
 
 
 def _build_provenance_warning(
-    section_name: str, data_sources: dict[str, str],
+    section_name: str,
+    data_sources: dict[str, str],
 ) -> str:
     """Build an HTML warning if any dependency uses reconstructed data."""
     deps = _SECTION_DATA_DEPENDENCIES.get(section_name)
@@ -425,7 +424,7 @@ def _build_provenance_warning(
     return (
         f'<div class="section-provenance" style="font-size:11px;color:#94a3b8;'
         f'margin-top:4px;font-style:italic;">'
-        f'\u26a0 Data source: {msg}</div>'
+        f"\u26a0 Data source: {msg}</div>"
     )
 
 
@@ -483,7 +482,11 @@ def _enrich_benchmark_metrics(
 ) -> None:
     """Compute benchmark-relative metrics: Alpha, Beta, Info Ratio, Tracking Error."""
     ret = returns if isinstance(returns, np.ndarray) else returns.to_numpy()
-    bench = benchmark_returns if isinstance(benchmark_returns, np.ndarray) else benchmark_returns.to_numpy()
+    bench = (
+        benchmark_returns
+        if isinstance(benchmark_returns, np.ndarray)
+        else benchmark_returns.to_numpy()
+    )
     # Align lengths (benchmark may have slightly different count)
     n = min(len(ret), len(bench))
     if n < 60:
@@ -513,7 +516,9 @@ def _enrich_benchmark_metrics(
     if up_mask.sum() > 0:
         metrics.setdefault("up_capture", float(np.mean(ret[up_mask]) / np.mean(bench[up_mask])))
     if down_mask.sum() > 0:
-        metrics.setdefault("down_capture", float(np.mean(ret[down_mask]) / np.mean(bench[down_mask])))
+        metrics.setdefault(
+            "down_capture", float(np.mean(ret[down_mask]) / np.mean(bench[down_mask]))
+        )
 
 
 def _enrich_from_trades(trades: pl.DataFrame, metrics: dict[str, Any]) -> None:
@@ -622,9 +627,7 @@ def _render_report_shell(
         if sidebar_partner and i + 1 < len(rendered_sections):
             next_section, next_html = rendered_sections[i + 1]
             if next_section.name == sidebar_partner:
-                parts.append(
-                    f'<div class="report-section-sidebar">{section_html}{next_html}</div>'
-                )
+                parts.append(f'<div class="report-section-sidebar">{section_html}{next_html}</div>')
                 skip_next = True
                 continue
 
@@ -633,9 +636,7 @@ def _render_report_shell(
         if partner_name and i + 1 < len(rendered_sections):
             next_section, next_html = rendered_sections[i + 1]
             if next_section.name == partner_name:
-                parts.append(
-                    f'<div class="report-section-pair">{section_html}{next_html}</div>'
-                )
+                parts.append(f'<div class="report-section-pair">{section_html}{next_html}</div>')
                 skip_next = True
                 continue
         parts.append(section_html)
@@ -664,9 +665,7 @@ def _build_dashboard_model(
     for workspace in workspaces.values():
         preferred_order = {
             section_name: idx
-            for idx, section_name in enumerate(
-                _WORKSPACE_SECTION_ORDER.get(workspace.spec.id, ())
-            )
+            for idx, section_name in enumerate(_WORKSPACE_SECTION_ORDER.get(workspace.spec.id, ()))
         }
         workspace.sections.sort(
             key=lambda item: (
@@ -698,7 +697,7 @@ def _render_dashboard_shell(
             f'<button class="workspace-tab{active_class}" type="button"'
             f' data-target="{workspace.spec.id}"'
             f' aria-selected="{is_active}">'
-            f'{html_mod.escape(workspace.spec.title)}</button>'
+            f"{html_mod.escape(workspace.spec.title)}</button>"
         )
         rendered = _render_report_shell(
             template,
@@ -710,16 +709,16 @@ def _render_dashboard_shell(
             f' class="workspace-panel{active_class}"'
             f' data-workspace="{workspace.spec.id}"'
             f' aria-hidden="{str(index != 0).lower()}">'
-            f'{rendered}</section>'
+            f"{rendered}</section>"
         )
 
     return f"""
     <section class="workspace-shell">
         <nav class="workspace-tabs" aria-label="Backtest report workspaces">
-            {''.join(tab_buttons)}
+            {"".join(tab_buttons)}
         </nav>
         <div class="workspace-panels">
-            {''.join(workspace_panels)}
+            {"".join(workspace_panels)}
         </div>
     </section>
     """
@@ -851,7 +850,9 @@ def generate_backtest_tearsheet(
 
     # Enrich metrics with portfolio-level stats from returns
     if returns is not None and metrics is not None:
-        portfolio_stats = _compute_portfolio_summary_metrics(returns, periods_per_year=periods_per_year)
+        portfolio_stats = _compute_portfolio_summary_metrics(
+            returns, periods_per_year=periods_per_year
+        )
         for key, value in portfolio_stats.items():
             metrics.setdefault(key, value)
         # Add common aliases
@@ -873,7 +874,8 @@ def generate_backtest_tearsheet(
         for section in tmpl.sections:
             if section.name in (
                 "ml_summary_strip",
-                "ic_time_series", "quintile_returns",
+                "ic_time_series",
+                "quintile_returns",
                 "prediction_trade_alignment",
             ):
                 section.enabled = True
@@ -1024,9 +1026,9 @@ def _enrich_validation_metrics(
             sr_f = float(sr)
             from scipy.stats import norm
 
-            se_corrected = float(np.sqrt(
-                max(0, 1 - skew * sr_f + (kurt - 3) / 4 * sr_f**2) / n_obs
-            )) * np.sqrt(252)
+            se_corrected = float(
+                np.sqrt(max(0, 1 - skew * sr_f + (kurt - 3) / 4 * sr_f**2) / n_obs)
+            ) * np.sqrt(252)
             metrics.setdefault("sharpe_se", se_corrected)
             if se_corrected > 0:
                 z_stat = sr_f / se_corrected
@@ -1161,19 +1163,15 @@ def _generate_section(
             # Subplot titles (e.g. "Rolling Return (252d)") are preserved — only the top-level title is cleared.
             content.update_layout(title=None, autosize=True, width=None)
             content.update_layout(margin={"t": 20, "l": 48, "r": 24, "b": 40})
-            body_html = (
-                '<div class="chart-container">'
-                + _figure_to_clean_html(content)
-                + "</div>"
-            )
+            body_html = '<div class="chart-container">' + _figure_to_clean_html(content) + "</div>"
         # Collapsible deep-dive sections
         if section_name in _COLLAPSIBLE_SECTIONS:
             return (
                 f'<details class="section-detail" data-section="{section_name}">'
                 f'<summary class="section-detail-summary">'
-                f'{html_mod.escape(section_title)}</summary>'
+                f"{html_mod.escape(section_title)}</summary>"
                 f'<div class="report-section">{body_html}</div>'
-                f'</details>'
+                f"</details>"
             )
 
         # Hide title for hero sections (KPI strip, snapshot) that are self-titled
@@ -1190,15 +1188,11 @@ def _generate_section(
             "factor_legend",
         }
         title_html = (
-            ""
-            if hide_title
-            else f'<h3 class="section-title">{html_mod.escape(section_title)}</h3>'
+            "" if hide_title else f'<h3 class="section-title">{html_mod.escape(section_title)}</h3>'
         )
 
         footnote = _SECTION_FOOTNOTES.get(section_name, "")
-        footnote_html = (
-            f'<div class="section-footnote">{footnote}</div>' if footnote else ""
-        )
+        footnote_html = f'<div class="section-footnote">{footnote}</div>' if footnote else ""
 
         # Data-provenance warnings for sections using reconstructed data
         data_sources = profile.data_sources if profile is not None else {}
@@ -1206,7 +1200,7 @@ def _generate_section(
 
         return (
             f'<div class="report-section" data-section="{section_name}">'
-            f'{title_html}{body_html}{footnote_html}{provenance_html}</div>'
+            f"{title_html}{body_html}{footnote_html}{provenance_html}</div>"
         )
 
     except Exception:
@@ -1264,7 +1258,9 @@ def _build_portfolio_analysis(
                     break
 
     return PortfolioAnalysis(
-        ret_series, benchmark=bench, dates=analysis_dates,
+        ret_series,
+        benchmark=bench,
+        dates=analysis_dates,
         periods_per_year=periods_per_year,
     )
 
@@ -1288,10 +1284,23 @@ class _SectionContext:
     """Immutable context bag passed to every section renderer."""
 
     __slots__ = (
-        "preset", "profile", "trades", "returns", "equity_curve", "metrics",
-        "predictions", "benchmark_returns", "benchmark_metrics", "benchmark_name",
-        "n_trials", "shap_result", "factor_data", "factor_analysis", "theme",
-        "data_sources", "report_metadata",
+        "preset",
+        "profile",
+        "trades",
+        "returns",
+        "equity_curve",
+        "metrics",
+        "predictions",
+        "benchmark_returns",
+        "benchmark_metrics",
+        "benchmark_name",
+        "n_trials",
+        "shap_result",
+        "factor_data",
+        "factor_analysis",
+        "theme",
+        "data_sources",
+        "report_metadata",
     )
 
     def __init__(
@@ -1335,6 +1344,7 @@ class _SectionContext:
 
 
 # --- Executive / Overview renderers ---
+
 
 def _render_executive_summary(ctx: _SectionContext) -> str | None:
     if not ctx.metrics:
@@ -1383,7 +1393,8 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
     bench_arr = None
     if has_benchmark:
         bench_arr = (
-            ctx.benchmark_returns if isinstance(ctx.benchmark_returns, np.ndarray)
+            ctx.benchmark_returns
+            if isinstance(ctx.benchmark_returns, np.ndarray)
             else ctx.benchmark_returns.to_numpy()
         )
         # Align lengths (benchmark may be shorter)
@@ -1430,16 +1441,39 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
     lc = colorway[0] if colorway else "#2563eb"
 
     fig = make_subplots(
-        rows=2, cols=2, shared_xaxes=True,
-        subplot_titles=("Rolling Return (252d)", "Rolling Sharpe (252d)",
-                        "Rolling Volatility (252d)", fourth_title),
-        vertical_spacing=0.14, horizontal_spacing=0.08,
+        rows=2,
+        cols=2,
+        shared_xaxes=True,
+        subplot_titles=(
+            "Rolling Return (252d)",
+            "Rolling Sharpe (252d)",
+            "Rolling Volatility (252d)",
+            fourth_title,
+        ),
+        vertical_spacing=0.14,
+        horizontal_spacing=0.08,
     )
     kw = {"mode": "lines", "showlegend": False, "line": {"width": 1.5, "color": lc}}
-    fig.add_trace(go.Scatter(x=x, y=roll_ret.tolist(), hovertemplate="%{y:.1%}<extra></extra>", **kw), row=1, col=1)
-    fig.add_trace(go.Scatter(x=x, y=roll_sharpe.tolist(), hovertemplate="%{y:.2f}<extra></extra>", **kw), row=1, col=2)
-    fig.add_trace(go.Scatter(x=x, y=roll_vol.tolist(), hovertemplate="%{y:.1%}<extra></extra>", **kw), row=2, col=1)
-    fig.add_trace(go.Scatter(x=x, y=roll_fourth.tolist(), hovertemplate="%{y:.2f}<extra></extra>", **kw), row=2, col=2)
+    fig.add_trace(
+        go.Scatter(x=x, y=roll_ret.tolist(), hovertemplate="%{y:.1%}<extra></extra>", **kw),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(x=x, y=roll_sharpe.tolist(), hovertemplate="%{y:.2f}<extra></extra>", **kw),
+        row=1,
+        col=2,
+    )
+    fig.add_trace(
+        go.Scatter(x=x, y=roll_vol.tolist(), hovertemplate="%{y:.1%}<extra></extra>", **kw),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(x=x, y=roll_fourth.tolist(), hovertemplate="%{y:.2f}<extra></extra>", **kw),
+        row=2,
+        col=2,
+    )
 
     fig.update_layout(theme_config["layout"])
     fig.update_layout(height=420, margin={"t": 40, "l": 48, "r": 24, "b": 32}, showlegend=False)
@@ -1476,24 +1510,33 @@ def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
     theme_config = get_theme_config(theme)
 
     fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
-        vertical_spacing=0.03, row_heights=[0.75, 0.25],
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.75, 0.25],
     )
     has_benchmark = ctx.benchmark_returns is not None and len(ctx.benchmark_returns) > 0
     show_legend = has_benchmark
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=(cum - 1).tolist(), mode="lines", name="Strategy",
+            x=x,
+            y=(cum - 1).tolist(),
+            mode="lines",
+            name="Strategy",
             line={"color": theme_config["colorway"][0], "width": 2},
-            hovertemplate="%{y:.1%}<extra></extra>", showlegend=show_legend,
+            hovertemplate="%{y:.1%}<extra></extra>",
+            showlegend=show_legend,
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     # Benchmark overlay
     if has_benchmark:
         bench_arr = (
-            ctx.benchmark_returns if isinstance(ctx.benchmark_returns, np.ndarray)
+            ctx.benchmark_returns
+            if isinstance(ctx.benchmark_returns, np.ndarray)
             else ctx.benchmark_returns.to_numpy()
         )
         bench_cum = np.cumprod(1 + bench_arr)
@@ -1501,21 +1544,31 @@ def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
         n_bench = min(len(bench_cum), len(x))
         fig.add_trace(
             go.Scatter(
-                x=x[:n_bench], y=(bench_cum[:n_bench] - 1).tolist(),
-                mode="lines", name=ctx.benchmark_name,
+                x=x[:n_bench],
+                y=(bench_cum[:n_bench] - 1).tolist(),
+                mode="lines",
+                name=ctx.benchmark_name,
                 line={"color": "gray", "width": 1.5, "dash": "dash"},
-                hovertemplate="%{y:.1%}<extra></extra>", showlegend=True,
+                hovertemplate="%{y:.1%}<extra></extra>",
+                showlegend=True,
             ),
-            row=1, col=1,
+            row=1,
+            col=1,
         )
     fig.add_trace(
         go.Scatter(
-            x=x, y=dd.tolist(), fill="tozeroy", mode="lines", name="Drawdown",
+            x=x,
+            y=dd.tolist(),
+            fill="tozeroy",
+            mode="lines",
+            name="Drawdown",
             line={"color": SERIES_COLORS["drawdown_line"], "width": 0.5},
             fillcolor=SERIES_COLORS["drawdown"],
-            hovertemplate="%{y:.1%}<extra></extra>", showlegend=False,
+            hovertemplate="%{y:.1%}<extra></extra>",
+            showlegend=False,
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
@@ -1523,7 +1576,9 @@ def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
         height=450,
         margin={"t": 40, "l": 48, "r": 24, "b": 32},
         hovermode="x unified",
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1.0} if show_legend else {},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1.0}
+        if show_legend
+        else {},
     )
     fig.update_yaxes(tickformat=".0%", row=1, col=1)
     fig.update_yaxes(tickformat=".0%", row=2, col=1)
@@ -1559,13 +1614,17 @@ def _build_position_count_from_trades(ctx: _SectionContext) -> go.Figure | None:
 
     theme_config = get_theme_config(ctx.theme)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=all_dates.to_list(), y=counts,
-        mode="lines", fill="tozeroy",
-        line={"color": COLORS["slate"], "width": 1},
-        fillcolor="rgba(26,45,74,0.15)",
-        hovertemplate="%{y} positions<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=all_dates.to_list(),
+            y=counts,
+            mode="lines",
+            fill="tozeroy",
+            line={"color": COLORS["slate"], "width": 1},
+            fillcolor="rgba(26,45,74,0.15)",
+            hovertemplate="%{y} positions<extra></extra>",
+        )
+    )
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title="Open Positions",
@@ -1675,6 +1734,7 @@ def _render_sharpe_bootstrap(ctx: _SectionContext) -> go.Figure | None:
 
 # --- Trade Analysis renderers ---
 
+
 def _render_mfe_mae(ctx: _SectionContext) -> go.Figure | None:
     if ctx.trades is None:
         return None
@@ -1712,8 +1772,8 @@ def _render_duration(ctx: _SectionContext) -> go.Figure | None:
     return plot_trade_duration_distribution(ctx.trades, theme=ctx.theme)
 
 
-
 # --- Cost Attribution renderers ---
+
 
 def _render_cost_waterfall(ctx: _SectionContext) -> str | None:
     if ctx.profile is not None:
@@ -1729,14 +1789,18 @@ def _render_cost_waterfall(ctx: _SectionContext) -> str | None:
         from .cost_attribution import plot_cost_waterfall
 
         fig = plot_cost_waterfall(
-            gross_pnl=gross_pnl, commission=commission,
-            slippage=slippage, theme=ctx.theme,
+            gross_pnl=gross_pnl,
+            commission=commission,
+            slippage=slippage,
+            theme=ctx.theme,
             height=380,
         )
     if fig is None:
         return None
     # Strip chart title (section <h3> provides the heading) and normalize margins
-    fig.update_layout(title=None, autosize=True, width=None, margin={"t": 20, "l": 48, "r": 24, "b": 40})
+    fig.update_layout(
+        title=None, autosize=True, width=None, margin={"t": 20, "l": 48, "r": 24, "b": 40}
+    )
     chart_html = _figure_to_clean_html(fig)
     return f'<div class="chart-container">{chart_html}</div>'
 
@@ -1779,12 +1843,14 @@ def _render_min_trl(ctx: _SectionContext) -> go.Figure | None:
     from .statistical_validity import plot_minimum_track_record
 
     return plot_minimum_track_record(
-        observed_sharpe=sharpe, current_periods=periods, theme=ctx.theme,
+        observed_sharpe=sharpe,
+        current_periods=periods,
+        theme=ctx.theme,
     )
 
 
-
 # --- HTML-native renderers ---
+
 
 def _render_metrics_sidebar(ctx: _SectionContext) -> str | None:
     if not ctx.metrics:
@@ -1824,19 +1890,28 @@ def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
                 preds = adapter.predictions_df
                 score_col = "prediction_value" if "prediction_value" in preds.columns else None
                 outcome_col = _first_present_column(
-                    preds, ("y_true", "actual", "target", "realized_return", "forward_return"),
+                    preds,
+                    ("y_true", "actual", "target", "realized_return", "forward_return"),
                 )
                 date_col = "timestamp" if "timestamp" in preds.columns else None
                 asset_col = "asset" if "asset" in preds.columns else None
                 if score_col and outcome_col and date_col and asset_col:
                     frame = (
                         preds.select([date_col, asset_col, score_col, outcome_col])
-                        .rename({date_col: "date", asset_col: "asset",
-                                 score_col: "score", outcome_col: "outcome"})
+                        .rename(
+                            {
+                                date_col: "date",
+                                asset_col: "asset",
+                                score_col: "score",
+                                outcome_col: "outcome",
+                            }
+                        )
                         .with_columns(pl.col("date").cast(pl.Date, strict=False))
-                        .filter(pl.col("date").is_not_null()
-                                & pl.col("score").is_not_null()
-                                & pl.col("outcome").is_not_null())
+                        .filter(
+                            pl.col("date").is_not_null()
+                            & pl.col("score").is_not_null()
+                            & pl.col("outcome").is_not_null()
+                        )
                     )
                     daily_ic = _compute_daily_ic(frame)
                     if not daily_ic.is_empty():
@@ -1849,9 +1924,7 @@ def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
                             )
                     # Hit rate
                     if not frame.is_empty():
-                        correct = (
-                            (frame["score"] > 0) & (frame["outcome"] > 0)
-                        ) | (
+                        correct = ((frame["score"] > 0) & (frame["outcome"] > 0)) | (
                             (frame["score"] <= 0) & (frame["outcome"] <= 0)
                         )
                         ml_metrics["hit_rate"] = float(correct.mean())
@@ -1937,20 +2010,25 @@ def _render_stock_attribution(ctx: _SectionContext) -> str | None:
 
 # --- Portfolio-level renderers ---
 
+
 def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
     if ctx.returns is None:
         return None
 
     pa = _build_portfolio_analysis(
-        ctx.returns, benchmark_returns=ctx.benchmark_returns,
-        profile=ctx.profile, equity_curve=ctx.equity_curve,
+        ctx.returns,
+        benchmark_returns=ctx.benchmark_returns,
+        profile=ctx.profile,
+        equity_curve=ctx.equity_curve,
     )
 
     if section_name == "equity_curve":
         from ml4t.diagnostic.visualization.portfolio import plot_cumulative_returns
 
         return plot_cumulative_returns(
-            pa, theme=ctx.theme, benchmark_label=ctx.benchmark_name,
+            pa,
+            theme=ctx.theme,
+            benchmark_label=ctx.benchmark_name,
         )
 
     if section_name == "drawdowns":
@@ -1975,7 +2053,9 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
         from ml4t.diagnostic.visualization.portfolio import plot_annual_returns_bar
 
         return plot_annual_returns_bar(
-            pa, theme=ctx.theme, benchmark_label=ctx.benchmark_name,
+            pa,
+            theme=ctx.theme,
+            benchmark_label=ctx.benchmark_name,
         )
 
     if section_name == "rolling_metrics":
@@ -1994,16 +2074,14 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
     if section_name == "tail_risk":
         from .tail_risk import plot_tail_risk_analysis
 
-        ret_arr = (
-            ctx.returns if isinstance(ctx.returns, np.ndarray)
-            else ctx.returns.to_numpy()
-        )
+        ret_arr = ctx.returns if isinstance(ctx.returns, np.ndarray) else ctx.returns.to_numpy()
         return plot_tail_risk_analysis(ret_arr, theme=ctx.theme)
 
     return None
 
 
 # --- ML renderers ---
+
 
 class _PredictionAdapter:
     """Lightweight adapter so ML plots can work without a full BacktestProfile."""
@@ -2043,9 +2121,13 @@ class _PredictionAdapter:
 
     @property
     def ml(self) -> dict:
-        return {"available": True, "has_predictions": True, "has_signals": False,
-                "metrics": {"n_predictions": self._predictions_df.height},
-                "strategy_metadata": {}}
+        return {
+            "available": True,
+            "has_predictions": True,
+            "has_signals": False,
+            "metrics": {"n_predictions": self._predictions_df.height},
+            "strategy_metadata": {},
+        }
 
 
 def _get_prediction_adapter(ctx: _SectionContext) -> Any:
@@ -2063,8 +2145,6 @@ def _render_shap_errors(ctx: _SectionContext) -> go.Figure | None:
     from .shap_patterns import plot_shap_error_patterns
 
     return plot_shap_error_patterns(ctx.shap_result, theme=ctx.theme)
-
-
 
 
 def _render_signal_diagnostics(ctx: _SectionContext) -> go.Figure | None:
@@ -2125,15 +2205,14 @@ def _build_prediction_vs_outcome_scatter(
 
     score_col = "prediction_value" if "prediction_value" in preds.columns else None
     outcome_col = _first_present_column(
-        preds, ("y_true", "actual", "target", "realized_return", "forward_return"),
+        preds,
+        ("y_true", "actual", "target", "realized_return", "forward_return"),
     )
     if score_col is None or outcome_col is None:
         return None
 
     # Sample if too many points
-    df = preds.filter(
-        pl.col(score_col).is_not_null() & pl.col(outcome_col).is_not_null()
-    )
+    df = preds.filter(pl.col(score_col).is_not_null() & pl.col(outcome_col).is_not_null())
     if df.is_empty():
         return None
     if df.height > 5000:
@@ -2154,12 +2233,16 @@ def _build_prediction_vs_outcome_scatter(
         (~winners, "Losers", COLORS["negative"]),
     ]:
         if mask.sum() > 0:
-            fig.add_trace(go.Scatter(
-                x=scores[mask], y=outcomes[mask],
-                mode="markers", name=name,
-                marker={"color": color, "size": 4, "opacity": 0.4},
-                hovertemplate="Score: %{x:.4f}<br>Return: %{y:.4f}<extra></extra>",
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=scores[mask],
+                    y=outcomes[mask],
+                    mode="markers",
+                    name=name,
+                    marker={"color": color, "size": 4, "opacity": 0.4},
+                    hovertemplate="Score: %{x:.4f}<br>Return: %{y:.4f}<extra></extra>",
+                )
+            )
 
     # Binned mean overlay
     n_bins = min(20, max(5, len(scores) // 50))
@@ -2171,12 +2254,16 @@ def _build_prediction_vs_outcome_scatter(
             bin_centers.append(float(np.mean(scores[mask])))
             bin_means.append(float(np.mean(outcomes[mask])))
     if bin_centers:
-        fig.add_trace(go.Scatter(
-            x=bin_centers, y=bin_means,
-            mode="lines+markers", name="Binned Mean",
-            line={"color": COLORS["amber"], "width": 2.5},
-            marker={"size": 6, "color": COLORS["amber"]},
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=bin_centers,
+                y=bin_means,
+                mode="lines+markers",
+                name="Binned Mean",
+                line={"color": COLORS["amber"], "width": 2.5},
+                marker={"size": 6, "color": COLORS["amber"]},
+            )
+        )
 
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
@@ -2190,6 +2277,7 @@ def _build_prediction_vs_outcome_scatter(
 
 
 # --- Factor renderers ---
+
 
 def _render_factor_section(ctx: _SectionContext, section_name: str) -> Any:
     if ctx.factor_analysis is None:
@@ -2210,14 +2298,16 @@ def _render_factor_section(ctx: _SectionContext, section_name: str) -> Any:
         from ml4t.diagnostic.visualization.factor import plot_return_attribution_waterfall
 
         return plot_return_attribution_waterfall(
-            ctx.factor_analysis.attribution(), theme=ctx.theme,
+            ctx.factor_analysis.attribution(),
+            theme=ctx.theme,
         )
 
     if section_name == "factor_risk":
         from ml4t.diagnostic.visualization.factor import plot_risk_attribution_pie
 
         return plot_risk_attribution_pie(
-            ctx.factor_analysis.risk_attribution(), theme=ctx.theme,
+            ctx.factor_analysis.risk_attribution(),
+            theme=ctx.theme,
         )
 
     return None
@@ -2283,9 +2373,7 @@ def _render_factor_regression_table(ctx: _SectionContext) -> str | None:
         '<table class="data-table">'
         "<thead><tr>"
         "<th>Factor</th><th>Beta</th><th>SE</th><th>t-stat</th><th>p-value</th>"
-        "</tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
         f'<div style="font-size:11px;color:var(--c-text-muted);padding:6px 12px;">'
         f"{footer}</div>"
     )
@@ -2311,55 +2399,88 @@ def _render_factor_legend(ctx: _SectionContext) -> str | None:
 
 _METHODOLOGY_SECTIONS: list[tuple[str, str, str, tuple[str, ...]]] = [
     # (tab, title, description, data_source_keys)
-    ("Overview", "KPI Strip & Equity Curve",
-     "Sharpe, Sortino, Calmar, CAGR computed from daily returns via "
-     "PortfolioAnalysis. Equity curve from equity.parquet if available, "
-     "otherwise compounded from daily returns and initial capital from spec.json.",
-     ("equity",)),
-    ("Overview", "Metrics Sidebar",
-     "24 metrics across 6 groups (Returns, Risk-Adjusted, Benchmark, Drawdown, "
-     "Trading, Tail &amp; Shape). All derived from daily returns and trade records.",
-     ()),
-    ("Performance", "Rolling Metrics",
-     "21-day and 252-day rolling windows for Sharpe, Sortino, Calmar, and return. "
-     "Annualization uses the resolved calendar (default NYSE = 252 days/year).",
-     ("equity",)),
-    ("Trading", "Activity &amp; Rebalancing",
-     "Fill counts, turnover, and rebalance events from fills.parquet if available. "
-     "Otherwise reconstructed from portfolio weight changes (price=1.0, commission=0, "
-     "slippage=0). Turnover averaged over rebalance days only.",
-     ("fills",)),
-    ("Trading", "Cost Bridge &amp; Execution Quality",
-     "Gross PnL decomposed into commission and slippage costs. Implementation "
-     "shortfall computed as total_slippage_cost / trade_notional per trade. "
-     "When fills are reconstructed, all cost metrics show zero.",
-     ("fills",)),
-    ("Trading", "Exposure Timeline",
-     "Gross and net exposure fractions from portfolio_state.parquet if available. "
-     "Otherwise derived from weight sums per timestamp.",
-     ("portfolio_state",)),
-    ("Validation", "Deflated Sharpe Ratio",
-     "Bailey &amp; L\u00f3pez de Prado (2014). Adjusts observed Sharpe for multiple "
-     "testing. Requires n_trials parameter (number of strategy variations tested).",
-     ()),
-    ("Validation", "Sharpe Bootstrap",
-     "5,000 block-bootstrap replications (block size = 252) of the Sharpe ratio. "
-     "Reports P(SR\u22640) — probability the true Sharpe is zero or negative.",
-     ()),
-    ("ML", "IC &amp; Decile Returns",
-     "Information Coefficient: daily Spearman rank correlation between prediction "
-     "scores and realized forward returns. Decile returns: mean realized return "
-     "per prediction score decile (D1=lowest, D10=highest).",
-     ()),
-    ("ML", "Signal Utilization",
-     "Fraction of predictions that matched a trade entry (joined by timestamp + asset). "
-     "Requires prediction_enriched_trades from ml4t-backtest.",
-     ()),
-    ("Factors", "Factor Model",
-     "Fama-French 5-factor OLS regression with Newey-West HAC standard errors (3 lags). "
-     "Attribution: \u03b2 \u00d7 factor return (additive). Risk: variance decomposition "
-     "via \u03b2\u03a3\u03b2' per Paleologo (2025).",
-     ()),
+    (
+        "Overview",
+        "KPI Strip & Equity Curve",
+        "Sharpe, Sortino, Calmar, CAGR computed from daily returns via "
+        "PortfolioAnalysis. Equity curve from equity.parquet if available, "
+        "otherwise compounded from daily returns and initial capital from spec.json.",
+        ("equity",),
+    ),
+    (
+        "Overview",
+        "Metrics Sidebar",
+        "24 metrics across 6 groups (Returns, Risk-Adjusted, Benchmark, Drawdown, "
+        "Trading, Tail &amp; Shape). All derived from daily returns and trade records.",
+        (),
+    ),
+    (
+        "Performance",
+        "Rolling Metrics",
+        "21-day and 252-day rolling windows for Sharpe, Sortino, Calmar, and return. "
+        "Annualization uses the resolved calendar (default NYSE = 252 days/year).",
+        ("equity",),
+    ),
+    (
+        "Trading",
+        "Activity &amp; Rebalancing",
+        "Fill counts, turnover, and rebalance events from fills.parquet if available. "
+        "Otherwise reconstructed from portfolio weight changes (price=1.0, commission=0, "
+        "slippage=0). Turnover averaged over rebalance days only.",
+        ("fills",),
+    ),
+    (
+        "Trading",
+        "Cost Bridge &amp; Execution Quality",
+        "Gross PnL decomposed into commission and slippage costs. Implementation "
+        "shortfall computed as total_slippage_cost / trade_notional per trade. "
+        "When fills are reconstructed, all cost metrics show zero.",
+        ("fills",),
+    ),
+    (
+        "Trading",
+        "Exposure Timeline",
+        "Gross and net exposure fractions from portfolio_state.parquet if available. "
+        "Otherwise derived from weight sums per timestamp.",
+        ("portfolio_state",),
+    ),
+    (
+        "Validation",
+        "Deflated Sharpe Ratio",
+        "Bailey &amp; L\u00f3pez de Prado (2014). Adjusts observed Sharpe for multiple "
+        "testing. Requires n_trials parameter (number of strategy variations tested).",
+        (),
+    ),
+    (
+        "Validation",
+        "Sharpe Bootstrap",
+        "5,000 block-bootstrap replications (block size = 252) of the Sharpe ratio. "
+        "Reports P(SR\u22640) — probability the true Sharpe is zero or negative.",
+        (),
+    ),
+    (
+        "ML",
+        "IC &amp; Decile Returns",
+        "Information Coefficient: daily Spearman rank correlation between prediction "
+        "scores and realized forward returns. Decile returns: mean realized return "
+        "per prediction score decile (D1=lowest, D10=highest).",
+        (),
+    ),
+    (
+        "ML",
+        "Signal Utilization",
+        "Fraction of predictions that matched a trade entry (joined by timestamp + asset). "
+        "Requires prediction_enriched_trades from ml4t-backtest.",
+        (),
+    ),
+    (
+        "Factors",
+        "Factor Model",
+        "Fama-French 5-factor OLS regression with Newey-West HAC standard errors (3 lags). "
+        "Attribution: \u03b2 \u00d7 factor return (additive). Risk: variance decomposition "
+        "via \u03b2\u03a3\u03b2' per Paleologo (2025).",
+        (),
+    ),
 ]
 
 
@@ -2377,7 +2498,9 @@ def _render_methodology_notes(ctx: _SectionContext) -> str | None:
                 " | ".join(
                     part
                     for part in (
-                        f"window {metadata.evaluation_window}" if metadata.evaluation_window else None,
+                        f"window {metadata.evaluation_window}"
+                        if metadata.evaluation_window
+                        else None,
                         f"run_id {metadata.run_id}" if metadata.run_id else None,
                         (
                             f"ml4t-backtest {metadata.library_version}"
@@ -2429,15 +2552,9 @@ def _render_methodology_notes(ctx: _SectionContext) -> str | None:
         for key in source_keys:
             source = data_sources.get(key, "")
             if source and source != "artifact":
-                badges += (
-                    f' <span style="color:#ef4444;font-size:10px;">'
-                    f'\u26a0 {source}</span>'
-                )
+                badges += f' <span style="color:#ef4444;font-size:10px;">\u26a0 {source}</span>'
             elif source == "artifact":
-                badges += (
-                    ' <span style="color:#10b981;font-size:10px;">'
-                    '\u2713 from artifact</span>'
-                )
+                badges += ' <span style="color:#10b981;font-size:10px;">\u2713 from artifact</span>'
 
         rows.append(
             f"<tr>"
@@ -2451,7 +2568,7 @@ def _render_methodology_notes(ctx: _SectionContext) -> str | None:
         '<div class="metrics-table-wrap">'
         '<table class="metrics-table">'
         "<thead><tr><th>Tab</th><th>Section &amp; Methodology</th></tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody>'
+        f"<tbody>{''.join(rows)}</tbody>"
         "</table>"
         '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">'
         "Sections marked \u26a0 use reconstructed data. Re-run the backtest with "
@@ -2470,7 +2587,9 @@ _SECTION_REGISTRY: dict[str, Any] = {
     "credibility_box": _render_credibility_box,
     "cost_summary_line": _render_cost_summary_line,
     "top_contributors": _render_top_contributors,
-    "monthly_heatmap_overview": lambda ctx: _render_portfolio_section(ctx, "monthly_heatmap_overview"),
+    "monthly_heatmap_overview": lambda ctx: _render_portfolio_section(
+        ctx, "monthly_heatmap_overview"
+    ),
     # Performance
     "equity_curve": lambda ctx: _render_portfolio_section(ctx, "equity_curve"),
     "top_drawdowns_table": lambda ctx: _render_portfolio_section(ctx, "top_drawdowns_table"),

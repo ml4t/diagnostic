@@ -20,7 +20,7 @@ from ml4t.diagnostic.evaluation.metrics.ic_statistics import (
 from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_ir,
     compute_ic_series,
-    information_coefficient,
+    pooled_ic,
 )
 from ml4t.diagnostic.evaluation.metrics.monotonicity import compute_monotonicity
 
@@ -66,7 +66,7 @@ def analyze_feature_outcome_series(
 
     if n_observations < 3:
         # Keep contract stable for small samples while signaling weak evidence.
-        ic_val = float(information_coefficient(pred_clean, out_clean, method=method))
+        ic_val = float(pooled_ic(pred_clean, out_clean, method=method))
         return {
             "ic_mean": ic_val,
             "ic_std": float(np.std(pred_clean)),

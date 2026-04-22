@@ -9,10 +9,10 @@ from typing import Any
 
 import polars as pl
 
-from ml4t.diagnostic.evaluation.metrics.ic_statistics import compute_ic_summary_stats
-from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+from ml4t.diagnostic.metrics.ic import (
     compute_ic_series as compute_ic_series_core,
 )
+from ml4t.diagnostic.metrics.ic_inference import compute_ic_summary_stats
 
 
 def compute_ic_series(

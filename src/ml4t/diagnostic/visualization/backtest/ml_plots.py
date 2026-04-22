@@ -30,7 +30,9 @@ def plot_prediction_signal_diagnostics(
     date_col = "timestamp" if "timestamp" in predictions.columns else None
     asset_col = "asset" if "asset" in predictions.columns else None
     score_col = "prediction_value" if "prediction_value" in predictions.columns else None
-    outcome_col = _first_present_column(predictions, ("y_true", "actual", "target", "realized_return", "forward_return"))
+    outcome_col = _first_present_column(
+        predictions, ("y_true", "actual", "target", "realized_return", "forward_return")
+    )
     if date_col is None or asset_col is None or score_col is None or outcome_col is None:
         return None
 
@@ -69,21 +71,19 @@ def plot_prediction_signal_diagnostics(
             eq = eq.with_columns(equity["return"].alias("daily_ret"))
         elif "cumulative_return" in equity.columns:
             cum = equity["cumulative_return"]
-            eq = eq.with_columns(
-                ((1 + cum) / (1 + cum.shift(1)) - 1).alias("daily_ret")
-            )
+            eq = eq.with_columns(((1 + cum) / (1 + cum.shift(1)) - 1).alias("daily_ret"))
         elif "equity" in equity.columns:
             eq_val = equity["equity"]
-            eq = eq.with_columns(
-                (eq_val / eq_val.shift(1) - 1).alias("daily_ret")
-            )
+            eq = eq.with_columns((eq_val / eq_val.shift(1) - 1).alias("daily_ret"))
         if "daily_ret" in eq.columns:
             eq = eq.with_columns(
                 pl.col("daily_ret")
                 .rolling_mean(window_size=21, min_samples=5)
                 .alias("rolling_return_21")
             )
-            ic_with_ret = daily_ic.join(eq.select("date", "rolling_return_21"), on="date", how="left")
+            ic_with_ret = daily_ic.join(
+                eq.select("date", "rolling_return_21"), on="date", how="left"
+            )
 
     theme_config = get_theme_config(theme)
 
@@ -113,22 +113,26 @@ def plot_prediction_signal_diagnostics(
         go.Scatter(
             x=daily_ic["date"].to_list(),
             y=daily_ic["ic"].to_list(),
-            mode="lines", name="Daily IC",
+            mode="lines",
+            name="Daily IC",
             line={"width": 0.8, "color": "rgba(10,22,40,0.25)"},
             showlegend=False,
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     if "rolling_ic_21" in daily_ic.columns:
         fig.add_trace(
             go.Scatter(
                 x=daily_ic["date"].to_list(),
                 y=daily_ic["rolling_ic_21"].to_list(),
-                mode="lines", name="21d Mean",
+                mode="lines",
+                name="21d Mean",
                 line={"width": 2, "color": ic_color},
                 showlegend=False,
             ),
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
     # Row 2: Rolling IC (left y) vs Rolling Returns (right y) — dual axis
@@ -138,12 +142,15 @@ def plot_prediction_signal_diagnostics(
             go.Scatter(
                 x=ic_with_ret["date"].to_list(),
                 y=ic_with_ret["rolling_ic_21"].to_list(),
-                mode="lines", name="Rolling IC",
+                mode="lines",
+                name="Rolling IC",
                 line={"width": 1.5, "color": ic_color},
                 hovertemplate="IC: %{y:.3f}<extra></extra>",
                 showlegend=False,
             ),
-            row=2, col=1, secondary_y=False,
+            row=2,
+            col=1,
+            secondary_y=False,
         )
     if "rolling_return_21" in ic_with_ret.columns:
         rr = ic_with_ret["rolling_return_21"]
@@ -152,12 +159,15 @@ def plot_prediction_signal_diagnostics(
                 go.Scatter(
                     x=ic_with_ret["date"].to_list(),
                     y=rr.to_list(),
-                    mode="lines", name="Rolling Return",
+                    mode="lines",
+                    name="Rolling Return",
                     line={"width": 1.5, "color": ret_color},
                     hovertemplate="Return: %{y:.2%}<extra></extra>",
                     showlegend=False,
                 ),
-                row=2, col=1, secondary_y=True,
+                row=2,
+                col=1,
+                secondary_y=True,
             )
 
     # Row 3: Decile returns
@@ -173,12 +183,17 @@ def plot_prediction_signal_diagnostics(
         text_labels = [f"N={c:,}" if c is not None else "" for c in q_counts]
         fig.add_trace(
             go.Bar(
-                x=q_labels, y=q_means, name="Mean Return",
+                x=q_labels,
+                y=q_means,
+                name="Mean Return",
                 marker_color=bar_colors,
-                text=text_labels, textposition="outside", textfont={"size": 9},
+                text=text_labels,
+                textposition="outside",
+                textfont={"size": 9},
                 showlegend=False,
             ),
-            row=3, col=1,
+            row=3,
+            col=1,
         )
 
     # Row 4: IC by regime — auto-scale y to data range
@@ -189,10 +204,12 @@ def plot_prediction_signal_diagnostics(
             go.Bar(
                 x=regime_summary["regime"].to_list(),
                 y=regime_ics,
-                marker_color=r_colors, showlegend=False,
+                marker_color=r_colors,
+                showlegend=False,
                 hovertemplate="%{x}: IC = %{y:.4f}<extra></extra>",
             ),
-            row=4, col=1,
+            row=4,
+            col=1,
         )
         # Tight y-axis around the data with ~20% padding
         if regime_ics:
@@ -239,7 +256,9 @@ def plot_ic_time_series(
         predictions,
         ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
     )
-    outcome_col = _first_present_column(predictions, ("y_true", "actual", "target", "realized_return", "forward_return"))
+    outcome_col = _first_present_column(
+        predictions, ("y_true", "actual", "target", "realized_return", "forward_return")
+    )
     if date_col is None or asset_col is None or score_col is None or outcome_col is None:
         return None
 
@@ -247,7 +266,11 @@ def plot_ic_time_series(
         predictions.select([date_col, asset_col, score_col, outcome_col])
         .rename({date_col: "date", asset_col: "asset", score_col: "score", outcome_col: "outcome"})
         .with_columns(pl.col("date").cast(pl.Date, strict=False))
-        .filter(pl.col("date").is_not_null() & pl.col("score").is_not_null() & pl.col("outcome").is_not_null())
+        .filter(
+            pl.col("date").is_not_null()
+            & pl.col("score").is_not_null()
+            & pl.col("outcome").is_not_null()
+        )
     )
     if frame.is_empty():
         return None
@@ -260,19 +283,27 @@ def plot_ic_time_series(
     ic_color = theme_config["colorway"][0]
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=daily_ic["date"].to_list(), y=daily_ic["ic"].to_list(),
-        mode="lines", name="Daily IC",
-        line={"width": 0.8, "color": "rgba(10,22,40,0.25)"},
-        showlegend=False,
-    ))
-    if "rolling_ic_21" in daily_ic.columns:
-        fig.add_trace(go.Scatter(
-            x=daily_ic["date"].to_list(), y=daily_ic["rolling_ic_21"].to_list(),
-            mode="lines", name="21d Rolling IC",
-            line={"width": 2, "color": ic_color},
+    fig.add_trace(
+        go.Scatter(
+            x=daily_ic["date"].to_list(),
+            y=daily_ic["ic"].to_list(),
+            mode="lines",
+            name="Daily IC",
+            line={"width": 0.8, "color": "rgba(10,22,40,0.25)"},
             showlegend=False,
-        ))
+        )
+    )
+    if "rolling_ic_21" in daily_ic.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=daily_ic["date"].to_list(),
+                y=daily_ic["rolling_ic_21"].to_list(),
+                mode="lines",
+                name="21d Rolling IC",
+                line={"width": 2, "color": ic_color},
+                showlegend=False,
+            )
+        )
     fig.add_hline(y=0, line_dash="dash", line_color=COLORS["neutral"], line_width=0.5)
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
@@ -302,7 +333,9 @@ def plot_quintile_returns(
         predictions,
         ("prediction_value", "score", "prediction", "y_pred", "y_score", "ml_score", "probability"),
     )
-    outcome_col = _first_present_column(predictions, ("y_true", "actual", "target", "realized_return", "forward_return"))
+    outcome_col = _first_present_column(
+        predictions, ("y_true", "actual", "target", "realized_return", "forward_return")
+    )
     if date_col is None or asset_col is None or score_col is None or outcome_col is None:
         return None
 
@@ -310,7 +343,11 @@ def plot_quintile_returns(
         predictions.select([date_col, asset_col, score_col, outcome_col])
         .rename({date_col: "date", asset_col: "asset", score_col: "score", outcome_col: "outcome"})
         .with_columns(pl.col("date").cast(pl.Date, strict=False))
-        .filter(pl.col("date").is_not_null() & pl.col("score").is_not_null() & pl.col("outcome").is_not_null())
+        .filter(
+            pl.col("date").is_not_null()
+            & pl.col("score").is_not_null()
+            & pl.col("outcome").is_not_null()
+        )
     )
     if frame.is_empty():
         return None
@@ -331,11 +368,17 @@ def plot_quintile_returns(
 
     theme_config = get_theme_config(theme)
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=q_labels, y=q_means, marker_color=bar_colors,
-        text=text_labels, textposition="outside", textfont={"size": 9},
-        showlegend=False,
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=q_labels,
+            y=q_means,
+            marker_color=bar_colors,
+            text=text_labels,
+            textposition="outside",
+            textfont={"size": 9},
+            showlegend=False,
+        )
+    )
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
         title="Mean Realized Return by Prediction Decile",
@@ -386,9 +429,7 @@ def plot_prediction_trade_alignment(
         return None
 
     value_col = _choose_primary_entry_column(entry_columns)
-    aligned = trades_df.filter(
-        pl.col(value_col).is_not_null() & pl.col(outcome_col).is_not_null()
-    )
+    aligned = trades_df.filter(pl.col(value_col).is_not_null() & pl.col(outcome_col).is_not_null())
     if aligned.height < 5:
         return None
 
@@ -401,7 +442,9 @@ def plot_prediction_trade_alignment(
     labels, means, counts, win_rates = [], [], [], []
     for j in range(n_bins):
         lo, hi = edges[j], edges[j + 1]
-        mask = (scores >= lo) & (scores <= hi) if j == n_bins - 1 else (scores >= lo) & (scores < hi)
+        mask = (
+            (scores >= lo) & (scores <= hi) if j == n_bins - 1 else (scores >= lo) & (scores < hi)
+        )
         if mask.sum() == 0:
             continue
         prefix = "D" if n_bins > 5 else "Q"
@@ -418,11 +461,17 @@ def plot_prediction_trade_alignment(
 
     theme_config = get_theme_config(theme)
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=labels, y=means, marker_color=bar_colors,
-        text=text_labels, textposition="outside", textfont={"size": 9},
-        showlegend=False,
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=labels,
+            y=means,
+            marker_color=bar_colors,
+            text=text_labels,
+            textposition="outside",
+            textfont={"size": 9},
+            showlegend=False,
+        )
+    )
     fig.update_layout(theme_config["layout"])
     pred_label = value_col.replace("entry_", "").replace("_", " ").title()
     fig.update_layout(
@@ -472,30 +521,31 @@ def _compute_daily_ic(frame: pl.DataFrame) -> pl.DataFrame:
         normalized_date = date_value[0] if isinstance(date_value, tuple) else date_value
         rows.append({"date": normalized_date, "ic": float(ic)})
     if not rows:
-        return pl.DataFrame(schema={"date": pl.Date, "ic": pl.Float64(), "rolling_ic_21": pl.Float64()})
+        return pl.DataFrame(
+            schema={"date": pl.Date, "ic": pl.Float64(), "rolling_ic_21": pl.Float64()}
+        )
     return (
         pl.DataFrame(rows)
         .sort("date")
-        .with_columns(pl.col("ic").rolling_mean(window_size=21, min_samples=5).alias("rolling_ic_21"))
+        .with_columns(
+            pl.col("ic").rolling_mean(window_size=21, min_samples=5).alias("rolling_ic_21")
+        )
     )
 
 
 def _compute_quantile_summary(frame: pl.DataFrame, *, n_quantiles: int) -> pl.DataFrame:
-    ranked = (
-        frame.sort(["date", "score"])
-        .with_columns(
+    ranked = frame.sort(["date", "score"]).with_columns(
+        (
             (
-                (
-                    (pl.col("score").rank("ordinal").over("date") - 1)
-                    / pl.len().over("date").clip(lower_bound=1)
-                    * n_quantiles
-                )
-                .floor()
-                .clip(0, n_quantiles - 1)
-                .cast(pl.Int32)
-                + 1
-            ).alias("quantile")
-        )
+                (pl.col("score").rank("ordinal").over("date") - 1)
+                / pl.len().over("date").clip(lower_bound=1)
+                * n_quantiles
+            )
+            .floor()
+            .clip(0, n_quantiles - 1)
+            .cast(pl.Int32)
+            + 1
+        ).alias("quantile")
     )
     summary = (
         ranked.group_by("quantile")
@@ -532,7 +582,8 @@ def _compute_regime_summary(profile: BacktestProfile, daily_ic: pl.DataFrame) ->
     regime_frame = (
         equity.select(
             pl.col("timestamp").cast(pl.Date, strict=False).alias("date"),
-        ).with_columns(ret_col.alias("strategy_return"))
+        )
+        .with_columns(ret_col.alias("strategy_return"))
         .with_columns(
             pl.col("strategy_return")
             .rolling_std(window_size=63, min_samples=20)
@@ -546,7 +597,9 @@ def _compute_regime_summary(profile: BacktestProfile, daily_ic: pl.DataFrame) ->
     )
     regime_frame = regime_frame.with_columns(
         [
-            pl.when(pl.col("rolling_vol_63").is_not_null() & (pl.col("rolling_vol_63") >= median_vol))
+            pl.when(
+                pl.col("rolling_vol_63").is_not_null() & (pl.col("rolling_vol_63") >= median_vol)
+            )
             .then(pl.lit("High Vol"))
             .otherwise(pl.lit("Low Vol"))
             .alias("vol_regime"),

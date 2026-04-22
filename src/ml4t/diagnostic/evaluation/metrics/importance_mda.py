@@ -114,8 +114,8 @@ def compute_mda_importance(
     >>>
     >>> # Examine results
     >>> print(f"Baseline score: {mda['baseline_score']:.3f}")
-    >>> print(f"Most important feature: {mda['feature_names'][0]}")
-    >>> print(f"Importance (accuracy drop): {mda['importances'][0]:.3f}")
+    >>> print(f"Most important feature: {next(iter(mda['feature_names']))}")
+    >>> print(f"Importance (accuracy drop): {next(iter(mda['importances'])):.3f}")
     Baseline score: 0.920
     Most important feature: feature_3
     Importance (accuracy drop): 0.124
@@ -138,8 +138,8 @@ def compute_mda_importance(
     ... )
     >>>
     >>> # See which group is most important
-    >>> print(f"Most important group: {mda_groups['feature_names'][0]}")
-    >>> print(f"Group importance: {mda_groups['importances'][0]:.3f}")
+    >>> print(f"Most important group: {next(iter(mda_groups['feature_names']))}")
+    >>> print(f"Group importance: {next(iter(mda_groups['importances'])):.3f}")
 
     Notes
     -----

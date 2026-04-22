@@ -43,6 +43,21 @@ class TestTradingCalendar:
 
         assert cal.config.exchange == "CME_Equity"
 
+    def test_schedule_restores_missing_exchange_timezone(self):
+        """Test schedule calls tolerate cleared calendar timezone state."""
+        cal = TradingCalendar("NYSE")
+        expected_tz = cal._calendar_tz
+
+        class CalendarWithoutTimezone:
+            tz = None
+
+        cal.calendar = CalendarWithoutTimezone()
+
+        schedule = cal._schedule(start_date="2024-01-02", end_date="2024-01-05")
+
+        assert len(schedule) > 0
+        assert cal.calendar.tz == expected_tz
+
     def test_ensure_timezone_aware_naive(self):
         """Test timezone handling for naive timestamps."""
         cal = TradingCalendar("NYSE")

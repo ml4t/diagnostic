@@ -96,10 +96,10 @@ Typically $SE_{\text{HAC}} > SE_{\text{naive}}$, so $|t_{\text{HAC}}| < |t_{\tex
 ### Primary Function: `compute_ic_hac_stats()`
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_ic_hac_stats
+from ml4t.diagnostic.metrics import compute_ic_hac_stats
 
 # ic_series: DataFrame with IC values per time period
-# (e.g., from compute_ic_series())
+# (e.g., from cross_sectional_ic_series())
 stats = compute_ic_hac_stats(
     ic_series,           # Polars/Pandas DataFrame or numpy array
     ic_col="ic",         # Column name for IC values
@@ -239,7 +239,9 @@ has meaningful autocorrelation and naive significance tests cannot be trusted.
 
 | Function | Purpose |
 |----------|---------|
-| `compute_ic_series()` | Compute IC time series from predictions and returns |
+| `cross_sectional_ic_series()` | Compute per-date cross-sectional IC from predictions and returns |
+| `cross_sectional_ic()` | Reduce cross-sectional IC to summary statistics |
+| `pooled_ic()` | Compute a pooled correlation across all supplied observations |
 | `compute_ic_summary_stats()` | Naive IC statistics (no HAC) |
 | `compute_ic_hac_stats()` | HAC-adjusted IC statistics |
 | `robust_ic()` | Stationary bootstrap IC with confidence intervals |

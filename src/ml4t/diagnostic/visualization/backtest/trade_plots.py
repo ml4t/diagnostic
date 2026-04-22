@@ -291,12 +291,18 @@ def plot_mfe_mae_scatter(
 
         # Median crosshair lines
         fig.add_hline(
-            y=med_mfe, line_dash="dot", line_color="gray",
-            line_width=1, opacity=0.5,
+            y=med_mfe,
+            line_dash="dot",
+            line_color="gray",
+            line_width=1,
+            opacity=0.5,
         )
         fig.add_vline(
-            x=med_mae, line_dash="dot", line_color="gray",
-            line_width=1, opacity=0.5,
+            x=med_mae,
+            line_dash="dot",
+            line_color="gray",
+            line_width=1,
+            opacity=0.5,
         )
 
         # Quadrant background shading
@@ -312,20 +318,42 @@ def plot_mfe_mae_scatter(
         ]
         for x0, x1, y0, y1, fill_color in quadrant_specs:
             fig.add_shape(
-                type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
-                fillcolor=fill_color, line_width=0, layer="below",
+                type="rect",
+                x0=x0,
+                x1=x1,
+                y0=y0,
+                y1=y1,
+                fillcolor=fill_color,
+                line_width=0,
+                layer="below",
             )
 
         # Quadrant labels
         annotations = [
-            {"x": mae.max() * 0.8, "y": mfe.max() * 0.9,
-             "text": "Q1: Healthy Winners", "color": _ML4T_COLORS["positive"]},
-            {"x": mae.max() * 0.2, "y": mfe.max() * 0.9,
-             "text": "Q2: Lucky Recovery", "color": _ML4T_COLORS["amber"]},
-            {"x": mae.max() * 0.2, "y": mfe.max() * 0.1,
-             "text": "Q3: No Opportunity", "color": _ML4T_COLORS["negative"]},
-            {"x": mae.max() * 0.8, "y": mfe.max() * 0.1,
-             "text": "Q4: Poor Exit", "color": _ML4T_COLORS["negative"]},
+            {
+                "x": mae.max() * 0.8,
+                "y": mfe.max() * 0.9,
+                "text": "Q1: Healthy Winners",
+                "color": _ML4T_COLORS["positive"],
+            },
+            {
+                "x": mae.max() * 0.2,
+                "y": mfe.max() * 0.9,
+                "text": "Q2: Lucky Recovery",
+                "color": _ML4T_COLORS["amber"],
+            },
+            {
+                "x": mae.max() * 0.2,
+                "y": mfe.max() * 0.1,
+                "text": "Q3: No Opportunity",
+                "color": _ML4T_COLORS["negative"],
+            },
+            {
+                "x": mae.max() * 0.8,
+                "y": mfe.max() * 0.1,
+                "text": "Q4: Poor Exit",
+                "color": _ML4T_COLORS["negative"],
+            },
         ]
 
         for ann in annotations:
@@ -353,8 +381,7 @@ def plot_mfe_mae_scatter(
             )
         positive_mask = (ret_arr > 0) & (mfe > 0)
         efficiency = (
-            np.mean(ret_arr[positive_mask] / mfe[positive_mask])
-            if positive_mask.sum() > 0 else 0.0
+            np.mean(ret_arr[positive_mask] / mfe[positive_mask]) if positive_mask.sum() > 0 else 0.0
         )
 
         fig.add_annotation(
@@ -1267,25 +1294,31 @@ def plot_execution_quality(
 
     theme_config = get_theme_config(theme)
     fig = go.Figure()
-    fig.add_trace(go.Histogram(
-        x=drag,
-        nbinsx=min(50, max(15, int(np.sqrt(len(drag))))),
-        marker_color=theme_config["colorway"][0],
-        opacity=0.8,
-        name="Trades",
-        hovertemplate="Cost Drag: %{x:.4f}<br>Count: %{y}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Histogram(
+            x=drag,
+            nbinsx=min(50, max(15, int(np.sqrt(len(drag))))),
+            marker_color=theme_config["colorway"][0],
+            opacity=0.8,
+            name="Trades",
+            hovertemplate="Cost Drag: %{x:.4f}<br>Count: %{y}<extra></extra>",
+        )
+    )
 
     # Median line
     fig.add_vline(
-        x=median_drag, line_dash="dash", line_color=_ML4T_COLORS.get("amber", "#f59e0b"),
+        x=median_drag,
+        line_dash="dash",
+        line_color=_ML4T_COLORS.get("amber", "#f59e0b"),
         annotation_text=f"Median: {median_drag:.2%}",
         annotation_position="right",
         annotation={"font": {"size": 10}},
     )
     # Mean line
     fig.add_vline(
-        x=mean_drag, line_dash="dot", line_color=_ML4T_COLORS.get("copper", "#c87533"),
+        x=mean_drag,
+        line_dash="dot",
+        line_color=_ML4T_COLORS.get("copper", "#c87533"),
         annotation_text=f"Mean: {mean_drag:.2%}",
         annotation_position="right",
         annotation={"font": {"size": 10}, "yshift": -20},
