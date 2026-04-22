@@ -862,9 +862,7 @@ def create_executive_summary_html(
             return alias
         return None
 
-    metric_order = [
-        _resolve_metric(m) for m in selected_metrics if _resolve_metric(m) is not None
-    ]
+    metric_order = [_resolve_metric(m) for m in selected_metrics if _resolve_metric(m) is not None]
     if not metric_order:
         metric_order = list(metrics.keys())[:6]
 
@@ -875,11 +873,7 @@ def create_executive_summary_html(
         footer = ""
         benchmark_value = benchmark_metrics.get(metric_name) if benchmark_metrics else None
         spec = METRIC_TABLE_SPECS.get(metric_name)
-        if (
-            spec is not None
-            and spec.benchmark_comparable
-            and _has_numeric_value(benchmark_value)
-        ):
+        if spec is not None and spec.benchmark_comparable and _has_numeric_value(benchmark_value):
             benchmark_text = _format_metric_value(benchmark_value, metric_name, thresholds)
             spread_text = _format_metric_spread_text(
                 metric_name, metrics[metric_name], benchmark_value, thresholds
@@ -937,19 +931,19 @@ def create_key_metrics_table_html(
                 f'<div style="display:flex;justify-content:space-between;'
                 f'padding:2px 0;border-bottom:1px solid #f0f0f0">'
                 f'<span style="color:#6b7280;font-size:12px">'
-                f'{html_mod.escape(label)}</span>'
+                f"{html_mod.escape(label)}</span>"
                 f'<span style="font-weight:500;font-size:12px;font-variant-numeric:tabular-nums">'
-                f'{html_mod.escape(value_text)}</span></div>'
+                f"{html_mod.escape(value_text)}</span></div>"
             )
 
         if items:
             group_html_parts.append(
                 f'<div style="min-width:200px;flex:1">'
                 f'<div style="font-weight:600;font-size:11px;text-transform:uppercase;'
-                f'color:#374151;letter-spacing:0.05em;padding-bottom:4px;'
+                f"color:#374151;letter-spacing:0.05em;padding-bottom:4px;"
                 f'margin-bottom:4px;border-bottom:2px solid #e5e7eb">'
-                f'{html_mod.escape(group_name)}</div>'
-                f'{"".join(items)}</div>'
+                f"{html_mod.escape(group_name)}</div>"
+                f"{''.join(items)}</div>"
             )
 
     if not group_html_parts:
@@ -957,8 +951,8 @@ def create_key_metrics_table_html(
 
     return (
         '<div style="display:flex;flex-wrap:wrap;gap:24px;padding:12px 0">'
-        f'{"".join(group_html_parts)}'
-        '</div>'
+        f"{''.join(group_html_parts)}"
+        "</div>"
     )
 
 

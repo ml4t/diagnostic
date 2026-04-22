@@ -87,7 +87,9 @@ class BacktestProfile:
     @property
     def resolved_calendar(self) -> str | None:
         """Return explicit calendar override or the result calendar."""
-        return self.calendar or (self.result.config.resolved_calendar if self.result.config else None)
+        return self.calendar or (
+            self.result.config.resolved_calendar if self.result.config else None
+        )
 
     @property
     def periods_per_year(self) -> int:
@@ -191,11 +193,7 @@ class BacktestProfile:
                 )
                 return {}
         if hasattr(metadata, "__dict__"):
-            return {
-                key: value
-                for key, value in vars(metadata).items()
-                if not key.startswith("_")
-            }
+            return {key: value for key, value in vars(metadata).items() if not key.startswith("_")}
         return {}
 
     @property
@@ -307,7 +305,8 @@ class BacktestProfile:
                     "n_prediction_columns": len(predictions_df.columns),
                     "n_signals": signals_df.height,
                     "n_signal_columns": len(signals_df.columns),
-                    "translation_ready": not predictions_df.is_empty() and not signals_df.is_empty(),
+                    "translation_ready": not predictions_df.is_empty()
+                    and not signals_df.is_empty(),
                 }
                 if "asset" in predictions_df.columns:
                     metrics["n_prediction_assets"] = predictions_df["asset"].n_unique()
@@ -331,7 +330,8 @@ class BacktestProfile:
                 entry_prediction_columns = [
                     column
                     for column in prediction_trades_df.columns
-                    if column.startswith("entry_") and prediction_trades_df.schema[column].is_numeric()
+                    if column.startswith("entry_")
+                    and prediction_trades_df.schema[column].is_numeric()
                 ]
                 if entry_prediction_columns:
                     metrics["entry_prediction_columns"] = entry_prediction_columns
@@ -388,11 +388,15 @@ def _build_availability(
 ) -> BacktestAvailability:
     surfaces = {
         "trades": AvailabilityInfo(
-            AvailabilityState.AVAILABLE if not trades_df.is_empty() else AvailabilityState.UNAVAILABLE,
+            AvailabilityState.AVAILABLE
+            if not trades_df.is_empty()
+            else AvailabilityState.UNAVAILABLE,
             None if not trades_df.is_empty() else "No trade rows were emitted.",
         ),
         "fills": AvailabilityInfo(
-            AvailabilityState.AVAILABLE if not fills_df.is_empty() else AvailabilityState.UNAVAILABLE,
+            AvailabilityState.AVAILABLE
+            if not fills_df.is_empty()
+            else AvailabilityState.UNAVAILABLE,
             None if not fills_df.is_empty() else "No fill rows were emitted.",
         ),
         "portfolio_state": AvailabilityInfo(
@@ -404,7 +408,9 @@ def _build_availability(
             None if not portfolio_state_df.is_empty() else "No portfolio state rows were emitted.",
         ),
         "equity": AvailabilityInfo(
-            AvailabilityState.AVAILABLE if not equity_df.is_empty() else AvailabilityState.UNAVAILABLE,
+            AvailabilityState.AVAILABLE
+            if not equity_df.is_empty()
+            else AvailabilityState.UNAVAILABLE,
             None if not equity_df.is_empty() else "No equity curve rows were emitted.",
         ),
         "predictions": AvailabilityInfo(
@@ -491,15 +497,21 @@ def _build_availability(
     elif not predictions_df.is_empty() or not signals_df.is_empty():
         translation_status = AvailabilityState.DEGRADED
         translation_reason = "Only one of predictions/signals is available."
-        translation_fallback = "Translation analysis becomes available once both surfaces are attached."
+        translation_fallback = (
+            "Translation analysis becomes available once both surfaces are attached."
+        )
 
     families = {
         "performance": AvailabilityInfo(
-            AvailabilityState.AVAILABLE if not equity_df.is_empty() else AvailabilityState.UNAVAILABLE,
+            AvailabilityState.AVAILABLE
+            if not equity_df.is_empty()
+            else AvailabilityState.UNAVAILABLE,
             None if not equity_df.is_empty() else "Performance requires an equity surface.",
         ),
         "edge": AvailabilityInfo(
-            AvailabilityState.AVAILABLE if not trades_df.is_empty() else AvailabilityState.UNAVAILABLE,
+            AvailabilityState.AVAILABLE
+            if not trades_df.is_empty()
+            else AvailabilityState.UNAVAILABLE,
             None if not trades_df.is_empty() else "Edge metrics require trade rows.",
         ),
         "activity": AvailabilityInfo(
@@ -531,7 +543,9 @@ def _build_availability(
             ),
         ),
         "drawdown": AvailabilityInfo(
-            AvailabilityState.AVAILABLE if not equity_df.is_empty() else AvailabilityState.UNAVAILABLE,
+            AvailabilityState.AVAILABLE
+            if not equity_df.is_empty()
+            else AvailabilityState.UNAVAILABLE,
             None if not equity_df.is_empty() else "Drawdown anatomy requires an equity surface.",
         ),
         "ml": AvailabilityInfo(
@@ -558,7 +572,9 @@ def _build_availability(
             (
                 AvailabilityState.AVAILABLE
                 if not fills_df.is_empty() and not portfolio_state_df.is_empty()
-                else AvailabilityState.DEGRADED if not fills_df.is_empty() else AvailabilityState.UNAVAILABLE
+                else AvailabilityState.DEGRADED
+                if not fills_df.is_empty()
+                else AvailabilityState.UNAVAILABLE
             ),
             (
                 None
@@ -600,7 +616,9 @@ def _extract_optional_surface(
                 return surface
 
     for attr_name in attr_names:
-        surface = _normalize_optional_surface(_coerce_optional_surface(getattr(result, attr_name, None)))
+        surface = _normalize_optional_surface(
+            _coerce_optional_surface(getattr(result, attr_name, None))
+        )
         if normalizer is not None:
             surface = normalizer(surface)
         if not surface.is_empty():

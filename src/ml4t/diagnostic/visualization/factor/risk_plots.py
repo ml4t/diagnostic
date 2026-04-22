@@ -95,8 +95,10 @@ def plot_risk_attribution_pie(
             "Risk share = β² × Var(factor) / Var(portfolio). "
             "Market dominates because its variance is ~100× that of style factors."
         ),
-        xref="paper", yref="paper",
-        x=0, y=-0.12,
+        xref="paper",
+        yref="paper",
+        x=0,
+        y=-0.12,
         showarrow=False,
         font={"size": 10, "color": "gray"},
         align="left",

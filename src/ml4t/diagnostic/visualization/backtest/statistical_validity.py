@@ -358,8 +358,10 @@ def plot_confidence_intervals(
             },
             "legend": {
                 "orientation": "h",
-                "yanchor": "top", "y": -0.15,
-                "xanchor": "center", "x": 0.5,
+                "yanchor": "top",
+                "y": -0.15,
+                "xanchor": "center",
+                "x": 0.5,
             },
         }
     else:
@@ -373,8 +375,10 @@ def plot_confidence_intervals(
             "yaxis": {"title": "Value", "zeroline": True},
             "legend": {
                 "orientation": "h",
-                "yanchor": "top", "y": -0.15,
-                "xanchor": "center", "x": 0.5,
+                "yanchor": "top",
+                "y": -0.15,
+                "xanchor": "center",
+                "x": 0.5,
             },
         }
     if width:
@@ -695,8 +699,10 @@ def plot_minimum_track_record(
         "yaxis": {"title": "Sharpe Ratio", "rangemode": "tozero"},
         "legend": {
             "orientation": "h",
-            "yanchor": "top", "y": -0.18,
-            "xanchor": "center", "x": 0.5,
+            "yanchor": "top",
+            "y": -0.18,
+            "xanchor": "center",
+            "x": 0.5,
             "font": {"size": 10},
         },
     }
@@ -907,13 +913,15 @@ def plot_pbo_gauge(
             gauge={
                 "axis": {
                     "range": [0, 100],
-                    "tickwidth": 1, "tickcolor": "darkgray",
+                    "tickwidth": 1,
+                    "tickcolor": "darkgray",
                     "tickvals": [0, 10, 25, 40, 50, 75, 100],
                     "ticktext": ["0%", "10%", "25%", "40%", "50%", "75%", "100%"],
                 },
                 "bar": {"color": "darkblue"},
                 "bgcolor": "white",
-                "borderwidth": 2, "bordercolor": "gray",
+                "borderwidth": 2,
+                "bordercolor": "gray",
                 "steps": [
                     {"range": [0, 10], "color": _ML4T_COLORS["positive"]},
                     {"range": [10, 25], "color": _ML4T_COLORS["sage"]},
@@ -940,27 +948,44 @@ def plot_pbo_gauge(
         verdict = "High overfitting risk"
 
     annotations = [
-        {"x": 0.5, "y": 0.25, "text": verdict,
-         "showarrow": False, "font": {"size": 14},
-         "xref": "paper", "yref": "paper"},
+        {
+            "x": 0.5,
+            "y": 0.25,
+            "text": verdict,
+            "showarrow": False,
+            "font": {"size": 14},
+            "xref": "paper",
+            "yref": "paper",
+        },
     ]
     if n_combinations is not None:
         annotations.append(
-            {"x": 0.5, "y": 0.15,
-             "text": f"{n_combinations} IS/OOS combinations",
-             "showarrow": False, "font": {"size": 12, "color": "gray"},
-             "xref": "paper", "yref": "paper"}
+            {
+                "x": 0.5,
+                "y": 0.15,
+                "text": f"{n_combinations} IS/OOS combinations",
+                "showarrow": False,
+                "font": {"size": 12, "color": "gray"},
+                "xref": "paper",
+                "yref": "paper",
+            }
         )
     if n_strategies is not None:
         annotations.append(
-            {"x": 0.5, "y": 0.08,
-             "text": f"{n_strategies} strategies compared",
-             "showarrow": False, "font": {"size": 12, "color": "gray"},
-             "xref": "paper", "yref": "paper"}
+            {
+                "x": 0.5,
+                "y": 0.08,
+                "text": f"{n_strategies} strategies compared",
+                "showarrow": False,
+                "font": {"size": 12, "color": "gray"},
+                "xref": "paper",
+                "yref": "paper",
+            }
         )
 
     layout_kw: dict[str, Any] = {
-        "height": height, "width": width,
+        "height": height,
+        "width": width,
         "annotations": annotations,
         "margin": {"l": 40, "r": 40, "t": 60, "b": 40},
     }
@@ -1026,15 +1051,17 @@ def plot_sharpe_bootstrap(
     median = float(np.median(sharpe_samples))
 
     fig = go.Figure()
-    fig.add_trace(go.Histogram(
-        x=sharpe_samples,
-        nbinsx=60,
-        marker_color=_ML4T_COLORS["slate"],
-        marker_line={"width": 0.5, "color": _ML4T_COLORS.get("silver_muted", "#e8e8e6")},
-        opacity=0.85,
-        name="Bootstrap",
-        showlegend=False,
-    ))
+    fig.add_trace(
+        go.Histogram(
+            x=sharpe_samples,
+            nbinsx=60,
+            marker_color=_ML4T_COLORS["slate"],
+            marker_line={"width": 0.5, "color": _ML4T_COLORS.get("silver_muted", "#e8e8e6")},
+            opacity=0.85,
+            name="Bootstrap",
+            showlegend=False,
+        )
+    )
 
     # Observed Sharpe line
     fig.add_vline(
@@ -1048,12 +1075,15 @@ def plot_sharpe_bootstrap(
     )
     # Zero line
     fig.add_vline(
-        x=0, line_width=1, line_dash="dash",
+        x=0,
+        line_width=1,
+        line_dash="dash",
         line_color=_ML4T_COLORS.get("neutral", "#334155"),
     )
     # CI bounds
     fig.add_vrect(
-        x0=ci_lo, x1=ci_hi,
+        x0=ci_lo,
+        x1=ci_hi,
         fillcolor=_ML4T_COLORS["slate"],
         opacity=0.08,
         line_width=0,
@@ -1071,8 +1101,10 @@ def plot_sharpe_bootstrap(
         margin={"l": 50, "r": 30, "t": 50, "b": 50},
         annotations=[
             {
-                "x": 0.02, "y": 0.95,
-                "xref": "paper", "yref": "paper",
+                "x": 0.02,
+                "y": 0.95,
+                "xref": "paper",
+                "yref": "paper",
                 "text": (
                     f"Median: {median:.2f}<br>"
                     f"95% CI: [{ci_lo:.2f}, {ci_hi:.2f}]<br>"

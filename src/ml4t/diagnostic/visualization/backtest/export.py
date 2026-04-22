@@ -28,9 +28,7 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.integration.backtest_profile import BacktestProfile
     from ml4t.diagnostic.integration.report_metadata import BacktestReportMetadata
 
-WorkspaceName = Literal[
-    "overview", "performance", "trading", "validation", "factors", "ml"
-]
+WorkspaceName = Literal["overview", "performance", "trading", "validation", "factors", "ml"]
 
 # Common workspace bundles
 EXPORT_BUNDLES: dict[str, tuple[WorkspaceName, ...]] = {
@@ -105,8 +103,7 @@ def export_workspaces(
     if isinstance(workspaces, str):
         if workspaces not in EXPORT_BUNDLES:
             raise ValueError(
-                f"Unknown bundle '{workspaces}'. "
-                f"Available: {list(EXPORT_BUNDLES.keys())}"
+                f"Unknown bundle '{workspaces}'. Available: {list(EXPORT_BUNDLES.keys())}"
             )
         workspace_names = EXPORT_BUNDLES[workspaces]
     else:
@@ -144,7 +141,8 @@ def export_workspaces(
 
     periods_per_year = _infer_periods_per_year(returns)
     benchmark_metrics = _compute_portfolio_summary_metrics(
-        benchmark_returns, periods_per_year=periods_per_year,
+        benchmark_returns,
+        periods_per_year=periods_per_year,
     )
     document_title, report_title, report_subtitle, resolved_benchmark_name = (
         _resolve_report_metadata(report_metadata, title, subtitle, benchmark_name)
@@ -152,7 +150,8 @@ def export_workspaces(
 
     if returns is not None and metrics is not None:
         portfolio_stats = _compute_portfolio_summary_metrics(
-            returns, periods_per_year=periods_per_year,
+            returns,
+            periods_per_year=periods_per_year,
         )
         for key, value in portfolio_stats.items():
             metrics.setdefault(key, value)
@@ -172,8 +171,11 @@ def export_workspaces(
     if predictions is not None and not predictions.is_empty():
         for section in tmpl.sections:
             if section.name in (
-                "ml_summary_strip", "ic_time_series", "quintile_returns",
-                "prediction_trade_alignment", "prediction_calibration",
+                "ml_summary_strip",
+                "ic_time_series",
+                "quintile_returns",
+                "prediction_trade_alignment",
+                "prediction_calibration",
             ):
                 section.enabled = True
     if factor_data is not None:

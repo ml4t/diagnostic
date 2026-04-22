@@ -59,7 +59,7 @@ def create_credibility_box_html(
                 f'<span class="credibility-dot" style="background:{hex_color}"></span>'
                 f'<div><div class="credibility-label">Deflated Sharpe</div>'
                 f'<div class="credibility-value">'
-                f'{dsr_val:.1%}</div></div></div>'
+                f"{dsr_val:.1%}</div></div></div>"
             )
 
     # MinTRL
@@ -78,7 +78,7 @@ def create_credibility_box_html(
                     f'<span class="credibility-dot" style="background:{hex_color}"></span>'
                     f'<div><div class="credibility-label">Min Track Record</div>'
                     f'<div class="credibility-value">'
-                    f'— unreachable ({periods_val:.0f} observed)</div></div></div>'
+                    f"— unreachable ({periods_val:.0f} observed)</div></div></div>"
                 )
             else:
                 sufficient = periods_val >= trl_val
@@ -89,7 +89,7 @@ def create_credibility_box_html(
                     f'<span class="credibility-dot" style="background:{hex_color}"></span>'
                     f'<div><div class="credibility-label">Min Track Record</div>'
                     f'<div class="credibility-value">'
-                    f'{trl_val:.0f} days required ({periods_val:.0f} observed)</div></div></div>'
+                    f"{trl_val:.0f} days required ({periods_val:.0f} observed)</div></div></div>"
                 )
 
     # Track record length — show when available
@@ -136,9 +136,7 @@ def create_top_drawdowns_table_html(
         recovery = _fmt_date(dd.recovery_date) if dd.recovery_date else "Active"
         depth = f"{dd.depth:.1%}" if dd.depth is not None else "N/A"
         duration = f"{dd.duration_days}d" if dd.duration_days is not None else "N/A"
-        recovery_days = (
-            f"{dd.recovery_days}d" if dd.recovery_days is not None else "—"
-        )
+        recovery_days = f"{dd.recovery_days}d" if dd.recovery_days is not None else "—"
         status = "Recovered" if dd.recovery_date else "Active"
 
         rows.append(
@@ -161,7 +159,7 @@ def create_top_drawdowns_table_html(
         "<th>#</th><th>Peak</th><th>Trough</th><th>Recovery</th>"
         "<th>Depth</th><th>Duration</th><th>Recovery</th><th>Status</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody>'
+        f"<tbody>{''.join(rows)}</tbody>"
         "</table></div>"
     )
 
@@ -227,7 +225,7 @@ def create_worst_trades_table_html(
         "<th>#</th><th>Entry</th><th>Exit</th><th>Symbol</th>"
         "<th>Dir</th><th>PnL</th><th>Return</th><th>Dur</th><th>Exit Reason</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody>'
+        f"<tbody>{''.join(rows)}</tbody>"
         "</table></div>"
     )
 
@@ -255,7 +253,7 @@ def create_cost_summary_line_html(metrics: dict[str, Any]) -> str | None:
                     f'<span class="cost-summary-item">'
                     f'<span class="cost-summary-label">Cost Drag</span>'
                     f'<span class="cost-summary-value">{drag_pct:.1%} of gross</span>'
-                    f'</span>'
+                    f"</span>"
                 )
         except (TypeError, ValueError):
             pass
@@ -308,7 +306,6 @@ def create_top_contributors_html(
     if by_symbol is None or by_symbol.is_empty():
         return None
 
-
     pnl_col = None
     for candidate in ("pnl_contribution_share", "net_pnl", "pnl"):
         if candidate in by_symbol.columns:
@@ -343,8 +340,7 @@ def create_top_contributors_html(
         val = float(top[pnl_col][i])
         color = TRAFFIC_LIGHT_COLORS["green"] if val >= 0 else TRAFFIC_LIGHT_COLORS["red"]
         items.append(
-            f'<span style="color:{color};font-weight:600">'
-            f'{html_mod.escape(sym)} {_fmt(val)}</span>'
+            f'<span style="color:{color};font-weight:600">{html_mod.escape(sym)} {_fmt(val)}</span>'
         )
 
     items.append('<span style="color:var(--c-text-muted);margin:0 6px">|</span>')
@@ -355,17 +351,16 @@ def create_top_contributors_html(
         val = float(bottom[pnl_col][i])
         color = TRAFFIC_LIGHT_COLORS["green"] if val >= 0 else TRAFFIC_LIGHT_COLORS["red"]
         items.append(
-            f'<span style="color:{color};font-weight:600">'
-            f'{html_mod.escape(sym)} {_fmt(val)}</span>'
+            f'<span style="color:{color};font-weight:600">{html_mod.escape(sym)} {_fmt(val)}</span>'
         )
 
     return (
         '<div class="cost-summary-line" style="gap:12px;font-size:13px">'
         '<span style="color:var(--c-text-muted);font-weight:600;'
         'text-transform:uppercase;font-size:10px;letter-spacing:0.06em">'
-        'Top / Bottom</span>'
-        f'{"".join(items)}'
-        '</div>'
+        "Top / Bottom</span>"
+        f"{''.join(items)}"
+        "</div>"
     )
 
 
@@ -445,7 +440,7 @@ def create_stock_attribution_table_html(
         "<th>Symbol</th><th>Trades</th><th>Win %</th>"
         "<th>Total P&amp;L</th><th>Avg P&amp;L</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody>'
+        f"<tbody>{''.join(rows)}</tbody>"
         "</table></div>"
     )
 
@@ -453,6 +448,7 @@ def create_stock_attribution_table_html(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _fmt_date(value: Any) -> str:
     if value is None:

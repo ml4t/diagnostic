@@ -88,10 +88,10 @@ class TearsheetTemplate:
             ],
             sections=[
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
-                TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
                 TearsheetSection(
-                    "activity_strip", "Activity", band="implementation", priority=3
+                    "overview_snapshot", "Performance Snapshot", band="hero", priority=1
                 ),
+                TearsheetSection("activity_strip", "Activity", band="implementation", priority=3),
                 TearsheetSection(
                     "occupancy_overview",
                     "Exposure",
@@ -186,7 +186,9 @@ class TearsheetTemplate:
             ],
             sections=[
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
-                TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
+                TearsheetSection(
+                    "overview_snapshot", "Performance Snapshot", band="hero", priority=1
+                ),
                 TearsheetSection("equity_curve", "Equity Curve", band="implementation", priority=3),
                 TearsheetSection(
                     "rolling_metrics", "Rolling Performance", band="implementation", priority=4
@@ -297,7 +299,9 @@ class TearsheetTemplate:
             ],
             sections=[
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
-                TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
+                TearsheetSection(
+                    "overview_snapshot", "Performance Snapshot", band="hero", priority=1
+                ),
                 TearsheetSection("equity_curve", "Equity Curve", band="implementation", priority=3),
                 TearsheetSection(
                     "rolling_metrics", "Rolling Performance", band="implementation", priority=4
@@ -314,7 +318,9 @@ class TearsheetTemplate:
                     priority=9,
                 ),
                 TearsheetSection("min_trl", "Minimum Track Record", band="burden", priority=10),
-                TearsheetSection("sharpe_bootstrap", "Sharpe Bootstrap", band="burden", priority=11),
+                TearsheetSection(
+                    "sharpe_bootstrap", "Sharpe Bootstrap", band="burden", priority=11
+                ),
                 TearsheetSection(
                     "distribution", "Returns Distribution", band="appendix", priority=12
                 ),
@@ -373,54 +379,151 @@ class TearsheetTemplate:
             sections=[
                 # === Overview ===
                 TearsheetSection("executive_summary", "Summary", band="hero", priority=0),
-                TearsheetSection("overview_snapshot", "Performance Snapshot", band="hero", priority=1),
+                TearsheetSection(
+                    "overview_snapshot", "Performance Snapshot", band="hero", priority=1
+                ),
                 TearsheetSection("metrics_sidebar", "Key Metrics", band="hero", priority=2),
                 TearsheetSection("credibility_box", "Credibility", band="hero", priority=3),
                 TearsheetSection("cost_summary_line", "Cost Summary", band="hero", priority=4),
                 TearsheetSection("top_contributors", "Contributors", band="hero", priority=5),
-                TearsheetSection("monthly_heatmap_overview", "Monthly Returns", band="hero", priority=6),
+                TearsheetSection(
+                    "monthly_heatmap_overview", "Monthly Returns", band="hero", priority=6
+                ),
                 # === Performance ===
-                TearsheetSection("equity_curve", "Cumulative Return", band="performance", priority=10),
-                TearsheetSection("top_drawdowns_table", "Top Drawdowns", band="performance", priority=11),
+                TearsheetSection(
+                    "equity_curve", "Cumulative Return", band="performance", priority=10
+                ),
+                TearsheetSection(
+                    "top_drawdowns_table", "Top Drawdowns", band="performance", priority=11
+                ),
                 TearsheetSection("drawdowns", "Underwater", band="performance", priority=12),
-                TearsheetSection("rolling_metrics", "Rolling Metrics", band="performance", priority=13),
-                TearsheetSection("annual_returns", "Annual Returns", band="performance", priority=14),
-                TearsheetSection("distribution", "Return Distribution", band="performance", priority=15),
-                TearsheetSection("stock_attribution", "Stock Attribution", band="performance", priority=16),
+                TearsheetSection(
+                    "rolling_metrics", "Rolling Metrics", band="performance", priority=13
+                ),
+                TearsheetSection(
+                    "annual_returns", "Annual Returns", band="performance", priority=14
+                ),
+                TearsheetSection(
+                    "distribution", "Return Distribution", band="performance", priority=15
+                ),
+                TearsheetSection(
+                    "stock_attribution", "Stock Attribution", band="performance", priority=16
+                ),
                 # === Trading ===
                 TearsheetSection("activity_strip", "Activity", band="trading", priority=20),
                 TearsheetSection("occupancy_overview", "Exposure", band="trading", priority=21),
-                TearsheetSection("rebalance_timeline", "Rebalance Events", band="trading", priority=22),
+                TearsheetSection(
+                    "rebalance_timeline", "Rebalance Events", band="trading", priority=22
+                ),
                 TearsheetSection("cost_waterfall", "Cost Bridge", band="trading", priority=23),
-                TearsheetSection("cost_sensitivity", "Cost Sensitivity", band="trading", priority=24),
-                TearsheetSection("execution_quality", "Execution Quality", band="trading", priority=25),
-                TearsheetSection("attribution_overview", "Attribution", band="trading", priority=26),
+                TearsheetSection(
+                    "cost_sensitivity", "Cost Sensitivity", band="trading", priority=24
+                ),
+                TearsheetSection(
+                    "execution_quality", "Execution Quality", band="trading", priority=25
+                ),
+                TearsheetSection(
+                    "attribution_overview", "Attribution", band="trading", priority=26
+                ),
                 TearsheetSection("mfe_mae", "MFE/MAE", band="trading", priority=27),
                 TearsheetSection("duration", "Trade Duration", band="trading", priority=26),
                 TearsheetSection("worst_trades_table", "Worst Trades", band="trading", priority=27),
-                TearsheetSection("trade_waterfall", "Trade PnL Waterfall", band="trading", priority=28),
+                TearsheetSection(
+                    "trade_waterfall", "Trade PnL Waterfall", band="trading", priority=28
+                ),
                 TearsheetSection("exit_reasons", "Exit Reasons", band="trading", priority=29),
                 # === Validation ===
-                TearsheetSection("validity_card", "Statistical Validity", band="validation", priority=30),
-                TearsheetSection("confidence_intervals", "Confidence Intervals", band="validation", priority=31),
+                TearsheetSection(
+                    "validity_card", "Statistical Validity", band="validation", priority=30
+                ),
+                TearsheetSection(
+                    "confidence_intervals", "Confidence Intervals", band="validation", priority=31
+                ),
                 TearsheetSection("min_trl", "Minimum Track Record", band="validation", priority=32),
-                TearsheetSection("sharpe_bootstrap", "Sharpe Bootstrap Distribution", band="validation", priority=33),
-                TearsheetSection("drawdown_anatomy", "Drawdown Anatomy", band="validation", priority=34),
+                TearsheetSection(
+                    "sharpe_bootstrap",
+                    "Sharpe Bootstrap Distribution",
+                    band="validation",
+                    priority=33,
+                ),
+                TearsheetSection(
+                    "drawdown_anatomy", "Drawdown Anatomy", band="validation", priority=34
+                ),
                 # === ML (conditional) ===
-                TearsheetSection("ml_summary_strip", "ML Summary", band="validation", priority=60, enabled=False),
-                TearsheetSection("signal_diagnostics", "Signal Diagnostics", band="validation", priority=61, enabled=False),
-                TearsheetSection("ic_time_series", "IC Time Series", band="validation", priority=61, enabled=False),
-                TearsheetSection("quintile_returns", "Decile Returns", band="validation", priority=62, enabled=False),
-                TearsheetSection("prediction_trade_alignment", "Prediction vs Outcomes", band="validation", priority=62, enabled=False),
-                TearsheetSection("shap_errors", "SHAP Error Patterns", band="validation", priority=64, enabled=False),
+                TearsheetSection(
+                    "ml_summary_strip", "ML Summary", band="validation", priority=60, enabled=False
+                ),
+                TearsheetSection(
+                    "signal_diagnostics",
+                    "Signal Diagnostics",
+                    band="validation",
+                    priority=61,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "ic_time_series",
+                    "IC Time Series",
+                    band="validation",
+                    priority=61,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "quintile_returns",
+                    "Decile Returns",
+                    band="validation",
+                    priority=62,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "prediction_trade_alignment",
+                    "Prediction vs Outcomes",
+                    band="validation",
+                    priority=62,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "shap_errors",
+                    "SHAP Error Patterns",
+                    band="validation",
+                    priority=64,
+                    enabled=False,
+                ),
                 # === Factors (conditional) ===
-                TearsheetSection("factor_exposure", "Factor Exposures", band="validation", priority=70, enabled=False),
-                TearsheetSection("factor_legend", "Factor Legend", band="validation", priority=70, enabled=False),
-                TearsheetSection("factor_regression_table", "Regression Statistics", band="validation", priority=71, enabled=False),
-                TearsheetSection("factor_attribution", "Factor Attribution", band="validation", priority=72, enabled=False),
-                TearsheetSection("factor_risk", "Factor Risk Decomposition", band="validation", priority=73, enabled=False),
+                TearsheetSection(
+                    "factor_exposure",
+                    "Factor Exposures",
+                    band="validation",
+                    priority=70,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "factor_legend", "Factor Legend", band="validation", priority=70, enabled=False
+                ),
+                TearsheetSection(
+                    "factor_regression_table",
+                    "Regression Statistics",
+                    band="validation",
+                    priority=71,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "factor_attribution",
+                    "Factor Attribution",
+                    band="validation",
+                    priority=72,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "factor_risk",
+                    "Factor Risk Decomposition",
+                    band="validation",
+                    priority=73,
+                    enabled=False,
+                ),
                 # === Methodology (always present) ===
-                TearsheetSection("methodology_notes", "Methodology & Data Sources", band="appendix", priority=99),
+                TearsheetSection(
+                    "methodology_notes", "Methodology & Data Sources", band="appendix", priority=99
+                ),
             ],
         )
 
