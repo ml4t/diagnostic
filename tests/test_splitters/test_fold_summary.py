@@ -152,10 +152,12 @@ class TestFoldSummary:
         import polars as pl
 
         dates = pd.date_range("2020-01-01", periods=200, freq="B", tz="UTC")
-        df = pl.DataFrame({
-            "timestamp": dates,
-            "value": np.random.randn(200),
-        })
+        df = pl.DataFrame(
+            {
+                "timestamp": dates,
+                "value": np.random.randn(200),
+            }
+        )
         cv = WalkForwardCV(n_splits=2, timestamp_col="timestamp")
         for _ in cv.split(df):
             pass

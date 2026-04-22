@@ -138,9 +138,11 @@ class TestWaterfallDataCorrectness:
 
         # Check total = sum of all additive components
         total_idx = labels.index("Total")
-        component_sum = sum(
-            float(np.sum(attr.factor_contributions[f])) for f in fd.factor_names
-        ) + expected_alpha + float(np.sum(attr.residual))
+        component_sum = (
+            sum(float(np.sum(attr.factor_contributions[f])) for f in fd.factor_names)
+            + expected_alpha
+            + float(np.sum(attr.residual))
+        )
         assert abs(values[total_idx] - abs(component_sum)) < 1e-10
 
 
