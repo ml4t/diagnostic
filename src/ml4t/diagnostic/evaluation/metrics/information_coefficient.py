@@ -149,7 +149,29 @@ def information_coefficient(
     }
 
 
-def compute_ic_series(
+def pooled_ic(
+    predictions: Union[pl.Series, pd.Series, "NDArray[Any]"],
+    returns: Union[pl.Series, pd.Series, "NDArray[Any]"],
+    method: str = "spearman",
+    confidence_intervals: bool = False,
+    alpha: float = 0.05,
+) -> float | dict[str, float]:
+    """Calculate pooled IC across all observations.
+
+    This is a global correlation across the supplied arrays. For cross-sectional
+    ranking strategies, prefer :func:`cross_sectional_ic` or
+    :func:`cross_sectional_ic_series` so IC is computed per date before reduction.
+    """
+    return information_coefficient(
+        predictions=predictions,
+        returns=returns,
+        method=method,
+        confidence_intervals=confidence_intervals,
+        alpha=alpha,
+    )
+
+
+def cross_sectional_ic_series(
     predictions: pl.DataFrame | pd.DataFrame,
     returns: pl.DataFrame | pd.DataFrame,
     pred_col: str = "prediction",
@@ -157,7 +179,7 @@ def compute_ic_series(
     date_col: str = "date",
     entity_col: str | list[str] | None = None,
     method: str = "spearman",
-    min_periods: int = 10,
+    min_obs: int = 10,
 ) -> pl.DataFrame | pd.DataFrame:
     """Compute IC time series for temporal analysis (Alphalens-style).
 
@@ -184,7 +206,7 @@ def compute_ic_series(
         entities per date.
     method : str, default "spearman"
         Correlation method: "spearman" or "pearson"
-    min_periods : int, default 10
+    min_obs : int, default 10
         Minimum observations per period for valid IC calculation
 
     Returns
@@ -234,10 +256,8 @@ def compute_ic_series(
     if method not in ("spearman", "pearson"):
         raise ValueError(f"Unknown method: {method!r}. Use 'spearman' or 'pearson'.")
 
-    # Vectorized per-date IC via polars. Previous implementation looped
-    # dates in Python via ``group_by().map_groups()``; this rewrite ports
-    # the same pattern used by ``case_studies/utils/dl_metrics.cross_sectional_ic``
-    # which benchmarked ~100x faster on large panels.
+    # Vectorized per-date IC via polars: rank within each date group, then
+    # correlate ranks per group. This avoids a Python loop over dates.
     valid_expr = pl.col(pred_col).is_finite() & pl.col(ret_col).is_finite()
 
     if method == "spearman":
@@ -245,14 +265,8 @@ def compute_ic_series(
         # each date group; pl.corr ignores null pairs.
         df_valid = df.with_columns(
             [
-                pl.when(valid_expr)
-                .then(pl.col(pred_col))
-                .otherwise(None)
-                .alias("__pred_valid"),
-                pl.when(valid_expr)
-                .then(pl.col(ret_col))
-                .otherwise(None)
-                .alias("__ret_valid"),
+                pl.when(valid_expr).then(pl.col(pred_col)).otherwise(None).alias("__pred_valid"),
+                pl.when(valid_expr).then(pl.col(ret_col)).otherwise(None).alias("__ret_valid"),
             ]
         ).with_columns(
             [
@@ -264,14 +278,8 @@ def compute_ic_series(
     else:
         df_valid = df.with_columns(
             [
-                pl.when(valid_expr)
-                .then(pl.col(pred_col))
-                .otherwise(None)
-                .alias("__pred_valid"),
-                pl.when(valid_expr)
-                .then(pl.col(ret_col))
-                .otherwise(None)
-                .alias("__ret_valid"),
+                pl.when(valid_expr).then(pl.col(pred_col)).otherwise(None).alias("__pred_valid"),
+                pl.when(valid_expr).then(pl.col(ret_col)).otherwise(None).alias("__ret_valid"),
             ]
         )
         p_col, r_col = "__pred_valid", "__ret_valid"
@@ -291,10 +299,7 @@ def compute_ic_series(
         .with_columns(
             [
                 pl.col("n_obs").fill_null(0),
-                pl.when(pl.col("n_obs") >= min_periods)
-                .then(pl.col("ic"))
-                .otherwise(None)
-                .alias("ic"),
+                pl.when(pl.col("n_obs") >= min_obs).then(pl.col("ic")).otherwise(None).alias("ic"),
             ]
         )
         .sort(date_col)
@@ -303,6 +308,73 @@ def compute_ic_series(
     if output_as_pandas:
         return ic_series_pl.to_pandas()
     return ic_series_pl
+
+
+def compute_ic_series(
+    predictions: pl.DataFrame | pd.DataFrame,
+    returns: pl.DataFrame | pd.DataFrame,
+    pred_col: str = "prediction",
+    ret_col: str = "forward_return",
+    date_col: str = "date",
+    entity_col: str | list[str] | None = None,
+    method: str = "spearman",
+    min_periods: int = 10,
+) -> pl.DataFrame | pd.DataFrame:
+    """Backward-compatible alias for :func:`cross_sectional_ic_series`."""
+    return cross_sectional_ic_series(
+        predictions=predictions,
+        returns=returns,
+        pred_col=pred_col,
+        ret_col=ret_col,
+        date_col=date_col,
+        entity_col=entity_col,
+        method=method,
+        min_obs=min_periods,
+    )
+
+
+def cross_sectional_ic(
+    predictions: pl.DataFrame | pd.DataFrame,
+    returns: pl.DataFrame | pd.DataFrame,
+    pred_col: str = "prediction",
+    ret_col: str = "forward_return",
+    date_col: str = "date",
+    entity_col: str | list[str] | None = None,
+    method: str = "spearman",
+    min_obs: int = 10,
+) -> dict[str, float | int]:
+    """Compute per-date cross-sectional IC and return aggregate statistics.
+
+    Returns the canonical non-HAC summary for the valid per-date IC series:
+    mean, sample standard deviation, t-statistic, p-value, percent positive,
+    number of periods, and non-annualized IC information ratio.
+    """
+    ic_df = cross_sectional_ic_series(
+        predictions=predictions,
+        returns=returns,
+        pred_col=pred_col,
+        ret_col=ret_col,
+        date_col=date_col,
+        entity_col=entity_col,
+        method=method,
+        min_obs=min_obs,
+    )
+
+    from ml4t.diagnostic.evaluation.metrics.ic_statistics import compute_ic_summary_stats
+
+    summary = compute_ic_summary_stats(ic_df, ic_col="ic")
+    mean_ic = float(summary["mean_ic"])
+    std_ic = float(summary["std_ic"])
+    ic_ir = mean_ic / std_ic if np.isfinite(std_ic) and std_ic > 0 else np.nan
+    return {
+        "ic_mean": mean_ic,
+        "ic_std": std_ic,
+        "ic_t": float(summary["t_stat"]),
+        "p_value": float(summary["p_value"]),
+        "pct_positive": float(summary["pct_positive"]),
+        "n_periods": int(summary["n_periods"]),
+        "ic_ir": float(ic_ir),
+    }
 
 
 def compute_ic_by_horizon(

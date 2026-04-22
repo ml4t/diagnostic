@@ -73,7 +73,10 @@ from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
     compute_ic_by_horizon,
     compute_ic_ir,
     compute_ic_series,
+    cross_sectional_ic,
+    cross_sectional_ic_series,
     information_coefficient,
+    pooled_ic,
 )
 
 # Interaction detection
@@ -99,6 +102,9 @@ from ml4t.diagnostic.evaluation.metrics.risk_adjusted import (
 __all__ = [
     # IC metrics
     "information_coefficient",
+    "pooled_ic",
+    "cross_sectional_ic",
+    "cross_sectional_ic_series",
     "compute_ic_series",
     "compute_ic_by_horizon",
     "compute_ic_ir",
