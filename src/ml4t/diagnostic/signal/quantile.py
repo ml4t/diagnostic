@@ -122,7 +122,7 @@ def monotonicity_score(
 
     A simple Spearman correlation between quantile ranks and their mean returns.
     For the full-featured version that accepts raw DataFrames, use
-    ``ml4t.diagnostic.evaluation.metrics.compute_monotonicity``.
+    ``ml4t.diagnostic.metrics.compute_monotonicity``.
 
     Parameters
     ----------

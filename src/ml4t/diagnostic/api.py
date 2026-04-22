@@ -11,7 +11,15 @@ from ml4t.diagnostic.evaluation.feature_diagnostics import (
     FeatureDiagnostics,
     FeatureDiagnosticsResult,
 )
-from ml4t.diagnostic.evaluation.metrics import (
+from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.trade_analysis import TradeAnalysis
+from ml4t.diagnostic.evaluation.validated_cv import (
+    ValidatedCrossValidation,
+    ValidationFoldResult,
+    ValidationResult,
+    validated_cross_val_score,
+)
+from ml4t.diagnostic.metrics import (
     analyze_interactions,
     analyze_ml_importance,
     compute_h_statistic,
@@ -21,14 +29,6 @@ from ml4t.diagnostic.evaluation.metrics import (
     compute_permutation_importance,
     compute_shap_importance,
     compute_shap_interactions,
-)
-from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
-from ml4t.diagnostic.evaluation.trade_analysis import TradeAnalysis
-from ml4t.diagnostic.evaluation.validated_cv import (
-    ValidatedCrossValidation,
-    ValidationFoldResult,
-    ValidationResult,
-    validated_cross_val_score,
 )
 from ml4t.diagnostic.signal import SignalResult, analyze_signal
 from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
