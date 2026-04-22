@@ -55,12 +55,12 @@ def information_coefficient(
     --------
     >>> predictions = np.array([0.1, 0.3, -0.2, 0.5])
     >>> returns = np.array([0.02, 0.05, -0.01, 0.08])
-    >>> ic = information_coefficient(predictions, returns)
+    >>> ic = pooled_ic(predictions, returns)
     >>> print(f"IC: {ic:.3f}")
     IC: 0.800
 
     >>> # With confidence intervals
-    >>> result = information_coefficient(predictions, returns, confidence_intervals=True)
+    >>> result = pooled_ic(predictions, returns, confidence_intervals=True)
     >>> print(f"IC: {result['ic']:.3f} [{result['lower_ci']:.3f}, {result['upper_ci']:.3f}]")
     IC: 0.800 [-0.602, 0.995]
     """
@@ -470,9 +470,7 @@ def compute_ic_by_horizon(
             ret_array = df[ret_col].to_numpy()
 
         # Compute IC (confidence_intervals=False returns float)
-        ic_result = information_coefficient(
-            pred_array, ret_array, method=method, confidence_intervals=False
-        )
+        ic_result = pooled_ic(pred_array, ret_array, method=method, confidence_intervals=False)
         # When confidence_intervals=False, returns float; otherwise dict
         if isinstance(ic_result, dict):
             ic_val = float(ic_result.get("ic", np.nan))
