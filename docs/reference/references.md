@@ -444,7 +444,7 @@ More rigorous than HAC for rank correlations. The **stationary bootstrap** (Poli
 
 ## 5. Feature Importance
 
-**Implementation**: `ml4t.diagnostic.evaluation.metrics`
+**Implementation**: `ml4t.diagnostic.metrics`
 
 | Method | Type | Strengths | Weaknesses |
 |--------|------|-----------|------------|

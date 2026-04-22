@@ -71,14 +71,14 @@ autocorrelated. Use HAC (Heteroskedasticity and Autocorrelation Consistent)
 standard errors instead:
 
 ```python
-from ml4t.diagnostic.evaluation.metrics import compute_ic_hac_stats
+from ml4t.diagnostic.metrics import compute_ic_hac_stats
 
 hac = compute_ic_hac_stats(
     ic_series_df,   # DataFrame with "ic" column
     ic_col="ic",
     kernel="bartlett",
 )
-print(f"HAC t-stat: {hac['t_stat_hac']:.2f} (p={hac['p_value_hac']:.4f})")
+print(f"HAC t-stat: {hac['t_stat']:.2f} (p={hac['p_value']:.4f})")
 ```
 
 ### Multi-signal comparison (with FDR correction)
