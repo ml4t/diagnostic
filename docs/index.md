@@ -19,25 +19,33 @@ SHAP. See the [Book Guide](book-guide/index.md) for the exact notebook-to-API ma
 <div class="grid cards" markdown>
 
 -   :material-shield-search:{ .lg .middle } __Is Your Sharpe Real?__
+
     ---
+
     Deflated Sharpe Ratio corrects for multiple testing.
     Check whether your best backtest survived selection bias.
     [:octicons-arrow-right-24: Statistical Tests](user-guide/statistical-tests.md)
 
 -   :material-chart-sankey:{ .lg .middle } __Purged Cross-Validation__
+
     ---
+
     CPCV and purged walk-forward with embargo and label-horizon handling.
     Validate without leakage between train and test sets.
     [:octicons-arrow-right-24: Cross-Validation](user-guide/cross-validation.md)
 
 -   :material-magnify-scan:{ .lg .middle } __Feature And Trade Diagnostics__
+
     ---
+
     HAC-adjusted IC, importance analysis, drift checks, and SHAP-based trade diagnostics.
     Find out what is actually predictive and what is failing.
     [:octicons-arrow-right-24: Feature Diagnostics](user-guide/feature-diagnostics.md)
 
 -   :material-book-open-variant:{ .lg .middle } __From Book To API__
+
     ---
+
     The book develops these methods manually. The library packages them into
     reusable workflows for research and production reporting.
     [:octicons-arrow-right-24: Book Guide](book-guide/index.md)
