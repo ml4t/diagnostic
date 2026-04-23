@@ -10,7 +10,7 @@ import polars as pl
 import pytest
 from sklearn.ensemble import RandomForestRegressor
 
-from ml4t.diagnostic.evaluation import compute_h_statistic
+from ml4t.diagnostic.metrics import compute_h_statistic
 
 pytestmark = pytest.mark.filterwarnings("ignore:X does not have valid feature names.*:UserWarning")
 
@@ -535,7 +535,7 @@ class TestGenerateInteractionInterpretation:
 
     def test_strong_consensus(self):
         """Test interpretation with strong consensus."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import (
+        from ml4t.diagnostic.metrics.interactions import (
             _generate_interaction_interpretation,
         )
 
@@ -555,7 +555,7 @@ class TestGenerateInteractionInterpretation:
 
     def test_weak_consensus(self):
         """Test interpretation with weak consensus."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import (
+        from ml4t.diagnostic.metrics.interactions import (
             _generate_interaction_interpretation,
         )
 
@@ -573,7 +573,7 @@ class TestGenerateInteractionInterpretation:
 
     def test_moderate_agreement(self):
         """Test interpretation with moderate agreement."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import (
+        from ml4t.diagnostic.metrics.interactions import (
             _generate_interaction_interpretation,
         )
 
@@ -590,7 +590,7 @@ class TestGenerateInteractionInterpretation:
 
     def test_with_warnings(self):
         """Test interpretation includes warnings."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import (
+        from ml4t.diagnostic.metrics.interactions import (
             _generate_interaction_interpretation,
         )
 
@@ -609,7 +609,7 @@ class TestGenerateInteractionInterpretation:
 
     def test_empty_method_agreement(self):
         """Test interpretation with no method agreement data."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import (
+        from ml4t.diagnostic.metrics.interactions import (
             _generate_interaction_interpretation,
         )
 
@@ -633,7 +633,7 @@ class TestComputeShapInteractions:
     def test_shap_not_installed(self, monkeypatch):
         """Test error when SHAP not installed."""
 
-        from ml4t.diagnostic.evaluation.metrics.interactions import compute_shap_interactions
+        from ml4t.diagnostic.metrics.interactions import compute_shap_interactions
 
         # Mock shap to raise ImportError
         original_import = (
@@ -663,7 +663,7 @@ class TestComputeShapInteractions:
         """Test SHAP interactions with pandas input (mocked)."""
         from unittest.mock import MagicMock, patch
 
-        from ml4t.diagnostic.evaluation.metrics.interactions import compute_shap_interactions
+        from ml4t.diagnostic.metrics.interactions import compute_shap_interactions
 
         # Create mock SHAP module
         mock_shap = MagicMock()
@@ -698,7 +698,7 @@ class TestComputeShapInteractions:
         """Test SHAP interactions with polars input (mocked)."""
         from unittest.mock import MagicMock, patch
 
-        from ml4t.diagnostic.evaluation.metrics.interactions import compute_shap_interactions
+        from ml4t.diagnostic.metrics.interactions import compute_shap_interactions
 
         # Create mock SHAP module
         mock_shap = MagicMock()
@@ -729,7 +729,7 @@ class TestComputeShapInteractions:
         """Test SHAP interactions with top_k limit."""
         from unittest.mock import MagicMock, patch
 
-        from ml4t.diagnostic.evaluation.metrics.interactions import compute_shap_interactions
+        from ml4t.diagnostic.metrics.interactions import compute_shap_interactions
 
         mock_shap = MagicMock()
         mock_explainer = MagicMock()
@@ -757,7 +757,7 @@ class TestComputeShapInteractions:
         """Test SHAP with binary classification list format."""
         from unittest.mock import MagicMock, patch
 
-        from ml4t.diagnostic.evaluation.metrics.interactions import compute_shap_interactions
+        from ml4t.diagnostic.metrics.interactions import compute_shap_interactions
 
         mock_shap = MagicMock()
         mock_explainer = MagicMock()
@@ -792,7 +792,7 @@ class TestAnalyzeInteractions:
 
     def test_no_methods_specified(self):
         """Test error when no methods specified."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         class MockModel:
             def predict(self, X):
@@ -807,7 +807,7 @@ class TestAnalyzeInteractions:
 
     def test_conditional_ic_only(self):
         """Test with conditional IC method only (no model dependency)."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         rng = np.random.RandomState(42)
         n_samples = 100
@@ -831,7 +831,7 @@ class TestAnalyzeInteractions:
 
     def test_invalid_feature_pairs(self):
         """Test error with invalid feature pairs."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         class MockModel:
             def predict(self, X):
@@ -847,7 +847,7 @@ class TestAnalyzeInteractions:
 
     def test_feature_pairs_wrong_length(self):
         """Test error with wrong pair length."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         class MockModel:
             def predict(self, X):
@@ -862,7 +862,7 @@ class TestAnalyzeInteractions:
 
     def test_all_methods_fail(self, monkeypatch):
         """Test error when all methods fail."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         class BrokenModel:
             def predict(self, X):
@@ -877,7 +877,7 @@ class TestAnalyzeInteractions:
             raise RuntimeError("IC broken")
 
         monkeypatch.setattr(
-            "ml4t.diagnostic.evaluation.metrics.interactions.compute_conditional_ic",
+            "ml4t.diagnostic.metrics.interactions.compute_conditional_ic",
             failing_ic,
         )
 
@@ -886,7 +886,7 @@ class TestAnalyzeInteractions:
 
     def test_method_failure_captured(self):
         """Test that method failures are captured, not raised."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         class BrokenModel:
             def predict(self, X):
@@ -907,7 +907,7 @@ class TestAnalyzeInteractions:
 
     def test_pandas_input(self):
         """Test with pandas DataFrame input."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         rng = np.random.RandomState(42)
         n_samples = 100
@@ -927,7 +927,7 @@ class TestAnalyzeInteractions:
 
     def test_polars_input(self):
         """Test with polars DataFrame input."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         rng = np.random.RandomState(42)
         n_samples = 100
@@ -951,7 +951,7 @@ class TestAnalyzeInteractions:
 
     def test_specific_feature_pairs(self):
         """Test with specific feature pairs specified."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         rng = np.random.RandomState(42)
         n_samples = 100
@@ -973,7 +973,7 @@ class TestAnalyzeInteractions:
 
     def test_output_structure(self):
         """Test output contains all expected keys."""
-        from ml4t.diagnostic.evaluation.metrics.interactions import analyze_interactions
+        from ml4t.diagnostic.metrics.interactions import analyze_interactions
 
         rng = np.random.RandomState(42)
         X = rng.randn(100, 3)

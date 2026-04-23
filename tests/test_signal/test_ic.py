@@ -1,6 +1,6 @@
 """Tests for IC (Information Coefficient) computation.
 
-Tests ic.py: compute_ic_series, compute_ic_summary.
+Tests ic.py: extract_signal_ic_series, compute_ic_summary.
 """
 
 from datetime import date
@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from ml4t.diagnostic.signal.signal_ic import compute_ic_series, compute_ic_summary
+from ml4t.diagnostic.signal.signal_ic import compute_ic_summary, extract_signal_ic_series
 
 # =============================================================================
 # Fixtures
@@ -63,16 +63,16 @@ def uncorrelated_data():
 
 
 # =============================================================================
-# Tests: compute_ic_series
+# Tests: extract_signal_ic_series
 # =============================================================================
 
 
 class TestComputeICSeries:
-    """Tests for compute_ic_series function."""
+    """Tests for extract_signal_ic_series function."""
 
     def test_spearman_method(self, prepared_data):
         """Test IC with default Spearman method."""
-        dates, ic_vals = compute_ic_series(prepared_data, period=1, method="spearman")
+        dates, ic_vals = extract_signal_ic_series(prepared_data, period=1, method="spearman")
 
         assert len(dates) > 0
         assert len(ic_vals) == len(dates)
@@ -81,7 +81,7 @@ class TestComputeICSeries:
 
     def test_pearson_method(self, prepared_data):
         """Test IC with Pearson correlation method."""
-        dates, ic_vals = compute_ic_series(prepared_data, period=1, method="pearson")
+        dates, ic_vals = extract_signal_ic_series(prepared_data, period=1, method="pearson")
 
         assert len(dates) > 0
         assert len(ic_vals) == len(dates)
@@ -101,7 +101,7 @@ class TestComputeICSeries:
         )
 
         # With min_obs=10, day 1 (5 assets) should be excluded
-        dates, ic_vals = compute_ic_series(data, period=1, min_obs=10)
+        dates, ic_vals = extract_signal_ic_series(data, period=1, min_obs=10)
 
         assert len(dates) == 1  # Only day 2
         assert dates[0] == date(2024, 1, 2)
@@ -117,7 +117,7 @@ class TestComputeICSeries:
             }
         )
 
-        dates, ic_vals = compute_ic_series(data, period=1, min_obs=10)
+        dates, ic_vals = extract_signal_ic_series(data, period=1, min_obs=10)
 
         assert len(dates) == 0
         assert len(ic_vals) == 0
@@ -132,7 +132,7 @@ class TestComputeICSeries:
             .alias("1D_fwd_return")
         )
 
-        dates, ic_vals = compute_ic_series(data, period=1)
+        dates, ic_vals = extract_signal_ic_series(data, period=1)
 
         # Should still compute IC after removing NaN pairs
         assert len(dates) > 0
@@ -149,7 +149,7 @@ class TestComputeICSeries:
             }
         )
 
-        dates, ic_vals = compute_ic_series(data, period=1)
+        dates, ic_vals = extract_signal_ic_series(data, period=1)
 
         # Date should be skipped (correlation undefined)
         assert len(dates) == 0
@@ -165,7 +165,7 @@ class TestComputeICSeries:
             }
         )
 
-        dates, ic_vals = compute_ic_series(data, period=1)
+        dates, ic_vals = extract_signal_ic_series(data, period=1)
 
         # Date should be skipped (correlation undefined for identical values)
         assert len(dates) == 0
@@ -174,7 +174,7 @@ class TestComputeICSeries:
         """Test behavior when return column doesn't exist."""
         # The function raises ColumnNotFoundError for missing columns
         with pytest.raises(pl.exceptions.ColumnNotFoundError):
-            compute_ic_series(prepared_data, period=99)
+            extract_signal_ic_series(prepared_data, period=99)
 
 
 # =============================================================================
@@ -226,7 +226,7 @@ class TestComputeICSummary:
 
     def test_nonsignificant_ic(self, uncorrelated_data):
         """Test summary with non-significant IC (random data)."""
-        dates, ic_vals = compute_ic_series(uncorrelated_data, period=1)
+        dates, ic_vals = extract_signal_ic_series(uncorrelated_data, period=1)
 
         if len(ic_vals) >= 2:
             summary = compute_ic_summary(ic_vals)

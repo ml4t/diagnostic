@@ -52,7 +52,7 @@ def trained_model(synthetic_data):
 
 def test_basic_functionality(trained_model, synthetic_data):
     """Test basic analyze_interactions functionality."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -91,7 +91,7 @@ def test_basic_functionality(trained_model, synthetic_data):
 
 def test_pandas_input(trained_model, synthetic_data):
     """Test analyze_interactions with pandas DataFrame input."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X_np, y_np = synthetic_data
     X_pd = pd.DataFrame(X_np, columns=["feat_0", "feat_1", "feat_2", "feat_3"])
@@ -114,7 +114,7 @@ def test_pandas_input(trained_model, synthetic_data):
 
 def test_polars_input(trained_model, synthetic_data):
     """Test analyze_interactions with polars DataFrame input."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X_np, y_np = synthetic_data
     X_pl = pl.DataFrame(
@@ -143,7 +143,7 @@ def test_polars_input(trained_model, synthetic_data):
 
 def test_numpy_input(trained_model, synthetic_data):
     """Test analyze_interactions with numpy array input."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -164,7 +164,7 @@ def test_numpy_input(trained_model, synthetic_data):
 
 def test_specific_feature_pairs(trained_model, synthetic_data):
     """Test analyze_interactions with specific feature pairs."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X_np, y_np = synthetic_data
     X_pd = pd.DataFrame(X_np, columns=["x0", "x1", "x2", "x3"])
@@ -192,7 +192,7 @@ def test_specific_feature_pairs(trained_model, synthetic_data):
 
 def test_single_method(trained_model, synthetic_data):
     """Test analyze_interactions with only one method."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -214,7 +214,7 @@ def test_single_method(trained_model, synthetic_data):
 
 def test_all_methods(trained_model, synthetic_data):
     """Test analyze_interactions with all methods including SHAP."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -239,7 +239,7 @@ def test_all_methods(trained_model, synthetic_data):
 
 def test_method_agreement_calculation(trained_model, synthetic_data):
     """Test that method agreement (Spearman correlation) is calculated correctly."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -268,7 +268,7 @@ def test_method_agreement_calculation(trained_model, synthetic_data):
 
 def test_consensus_ranking_order(trained_model, synthetic_data):
     """Test that consensus ranking is ordered by average rank."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -287,7 +287,7 @@ def test_consensus_ranking_order(trained_model, synthetic_data):
 
 def test_top_interactions_consensus(trained_model, synthetic_data):
     """Test that top_interactions_consensus identifies shared top interactions."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -312,7 +312,7 @@ def test_top_interactions_consensus(trained_model, synthetic_data):
 
 def test_warnings_generation(trained_model, synthetic_data):
     """Test that warnings are generated when appropriate."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -332,7 +332,7 @@ def test_warnings_generation(trained_model, synthetic_data):
 
 def test_interpretation_generation(trained_model, synthetic_data):
     """Test that interpretation text is generated."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -351,7 +351,7 @@ def test_interpretation_generation(trained_model, synthetic_data):
 
 def test_parameter_passing(trained_model, synthetic_data):
     """Test that parameters are passed correctly to individual methods."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -373,7 +373,7 @@ def test_parameter_passing(trained_model, synthetic_data):
 
 def test_edge_case_two_features(trained_model):
     """Test analyze_interactions with only 2 features (1 pair)."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     np.random.seed(42)
     X = np.random.randn(100, 2)
@@ -396,7 +396,7 @@ def test_edge_case_two_features(trained_model):
 
 def test_edge_case_constant_feature():
     """Test analyze_interactions handles constant features gracefully."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     np.random.seed(42)
     X = np.random.randn(100, 3)
@@ -420,7 +420,7 @@ def test_edge_case_constant_feature():
 
 def test_invalid_feature_pairs(trained_model, synthetic_data):
     """Test that invalid feature pairs raise appropriate errors."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X_np, y_np = synthetic_data
     X_pd = pd.DataFrame(X_np, columns=["x0", "x1", "x2", "x3"])
@@ -448,7 +448,7 @@ def test_invalid_feature_pairs(trained_model, synthetic_data):
 
 def test_no_methods_specified_error():
     """Test that error is raised when no methods are specified."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X = np.random.randn(50, 3)
     y = np.random.randn(50)
@@ -461,7 +461,7 @@ def test_no_methods_specified_error():
 
 def test_method_failure_handling(trained_model, synthetic_data):
     """Test that analysis continues even if one method fails."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -487,7 +487,7 @@ def test_method_failure_handling(trained_model, synthetic_data):
 
 def test_scores_dict_structure(trained_model, synthetic_data):
     """Test that consensus ranking includes scores from each method."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 
@@ -513,7 +513,7 @@ def test_scores_dict_structure(trained_model, synthetic_data):
 
 def test_output_format_consistency(trained_model, synthetic_data):
     """Test that output format is consistent across different inputs."""
-    from ml4t.diagnostic.evaluation import analyze_interactions
+    from ml4t.diagnostic.metrics import analyze_interactions
 
     X, y = synthetic_data
 

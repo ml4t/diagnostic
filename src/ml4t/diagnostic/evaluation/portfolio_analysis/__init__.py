@@ -33,8 +33,6 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
     information_ratio,
     max_drawdown,
     omega_ratio,
-    sharpe_ratio,
-    sortino_ratio,
     stability_of_timeseries,
     tail_ratio,
     up_down_capture,
@@ -60,8 +58,6 @@ __all__ = [
     "DrawdownResult",
     "DistributionResult",
     # Core metric functions
-    "sharpe_ratio",
-    "sortino_ratio",
     "calmar_ratio",
     "omega_ratio",
     "tail_ratio",

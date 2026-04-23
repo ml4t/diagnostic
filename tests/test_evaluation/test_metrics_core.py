@@ -22,7 +22,7 @@ class TestInformationCoefficient:
 
     def test_basic_spearman(self):
         """Test basic Spearman correlation."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -36,7 +36,7 @@ class TestInformationCoefficient:
 
     def test_negative_correlation(self):
         """Test negative correlation."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -49,7 +49,7 @@ class TestInformationCoefficient:
 
     def test_pearson_correlation(self):
         """Test Pearson correlation method."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -62,7 +62,7 @@ class TestInformationCoefficient:
 
     def test_with_confidence_intervals(self):
         """Test IC with confidence intervals."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -83,7 +83,7 @@ class TestInformationCoefficient:
 
     def test_insufficient_data(self):
         """Test with insufficient data (< 2 samples)."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -96,7 +96,7 @@ class TestInformationCoefficient:
 
     def test_insufficient_data_with_ci(self):
         """Test insufficient data returns NaN dict with CI."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -111,7 +111,7 @@ class TestInformationCoefficient:
 
     def test_nan_handling(self):
         """Test NaN values are handled correctly."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -125,7 +125,7 @@ class TestInformationCoefficient:
 
     def test_mismatched_lengths(self):
         """Test error with mismatched input lengths."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -137,7 +137,7 @@ class TestInformationCoefficient:
 
     def test_unknown_method(self):
         """Test error with unknown correlation method."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -149,7 +149,7 @@ class TestInformationCoefficient:
 
     def test_polars_input(self):
         """Test with Polars Series input."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -162,7 +162,7 @@ class TestInformationCoefficient:
 
     def test_pandas_input(self):
         """Test with Pandas Series input."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -175,7 +175,7 @@ class TestInformationCoefficient:
 
     def test_small_sample_ci(self):
         """Test CI with small sample (< 4)."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+        from ml4t.diagnostic.metrics.ic import (
             information_coefficient,
         )
 
@@ -195,7 +195,7 @@ class TestComputeICIR:
 
     def test_basic_ic_ir(self):
         """Test basic IC-IR calculation."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import compute_ic_ir
+        from ml4t.diagnostic.metrics.ic import compute_ic_ir
 
         # Create IC series
         rng = np.random.RandomState(42)
@@ -212,7 +212,7 @@ class TestComputeICIR:
 
     def test_ic_ir_with_numpy_array(self):
         """Test IC-IR with numpy array input."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import compute_ic_ir
+        from ml4t.diagnostic.metrics.ic import compute_ic_ir
 
         ic_values = np.array([0.05, 0.03, 0.04, 0.02, 0.06])
 
@@ -222,7 +222,7 @@ class TestComputeICIR:
 
     def test_ic_ir_with_confidence_intervals(self):
         """Test IC-IR with bootstrap confidence intervals."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import compute_ic_ir
+        from ml4t.diagnostic.metrics.ic import compute_ic_ir
 
         rng = np.random.RandomState(42)
         ic_values = rng.randn(50) * 0.03 + 0.02
@@ -238,7 +238,7 @@ class TestComputeICIR:
 
     def test_ic_ir_insufficient_data(self):
         """Test IC-IR with insufficient data."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import compute_ic_ir
+        from ml4t.diagnostic.metrics.ic import compute_ic_ir
 
         ic_values = np.array([0.05])  # Only one value
 
@@ -248,7 +248,7 @@ class TestComputeICIR:
 
     def test_ic_ir_zero_std(self):
         """Test IC-IR when all IC values are identical."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import compute_ic_ir
+        from ml4t.diagnostic.metrics.ic import compute_ic_ir
 
         ic_values = np.array([0.05, 0.05, 0.05, 0.05])  # Zero std
 
@@ -258,7 +258,7 @@ class TestComputeICIR:
 
     def test_ic_ir_pandas_dataframe(self):
         """Test IC-IR with pandas DataFrame."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import compute_ic_ir
+        from ml4t.diagnostic.metrics.ic import compute_ic_ir
 
         df = pd.DataFrame({"ic": [0.05, 0.03, 0.04, 0.02, 0.06]})
 
@@ -268,7 +268,7 @@ class TestComputeICIR:
 
     def test_annualization(self):
         """Test annualization factor application."""
-        from ml4t.diagnostic.evaluation.metrics.information_coefficient import compute_ic_ir
+        from ml4t.diagnostic.metrics.ic import compute_ic_ir
 
         ic_values = np.array([0.05, 0.03, 0.04, 0.02, 0.06])
 
@@ -291,7 +291,7 @@ class TestSharpeRatio:
 
     def test_basic_sharpe(self):
         """Test basic Sharpe ratio calculation."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         # Positive returns
         returns = np.array([0.01, 0.02, 0.03, 0.01, 0.02])
@@ -303,7 +303,7 @@ class TestSharpeRatio:
 
     def test_sharpe_with_risk_free_rate(self):
         """Test Sharpe with risk-free rate."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         returns = np.array([0.01, 0.02, 0.03, 0.01, 0.02])
         rf_rate = 0.005
@@ -316,19 +316,19 @@ class TestSharpeRatio:
 
     def test_sharpe_annualization(self):
         """Test Sharpe ratio annualization."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import periodic_sharpe_ratio, sharpe_ratio
 
         returns = np.array([0.01, 0.02, 0.03, 0.01, 0.02])
 
-        sharpe_daily = sharpe_ratio(returns, annualization_factor=None)
-        sharpe_ann = sharpe_ratio(returns, annualization_factor=252)
+        sharpe_daily = periodic_sharpe_ratio(returns)
+        sharpe_ann = sharpe_ratio(returns, periods_per_year=252)
 
         # Annualized should be sqrt(252) times daily
         assert sharpe_ann == pytest.approx(sharpe_daily * np.sqrt(252), rel=0.01)
 
     def test_sharpe_with_confidence_intervals(self):
         """Test Sharpe with bootstrap confidence intervals."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         rng = np.random.RandomState(42)
         returns = rng.randn(100) * 0.02 + 0.001
@@ -344,7 +344,7 @@ class TestSharpeRatio:
 
     def test_sharpe_insufficient_data(self):
         """Test Sharpe with insufficient data."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         returns = np.array([0.01])
 
@@ -354,7 +354,7 @@ class TestSharpeRatio:
 
     def test_sharpe_zero_volatility(self):
         """Test Sharpe when returns have zero volatility."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         returns = np.array([0.01, 0.01, 0.01, 0.01])  # Zero std
 
@@ -365,7 +365,7 @@ class TestSharpeRatio:
 
     def test_sharpe_negative_zero_vol(self):
         """Test Sharpe with negative returns and zero volatility."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         returns = np.array([-0.01, -0.01, -0.01, -0.01])
 
@@ -375,7 +375,7 @@ class TestSharpeRatio:
 
     def test_sharpe_polars_input(self):
         """Test Sharpe with Polars Series."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         returns = pl.Series([0.01, 0.02, -0.01, 0.03, 0.01])
 
@@ -385,7 +385,7 @@ class TestSharpeRatio:
 
     def test_sharpe_nan_handling(self):
         """Test Sharpe handles NaN values."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sharpe_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio
 
         returns = np.array([0.01, np.nan, 0.02, 0.03, np.nan])
 
@@ -399,7 +399,7 @@ class TestSortinoRatio:
 
     def test_basic_sortino(self):
         """Test basic Sortino ratio calculation."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sortino_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sortino_ratio
 
         returns = np.array([0.01, 0.02, -0.01, 0.03, -0.02])
 
@@ -409,7 +409,7 @@ class TestSortinoRatio:
 
     def test_sortino_vs_sharpe(self):
         """Test Sortino is >= Sharpe for typical returns."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import (
+        from ml4t.diagnostic.metrics.risk_adjusted import (
             sharpe_ratio,
             sortino_ratio,
         )
@@ -425,7 +425,7 @@ class TestSortinoRatio:
 
     def test_sortino_no_downside(self):
         """Test Sortino with no downside returns."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sortino_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sortino_ratio
 
         returns = np.array([0.01, 0.02, 0.01, 0.03, 0.02])  # All positive
 
@@ -435,18 +435,18 @@ class TestSortinoRatio:
 
     def test_sortino_annualization(self):
         """Test Sortino ratio annualization."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sortino_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import periodic_sortino_ratio, sortino_ratio
 
         returns = np.array([0.01, 0.02, -0.01, 0.03, -0.02])
 
-        sortino_daily = sortino_ratio(returns, annualization_factor=None)
-        sortino_ann = sortino_ratio(returns, annualization_factor=252)
+        sortino_daily = periodic_sortino_ratio(returns)
+        sortino_ann = sortino_ratio(returns, periods_per_year=252)
 
         assert sortino_ann == pytest.approx(sortino_daily * np.sqrt(252), rel=0.01)
 
     def test_sortino_insufficient_data(self):
         """Test Sortino with insufficient data."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sortino_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sortino_ratio
 
         returns = np.array([0.01])
 
@@ -456,7 +456,7 @@ class TestSortinoRatio:
 
     def test_sortino_with_target_return(self):
         """Test Sortino with non-zero target return."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import sortino_ratio
+        from ml4t.diagnostic.metrics.risk_adjusted import sortino_ratio
 
         returns = np.array([0.01, 0.02, -0.01, 0.03, -0.02])
 
@@ -472,7 +472,7 @@ class TestMaximumDrawdown:
 
     def test_basic_drawdown(self):
         """Test basic maximum drawdown calculation."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import maximum_drawdown
+        from ml4t.diagnostic.metrics.risk_adjusted import maximum_drawdown
 
         # Returns with clear drawdown
         returns = np.array([0.10, -0.05, -0.10, 0.08, 0.05])
@@ -486,7 +486,7 @@ class TestMaximumDrawdown:
 
     def test_drawdown_empty_returns(self):
         """Test drawdown with empty returns."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import maximum_drawdown
+        from ml4t.diagnostic.metrics.risk_adjusted import maximum_drawdown
 
         returns = np.array([])
 
@@ -496,7 +496,7 @@ class TestMaximumDrawdown:
 
     def test_drawdown_all_positive(self):
         """Test drawdown when all returns positive."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import maximum_drawdown
+        from ml4t.diagnostic.metrics.risk_adjusted import maximum_drawdown
 
         returns = np.array([0.01, 0.02, 0.01, 0.03])
 
@@ -507,7 +507,7 @@ class TestMaximumDrawdown:
 
     def test_drawdown_cumulative_input(self):
         """Test drawdown with cumulative returns input."""
-        from ml4t.diagnostic.evaluation.metrics.risk_adjusted import maximum_drawdown
+        from ml4t.diagnostic.metrics.risk_adjusted import maximum_drawdown
 
         # Cumulative returns
         cum_returns = np.array([0.10, 0.08, 0.05, 0.12, 0.15])
@@ -527,7 +527,7 @@ class TestComputeForwardReturns:
 
     def test_basic_forward_returns(self):
         """Test basic forward returns computation."""
-        from ml4t.diagnostic.evaluation.metrics.basic import compute_forward_returns
+        from ml4t.diagnostic.metrics.basic import compute_forward_returns
 
         prices = pl.DataFrame(
             {
@@ -545,7 +545,7 @@ class TestComputeForwardReturns:
 
     def test_forward_returns_pandas(self):
         """Test forward returns with pandas input."""
-        from ml4t.diagnostic.evaluation.metrics.basic import compute_forward_returns
+        from ml4t.diagnostic.metrics.basic import compute_forward_returns
 
         prices = pd.DataFrame(
             {
@@ -561,7 +561,7 @@ class TestComputeForwardReturns:
 
     def test_forward_returns_with_grouping(self):
         """Test forward returns with group column."""
-        from ml4t.diagnostic.evaluation.metrics.basic import compute_forward_returns
+        from ml4t.diagnostic.metrics.basic import compute_forward_returns
 
         prices = pl.DataFrame(
             {
@@ -587,7 +587,7 @@ class TestMonotonicity:
 
     def test_basic_monotonicity(self):
         """Test basic monotonicity computation."""
-        from ml4t.diagnostic.evaluation.metrics.monotonicity import (
+        from ml4t.diagnostic.metrics.monotonicity import (
             compute_monotonicity,
         )
 
@@ -603,7 +603,7 @@ class TestMonotonicity:
 
     def test_decreasing_monotonicity(self):
         """Test decreasing monotonicity."""
-        from ml4t.diagnostic.evaluation.metrics.monotonicity import (
+        from ml4t.diagnostic.metrics.monotonicity import (
             compute_monotonicity,
         )
 
@@ -618,7 +618,7 @@ class TestMonotonicity:
 
     def test_non_monotonic(self):
         """Test non-monotonic relationship (U-shape)."""
-        from ml4t.diagnostic.evaluation.metrics.monotonicity import (
+        from ml4t.diagnostic.metrics.monotonicity import (
             compute_monotonicity,
         )
 
@@ -633,7 +633,7 @@ class TestMonotonicity:
 
     def test_monotonicity_score(self):
         """Test monotonicity score calculation."""
-        from ml4t.diagnostic.evaluation.metrics.monotonicity import (
+        from ml4t.diagnostic.metrics.monotonicity import (
             compute_monotonicity,
         )
 
@@ -648,7 +648,7 @@ class TestMonotonicity:
 
     def test_insufficient_data(self):
         """Test with insufficient data for quantile analysis."""
-        from ml4t.diagnostic.evaluation.metrics.monotonicity import (
+        from ml4t.diagnostic.metrics.monotonicity import (
             compute_monotonicity,
         )
 
@@ -662,7 +662,7 @@ class TestMonotonicity:
 
     def test_dataframe_input(self):
         """Test with DataFrame input."""
-        from ml4t.diagnostic.evaluation.metrics.monotonicity import (
+        from ml4t.diagnostic.metrics.monotonicity import (
             compute_monotonicity,
         )
 

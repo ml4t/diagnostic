@@ -143,12 +143,12 @@ class TestExpandingStdPerformance:
 
 
 class TestComputeICSeriesPerformance:
-    """Performance tests for compute_ic_series."""
+    """Performance tests for cross_sectional_ic_series."""
 
     @pytest.mark.benchmark
     def test_ic_series_completes_in_time(self):
-        """Verify compute_ic_series completes in reasonable time."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_series
+        """Verify cross_sectional_ic_series completes in reasonable time."""
+        from ml4t.diagnostic.metrics import cross_sectional_ic_series
 
         n_dates = 252
         n_assets = 100
@@ -170,8 +170,8 @@ class TestComputeICSeriesPerformance:
         )
 
         start = time.perf_counter()
-        result = compute_ic_series(predictions, returns)
+        result = cross_sectional_ic_series(predictions, returns)
         elapsed = time.perf_counter() - start
 
-        assert elapsed < 5.0, f"compute_ic_series took {elapsed:.2f}s (expected <5s)"
+        assert elapsed < 5.0, f"cross_sectional_ic_series took {elapsed:.2f}s (expected <5s)"
         assert result.height == n_dates

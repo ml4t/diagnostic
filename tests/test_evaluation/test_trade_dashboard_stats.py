@@ -9,12 +9,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ml4t.diagnostic.evaluation.stats import benjamini_hochberg_fdr, probabilistic_sharpe_ratio
 from ml4t.diagnostic.evaluation.trade_dashboard.stats import (
-    benjamini_hochberg_fdr,
     compute_distribution_tests,
     compute_return_summary,
     compute_time_series_tests,
-    probabilistic_sharpe_ratio,
 )
 from ml4t.diagnostic.evaluation.trade_dashboard.types import ReturnSummary
 
@@ -366,7 +365,7 @@ class TestBenjaminiHochbergFDR:
         """Test basic FDR correction."""
         p_values = [0.01, 0.02, 0.03, 0.04, 0.05]
 
-        result = benjamini_hochberg_fdr(p_values, alpha=0.05)
+        result = benjamini_hochberg_fdr(p_values, alpha=0.05, return_details=True)
 
         assert "rejected" in result
         assert "adjusted_p_values" in result
@@ -377,7 +376,7 @@ class TestBenjaminiHochbergFDR:
         """Test with no significant p-values."""
         p_values = [0.5, 0.6, 0.7, 0.8, 0.9]
 
-        result = benjamini_hochberg_fdr(p_values, alpha=0.05)
+        result = benjamini_hochberg_fdr(p_values, alpha=0.05, return_details=True)
 
         assert result["n_rejected"] == 0
         assert not any(result["rejected"])
@@ -386,7 +385,7 @@ class TestBenjaminiHochbergFDR:
         """Test with all significant p-values."""
         p_values = [0.001, 0.002, 0.003, 0.004, 0.005]
 
-        result = benjamini_hochberg_fdr(p_values, alpha=0.05)
+        result = benjamini_hochberg_fdr(p_values, alpha=0.05, return_details=True)
 
         assert result["n_rejected"] == 5
         assert all(result["rejected"])
@@ -395,7 +394,7 @@ class TestBenjaminiHochbergFDR:
         """Test with numpy array input."""
         p_values = np.array([0.01, 0.05, 0.1, 0.5])
 
-        result = benjamini_hochberg_fdr(p_values, alpha=0.05)
+        result = benjamini_hochberg_fdr(p_values, alpha=0.05, return_details=True)
 
         assert "rejected" in result
         assert "n_rejected" in result

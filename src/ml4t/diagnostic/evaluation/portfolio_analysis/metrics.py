@@ -2,7 +2,6 @@
 
 This module provides standalone utility functions for computing
 portfolio performance metrics:
-- Risk-adjusted returns (Sharpe, Sortino, Calmar, Omega, Tail)
 - Return metrics (annual return, volatility, max drawdown)
 - Risk metrics (VaR, CVaR)
 - Benchmark-relative metrics (alpha, beta, information ratio, capture ratios)
@@ -62,84 +61,6 @@ def _safe_cumprod(arr: np.ndarray) -> np.ndarray:
 def _annualization_factor(periods_per_year: int = 252) -> float:
     """Get annualization factor."""
     return np.sqrt(periods_per_year)
-
-
-def sharpe_ratio(
-    returns: ArrayLike,
-    risk_free: float = 0.0,
-    periods_per_year: int = 252,
-) -> float:
-    """Compute annualized Sharpe ratio.
-
-    Args:
-        returns: Daily returns (non-cumulative)
-        risk_free: Annual risk-free rate
-        periods_per_year: Trading periods per year
-
-    Returns:
-        Annualized Sharpe ratio
-    """
-    returns = _to_numpy(returns)
-
-    # Convert annual risk-free to daily
-    daily_rf = (1 + risk_free) ** (1 / periods_per_year) - 1
-
-    excess_returns = returns - daily_rf
-
-    if len(excess_returns) < 2:
-        return np.nan
-
-    mean_excess = np.nanmean(excess_returns)
-    std_excess = np.nanstd(excess_returns, ddof=1)
-
-    if std_excess == 0:
-        return np.nan
-
-    return (mean_excess / std_excess) * _annualization_factor(periods_per_year)
-
-
-def sortino_ratio(
-    returns: ArrayLike,
-    risk_free: float = 0.0,
-    periods_per_year: int = 252,
-    target: float = 0.0,
-) -> float:
-    """Compute annualized Sortino ratio.
-
-    Uses downside deviation (semi-deviation) instead of full volatility.
-
-    Args:
-        returns: Daily returns (non-cumulative)
-        risk_free: Annual risk-free rate
-        periods_per_year: Trading periods per year
-        target: Target return threshold for downside calculation (daily, relative
-            to risk-free rate). When target=0, downside is measured below the
-            risk-free rate.
-
-    Returns:
-        Annualized Sortino ratio
-    """
-    returns = _to_numpy(returns)
-
-    # Convert annual risk-free to daily
-    daily_rf = (1 + risk_free) ** (1 / periods_per_year) - 1
-
-    excess_returns = returns - daily_rf
-
-    # Downside returns: excess returns below target
-    # Uses excess returns for consistency with numerator
-    downside_returns = np.minimum(excess_returns - target, 0)
-
-    if len(downside_returns) < 2:
-        return np.nan
-
-    mean_excess = np.nanmean(excess_returns)
-    downside_std = np.sqrt(np.nanmean(downside_returns**2))
-
-    if downside_std == 0:
-        return np.nan
-
-    return (mean_excess / downside_std) * _annualization_factor(periods_per_year)
 
 
 def calmar_ratio(
@@ -566,8 +487,6 @@ __all__ = [
     "_safe_cumprod",
     "_annualization_factor",
     # Risk-adjusted return metrics
-    "sharpe_ratio",
-    "sortino_ratio",
     "calmar_ratio",
     "omega_ratio",
     "tail_ratio",

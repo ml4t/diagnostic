@@ -20,7 +20,7 @@ Building Blocks
 For custom workflows, use the component functions:
 
 - prepare_data : Join factor with prices and compute forward returns
-- compute_ic_series : Compute IC time series
+- extract_signal_ic_series : Extract per-date IC values for one horizon
 - compute_quantile_returns : Compute returns by quantile
 - compute_turnover : Compute factor turnover rate
 - filter_outliers : Remove cross-sectional outliers
@@ -39,7 +39,7 @@ from ml4t.diagnostic.signal.quantile import (
     monotonicity_score,
 )
 from ml4t.diagnostic.signal.result import SignalResult
-from ml4t.diagnostic.signal.signal_ic import compute_ic_series, compute_ic_summary
+from ml4t.diagnostic.signal.signal_ic import compute_ic_summary, extract_signal_ic_series
 from ml4t.diagnostic.signal.turnover import (
     compute_autocorrelation,
     compute_turnover,
@@ -56,7 +56,7 @@ __all__ = [
     "quantize_factor",
     "QuantileMethod",
     # IC functions
-    "compute_ic_series",
+    "extract_signal_ic_series",
     "compute_ic_summary",
     # Quantile functions
     "compute_quantile_returns",

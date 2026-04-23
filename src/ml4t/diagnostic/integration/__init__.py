@@ -114,7 +114,7 @@ def profile_from_run_artifacts(
     benchmark: Any = None,
     confidence_intervals: bool = False,
 ):
-    """Build a BacktestProfile from case-study artifact directories."""
+    """Build a BacktestProfile from backtest artifact directories."""
     return _load_backtest_bridge().profile_from_run_artifacts(
         backtest_dir=backtest_dir,
         predictions_path=predictions_path,
@@ -137,7 +137,7 @@ def generate_tearsheet_from_run_artifacts(
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
 ) -> str:
-    """Generate a tearsheet directly from case-study artifact directories."""
+    """Generate a tearsheet directly from backtest artifact directories."""
     return _load_backtest_bridge().generate_tearsheet_from_run_artifacts(
         backtest_dir=backtest_dir,
         predictions_path=predictions_path,

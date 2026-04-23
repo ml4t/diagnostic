@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ml4t.diagnostic.evaluation.metrics.feature_outcome import analyze_feature_outcome_series
+from ml4t.diagnostic.metrics.feature_outcome import analyze_feature_outcome_series
 
 
 class TestAnalyzeFeatureOutcomeSeries:

@@ -15,8 +15,10 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from ml4t.diagnostic.evaluation.metrics.risk_adjusted import (
+from ml4t.diagnostic.metrics.risk_adjusted import (
     maximum_drawdown,
+    periodic_sharpe_ratio,
+    periodic_sortino_ratio,
     sharpe_ratio,
     sortino_ratio,
 )
@@ -30,7 +32,7 @@ class TestSharpeRatioCorrectness:
         returns = np.array([0.01, 0.02, -0.01, 0.03, 0.00, 0.015])
         risk_free = 0.001
 
-        sharpe = sharpe_ratio(returns, risk_free_rate=risk_free)
+        sharpe = periodic_sharpe_ratio(returns, periodic_risk_free_rate=risk_free)
 
         # Calculate expected manually
         excess = returns - risk_free
@@ -45,8 +47,8 @@ class TestSharpeRatioCorrectness:
         returns = np.array([0.01, 0.02, -0.01, 0.03, 0.00])
         ann_factor = 252  # Daily to annual
 
-        sharpe_daily = sharpe_ratio(returns)
-        sharpe_annual = sharpe_ratio(returns, annualization_factor=ann_factor)
+        sharpe_daily = periodic_sharpe_ratio(returns)
+        sharpe_annual = sharpe_ratio(returns, periods_per_year=ann_factor)
 
         expected_annual = sharpe_daily * np.sqrt(ann_factor)
 
@@ -142,7 +144,7 @@ class TestSortinoRatioCorrectness:
         returns = np.array([0.02, -0.01, 0.03, -0.02, 0.01, -0.015])
         target = 0.0
 
-        sortino = sortino_ratio(returns, target_return=target)
+        sortino = periodic_sortino_ratio(returns, target_return=target)
 
         # Calculate expected manually
         excess = returns - target
@@ -160,8 +162,8 @@ class TestSortinoRatioCorrectness:
         # Large upside, small downside
         returns = np.array([0.10, 0.08, -0.01, 0.05, -0.02, 0.12])
 
-        sortino = sortino_ratio(returns)
-        sharpe = sharpe_ratio(returns)
+        sortino = periodic_sortino_ratio(returns)
+        sharpe = periodic_sharpe_ratio(returns)
 
         # Sortino should be higher than Sharpe for right-skewed returns
         # because it ignores upside volatility
@@ -174,7 +176,7 @@ class TestSortinoRatioCorrectness:
         """All positive returns → Sortino = +inf."""
         returns = np.array([0.01, 0.02, 0.005, 0.015])  # All positive
 
-        sortino = sortino_ratio(returns)
+        sortino = periodic_sortino_ratio(returns)
 
         assert sortino == np.inf, f"Expected +inf for all positive returns, got {sortino}"
 
@@ -182,7 +184,7 @@ class TestSortinoRatioCorrectness:
         """All negative returns: Sortino uses all returns for downside."""
         returns = np.array([-0.02, -0.01, -0.03, -0.02])
 
-        sortino = sortino_ratio(returns)
+        sortino = periodic_sortino_ratio(returns)
 
         # Calculate expected: downside_std = std of all returns (all are downside)
         downside_std = np.sqrt(np.mean(returns**2))
@@ -196,8 +198,8 @@ class TestSortinoRatioCorrectness:
         """Higher target reduces Sortino (more returns become "downside")."""
         returns = np.array([0.02, 0.01, 0.03, 0.015, 0.025])
 
-        sortino_low_target = sortino_ratio(returns, target_return=0.0)
-        sortino_high_target = sortino_ratio(returns, target_return=0.02)
+        sortino_low_target = periodic_sortino_ratio(returns, target_return=0.0)
+        sortino_high_target = periodic_sortino_ratio(returns, target_return=0.02)
 
         # With higher target, more returns are below target → lower Sortino
         assert sortino_low_target > sortino_high_target, "Higher target should reduce Sortino"
@@ -206,8 +208,8 @@ class TestSortinoRatioCorrectness:
         """Verify annualization multiplies by sqrt(factor)."""
         returns = np.array([0.02, -0.01, 0.03, -0.02, 0.01])
 
-        sortino_daily = sortino_ratio(returns)
-        sortino_annual = sortino_ratio(returns, annualization_factor=252)
+        sortino_daily = periodic_sortino_ratio(returns)
+        sortino_annual = sortino_ratio(returns, periods_per_year=252)
 
         expected_annual = sortino_daily * np.sqrt(252)
 

@@ -3,8 +3,8 @@
 This module provides the FeatureInteractionDashboard class for creating
 standalone dashboards focused on feature interaction analysis.
 
-Note: Currently a scaffold implementation. For working interaction
-visualizations, use FeatureImportanceDashboard with interaction_results.
+For a combined importance and interaction report, use
+FeatureImportanceDashboard with interaction_results.
 """
 
 from __future__ import annotations
@@ -18,12 +18,11 @@ from .base import BaseDashboard, DashboardSection
 class FeatureInteractionDashboard(BaseDashboard):
     """Standalone dashboard for deep-dive feature interaction analysis.
 
-    **⚠️ NOTE**: Currently a scaffold implementation (network, matrix, per-feature
-    sections are placeholders). For working interaction visualizations, use
-    ``FeatureImportanceDashboard`` with ``interaction_results`` parameter, which
-    provides network graph, interaction matrix, and top pairs table.
+    The dedicated interaction dashboard exposes a focused report shell. For the
+    full network graph, interaction matrix, and top pairs table, use
+    ``FeatureImportanceDashboard`` with the ``interaction_results`` parameter.
 
-    **Planned Features** (when fully implemented):
+    Report sections:
     - **Network View**: Interactive force-directed graph with filtering/drill-down
     - **Matrix View**: Large heatmap with clustering and sorting controls
     - **Per-Feature**: Individual feature interaction profiles with charts
@@ -31,33 +30,29 @@ class FeatureInteractionDashboard(BaseDashboard):
     - **Insights**: Auto-generated interpretation and recommendations
 
     This dashboard is intended for scenarios where you want a dedicated,
-    interaction-only report (no importance analysis). When implemented, it will
-    provide more advanced interaction-specific features than the integrated view
-    in FeatureImportanceDashboard.
+    interaction-only report.
 
     Examples
     --------
-    **Current Usage (Scaffolding)**
+    **Dedicated Interaction Report**
 
-    >>> from ml4t.diagnostic.evaluation import compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import FeatureInteractionDashboard
     >>>
     >>> # Compute interactions
     >>> results = compute_shap_interactions(model, X_train,
     ...                                     feature_names=X_train.columns)
     >>>
-    >>> # Create dashboard (generates scaffold with insights only)
+    >>> # Create a dedicated interaction dashboard
     >>> dashboard = FeatureInteractionDashboard(
     ...     title="Feature Interaction Deep-Dive",
     ...     theme="dark",
     ...     min_interaction_strength=0.1
     ... )
     >>> dashboard.save("interaction_dashboard.html", results)
-    >>> # ⚠️ Network/matrix/per-feature sections will show placeholders
+    **Combined Importance And Interaction Report**
 
-    **Recommended Alternative (Fully Implemented)**
-
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance, compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance, compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import FeatureImportanceDashboard
     >>>
     >>> # Run importance analysis

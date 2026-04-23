@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 from sklearn.ensemble import RandomForestRegressor
 
-from ml4t.diagnostic.evaluation import compute_shap_interactions
+from ml4t.diagnostic.metrics import compute_shap_interactions
 
 
 class TestSHAPInteractionsBasic:
@@ -466,7 +466,7 @@ class TestSHAPInteractionsErrorHandling:
         """Test that function exists and requires SHAP (documentation test)."""
         # This test just verifies the function exists and has proper ImportError
         # Actual import mocking is too fragile in pytest
-        from ml4t.diagnostic.evaluation import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         # Function should exist
         assert callable(compute_shap_interactions)

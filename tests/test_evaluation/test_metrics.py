@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 pytestmark = pytest.mark.filterwarnings("ignore:X does not have valid feature names.*:UserWarning")
 
 
-from ml4t.diagnostic.evaluation.metrics import (
+from ml4t.diagnostic.metrics import (
     analyze_feature_outcome,
     analyze_ml_importance,
     compute_conditional_ic,
@@ -24,15 +24,17 @@ from ml4t.diagnostic.evaluation.metrics import (
     compute_ic_decay,
     compute_ic_hac_stats,
     compute_ic_ir,
-    compute_ic_series,
     compute_mda_importance,
     compute_mdi_importance,
     compute_monotonicity,
     compute_permutation_importance,
     cov_hac,
+    cross_sectional_ic_series,
     hit_rate,
     information_coefficient,
     maximum_drawdown,
+    periodic_sharpe_ratio,
+    periodic_sortino_ratio,
     sharpe_ratio,
     sortino_ratio,
 )
@@ -181,7 +183,7 @@ class TestSharpeRatio:
         # Returns with mean=0.01, std=0.02
         returns = np.array([0.01, 0.03, -0.01, 0.01, 0.02])
 
-        sharpe = sharpe_ratio(returns)
+        sharpe = periodic_sharpe_ratio(returns)
         expected_sharpe = np.mean(returns) / np.std(returns, ddof=1)
 
         assert abs(sharpe - expected_sharpe) < 1e-10
@@ -190,8 +192,8 @@ class TestSharpeRatio:
         """Test Sharpe ratio annualization."""
         returns = np.array([0.01, 0.02, -0.01, 0.02])
 
-        sharpe_daily = sharpe_ratio(returns)
-        sharpe_annual = sharpe_ratio(returns, annualization_factor=252)
+        sharpe_daily = periodic_sharpe_ratio(returns)
+        sharpe_annual = sharpe_ratio(returns, periods_per_year=252)
 
         expected_annual = sharpe_daily * np.sqrt(252)
         assert abs(sharpe_annual - expected_annual) < 1e-10
@@ -201,7 +203,7 @@ class TestSharpeRatio:
         returns = np.array([0.02, 0.03, 0.01, 0.04])
         rf_rate = 0.01
 
-        sharpe = sharpe_ratio(returns, risk_free_rate=rf_rate)
+        sharpe = periodic_sharpe_ratio(returns, periodic_risk_free_rate=rf_rate)
         expected_sharpe = (np.mean(returns) - rf_rate) / np.std(returns, ddof=1)
 
         assert abs(sharpe - expected_sharpe) < 1e-10
@@ -359,7 +361,7 @@ class TestSortinoRatio:
         returns = np.array([0.02, -0.01, 0.03, -0.02, 0.01])
         target = 0.0
 
-        sortino = sortino_ratio(returns, target_return=target)
+        sortino = periodic_sortino_ratio(returns, target_return=target)
 
         # Calculate expected value manually
         excess_returns = returns - target
@@ -394,8 +396,8 @@ class TestSortinoRatio:
         """Test Sortino ratio annualization."""
         returns = np.array([0.01, -0.005, 0.02, -0.01])
 
-        sortino_daily = sortino_ratio(returns)
-        sortino_annual = sortino_ratio(returns, annualization_factor=252)
+        sortino_daily = periodic_sortino_ratio(returns)
+        sortino_annual = sortino_ratio(returns, periods_per_year=252)
 
         expected_annual = sortino_daily * np.sqrt(252)
         assert abs(sortino_annual - expected_annual) < 1e-10
@@ -578,9 +580,9 @@ class TestComputeICSeriesAndRelated:
 
         return pl.DataFrame(data)
 
-    def test_compute_ic_series_basic(self, panel_data):
+    def test_cross_sectional_ic_series_basic(self, panel_data):
         """Test IC series computation."""
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             panel_data,
             panel_data,
             pred_col="prediction",
@@ -591,9 +593,9 @@ class TestComputeICSeriesAndRelated:
         # Should return a DataFrame with IC per date
         assert isinstance(result, pl.DataFrame | pd.DataFrame)
 
-    def test_compute_ic_series_with_method(self, panel_data):
+    def test_cross_sectional_ic_series_with_method(self, panel_data):
         """Test IC series with different correlation methods."""
-        result_spearman = compute_ic_series(
+        result_spearman = cross_sectional_ic_series(
             panel_data,
             panel_data,
             pred_col="prediction",
@@ -1302,7 +1304,7 @@ class TestAnalyzeInteractions:
         try:
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+            from ml4t.diagnostic.metrics import analyze_interactions
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -1332,7 +1334,7 @@ class TestAnalyzeInteractions:
         try:
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+            from ml4t.diagnostic.metrics import analyze_interactions
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -1385,7 +1387,7 @@ class TestShapImportance:
     def test_compute_shap_importance_with_tree_model(self, trained_rf_model_shap, shap_data):
         """Test SHAP importance with tree-based model."""
         pytest.importorskip("shap")
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, _, feature_names = shap_data
 
@@ -1404,7 +1406,7 @@ class TestShapImportance:
     def test_compute_shap_importance_with_dataframe(self, trained_rf_model_shap, shap_data):
         """Test SHAP importance with DataFrame input."""
         pytest.importorskip("shap")
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, _, feature_names = shap_data
 
@@ -1489,7 +1491,7 @@ class TestComputeICDecayExtended:
 
     def test_compute_ic_decay_basic(self, ic_decay_data):
         """Test basic IC decay computation."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_decay
+        from ml4t.diagnostic.metrics import compute_ic_decay
 
         predictions, prices = ic_decay_data
 
@@ -1508,7 +1510,7 @@ class TestComputeICDecayExtended:
 
     def test_compute_ic_decay_with_pandas(self, ic_decay_data):
         """Test IC decay with pandas DataFrame input."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_decay
+        from ml4t.diagnostic.metrics import compute_ic_decay
 
         predictions, prices = ic_decay_data
 
@@ -1529,7 +1531,7 @@ class TestComputeICDecayExtended:
 
     def test_compute_ic_decay_with_different_methods(self, ic_decay_data):
         """Test IC decay with different correlation methods."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_decay
+        from ml4t.diagnostic.metrics import compute_ic_decay
 
         predictions, prices = ic_decay_data
 
@@ -1544,7 +1546,7 @@ class TestComputeICDecayExtended:
 
     def test_compute_ic_decay_with_group(self, ic_decay_data):
         """Test IC decay with grouping by symbol."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_decay
+        from ml4t.diagnostic.metrics import compute_ic_decay
 
         predictions, prices = ic_decay_data
 
@@ -1588,13 +1590,13 @@ class TestComputeICSeriesPandas:
         returns = df[["date", "symbol", "returns"]]
         return predictions, returns
 
-    def test_compute_ic_series_pandas(self, panel_data_pandas):
+    def test_cross_sectional_ic_series_pandas(self, panel_data_pandas):
         """Test IC series with pandas DataFrames."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_series
+        from ml4t.diagnostic.metrics import cross_sectional_ic_series
 
         predictions, returns = panel_data_pandas
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             predictions,
             returns,
             pred_col="prediction",
@@ -1604,13 +1606,13 @@ class TestComputeICSeriesPandas:
 
         assert isinstance(result, pd.DataFrame | pl.DataFrame)
 
-    def test_compute_ic_series_pandas_pearson(self, panel_data_pandas):
+    def test_cross_sectional_ic_series_pandas_pearson(self, panel_data_pandas):
         """Test IC series with pearson method."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_series
+        from ml4t.diagnostic.metrics import cross_sectional_ic_series
 
         predictions, returns = panel_data_pandas
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             predictions,
             returns,
             pred_col="prediction",
@@ -1643,7 +1645,7 @@ class TestComputeShapInteractions:
         pytest.importorskip("shap")
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         X, y = interaction_model_data
 
@@ -1668,7 +1670,7 @@ class TestComputeShapInteractions:
         pytest.importorskip("shap")
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         X, y = interaction_model_data
 
@@ -1692,7 +1694,7 @@ class TestComputeShapInteractions:
         pytest.importorskip("shap")
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         X, y = interaction_model_data
         y_class = (y > np.median(y)).astype(int)
@@ -1739,7 +1741,7 @@ class TestComputeICByHorizonExtended:
 
     def test_compute_ic_by_horizon_basic(self, horizon_data):
         """Test basic IC by horizon."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_by_horizon
+        from ml4t.diagnostic.metrics import compute_ic_by_horizon
 
         predictions = horizon_data.select(["date", "symbol", "prediction"])
         prices = horizon_data.select(["date", "symbol", "close"])
@@ -1760,7 +1762,7 @@ class TestComputeICByHorizonExtended:
 
     def test_compute_ic_by_horizon_pandas(self, horizon_data):
         """Test IC by horizon with pandas DataFrames."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_by_horizon
+        from ml4t.diagnostic.metrics import compute_ic_by_horizon
 
         horizon_data_pd = horizon_data.to_pandas()
 
@@ -1796,12 +1798,12 @@ class TestEdgeCasesAndErrorHandling:
         # Variable positive returns (not constant to avoid inf)
         np.random.seed(42)
         returns = np.random.randn(100) * 0.01 + 0.01  # Positive bias
-        result = sharpe_ratio(returns, annualization_factor=252)
+        result = sharpe_ratio(returns, periods_per_year=252)
         assert isinstance(result, int | float)
 
         # Variable negative returns
         returns = np.random.randn(100) * 0.01 - 0.01  # Negative bias
-        result = sharpe_ratio(returns, annualization_factor=252)
+        result = sharpe_ratio(returns, periods_per_year=252)
         assert isinstance(result, int | float)
 
     def test_sortino_with_no_downside_risk(self):
@@ -1832,7 +1834,7 @@ class TestEdgeCasesAndErrorHandling:
 
     def test_compute_monotonicity_with_edge_cases(self):
         """Test monotonicity with edge cases."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         # Perfectly monotonic
         features = np.arange(100, dtype=float)
@@ -1847,7 +1849,7 @@ class TestEdgeCasesAndErrorHandling:
 
     def test_analyze_feature_outcome_with_predictions(self):
         """Test feature outcome analysis with predictions DataFrame."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_feature_outcome
+        from ml4t.diagnostic.metrics import analyze_feature_outcome
 
         np.random.seed(42)
         n_dates = 50
@@ -1906,7 +1908,7 @@ class TestSHAPImportanceEdgeCases:
             import shap  # noqa: F401
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+            from ml4t.diagnostic.metrics import compute_shap_importance
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -1932,7 +1934,7 @@ class TestSHAPImportanceEdgeCases:
             import shap  # noqa: F401
             import xgboost as xgb
 
-            from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+            from ml4t.diagnostic.metrics import compute_shap_importance
 
             model = xgb.XGBRegressor(n_estimators=10, max_depth=4, random_state=42)
             model.fit(X, y)
@@ -1957,7 +1959,7 @@ class TestSHAPImportanceEdgeCases:
             import lightgbm as lgb
             import shap  # noqa: F401
 
-            from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+            from ml4t.diagnostic.metrics import compute_shap_importance
 
             model = lgb.LGBMRegressor(n_estimators=10, max_depth=4, random_state=42, verbosity=-1)
             model.fit(X, y)
@@ -1998,7 +2000,7 @@ class TestAnalyzeInteractionsExtended:
         try:
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+            from ml4t.diagnostic.metrics import analyze_interactions
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -2029,7 +2031,7 @@ class TestAnalyzeInteractionsExtended:
         try:
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+            from ml4t.diagnostic.metrics import analyze_interactions
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -2070,7 +2072,7 @@ class TestMDAImportanceExtended:
 
     def test_compute_mda_basic(self, mda_data):
         """Test basic MDA computation."""
-        from ml4t.diagnostic.evaluation.metrics import compute_mda_importance
+        from ml4t.diagnostic.metrics import compute_mda_importance
 
         X, y, feature_names = mda_data
 
@@ -2095,7 +2097,7 @@ class TestMDAImportanceExtended:
 
     def test_compute_mda_with_dataframe(self, mda_data):
         """Test MDA with DataFrame input."""
-        from ml4t.diagnostic.evaluation.metrics import compute_mda_importance
+        from ml4t.diagnostic.metrics import compute_mda_importance
 
         X, y, feature_names = mda_data
 
@@ -2128,7 +2130,7 @@ class TestConditionalICEdgeCases:
 
     def test_conditional_ic_with_constant_conditioning_feature(self):
         """Test conditional IC when conditioning feature is constant."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         np.random.seed(42)
         n = 100
@@ -2142,7 +2144,7 @@ class TestConditionalICEdgeCases:
 
     def test_conditional_ic_with_few_unique_values(self):
         """Test conditional IC when conditioning feature has few unique values."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         np.random.seed(42)
         n = 100
@@ -2155,7 +2157,7 @@ class TestConditionalICEdgeCases:
 
     def test_conditional_ic_with_nan_values(self):
         """Test conditional IC with NaN values in input."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         np.random.seed(42)
         n = 100
@@ -2172,7 +2174,7 @@ class TestConditionalICEdgeCases:
 
     def test_conditional_ic_small_quantiles(self):
         """Test conditional IC with small number of observations per quantile."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         np.random.seed(42)
         n = 20  # Very small dataset
@@ -2208,7 +2210,7 @@ class TestSHAPExplainerTypes:
             import shap  # noqa: F401
             from sklearn.linear_model import LinearRegression
 
-            from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+            from ml4t.diagnostic.metrics import compute_shap_importance
 
             model = LinearRegression()
             model.fit(X, y)
@@ -2233,7 +2235,7 @@ class TestSHAPExplainerTypes:
             import shap  # noqa: F401
             from sklearn.ensemble import GradientBoostingRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+            from ml4t.diagnostic.metrics import compute_shap_importance
 
             model = GradientBoostingRegressor(n_estimators=10, max_depth=3, random_state=42)
             model.fit(X, y)
@@ -2258,7 +2260,7 @@ class TestSHAPExplainerTypes:
             import shap  # noqa: F401
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+            from ml4t.diagnostic.metrics import compute_shap_importance
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -2284,7 +2286,7 @@ class TestICSeriesEdgeCases:
 
     def test_ic_series_with_insufficient_data(self):
         """Test IC series with very few observations per period."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_series
+        from ml4t.diagnostic.metrics import cross_sectional_ic_series
 
         np.random.seed(42)
         n_dates = 5
@@ -2307,20 +2309,20 @@ class TestICSeriesEdgeCases:
         predictions = df.select(["date", "symbol", "prediction"])
         returns = df.select(["date", "symbol", "returns"])
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             predictions,
             returns,
             pred_col="prediction",
             ret_col="returns",
             date_col="date",
-            min_periods=1,  # Low threshold
+            min_obs=1,  # Low threshold
         )
 
         assert isinstance(result, pd.DataFrame | pl.DataFrame)
 
     def test_ic_series_with_single_date(self):
         """Test IC series with only one date."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_series
+        from ml4t.diagnostic.metrics import cross_sectional_ic_series
 
         np.random.seed(42)
         n_symbols = 20
@@ -2341,7 +2343,7 @@ class TestICSeriesEdgeCases:
         predictions = df.select(["date", "symbol", "prediction"])
         returns = df.select(["date", "symbol", "returns"])
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             predictions,
             returns,
             pred_col="prediction",
@@ -2357,7 +2359,7 @@ class TestHStatisticEdgeCases:
 
     def test_h_statistic_with_constant_feature(self):
         """Test H-statistic when one feature is constant."""
-        from ml4t.diagnostic.evaluation.metrics import compute_h_statistic
+        from ml4t.diagnostic.metrics import compute_h_statistic
 
         np.random.seed(42)
         n = 100
@@ -2387,7 +2389,7 @@ class TestHStatisticEdgeCases:
 
     def test_h_statistic_with_categorical_like_feature(self):
         """Test H-statistic with integer/categorical-like features."""
-        from ml4t.diagnostic.evaluation.metrics import compute_h_statistic
+        from ml4t.diagnostic.metrics import compute_h_statistic
 
         np.random.seed(42)
         n = 100
@@ -2444,7 +2446,7 @@ class TestAnalyzeFeatureOutcomeExtended:
 
     def test_analyze_feature_outcome_with_group(self, feature_outcome_data):
         """Test feature outcome analysis with grouping."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_feature_outcome
+        from ml4t.diagnostic.metrics import analyze_feature_outcome
 
         df = feature_outcome_data
         predictions = df.select(["date", "symbol", "prediction"])
@@ -2463,7 +2465,7 @@ class TestAnalyzeFeatureOutcomeExtended:
 
     def test_analyze_feature_outcome_multiple_horizons(self, feature_outcome_data):
         """Test feature outcome analysis with multiple horizons."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_feature_outcome
+        from ml4t.diagnostic.metrics import analyze_feature_outcome
 
         df = feature_outcome_data
         predictions = df.select(["date", "symbol", "prediction"])
@@ -2482,7 +2484,7 @@ class TestAnalyzeFeatureOutcomeExtended:
 
     def test_analyze_feature_outcome_no_decay(self, feature_outcome_data):
         """Test feature outcome analysis without decay analysis."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_feature_outcome
+        from ml4t.diagnostic.metrics import analyze_feature_outcome
 
         df = feature_outcome_data
         predictions = df.select(["date", "symbol", "prediction"])
@@ -2525,7 +2527,7 @@ class TestImportanceConsensus:
             import shap  # noqa: F401
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+            from ml4t.diagnostic.metrics import analyze_ml_importance
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -2552,7 +2554,7 @@ class TestImportanceConsensus:
         try:
             from sklearn.ensemble import RandomForestRegressor
 
-            from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+            from ml4t.diagnostic.metrics import analyze_ml_importance
 
             model = RandomForestRegressor(n_estimators=10, random_state=42)
             model.fit(X, y)
@@ -2577,7 +2579,7 @@ class TestMonotonicityExtended:
 
     def test_monotonicity_with_quantiles(self):
         """Test monotonicity with different quantile counts."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 200
@@ -2592,7 +2594,7 @@ class TestMonotonicityExtended:
 
     def test_monotonicity_with_dataframe_input(self):
         """Test monotonicity with DataFrame input."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 100
@@ -2613,7 +2615,7 @@ class TestMonotonicityExtended:
 
     def test_monotonicity_non_monotonic_data(self):
         """Test monotonicity with non-monotonic relationship."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 200
@@ -2632,7 +2634,7 @@ class TestForwardReturnsComputation:
 
     def test_compute_forward_returns_basic(self):
         """Test basic forward returns computation."""
-        from ml4t.diagnostic.evaluation.metrics import compute_forward_returns
+        from ml4t.diagnostic.metrics import compute_forward_returns
 
         np.random.seed(42)
         n_dates = 50
@@ -2655,7 +2657,7 @@ class TestForwardReturnsComputation:
 
     def test_compute_forward_returns_with_symbols(self):
         """Test forward returns with multiple symbols."""
-        from ml4t.diagnostic.evaluation.metrics import compute_forward_returns
+        from ml4t.diagnostic.metrics import compute_forward_returns
 
         np.random.seed(42)
         n_dates = 30
@@ -2778,7 +2780,7 @@ class TestSharpeRatioEdgeCases:
 
     def test_sharpe_with_ci_inf_returns_nan_ci(self):
         """Test Sharpe CI when base Sharpe is inf."""
-        from ml4t.diagnostic.evaluation.metrics import sharpe_ratio_with_ci
+        from ml4t.diagnostic.metrics import sharpe_ratio_with_ci
 
         returns = np.array([0.01, 0.01, 0.01, 0.01])
         result = sharpe_ratio_with_ci(returns)
@@ -2788,7 +2790,7 @@ class TestSharpeRatioEdgeCases:
 
     def test_sharpe_with_ci_small_sample(self):
         """Test Sharpe CI with small sample returns NaN CI."""
-        from ml4t.diagnostic.evaluation.metrics import sharpe_ratio_with_ci
+        from ml4t.diagnostic.metrics import sharpe_ratio_with_ci
 
         returns = np.array([0.01, 0.02, 0.03])  # Only 3 samples
         result = sharpe_ratio_with_ci(returns)
@@ -2798,12 +2800,12 @@ class TestSharpeRatioEdgeCases:
 
     def test_sharpe_with_ci_annualization(self):
         """Test Sharpe CI with annualization factor."""
-        from ml4t.diagnostic.evaluation.metrics import sharpe_ratio_with_ci
+        from ml4t.diagnostic.metrics import sharpe_ratio_with_ci
 
         np.random.seed(42)
         returns = np.random.randn(100) * 0.01
 
-        result = sharpe_ratio_with_ci(returns, annualization_factor=252)
+        result = sharpe_ratio_with_ci(returns, periods_per_year=252)
 
         assert "sharpe" in result
         assert "lower_ci" in result
@@ -3068,7 +3070,7 @@ class TestAnalyzeInteractionsEdgeCases:
         """Test analyze_interactions raises for empty methods list."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = np.random.randn(50, 3)
@@ -3084,7 +3086,7 @@ class TestAnalyzeInteractionsEdgeCases:
         """Test analyze_interactions raises for invalid feature pair."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -3108,7 +3110,7 @@ class TestAnalyzeInteractionsEdgeCases:
         """Test analyze_interactions raises for unknown feature in pair."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(50), "b": np.random.randn(50)})
@@ -3126,7 +3128,7 @@ class TestAnalyzeInteractionsEdgeCases:
         """Test analyze_interactions with numpy array and feature pairs."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = np.random.randn(50, 3)
@@ -3146,7 +3148,7 @@ class TestAnalyzeInteractionsEdgeCases:
         """Test analyze_interactions with conditional IC only method."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -3171,7 +3173,7 @@ class TestAnalyzeInteractionsEdgeCases:
         """Test analyze_interactions with h_statistic only method."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -3210,7 +3212,7 @@ class TestExplainerCreation:
 
     def test_shap_with_tree_explainer_explicit(self, tree_model):
         """Test SHAP with explicit tree explainer."""
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         model, X = tree_model
 
@@ -3220,7 +3222,7 @@ class TestExplainerCreation:
 
     def test_shap_with_kernel_explainer_explicit(self, tree_model):
         """Test SHAP with explicit kernel explainer."""
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         model, X = tree_model
 
@@ -3239,7 +3241,7 @@ class TestGPUDetection:
 
     def test_gpu_detection_returns_bool(self):
         """Test GPU detection returns a boolean."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _detect_gpu_available
+        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
 
         result = _detect_gpu_available()
         assert isinstance(result, bool)
@@ -3496,7 +3498,7 @@ class TestICSeriesExtended:
             }
         )
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             predictions,
             returns,
             pred_col="prediction",
@@ -3525,7 +3527,7 @@ class TestICSeriesExtended:
             }
         )
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             predictions,
             returns,
             pred_col="prediction",
@@ -3544,7 +3546,7 @@ class TestAnalyzeInteractionsMorePaths:
         """Test analyze_interactions with multiple methods including SHAP."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -3577,7 +3579,7 @@ class TestAnalyzeInteractionsMorePaths:
         """Test analyze_interactions with SHAP method."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -3606,7 +3608,7 @@ class TestSHAPImportanceLinearModel:
         """Test SHAP with linear model using LinearExplainer."""
         from sklearn.linear_model import Ridge
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = np.random.randn(50, 5)
@@ -3748,7 +3750,7 @@ class TestSharpeBootstrapEdgeCases:
 
     def test_sharpe_with_ci_zero_std_samples(self):
         """Test Sharpe CI when all bootstrap samples have zero std."""
-        from ml4t.diagnostic.evaluation.metrics import sharpe_ratio_with_ci
+        from ml4t.diagnostic.metrics import sharpe_ratio_with_ci
 
         # All constant returns means bootstrap samples also constant -> empty list
         returns = np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
@@ -3851,7 +3853,7 @@ class TestSHAPInteractions:
         """Test SHAP interaction computation."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -3913,17 +3915,17 @@ class TestSortinoRatioSpecialCases:
 
     def test_sortino_negative_mean_no_downside(self):
         """Test Sortino when all returns >= target but mean is negative (impossible but tests path)."""
-        from ml4t.diagnostic.evaluation.metrics import sortino_ratio
+        from ml4t.diagnostic.metrics import sortino_ratio
 
         # All returns exactly at target, mean excess is 0
         returns = np.array([0.01, 0.01, 0.01, 0.01])
-        result = sortino_ratio(returns, target_return=0.01)
+        result = periodic_sortino_ratio(returns, target_return=0.01)
         # When no downside and mean_excess == 0, should return nan
         assert np.isnan(result)
 
     def test_sortino_positive_mean_no_downside(self):
         """Test Sortino with positive mean and no downside returns."""
-        from ml4t.diagnostic.evaluation.metrics import sortino_ratio
+        from ml4t.diagnostic.metrics import sortino_ratio
 
         # All positive excess returns
         returns = np.array([0.05, 0.06, 0.07, 0.08])
@@ -3933,7 +3935,7 @@ class TestSortinoRatioSpecialCases:
 
     def test_sortino_negative_mean_no_downside_path(self):
         """Test Sortino with negative mean when no downside (edge case)."""
-        from ml4t.diagnostic.evaluation.metrics import sortino_ratio
+        from ml4t.diagnostic.metrics import sortino_ratio
 
         # Target higher than all returns, but still no values below target
         # This is tricky - we need values above target but mean excess < 0
@@ -3946,7 +3948,7 @@ class TestSortinoRatioSpecialCases:
 
     def test_sortino_zero_downside_std(self):
         """Test Sortino when downside std is zero."""
-        from ml4t.diagnostic.evaluation.metrics import sortino_ratio
+        from ml4t.diagnostic.metrics import sortino_ratio
 
         # All downside returns identical (zero std)
         returns = np.array([0.01, -0.01, -0.01, -0.01, -0.01])
@@ -3960,7 +3962,7 @@ class TestComputeForwardReturnsPandas:
 
     def test_forward_returns_pandas_with_group(self):
         """Test forward returns computation with pandas DataFrame and group_col."""
-        from ml4t.diagnostic.evaluation.metrics import compute_forward_returns
+        from ml4t.diagnostic.metrics import compute_forward_returns
 
         np.random.seed(42)
         n = 100
@@ -3990,7 +3992,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_polars_dataframe_feature_col(self):
         """Test with Polars DataFrame requiring feature_col."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 50
@@ -4014,7 +4016,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_pandas_dataframe_feature_col(self):
         """Test with pandas DataFrame requiring feature_col."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 50
@@ -4037,7 +4039,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_polars_dataframe_outcome_col(self):
         """Test with Polars DataFrame for outcomes requiring outcome_col."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 50
@@ -4060,7 +4062,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_pandas_dataframe_outcome_col(self):
         """Test with pandas DataFrame for outcomes requiring outcome_col."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 50
@@ -4083,7 +4085,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_length_mismatch(self):
         """Test error when features and outcomes have different lengths."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         features = np.array([1, 2, 3, 4, 5])
         outcomes = np.array([0.1, 0.2, 0.3])  # Different length
@@ -4093,7 +4095,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_insufficient_data(self):
         """Test with insufficient data for quantile analysis."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         features = np.array([1.0, 2.0, 3.0])
         outcomes = np.array([0.1, 0.2, 0.3])
@@ -4108,7 +4110,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_pearson_method(self):
         """Test with Pearson correlation method."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         features = np.random.randn(100)
@@ -4125,7 +4127,7 @@ class TestComputeMonotonicityValidation:
 
     def test_monotonicity_invalid_method(self):
         """Test with invalid correlation method."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         features = np.array([1.0, 2.0, 3.0, 4.0, 5.0] * 10)
         outcomes = np.array([0.1, 0.2, 0.3, 0.4, 0.5] * 10)
@@ -4238,7 +4240,7 @@ class TestExplainerCreationPaths:
         """Test that invalid explainer_type raises ValueError."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = np.random.randn(20, 3)
@@ -4254,7 +4256,7 @@ class TestExplainerCreationPaths:
         """Test explicit use_gpu=False path."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4281,7 +4283,7 @@ class TestAnalyzeMLImportanceEdgeCases:
         """Test that empty methods list raises ValueError."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+        from ml4t.diagnostic.metrics import analyze_ml_importance
 
         np.random.seed(42)
         X = np.random.randn(30, 3)
@@ -4297,7 +4299,7 @@ class TestAnalyzeMLImportanceEdgeCases:
         """Test that numpy input generates feature names automatically."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+        from ml4t.diagnostic.metrics import analyze_ml_importance
 
         np.random.seed(42)
         X = np.random.randn(30, 4)
@@ -4313,7 +4315,7 @@ class TestAnalyzeMLImportanceEdgeCases:
 
     def test_method_failure_mdi(self):
         """Test handling of MDI method failure."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+        from ml4t.diagnostic.metrics import analyze_ml_importance
 
         # Create a model without feature_importances_
         class FakeModel:
@@ -4381,7 +4383,7 @@ class TestSHAPBinaryClassificationPaths:
         """Test SHAP with binary classifier returning list format."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4408,7 +4410,7 @@ class TestAnalyzeInteractionsMethodFailures:
         """Test analyze_interactions when conditional_ic fails."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4439,7 +4441,7 @@ class TestAnalyzeInteractionsMethodFailures:
         """Test analyze_interactions SHAP with feature_pairs filter."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4474,7 +4476,7 @@ class TestSHAPInteractionsMulticlass:
         """Test SHAP interactions without subsampling (small dataset)."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4504,7 +4506,7 @@ class TestMaximumDrawdownPaths:
 
     def test_mdd_all_nan_after_removal(self):
         """Test MDD when all values are NaN."""
-        from ml4t.diagnostic.evaluation.metrics import maximum_drawdown
+        from ml4t.diagnostic.metrics import maximum_drawdown
 
         returns = np.array([np.nan, np.nan, np.nan])
         result = maximum_drawdown(returns)
@@ -4513,7 +4515,7 @@ class TestMaximumDrawdownPaths:
 
     def test_mdd_single_value(self):
         """Test MDD with single non-NaN value."""
-        from ml4t.diagnostic.evaluation.metrics import maximum_drawdown
+        from ml4t.diagnostic.metrics import maximum_drawdown
 
         returns = np.array([0.05])
         result = maximum_drawdown(returns)
@@ -4526,7 +4528,7 @@ class TestICDecayAdditionalPaths:
 
     def test_ic_decay_with_all_horizons(self):
         """Test IC decay with multiple horizons."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_decay
+        from ml4t.diagnostic.metrics import compute_ic_decay
 
         np.random.seed(42)
         n = 100
@@ -4564,7 +4566,7 @@ class TestAnalyzeInteractionsWarnings:
         """Test that low method agreement triggers warning."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         n = 50
@@ -4608,7 +4610,7 @@ class TestSHAPExplainerExplicitTypes:
         """Test explicit linear explainer type."""
         from sklearn.linear_model import LinearRegression
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4631,7 +4633,7 @@ class TestSHAPExplainerExplicitTypes:
         """Test that deep explainer requires background_data."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = np.random.randn(20, 3)
@@ -4650,7 +4652,7 @@ class TestAnalyzeMLImportanceMethodPaths:
 
     def test_mda_method_failure(self):
         """Test handling of MDA method failure."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+        from ml4t.diagnostic.metrics import analyze_ml_importance
 
         # Create a model that doesn't work with MDA
         class BadModel:
@@ -4669,7 +4671,7 @@ class TestAnalyzeMLImportanceMethodPaths:
 
     def test_pfi_method_failure(self):
         """Test handling of PFI method failure."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+        from ml4t.diagnostic.metrics import analyze_ml_importance
 
         # Create a model that doesn't support fit/predict properly
         class BadScorer:
@@ -4694,7 +4696,7 @@ class TestSHAPProgressPaths:
         """Test SHAP computation with progress bar enabled."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4746,7 +4748,7 @@ class TestSortinoSpecialCases:
 
     def test_sortino_all_downside_same_value(self):
         """Test Sortino when all downside returns are identical."""
-        from ml4t.diagnostic.evaluation.metrics import sortino_ratio
+        from ml4t.diagnostic.metrics import sortino_ratio
 
         # All negative excess returns identical - zero std
         returns = np.array([-0.01, -0.01, -0.01, -0.01, -0.01])
@@ -4763,7 +4765,7 @@ class TestSHAPValuesListFormat:
         """Test SHAP with multiclass classifier."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4791,7 +4793,7 @@ class TestSHAPInteractionsBinaryClassification:
         """Test SHAP interactions with binary classifier."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4820,7 +4822,7 @@ class TestKernelExplainerClassifier:
 
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4855,7 +4857,7 @@ class TestAnalyzeInteractionsEmptyResults:
         """Test analyze_interactions properly handles h_statistics key."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4928,7 +4930,7 @@ class TestSHAPInteractionsMulticlassClassifier:
         """Test SHAP interactions with 3-class classifier (list format handling)."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4955,7 +4957,7 @@ class TestSHAPExplainerFallbackPaths:
         """Test that SHAP auto-selects tree explainer for tree models."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -4983,7 +4985,7 @@ class TestAnalyzeMLImportanceDefaultMethods:
         """Test analyze_ml_importance uses default methods when None."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+        from ml4t.diagnostic.metrics import analyze_ml_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5011,7 +5013,7 @@ class TestAnalyzeMLImportanceAllMethods:
         """Test analyze_ml_importance including MDA method."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+        from ml4t.diagnostic.metrics import analyze_ml_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5080,7 +5082,7 @@ class TestSHAPWithPolarsInput:
         """Test SHAP importance with Polars DataFrame."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pl.DataFrame(
@@ -5107,7 +5109,7 @@ class TestHStatisticWithSampling:
         """Test H-statistic computation with sample limit."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_h_statistic
+        from ml4t.diagnostic.metrics import compute_h_statistic
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5143,7 +5145,7 @@ class TestConditionalICWithoutDateCol:
 
     def test_conditional_ic_simple_quantiles(self):
         """Test conditional IC with simple quantile path (no date_col)."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         np.random.seed(42)
         n = 200
@@ -5166,7 +5168,7 @@ class TestConditionalICWithoutDateCol:
 
     def test_conditional_ic_insufficient_unique_values(self):
         """Test conditional IC with insufficient unique values for quantiles."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         np.random.seed(42)
         n = 100
@@ -5195,7 +5197,7 @@ class TestGPUExplainerPaths:
 
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
@@ -5206,7 +5208,7 @@ class TestGPUExplainerPaths:
 
         # Mock GPU as unavailable (patch at the module where it's used)
         with patch(
-            "ml4t.diagnostic.evaluation.metrics.importance_shap._detect_gpu_available",
+            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
             return_value=False,
         ):
             with pytest.raises(RuntimeError, match="GPU requested.*but GPU not available"):
@@ -5218,7 +5220,7 @@ class TestGPUExplainerPaths:
 
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(100), "b": np.random.randn(100)})
@@ -5229,7 +5231,7 @@ class TestGPUExplainerPaths:
 
         # Even if GPU is available, small dataset shouldn't use it (patch at the module where it's used)
         with patch(
-            "ml4t.diagnostic.evaluation.metrics.importance_shap._detect_gpu_available",
+            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
             return_value=True,
         ):
             result = compute_shap_importance(model, X, use_gpu="auto")
@@ -5244,7 +5246,7 @@ class TestExplainerFallbackCascade:
         """Test fallback to LinearExplainer when TreeExplainer fails."""
         from sklearn.linear_model import LinearRegression
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(50), "b": np.random.randn(50)})
@@ -5261,7 +5263,7 @@ class TestExplainerFallbackCascade:
 
     def test_kernel_explainer_explicit(self):
         """Test explicit KernelExplainer usage."""
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
@@ -5299,7 +5301,7 @@ class TestDeepExplainerPaths:
         """Test DeepExplainer requires background_data."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
@@ -5317,7 +5319,7 @@ class TestKernelExplainerWithProgress:
 
     def test_kernel_explainer_show_progress(self):
         """Test KernelExplainer with show_progress=True."""
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(20), "b": np.random.randn(20)})
@@ -5355,7 +5357,7 @@ class TestMulticlassSHAPInteractions:
         """Test SHAP interactions with multiclass classification."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_interactions
+        from ml4t.diagnostic.metrics import compute_shap_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5381,7 +5383,7 @@ class TestUnknownExplainerType:
         """Test error for unknown explainer type."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(30)})
@@ -5401,7 +5403,7 @@ class TestSHAPValuesListFormatBinaryClassifier:
         """Test SHAP with binary classifier returning list of arrays."""
         from sklearn.ensemble import GradientBoostingClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5426,7 +5428,7 @@ class TestMonotonicityWithPolarsInput:
 
     def test_monotonicity_polars_dataframe(self):
         """Test compute_monotonicity with Polars DataFrame."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 100
@@ -5453,7 +5455,7 @@ class TestAnalyzeFeatureOutcomeWithSeries:
 
     def test_feature_outcome_dataframe_input(self):
         """Test analyze_feature_outcome with DataFrame."""
-        from ml4t.diagnostic.evaluation.metrics import analyze_feature_outcome
+        from ml4t.diagnostic.metrics import analyze_feature_outcome
 
         np.random.seed(42)
         n = 100
@@ -5488,7 +5490,7 @@ class TestICDecayWithCustomLags:
 
     def test_ic_decay_custom_horizons(self):
         """Test IC decay with custom horizons."""
-        from ml4t.diagnostic.evaluation.metrics import compute_ic_decay
+        from ml4t.diagnostic.metrics import compute_ic_decay
 
         np.random.seed(42)
         n = 200
@@ -5522,7 +5524,7 @@ class TestQuantileReturnsEdgeCases:
 
     def test_monotonicity_with_nan_values(self):
         """Test compute_monotonicity handles NaN values in predictions."""
-        from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+        from ml4t.diagnostic.metrics import compute_monotonicity
 
         np.random.seed(42)
         n = 100
@@ -5551,7 +5553,7 @@ class TestICWithConstantInput:
 
     def test_ic_constant_predictions(self):
         """Test IC with constant predictions returns NaN."""
-        from ml4t.diagnostic.evaluation.metrics import information_coefficient
+        from ml4t.diagnostic.metrics import information_coefficient
 
         predictions = np.ones(100)  # Constant
         returns = np.random.randn(100)
@@ -5562,7 +5564,7 @@ class TestICWithConstantInput:
 
     def test_ic_constant_returns(self):
         """Test IC with constant returns returns NaN."""
-        from ml4t.diagnostic.evaluation.metrics import information_coefficient
+        from ml4t.diagnostic.metrics import information_coefficient
 
         predictions = np.random.randn(100)
         returns = np.ones(100)  # Constant
@@ -5579,7 +5581,7 @@ class TestSHAPWithClassifierPredict:
         """Test SHAP with classifier that has predict_proba."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5606,7 +5608,7 @@ class TestAnalyzeInteractionsMethods:
         """Test analyze_interactions with only conditional_ic."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5635,7 +5637,7 @@ class TestAnalyzeInteractionsMethods:
         """Test analyze_interactions with only h_statistic."""
         from sklearn.ensemble import RandomForestRegressor
 
-        from ml4t.diagnostic.evaluation.metrics import analyze_interactions
+        from ml4t.diagnostic.metrics import analyze_interactions
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5666,7 +5668,7 @@ class TestHitRatePredictions:
 
     def test_hit_rate_perfect_predictions(self):
         """Test hit rate with perfect predictions."""
-        from ml4t.diagnostic.evaluation.metrics import hit_rate
+        from ml4t.diagnostic.metrics import hit_rate
 
         predictions = np.array([1, 2, 3, 4, 5])
         returns = np.array([0.1, 0.2, 0.3, 0.4, 0.5])  # Perfect positive correlation
@@ -5678,7 +5680,7 @@ class TestHitRatePredictions:
 
     def test_hit_rate_all_wrong(self):
         """Test hit rate with all wrong predictions."""
-        from ml4t.diagnostic.evaluation.metrics import hit_rate
+        from ml4t.diagnostic.metrics import hit_rate
 
         predictions = np.array([1, 2, 3, 4, 5])
         returns = np.array([-0.1, -0.2, -0.3, -0.4, -0.5])  # Opposite direction
@@ -5694,7 +5696,7 @@ class TestMaxDrawdownEdgeCases:
 
     def test_max_drawdown_monotonic_increasing(self):
         """Test max drawdown with monotonically increasing returns."""
-        from ml4t.diagnostic.evaluation.metrics import maximum_drawdown
+        from ml4t.diagnostic.metrics import maximum_drawdown
 
         returns = np.array([0.01, 0.02, 0.03, 0.04, 0.05])  # All positive
 
@@ -5708,7 +5710,7 @@ class TestMaxDrawdownEdgeCases:
 
     def test_max_drawdown_single_drop(self):
         """Test max drawdown with single large drop."""
-        from ml4t.diagnostic.evaluation.metrics import maximum_drawdown
+        from ml4t.diagnostic.metrics import maximum_drawdown
 
         returns = np.array([0.1, 0.1, -0.3, 0.1, 0.1])
 
@@ -5725,7 +5727,7 @@ class TestConditionalICWithDataFrameAndDateCol:
 
     def test_conditional_ic_panel_data(self):
         """Test conditional IC with panel data (date_col specified)."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         np.random.seed(42)
         n_dates = 50
@@ -5775,7 +5777,7 @@ class TestAutoExplainerFallbackCascade:
 
     def test_auto_explainer_for_custom_model(self):
         """Test auto explainer selection falls through cascade for custom model."""
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
@@ -5812,7 +5814,7 @@ class TestSHAPWithMulticlassPredict:
         """Test SHAP KernelExplainer with multiclass classifier."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5841,7 +5843,7 @@ class TestInsufficientDataPaths:
 
     def test_conditional_ic_insufficient_data(self):
         """Test conditional IC with insufficient data."""
-        from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+        from ml4t.diagnostic.metrics import compute_conditional_ic
 
         # Too few samples for meaningful quantile analysis
         feature_a = np.random.randn(10)
@@ -5868,7 +5870,7 @@ class TestExplainerWithBinaryClassifier:
         """Test KernelExplainer with binary classifier predict_proba."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         np.random.seed(42)
         X = pd.DataFrame(
@@ -5901,7 +5903,7 @@ class TestDeepExplainerWithTensorFlow:
         pytest.importorskip("tensorflow", reason="TensorFlow not installed")
         import tensorflow as tf
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         # Suppress TensorFlow warnings
         tf.get_logger().setLevel("ERROR")

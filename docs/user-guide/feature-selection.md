@@ -1,7 +1,7 @@
 # Feature Selection
 
-Reduce a large set of candidate features to a focused, production-ready
-set using systematic filtering.
+Reduce a large set of candidate features to a focused, model-ready set using
+systematic filtering.
 
 Use this page after you have already computed feature-outcome diagnostics such as
 IC, ML importance, and drift. The goal is to turn those diagnostics into a

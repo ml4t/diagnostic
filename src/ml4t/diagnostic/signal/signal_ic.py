@@ -9,13 +9,11 @@ from typing import Any
 
 import polars as pl
 
-from ml4t.diagnostic.metrics.ic import (
-    compute_ic_series as compute_ic_series_core,
-)
+from ml4t.diagnostic.metrics.ic import cross_sectional_ic_series
 from ml4t.diagnostic.metrics.ic_inference import compute_ic_summary_stats
 
 
-def compute_ic_series(
+def extract_signal_ic_series(
     data: pl.DataFrame,
     period: int,
     method: str = "spearman",
@@ -24,7 +22,7 @@ def compute_ic_series(
     asset_col: str = "asset",
     min_obs: int = 10,
 ) -> tuple[list[Any], list[float]]:
-    """Compute IC time series for a single period.
+    """Extract valid per-date IC values for a single signal horizon.
 
     Parameters
     ----------
@@ -53,7 +51,7 @@ def compute_ic_series(
     pred_df = data.select([date_col, asset_col, factor_col])
     ret_df = data.select([date_col, asset_col, return_col])
 
-    ic_df = compute_ic_series_core(
+    ic_df = cross_sectional_ic_series(
         predictions=pred_df,
         returns=ret_df,
         pred_col=factor_col,
@@ -61,7 +59,7 @@ def compute_ic_series(
         date_col=date_col,
         entity_col=asset_col,
         method=method,
-        min_periods=min_obs,
+        min_obs=min_obs,
     )
 
     if ic_df.height == 0:
@@ -100,4 +98,4 @@ def compute_ic_summary(
     }
 
 
-__all__ = ["compute_ic_series", "compute_ic_summary"]
+__all__ = ["extract_signal_ic_series", "compute_ic_summary"]

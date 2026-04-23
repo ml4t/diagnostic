@@ -24,10 +24,8 @@ def export_html_report(bundle: DashboardBundle) -> str:
     str
         Complete HTML report as string.
     """
-    from ml4t.diagnostic.evaluation.trade_dashboard.stats import (
-        compute_return_summary,
-        probabilistic_sharpe_ratio,
-    )
+    from ml4t.diagnostic.evaluation.stats import probabilistic_sharpe_ratio
+    from ml4t.diagnostic.evaluation.trade_dashboard.stats import compute_return_summary
 
     # Compute summary if we have returns
     summary_html = ""

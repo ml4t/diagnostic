@@ -16,8 +16,8 @@ import pytest
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 
-from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
 from ml4t.diagnostic.evaluation.trade_shap_diagnostics import TradeShapAnalyzer
+from ml4t.diagnostic.metrics import compute_shap_importance
 
 # Check for optional dependencies
 HAS_LIGHTGBM = importlib.util.find_spec("lightgbm") is not None

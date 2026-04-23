@@ -65,7 +65,7 @@ The package root re-exports the most common classes and configs for interactive 
         - analyze_signal
         - SignalResult
         - prepare_data
-        - compute_ic_series
+        - extract_signal_ic_series
         - compute_ic_summary
         - compute_quantile_returns
         - compute_spread
@@ -75,9 +75,6 @@ The package root re-exports the most common classes and configs for interactive 
 ## Metrics
 
 Use `ml4t.diagnostic.metrics` for reusable metric and feature-statistic helpers.
-The older `ml4t.diagnostic.evaluation.metrics` path remains available as a
-compatibility surface, but new examples and applications should import from
-`ml4t.diagnostic.metrics`.
 
 ::: ml4t.diagnostic.metrics
     options:

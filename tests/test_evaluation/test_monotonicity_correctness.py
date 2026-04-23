@@ -17,7 +17,7 @@ import polars as pl
 import pytest
 from scipy.stats import pearsonr, spearmanr
 
-from ml4t.diagnostic.evaluation.metrics.monotonicity import compute_monotonicity
+from ml4t.diagnostic.metrics.monotonicity import compute_monotonicity
 
 
 class TestMonotonicityScoreFormula:

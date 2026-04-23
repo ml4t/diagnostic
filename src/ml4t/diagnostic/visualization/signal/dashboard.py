@@ -27,10 +27,10 @@ from ml4t.diagnostic.visualization.signal.event_plots import (
     plot_event_heatmap,
 )
 from ml4t.diagnostic.visualization.signal.ic_plots import (
-    plot_ic_heatmap,
     plot_ic_histogram,
     plot_ic_qq,
     plot_ic_ts,
+    plot_monthly_ic_heatmap,
 )
 from ml4t.diagnostic.visualization.signal.quantile_plots import (
     plot_cumulative_returns,
@@ -493,7 +493,7 @@ class SignalDashboard(BaseDashboard):
 
         # IC Heatmap (monthly)
         try:
-            fig_heatmap = plot_ic_heatmap(ic, period=periods[0], theme=theme_name)
+            fig_heatmap = plot_monthly_ic_heatmap(ic, period=periods[0], theme=theme_name)
             html_parts.append('<div class="plot-container">')
             html_parts.append(fig_heatmap.to_html(include_plotlyjs=False, full_html=False))
             html_parts.append("</div>")

@@ -13,7 +13,7 @@ from pydantic import Field
 from ml4t.diagnostic.results.base import BaseResult
 
 
-class PortfolioMetrics(BaseResult):
+class PortfolioMetricsResultSchema(BaseResult):
     """Standard portfolio performance metrics.
 
     Comprehensive set of risk-adjusted return metrics commonly used
@@ -211,7 +211,7 @@ class PortfolioEvaluationResult(BaseResult):
 
     analysis_type: str = "portfolio_evaluation"
 
-    metrics: PortfolioMetrics = Field(..., description="Standard portfolio metrics")
+    metrics: PortfolioMetricsResultSchema = Field(..., description="Standard portfolio metrics")
 
     bayesian_comparison: BayesianComparisonResult | None = Field(
         None, description="Bayesian strategy comparison"

@@ -15,7 +15,7 @@ from jinja2 import Template
 from .themes import apply_theme
 from .visualization import (
     plot_feature_distributions,
-    plot_ic_heatmap,
+    plot_ic_term_structure,
     plot_quantile_returns,
     plot_turnover_decay,
 )
@@ -435,7 +435,7 @@ class DashboardBuilder:
         """
         # IC Heatmap
         if predictions is not None and returns is not None:
-            fig = plot_ic_heatmap(
+            fig = plot_ic_term_structure(
                 predictions,
                 returns,
                 title="Information Coefficient Term Structure",

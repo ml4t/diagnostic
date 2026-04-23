@@ -8,7 +8,7 @@ Integration points for `ml4t-data`, `ml4t-engineer`, and `ml4t-backtest`.
 - `compute_metrics_from_result` -> normalized diagnostic metrics
 - `generate_tearsheet_from_result` -> HTML tearsheet from `BacktestResult`
 - `profile_from_run_artifacts` -> `BacktestProfile` from saved artifact directories
-- `generate_tearsheet_from_run_artifacts` -> reporting from case-study outputs
+- `generate_tearsheet_from_run_artifacts` -> reporting from backtest artifacts
 - `BacktestReportMetadata` -> reporting metadata envelope
 
 ## Supporting Modules

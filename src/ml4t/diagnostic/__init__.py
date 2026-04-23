@@ -31,7 +31,7 @@ This library follows semantic versioning. The public API consists of all symbols
 exported in __all__. Breaking changes will only occur in major version bumps.
 """
 
-__version__ = "0.1.0b13"
+__version__ = "0.1.0b14"
 
 # Sub-modules for advanced usage
 from . import (
@@ -80,7 +80,7 @@ from .integration.data_contract import (
 # Feature selection
 from .selection import FeatureSelector, SelectionReport
 
-# Signal analysis (new clean API)
+# Signal analysis
 from .signal import SignalResult, analyze_signal
 
 # Visualization (optional - may fail if plotly not installed)
@@ -101,49 +101,9 @@ except ImportError:
     plot_time_to_target_box = None
 
 
-def get_agent_docs() -> dict[str, str]:
-    """Get packaged agent-guide documentation for AI agent navigation.
-
-    Returns a dictionary mapping relative paths to `AGENTS.md` content.
-    Useful for AI agents to understand the library structure.
-
-    Returns
-    -------
-    dict[str, str]
-        Mapping of relative path to agent-guide content.
-
-    Example
-    -------
-    >>> docs = get_agent_docs()
-    >>> print(docs.keys())
-    dict_keys(['AGENTS.md', 'signal/AGENTS.md', 'splitters/AGENTS.md', ...])
-    """
-    from pathlib import Path
-
-    package_dir = Path(__file__).parent
-    agent_docs = {}
-
-    # Prefer canonical AGENTS.md files, but fall back to legacy singular filenames
-    # if an older build artifact is still present somewhere on disk.
-    for pattern in ("AGENTS.md", "AGENT.md"):
-        for agent_file in package_dir.rglob(pattern):
-            rel_path = agent_file.relative_to(package_dir)
-            rel_key = str(rel_path)
-            if rel_key in agent_docs:
-                continue
-            try:
-                agent_docs[rel_key] = agent_file.read_text()
-            except OSError:
-                continue
-
-    return agent_docs
-
-
 __all__ = [
     # Version
     "__version__",
-    # Agent Navigation
-    "get_agent_docs",
     # Core Framework
     "Evaluator",
     "EvaluationResult",
@@ -151,7 +111,7 @@ __all__ = [
     # Feature Selection
     "FeatureSelector",
     "SelectionReport",
-    # Signal Analysis (new clean API)
+    # Signal Analysis
     "analyze_signal",
     "SignalResult",
     # Barrier Analysis

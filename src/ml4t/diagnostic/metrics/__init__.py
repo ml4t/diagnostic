@@ -12,7 +12,6 @@ from ml4t.diagnostic.metrics.feature_outcome import analyze_feature_outcome
 from ml4t.diagnostic.metrics.ic import (
     compute_ic_by_horizon,
     compute_ic_ir,
-    compute_ic_series,
     cross_sectional_ic,
     cross_sectional_ic_series,
     information_coefficient,
@@ -39,6 +38,8 @@ from ml4t.diagnostic.metrics.monotonicity import compute_monotonicity
 from ml4t.diagnostic.metrics.percentiles import compute_fold_percentiles
 from ml4t.diagnostic.metrics.risk_adjusted import (
     maximum_drawdown,
+    periodic_sharpe_ratio,
+    periodic_sortino_ratio,
     sharpe_ratio,
     sharpe_ratio_with_ci,
     sortino_ratio,
@@ -51,7 +52,6 @@ __all__ = [
     "information_coefficient",
     "cross_sectional_ic",
     "cross_sectional_ic_series",
-    "compute_ic_series",
     "compute_ic_by_horizon",
     "compute_ic_ir",
     "compute_ic_summary_stats",
@@ -61,9 +61,11 @@ __all__ = [
     "compute_conditional_ic",
     "compute_monotonicity",
     "sharpe_ratio",
+    "periodic_sharpe_ratio",
     "sharpe_ratio_with_ci",
     "maximum_drawdown",
     "sortino_ratio",
+    "periodic_sortino_ratio",
     "analyze_feature_outcome",
     "compute_permutation_importance",
     "compute_mdi_importance",

@@ -44,7 +44,7 @@ DEFAULT_LAYOUT = {
 }
 
 
-def plot_ic_heatmap(
+def plot_ic_term_structure(
     predictions: Union[pd.DataFrame, "NDArray[Any]"],
     returns: Union[pd.DataFrame, "NDArray[Any]"],
     horizons: list[int] | None = None,
@@ -87,11 +87,11 @@ def plot_ic_heatmap(
     Examples:
     --------
     >>> # Simple usage
-    >>> fig = plot_ic_heatmap(predictions, forward_returns)
+    >>> fig = plot_ic_term_structure(predictions, forward_returns)
     >>> fig.show()
 
     >>> # With custom horizons
-    >>> fig = plot_ic_heatmap(
+    >>> fig = plot_ic_term_structure(
     ...     predictions,
     ...     returns_df,
     ...     horizons=[1, 5, 10, 20],
@@ -855,7 +855,7 @@ def plot_ic_decay(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation.metrics import compute_ic_decay
+    >>> from ml4t.diagnostic.metrics import compute_ic_decay
     >>> from ml4t.diagnostic.evaluation.visualization import plot_ic_decay
     >>>
     >>> # Compute decay
@@ -980,7 +980,7 @@ def plot_monotonicity(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation.metrics import compute_monotonicity
+    >>> from ml4t.diagnostic.metrics import compute_monotonicity
     >>> from ml4t.diagnostic.evaluation.visualization import plot_monotonicity
     >>>
     >>> # Compute monotonicity

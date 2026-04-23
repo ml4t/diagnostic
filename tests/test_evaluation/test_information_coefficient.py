@@ -1,4 +1,4 @@
-"""Tests for evaluation/metrics/information_coefficient.py.
+"""Tests for ml4t.diagnostic.metrics.ic.
 
 This module tests the core IC (Information Coefficient) functions used for
 evaluating feature predictiveness.
@@ -12,16 +12,15 @@ import polars as pl
 import pytest
 from scipy import stats
 
-from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
+from ml4t.diagnostic.metrics import cross_sectional_ic as public_cross_sectional_ic
+from ml4t.diagnostic.metrics.ic import (
     compute_ic_by_horizon,
     compute_ic_ir,
-    compute_ic_series,
     cross_sectional_ic,
     cross_sectional_ic_series,
     information_coefficient,
     pooled_ic,
 )
-from ml4t.diagnostic.metrics import cross_sectional_ic as public_cross_sectional_ic
 
 
 class TestInformationCoefficient:
@@ -279,7 +278,7 @@ class TestInformationCoefficientWithConfidenceIntervals:
 
 
 class TestComputeICSeries:
-    """Tests for compute_ic_series() function."""
+    """Tests for cross_sectional_ic_series() function."""
 
     @pytest.fixture
     def sample_data_polars(self):
@@ -327,12 +326,12 @@ class TestComputeICSeries:
         # Create merged data with both columns
         merged = pred_df.join(ret_df, on=["date", "asset"])
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             merged.select(["date", "prediction"]),
             merged.select(["date", "forward_return"]),
             pred_col="prediction",
             ret_col="forward_return",
-            min_periods=5,
+            min_obs=5,
         )
 
         assert isinstance(result, pl.DataFrame)
@@ -399,12 +398,12 @@ class TestComputeICSeries:
         # Join on both date and asset for proper alignment
         merged = pd.merge(pred_df, ret_df, on=["date", "asset"])
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             merged[["date", "prediction"]],
             merged[["date", "forward_return"]],
             pred_col="prediction",
             ret_col="forward_return",
-            min_periods=5,
+            min_obs=5,
         )
 
         assert isinstance(result, pd.DataFrame)
@@ -413,8 +412,8 @@ class TestComputeICSeries:
         assert "n_obs" in result.columns
         assert len(result) == 20
 
-    def test_ic_series_min_periods_filtering(self):
-        """Test that min_periods filters out dates with insufficient data."""
+    def test_ic_series_min_obs_filtering(self):
+        """Test that min_obs filters out dates with insufficient data."""
         # Create data with only 5 observations per date (single row per date-asset)
         np.random.seed(42)
         dates = pd.date_range("2024-01-01", periods=20, freq="D")
@@ -427,12 +426,12 @@ class TestComputeICSeries:
         pred_df = pl.DataFrame({"date": dates, "prediction": predictions})
         ret_df = pl.DataFrame({"date": dates, "forward_return": returns})
 
-        # With min_periods=5 and only 1 obs per date, all IC should be NaN
-        result = compute_ic_series(
-            pred_df, ret_df, pred_col="prediction", ret_col="forward_return", min_periods=5
+        # With min_obs=5 and only 1 obs per date, all IC should be NaN
+        result = cross_sectional_ic_series(
+            pred_df, ret_df, pred_col="prediction", ret_col="forward_return", min_obs=5
         )
 
-        # All IC values should be NaN since n_obs (1) < min_periods (5)
+        # All IC values should be NaN since n_obs (1) < min_obs (5)
         ic_values = result["ic"].to_numpy()
         assert all(np.isnan(ic_values))
 
@@ -443,13 +442,13 @@ class TestComputeICSeries:
         # Merge on both keys
         merged = pred_df.join(ret_df, on=["date", "asset"])
 
-        result = compute_ic_series(
+        result = cross_sectional_ic_series(
             merged.select(["date", "prediction"]),
             merged.select(["date", "forward_return"]),
             pred_col="prediction",
             ret_col="forward_return",
             method="pearson",
-            min_periods=5,
+            min_obs=5,
         )
 
         assert len(result) > 0

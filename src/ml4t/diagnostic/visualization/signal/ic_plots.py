@@ -4,7 +4,7 @@ This module provides interactive Plotly visualizations for IC analysis:
 - plot_ic_ts: IC time series with rolling mean and significance bands
 - plot_ic_histogram: IC distribution with mean and confidence intervals
 - plot_ic_qq: Q-Q plot for normality assessment
-- plot_ic_heatmap: Monthly IC heatmap for seasonality analysis
+- plot_monthly_ic_heatmap: Monthly IC heatmap for seasonality analysis
 """
 
 from __future__ import annotations
@@ -477,7 +477,7 @@ def plot_ic_qq(
     return fig
 
 
-def plot_ic_heatmap(
+def plot_monthly_ic_heatmap(
     ic_result: SignalICResult,
     period: str | None = None,
     colorscale: str = "rdbu",

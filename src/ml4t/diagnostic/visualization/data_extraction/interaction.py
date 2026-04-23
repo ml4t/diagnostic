@@ -50,7 +50,7 @@ def extract_interaction_viz_data(
         Minimum interaction strength to consider for clustering.
         Features with interactions above this threshold are clustered.
     include_llm_context : bool, default=True
-        Whether to generate auto-narratives for LLM consumption.
+        Whether to generate structured narrative summaries.
 
     Returns
     -------
@@ -60,11 +60,11 @@ def extract_interaction_viz_data(
         - Network graph data (nodes, edges, clusters)
         - Interaction matrix data
         - Strength distribution statistics
-        - Auto-generated LLM narratives
+        - Auto-generated narrative summaries
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import compute_shap_interactions
     >>> from ml4t.diagnostic.visualization.data_extraction import extract_interaction_viz_data
     >>>
     >>> # Compute interactions
@@ -130,7 +130,7 @@ def extract_interaction_viz_data(
         "n_top_partners": n_top_partners,
     }
 
-    # Generate LLM context
+    # Generate narrative context
     llm_context: LLMContextData = {
         "summary_narrative": "",
         "key_insights": [],

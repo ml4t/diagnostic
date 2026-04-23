@@ -14,6 +14,8 @@ López de Prado, M., Lipton, A., & Zoonekynd, V. (2025).
 
 from __future__ import annotations
 
+from typing import Literal, overload
+
 import numpy as np
 from scipy.stats import norm
 
@@ -44,6 +46,67 @@ VARIANCE_RESCALING_FACTORS: dict[int, float] = {
     90: 0.43376,
     100: 0.42942,
 }
+
+
+@overload
+def probabilistic_sharpe_ratio(
+    observed_sharpe: float,
+    benchmark_sharpe: float = ...,
+    n_samples: int = ...,
+    skewness: float = ...,
+    kurtosis: float = ...,
+    return_components: Literal[False] = ...,
+) -> float: ...
+
+
+@overload
+def probabilistic_sharpe_ratio(
+    observed_sharpe: float,
+    benchmark_sharpe: float = ...,
+    n_samples: int = ...,
+    skewness: float = ...,
+    kurtosis: float = ...,
+    return_components: Literal[True] = ...,
+) -> dict[str, float]: ...
+
+
+def probabilistic_sharpe_ratio(
+    observed_sharpe: float,
+    benchmark_sharpe: float = 0.0,
+    n_samples: int = 1,
+    skewness: float = 0.0,
+    kurtosis: float = 3.0,
+    return_components: bool = False,
+) -> float | dict[str, float]:
+    """Calculate the Probabilistic Sharpe Ratio.
+
+    PSR estimates the probability that a strategy's true Sharpe ratio exceeds a
+    benchmark Sharpe ratio after accounting for sample size, skewness, and
+    kurtosis.
+    """
+    if n_samples < 2:
+        if return_components:
+            return {"psr": 0.5, "z_score": 0.0, "std_sr": np.inf}
+        return 0.5
+
+    variance_component = 1 - skewness * observed_sharpe + (kurtosis - 1) / 4 * observed_sharpe**2
+    if variance_component <= 0:
+        variance_component = 0.01
+
+    std_sr = np.sqrt(variance_component / (n_samples - 1))
+    if std_sr > 0:
+        z_score = (observed_sharpe - benchmark_sharpe) / std_sr
+    else:
+        z_score = np.inf if observed_sharpe > benchmark_sharpe else -np.inf
+
+    psr = float(norm.cdf(z_score))
+    if return_components:
+        return {
+            "psr": psr,
+            "z_score": float(z_score) if np.isfinite(z_score) else 0.0,
+            "std_sr": float(std_sr),
+        }
+    return psr
 
 
 def get_variance_rescaling_factor(k: int) -> float:

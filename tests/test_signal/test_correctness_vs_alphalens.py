@@ -33,7 +33,7 @@ from scipy import stats
 # ML4T Signal imports
 from ml4t.diagnostic.signal import analyze_signal
 from ml4t.diagnostic.signal._utils import quantize_factor as ml4t_quantize_factor
-from ml4t.diagnostic.signal.signal_ic import compute_ic_series
+from ml4t.diagnostic.signal.signal_ic import extract_signal_ic_series
 from ml4t.diagnostic.signal.turnover import (
     compute_autocorrelation,
 )
@@ -250,7 +250,7 @@ class TestICCorrectness:
                 manual_ic.append(ic)
 
         # Compute using ml4t
-        ml4t_dates, ml4t_ic = compute_ic_series(
+        ml4t_dates, ml4t_ic = extract_signal_ic_series(
             prepared.drop_nulls(["1D_fwd_return"]),
             period=1,
             method="spearman",

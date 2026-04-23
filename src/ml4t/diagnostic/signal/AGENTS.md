@@ -6,7 +6,7 @@ Factor-style signal analysis with a clean public surface.
 
 - `core.py` - `analyze_signal`
 - `result.py` - `SignalResult`
-- `ic.py` - IC computation helpers
+- `signal_ic.py` - signal-specific IC extraction helpers
 - `quantile.py` - quantile-return and spread analysis
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers

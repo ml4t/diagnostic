@@ -16,7 +16,7 @@ All plot functions follow consistent patterns:
 
 Examples
 --------
->>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+>>> from ml4t.diagnostic.metrics import analyze_ml_importance
 >>> from ml4t.diagnostic.visualization import plot_importance_bar
 >>>
 >>> # Analyze
@@ -115,7 +115,7 @@ from ml4t.diagnostic.visualization.portfolio import (
     plot_rolling_volatility,
 )
 from ml4t.diagnostic.visualization.portfolio import (
-    # Portfolio tear sheet (pyfolio replacement)
+    # Portfolio tear sheet
     plot_cumulative_returns as plot_portfolio_cumulative_returns,
 )
 from ml4t.diagnostic.visualization.portfolio import (
@@ -138,13 +138,13 @@ from ml4t.diagnostic.visualization.signal import (
     plot_autocorrelation,
     # Quantile plots
     plot_cumulative_returns,
-    # IC plots
-    plot_ic_heatmap,
     plot_ic_histogram,
     plot_ic_qq,
     # Multi-signal plots (Phase 3)
     plot_ic_ridge,
     plot_ic_ts,
+    # IC plots
+    plot_monthly_ic_heatmap,
     plot_pareto_frontier,
     plot_quantile_returns_bar,
     plot_quantile_returns_violin,
@@ -203,7 +203,7 @@ __all__ = [
     "plot_ic_ts",
     "plot_ic_histogram",
     "plot_ic_qq",
-    "plot_ic_heatmap",
+    "plot_monthly_ic_heatmap",
     # Signal quantile plots
     "plot_quantile_returns_bar",
     "plot_quantile_returns_violin",
@@ -225,7 +225,7 @@ __all__ = [
     "plot_profit_factor_bar",
     "plot_precision_recall_curve",
     "plot_time_to_target_box",
-    # Portfolio tear sheet (pyfolio replacement)
+    # Portfolio tear sheet
     "plot_portfolio_cumulative_returns",
     "plot_portfolio_rolling_returns",
     "plot_annual_returns_bar",

@@ -184,8 +184,8 @@ fig.show()
 
 ## Backtest Tear Sheets
 
-The current tearsheet pipeline supports direct rendering from normalized surfaces,
-`BacktestResult`, or artifact directories.
+The tearsheet pipeline supports direct rendering from normalized surfaces,
+`BacktestResult`, or saved run artifacts.
 
 Four presets covering different analysis needs:
 
@@ -250,7 +250,7 @@ Steps: IC filtering, importance filtering, correlation filtering, drift filterin
 ## Feature Importance
 
 ```python
-from ml4t.diagnostic.evaluation import analyze_ml_importance
+from ml4t.diagnostic.metrics import analyze_ml_importance
 
 # Combines MDI, PFI, MDA, SHAP methods
 results = analyze_ml_importance(model, X, y)

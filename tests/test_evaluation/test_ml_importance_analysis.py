@@ -7,7 +7,7 @@ import pytest
 from sklearn.datasets import make_classification, make_regression
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
-from ml4t.diagnostic.evaluation.metrics import analyze_ml_importance
+from ml4t.diagnostic.metrics import analyze_ml_importance
 
 
 class TestMLImportanceBasicFunctionality:

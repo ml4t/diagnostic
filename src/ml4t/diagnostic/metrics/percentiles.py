@@ -22,11 +22,9 @@ def compute_fold_percentiles(
     """
     Compute percentiles from predictions grouped by fold and iteration.
 
-    Uses efficient Polars group_by operation to compute percentiles 10-50x faster
-    than nested loops. Designed for threshold-based signal generation where
+    Uses Polars group_by operations for fold-specific threshold computation.
+    Designed for threshold-based signal generation where
     thresholds must be computed from TRAINING predictions only to prevent data leakage.
-
-    Performance: ~50-100ms for 89M predictions with 26 percentiles (vs 5-10s with loops)
 
     Args:
         predictions: DataFrame with predictions to compute percentiles from
@@ -74,10 +72,10 @@ def compute_fold_percentiles(
         4. Return as pandas DataFrame
 
     Data Leakage Prevention:
-        CRITICAL: This function should ONLY be called on TRAINING predictions.
-        - Training: compute_fold_percentiles(train_predictions) → save thresholds
+        This function should only be called on training predictions.
+        - Training: compute_fold_percentiles(train_predictions) -> save thresholds
         - Validation: Apply saved thresholds to OOS predictions
-        - NEVER: compute_fold_percentiles(val_predictions) → data leakage!
+        - Do not compute thresholds from validation predictions.
 
     Performance Notes:
         - Polars group_by is 10-50x faster than nested loops
@@ -86,7 +84,7 @@ def compute_fold_percentiles(
         - Recommended for predictions > 1M rows
     """
     if verbose:
-        print("\nComputing fold-specific percentiles (Fast Polars Method)...")
+        print("\nComputing fold-specific percentiles...")
 
     # Convert to Polars if pandas
     preds_pl = pl.from_pandas(predictions) if isinstance(predictions, pd.DataFrame) else predictions

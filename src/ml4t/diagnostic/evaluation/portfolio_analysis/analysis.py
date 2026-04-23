@@ -1,11 +1,10 @@
-"""PortfolioAnalysis class - modern pyfolio replacement.
+"""PortfolioAnalysis class for portfolio diagnostics.
 
 This module provides the PortfolioAnalysis class for comprehensive
 portfolio tear sheet generation with:
-- Polars backend (10-100x faster than pandas)
+- Polars-native data handling
 - Plotly visualizations (interactive, shareable)
 - Enhanced statistics (DSR, regime analysis, Bayesian comparison)
-- Pyfolio feature parity plus modern enhancements
 
 Example:
     >>> from ml4t.diagnostic.evaluation import PortfolioAnalysis
@@ -26,6 +25,8 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
+from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
+
 from .metrics import (
     _safe_cumprod,
     _safe_prod,
@@ -38,8 +39,6 @@ from .metrics import (
     information_ratio,
     max_drawdown,
     omega_ratio,
-    sharpe_ratio,
-    sortino_ratio,
     stability_of_timeseries,
     tail_ratio,
     up_down_capture,
@@ -62,13 +61,12 @@ DataFrameLike = Union[pl.DataFrame, "pd.DataFrame"]
 
 
 class PortfolioAnalysis:
-    """Modern replacement for pyfolio.create_full_tear_sheet().
+    """Portfolio diagnostics and reporting workflow.
 
     Provides comprehensive portfolio analysis with:
-    - Polars backend (10-100x faster than pandas)
+    - Polars-native data handling
     - Plotly visualizations (interactive, shareable)
     - Enhanced statistics (DSR, regime analysis, Bayesian comparison)
-    - Full pyfolio feature parity plus modern enhancements
 
     Parameters
     ----------

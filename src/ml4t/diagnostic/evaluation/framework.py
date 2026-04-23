@@ -37,14 +37,14 @@ if TYPE_CHECKING:
 def _load_visualization_functions() -> tuple[Callable[..., Any], Callable[..., Any]]:
     """Load visualization functions on demand to keep viz dependencies optional."""
     try:
-        from .visualization import plot_ic_heatmap, plot_quantile_returns
+        from .visualization import plot_ic_term_structure, plot_quantile_returns
     except ImportError as exc:
         raise ImportError(
             "Visualization features require optional dependencies. "
             "Install with: pip install ml4t-diagnostic[viz]"
         ) from exc
 
-    return plot_ic_heatmap, plot_quantile_returns
+    return plot_ic_term_structure, plot_quantile_returns
 
 
 def _load_dashboard_function() -> Callable[..., Any]:
@@ -194,11 +194,11 @@ class EvaluationResult:
         plotly.graph_objects.Figure
             Interactive visualization
         """
-        plot_ic_heatmap, plot_quantile_returns = _load_visualization_functions()
+        plot_ic_term_structure, plot_quantile_returns = _load_visualization_functions()
 
         # Default plot based on available metrics
         if "ic" in self.metrics_results and predictions is not None and returns is not None:
-            return plot_ic_heatmap(predictions, returns)
+            return plot_ic_term_structure(predictions, returns)
         if "sharpe" in self.metrics_results and returns is not None and predictions is not None:
             return plot_quantile_returns(predictions, returns)
         # Return a summary plot

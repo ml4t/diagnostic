@@ -10,7 +10,7 @@ IC Plots (ic_plots.py):
 - plot_ic_ts: IC time series with rolling mean
 - plot_ic_histogram: IC distribution
 - plot_ic_qq: Q-Q plot for normality
-- plot_ic_heatmap: Monthly IC heatmap
+- plot_monthly_ic_heatmap: Monthly IC heatmap
 
 Quantile Plots (quantile_plots.py):
 - plot_quantile_returns_bar: Mean returns by quantile
@@ -48,10 +48,10 @@ from ml4t.diagnostic.visualization.signal.event_plots import (
     plot_event_heatmap,
 )
 from ml4t.diagnostic.visualization.signal.ic_plots import (
-    plot_ic_heatmap,
     plot_ic_histogram,
     plot_ic_qq,
     plot_ic_ts,
+    plot_monthly_ic_heatmap,
 )
 from ml4t.diagnostic.visualization.signal.multi_signal_dashboard import (
     MultiSignalDashboard,
@@ -81,7 +81,7 @@ __all__ = [
     "plot_ic_ts",
     "plot_ic_histogram",
     "plot_ic_qq",
-    "plot_ic_heatmap",
+    "plot_monthly_ic_heatmap",
     # Quantile plots
     "plot_quantile_returns_bar",
     "plot_quantile_returns_violin",

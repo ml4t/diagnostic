@@ -361,7 +361,7 @@ class WalkForwardConfig(SplitterConfig):
 
     @property
     def val_size(self) -> int | float | str | None:
-        """Alias for test_size (preferred name in book context)."""
+        """Alias for test_size."""
         return self.test_size
 
     @property

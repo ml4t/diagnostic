@@ -15,7 +15,6 @@ Design Principles:
     - Progressive disclosure: Summary → Detail → Deep-dive
     - Modular composition: Dashboards work standalone or compose
     - Interactive controls: Tabs, dropdowns, filters, drill-down
-    - LLM-ready: Structured data enables future interpretation
     - Professional output: Publication-quality HTML with embedded JS
 """
 

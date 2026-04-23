@@ -6,7 +6,7 @@ analysis, portfolio metric functions, etc.), import from the submodule directly:
 
     from ml4t.diagnostic.evaluation.binary_metrics import precision, recall
     from ml4t.diagnostic.evaluation.stationarity import adf_test
-    from ml4t.diagnostic.evaluation.portfolio_analysis import sharpe_ratio
+    from ml4t.diagnostic.metrics import sharpe_ratio
 
 For the stable integration surface, use ``ml4t.diagnostic.api``.
 """
@@ -17,7 +17,7 @@ from ml4t.diagnostic.results.multi_signal_results import (  # noqa: F401
     MultiSignalSummary,
 )
 
-from . import drift, metrics, stats  # noqa: F401 (module re-export)
+from . import drift, stats  # noqa: F401 (module re-export)
 from .barrier_analysis import BarrierAnalysis  # noqa: F401
 from .event_analysis import EventStudyAnalysis  # noqa: F401
 
@@ -42,18 +42,6 @@ from .feature_diagnostics import (  # noqa: F401
 )
 from .framework import EvaluationResult, Evaluator, get_metric_directionality  # noqa: F401
 from .metric_registry import MetricRegistry  # noqa: F401
-from .metrics import (  # noqa: F401
-    analyze_feature_outcome,
-    analyze_interactions,
-    analyze_ml_importance,
-    compute_h_statistic,
-    compute_ic_hac_stats,
-    compute_ic_series,
-    compute_mdi_importance,
-    compute_permutation_importance,
-    compute_shap_importance,
-    compute_shap_interactions,
-)
 from .multi_signal import MultiSignalAnalysis  # noqa: F401
 from .portfolio_analysis import (  # noqa: F401
     PortfolioAnalysis,
@@ -151,20 +139,8 @@ __all__: list[str] = [
     "MultiSignalAnalysis",
     "MultiSignalSummary",
     "ComparisonResult",
-    # Stable metrics facade
-    "analyze_feature_outcome",
-    "compute_ic_series",
-    "compute_ic_hac_stats",
-    "compute_permutation_importance",
-    "compute_mdi_importance",
-    "compute_shap_importance",
-    "analyze_ml_importance",
-    "compute_h_statistic",
-    "compute_shap_interactions",
-    "analyze_interactions",
     # Namespaces and dashboard entry points
     "create_evaluation_dashboard",
-    "metrics",
     "stats",
     "visualization",
     "run_diagnostics_dashboard",

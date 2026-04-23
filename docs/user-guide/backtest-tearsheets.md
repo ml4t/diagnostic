@@ -1,8 +1,8 @@
 # Backtest Tearsheets
 
 Template-based backtest tearsheets are the main reporting surface for completed
-strategy runs. The current implementation supports direct chart assembly, a
-`BacktestResult` bridge, and a case-study artifact bridge.
+strategy runs. The reporting path supports direct chart assembly, a
+`BacktestResult` bridge, and saved run artifacts.
 
 !!! info "See it in the book"
     Ch16 `code/16_strategy_simulation/09_performance_reporting.py` introduces the
@@ -16,7 +16,7 @@ strategy runs. The current implementation supports direct chart assembly, a
 |---|---|
 | You already have normalized trades, returns, equity, and metrics | `generate_backtest_tearsheet()` |
 | You have an `ml4t.backtest.BacktestResult` | `generate_tearsheet_from_result()` |
-| You have a case-study artifact directory on disk | `generate_tearsheet_from_run_artifacts()` |
+| You have a saved run artifact directory on disk | `generate_tearsheet_from_run_artifacts()` |
 | You want to inspect analytics families before rendering | `analyze_backtest_result()` / `BacktestProfile` |
 
 ## 1. Direct Tearsheet Generation
@@ -70,7 +70,7 @@ default tearsheet metrics, and forwards the data into the visualization layer.
 
 ## 3. Bridge From Run Artifacts
 
-Case studies and batch pipelines can render directly from saved run artifacts:
+Batch pipelines and case studies can render directly from saved run artifacts:
 
 ```python
 from ml4t.diagnostic.integration import generate_tearsheet_from_run_artifacts
@@ -146,7 +146,7 @@ metadata = BacktestReportMetadata(
 
 ## Presets
 
-The current tearsheet architecture uses shared dashboard workspaces with preset
+The tearsheet architecture uses shared dashboard workspaces with preset
 ordering and hero metrics instead of maintaining separate rendering stacks.
 
 | Preset | Best for | Workspace order |
@@ -156,9 +156,9 @@ ordering and hero metrics instead of maintaining separate rendering stacks.
 | `risk_manager` | Credibility and risk review | overview -> validation -> performance -> trading -> factors -> ML |
 | `full` | Comprehensive presentation | overview -> performance -> trading -> validation -> factors -> ML |
 
-## What The Current Tearsheet Adds
+## Supported Analytics
 
-The reporting work committed in the latest tearsheet pass added or strengthened:
+The tearsheet can include these analytics when the corresponding inputs are available:
 
 - an explicit `BacktestProfile` bridge for lazy analytics families
 - structured `BacktestReportMetadata`
@@ -168,7 +168,7 @@ The reporting work committed in the latest tearsheet pass added or strengthened:
 - Trading tab with rebalance event timeline, execution quality (implementation shortfall), and cost sensitivity
 - factor tab with exposure bars, regression statistics, attribution waterfall, and risk decomposition
 - `load_fama_french_5factor()` for one-line factor data loading (`pip install ml4t-diagnostic[factors]`)
-- artifact-driven tearsheet generation for case-study workflows
+- artifact-driven tearsheet generation for saved backtest runs
 
 ## Related APIs
 

@@ -355,14 +355,14 @@ class TestModuleFunctions:
 
 
 class TestIntegrationWithEvaluationMetrics:
-    """Test dependency metadata against canonical evaluation entry points."""
+    """Test dependency metadata against canonical metrics entry points."""
 
     def test_evaluation_exports_feature_outcome_metrics_api(self):
-        """The evaluation package should export the canonical metrics function."""
-        from ml4t.diagnostic import evaluation
+        """The metrics package should export the canonical feature-outcome function."""
+        from ml4t.diagnostic import metrics
 
-        assert hasattr(evaluation, "analyze_feature_outcome")
-        assert callable(evaluation.analyze_feature_outcome)
+        assert hasattr(metrics, "analyze_feature_outcome")
+        assert callable(metrics.analyze_feature_outcome)
 
     def test_lightgbm_features_reference_metrics_layer(self):
         """LightGBM dependency metadata should reference current API names."""
