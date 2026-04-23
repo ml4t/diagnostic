@@ -21,7 +21,7 @@ from ml4t.diagnostic.signal.quantile import (
     compute_spread,
     monotonicity_score,
 )
-from ml4t.diagnostic.signal.signal_ic import compute_ic_series, compute_ic_summary
+from ml4t.diagnostic.signal.signal_ic import compute_ic_summary, extract_signal_ic_series
 from ml4t.diagnostic.signal.turnover import (
     compute_autocorrelation,
     compute_turnover,
@@ -68,7 +68,7 @@ class TestICCorrectness:
         df = pl.DataFrame(data_rows)
 
         # Compute IC using the library
-        computed_dates, computed_ics = compute_ic_series(
+        computed_dates, computed_ics = extract_signal_ic_series(
             df, period=1, method="spearman", min_obs=10
         )
 
@@ -97,7 +97,7 @@ class TestICCorrectness:
             }
         )
 
-        dates, ics = compute_ic_series(df, period=1, min_obs=5)
+        dates, ics = extract_signal_ic_series(df, period=1, min_obs=5)
 
         assert len(ics) == 1
         assert abs(ics[0] - 1.0) < 1e-10, f"Perfect correlation should give IC=1.0, got {ics[0]}"
@@ -130,8 +130,8 @@ class TestICCorrectness:
             }
         )
 
-        _, ic_original = compute_ic_series(df_original, period=1, min_obs=5)
-        _, ic_negated = compute_ic_series(df_negated, period=1, min_obs=5)
+        _, ic_original = extract_signal_ic_series(df_original, period=1, min_obs=5)
+        _, ic_negated = extract_signal_ic_series(df_negated, period=1, min_obs=5)
 
         assert abs(ic_original[0] + ic_negated[0]) < 1e-10, (
             f"Negating factor should negate IC: {ic_original[0]} vs {ic_negated[0]}"

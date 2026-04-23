@@ -37,7 +37,7 @@ class FeatureImportanceDashboard(BaseDashboard):
     **Basic Usage: Single Method**
 
     >>> from sklearn.ensemble import RandomForestClassifier
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization import FeatureImportanceDashboard
     >>>
     >>> # Train model
@@ -75,7 +75,7 @@ class FeatureImportanceDashboard(BaseDashboard):
 
     **With Feature Interactions (SHAP)**
 
-    >>> from ml4t.diagnostic.evaluation import compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import compute_shap_interactions
     >>>
     >>> # Compute importance
     >>> importance_results = analyze_ml_importance(

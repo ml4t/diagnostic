@@ -42,13 +42,13 @@ from ml4t.diagnostic.results.multi_signal_results import (
 from ml4t.diagnostic.results.portfolio_results import (
     BayesianComparisonResult,
     PortfolioEvaluationResult,
-    PortfolioMetrics,
+    PortfolioMetricsResultSchema,
 )
 from ml4t.diagnostic.results.sharpe_results import (
-    DSRResult,
+    DSRResultSchema,
     FDRResult,
-    MinTRLResult,
-    PSRResult,
+    MinTRLResultSchema,
+    PSRResultSchema,
     SharpeFrameworkResult,
 )
 from ml4t.diagnostic.results.signal_results import (
@@ -74,13 +74,13 @@ __all__ = [
     "ThresholdAnalysisResult",
     "FeatureOutcomeResultSchema",
     # Portfolio (Module D)
-    "PortfolioMetrics",
+    "PortfolioMetricsResultSchema",
     "BayesianComparisonResult",
     "PortfolioEvaluationResult",
     # Sharpe framework
-    "PSRResult",
-    "MinTRLResult",
-    "DSRResult",
+    "PSRResultSchema",
+    "MinTRLResultSchema",
+    "DSRResultSchema",
     "FDRResult",
     "SharpeFrameworkResult",
     # Signal analysis

@@ -147,7 +147,7 @@ def compute_performance_metrics(
     if returns_array.size > 0:
         sharpe = sharpe_ratio(
             returns_array,
-            annualization_factor=periods_per_year,
+            periods_per_year=periods_per_year,
             confidence_intervals=confidence_intervals,
         )
         if isinstance(sharpe, dict):
@@ -159,7 +159,7 @@ def compute_performance_metrics(
 
         metrics["sortino_ratio"] = sortino_ratio(
             returns_array,
-            annualization_factor=periods_per_year,
+            periods_per_year=periods_per_year,
         )
         metrics["max_drawdown"] = float(abs(max_drawdown(returns_array)))
         metrics["cagr"] = float(annual_return(returns_array, periods_per_year=periods_per_year))

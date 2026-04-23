@@ -25,11 +25,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis import (
     conditional_var,
     max_drawdown,
     omega_ratio,
-    sharpe_ratio,
-    sortino_ratio,
     tail_ratio,
     value_at_risk,
 )
+from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 
 # =============================================================================
 # Fixtures
@@ -296,8 +295,8 @@ class TestSharpeRatio:
 
     def test_custom_risk_free(self, simple_returns):
         """Test Sharpe ratio with custom risk-free rate."""
-        result_zero_rf = sharpe_ratio(simple_returns, risk_free=0.0)
-        result_high_rf = sharpe_ratio(simple_returns, risk_free=0.05)
+        result_zero_rf = sharpe_ratio(simple_returns, risk_free_rate=0.0)
+        result_high_rf = sharpe_ratio(simple_returns, risk_free_rate=0.05)
         assert result_zero_rf > result_high_rf  # Higher RF means lower Sharpe
 
 

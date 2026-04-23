@@ -17,13 +17,13 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from ml4t.diagnostic.evaluation.metrics.information_coefficient import (
-    compute_ic_by_horizon,
-    information_coefficient,
-)
 from ml4t.diagnostic.evaluation.stats import (
     deflated_sharpe_ratio,
     deflated_sharpe_ratio_from_statistics,
+)
+from ml4t.diagnostic.metrics.ic import (
+    compute_ic_by_horizon,
+    information_coefficient,
 )
 from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
 

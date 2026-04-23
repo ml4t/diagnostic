@@ -12,7 +12,7 @@ from sklearn.ensemble import (
 )
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from ml4t.diagnostic.evaluation.metrics import compute_mda_importance
+from ml4t.diagnostic.metrics import compute_mda_importance
 
 
 class TestMDABasicFunctionality:
@@ -545,7 +545,7 @@ class TestMDAComparison:
 
     def test_mda_vs_pfi_similar_ranking(self, comparison_data_and_model):
         """Test that MDA and PFI give similar feature rankings."""
-        from ml4t.diagnostic.evaluation.metrics import compute_permutation_importance
+        from ml4t.diagnostic.metrics import compute_permutation_importance
 
         X, y, model = comparison_data_and_model
 
@@ -562,7 +562,7 @@ class TestMDAComparison:
 
     def test_mda_vs_mdi_different_but_related(self, comparison_data_and_model):
         """Test that MDA and MDI give related but potentially different results."""
-        from ml4t.diagnostic.evaluation.metrics import compute_mdi_importance
+        from ml4t.diagnostic.metrics import compute_mdi_importance
 
         X, y, model = comparison_data_and_model
 

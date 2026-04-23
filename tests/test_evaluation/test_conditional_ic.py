@@ -8,7 +8,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from ml4t.diagnostic.evaluation.metrics import compute_conditional_ic
+from ml4t.diagnostic.metrics import compute_conditional_ic
 
 
 class TestConditionalIC:

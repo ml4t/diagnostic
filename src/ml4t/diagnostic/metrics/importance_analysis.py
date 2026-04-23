@@ -12,12 +12,12 @@ import pandas as pd
 import polars as pl
 from scipy.stats import spearmanr
 
-from ml4t.diagnostic.evaluation.metrics.importance_classical import (
+from ml4t.diagnostic.metrics.importance_classical import (
     compute_mdi_importance,
     compute_permutation_importance,
 )
-from ml4t.diagnostic.evaluation.metrics.importance_mda import compute_mda_importance
-from ml4t.diagnostic.evaluation.metrics.importance_shap import compute_shap_importance
+from ml4t.diagnostic.metrics.importance_mda import compute_mda_importance
+from ml4t.diagnostic.metrics.importance_shap import compute_shap_importance
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -91,13 +91,13 @@ def analyze_ml_importance(
 ) -> dict[str, Any]:
     """Comprehensive ML feature importance analysis comparing multiple methods.
 
-    **This is a TEAR SHEET function** - it runs multiple importance methods and
-    generates a comparison report with consensus ranking and interpretation.
+    Run multiple importance methods and generate a comparison report with
+    consensus ranking and interpretation.
 
-    **Use Case**: "Which features does my model rely on? Do different methods agree?"
+    Use this when you need to answer: "Which features does my model rely on,
+    and do different importance methods agree?"
 
-    This function replaces 100+ lines of manual comparison code by providing
-    integrated analysis showing:
+    The integrated analysis includes:
     - Individual method results (MDI, PFI, MDA, SHAP)
     - Consensus ranking (features important across methods)
     - Method agreement/disagreement analysis

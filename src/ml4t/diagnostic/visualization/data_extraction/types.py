@@ -53,7 +53,7 @@ class UncertaintyData(TypedDict):
 
 
 class LLMContextData(TypedDict):
-    """Structured data for LLM interpretation."""
+    """Structured narrative context for reports and dashboards."""
 
     summary_narrative: str  # High-level summary in natural language
     key_insights: list[str]  # Bullet points of findings
@@ -71,7 +71,7 @@ class ImportanceVizData(TypedDict):
     uncertainty: UncertaintyData  # Stability and confidence metrics
     method_comparison: MethodComparisonData  # Cross-method analysis
     metadata: dict[str, Any]  # Context information
-    llm_context: LLMContextData  # LLM-friendly narratives
+    llm_context: LLMContextData  # Narrative summaries
 
 
 class FeatureInteractionData(TypedDict):
@@ -110,4 +110,4 @@ class InteractionVizData(TypedDict):
     interaction_matrix: InteractionMatrixData  # Matrix visualization data
     strength_distribution: dict[str, Any]  # Distribution of interaction strengths
     metadata: dict[str, Any]  # Context information
-    llm_context: LLMContextData  # LLM-friendly narratives
+    llm_context: LLMContextData  # Narrative summaries

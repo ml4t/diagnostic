@@ -1,13 +1,11 @@
-"""Enhanced data extraction for visualization layer.
+"""Data extraction for visualization layer.
 
-This module provides comprehensive data extraction from analysis results,
-exposing all details needed for rich interactive dashboards, including:
+This module extracts structured data from analysis results for interactive
+dashboards and reports, including:
 - Per-method breakdowns with uncertainty
 - Per-feature aggregations for drill-down views
 - Method comparison metrics
-- Auto-generated narratives for LLM consumption
-
-The extracted data is structured for both human visualization and LLM interpretation.
+- Auto-generated narrative summaries
 """
 
 from .importance import extract_importance_viz_data

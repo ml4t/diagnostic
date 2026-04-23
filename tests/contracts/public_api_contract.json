@@ -16,7 +16,7 @@
       "SignalResult",
       "CombinatorialCV",
       "WalkForwardCV",
-      "compute_ic_series",
+      "cross_sectional_ic_series",
       "compute_ic_hac_stats",
       "compute_mdi_importance",
       "compute_permutation_importance",

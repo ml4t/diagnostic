@@ -23,7 +23,7 @@ from ml4t.diagnostic.signal.quantile import (
     monotonicity_score,
 )
 from ml4t.diagnostic.signal.result import SignalResult
-from ml4t.diagnostic.signal.signal_ic import compute_ic_series, compute_ic_summary
+from ml4t.diagnostic.signal.signal_ic import compute_ic_summary, extract_signal_ic_series
 from ml4t.diagnostic.signal.turnover import (
     compute_autocorrelation,
     compute_turnover,
@@ -209,7 +209,7 @@ def analyze_signal(
         period_key = f"{period}D"
 
         # IC
-        dates, ic_vals = compute_ic_series(
+        dates, ic_vals = extract_signal_ic_series(
             data, period, ic_method, factor_col, date_col, asset_col, min_assets
         )
         summary = compute_ic_summary(ic_vals)

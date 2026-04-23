@@ -132,6 +132,7 @@ from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
     compute_expected_max_sharpe,
     compute_sharpe_variance,
     get_variance_rescaling_factor,
+    probabilistic_sharpe_ratio,
 )
 
 # =============================================================================
@@ -152,6 +153,7 @@ __all__ = [
     "compute_sharpe_variance",
     "compute_expected_max_sharpe",
     "get_variance_rescaling_factor",
+    "probabilistic_sharpe_ratio",
     "EULER_GAMMA",
     "VARIANCE_RESCALING_FACTORS",
     # MinTRL

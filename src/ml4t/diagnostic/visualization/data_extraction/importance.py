@@ -33,7 +33,7 @@ def extract_importance_viz_data(
     This function transforms raw importance analysis results into a structured
     format optimized for rich interactive visualization. It exposes all details
     including per-method breakdowns, uncertainty estimates, per-feature views,
-    and auto-generated narratives.
+    and auto-generated narrative summaries.
 
     Parameters
     ----------
@@ -54,7 +54,7 @@ def extract_importance_viz_data(
         Whether to create per-feature aggregated views.
         Enables feature drill-down dashboards.
     include_llm_context : bool, default=True
-        Whether to generate auto-narratives for LLM consumption.
+        Whether to generate structured narrative summaries.
 
     Returns
     -------
@@ -64,7 +64,7 @@ def extract_importance_viz_data(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization.data_extraction import extract_importance_viz_data
     >>>
     >>> # Analyze importance
@@ -77,14 +77,13 @@ def extract_importance_viz_data(
     >>> print(viz_data['summary']['n_features'])  # High-level summary
     >>> print(viz_data['per_method']['mdi']['ranking'][:5])  # Top 5 by MDI
     >>> print(viz_data['per_feature']['momentum']['method_ranks'])  # Feature detail
-    >>> print(viz_data['llm_context']['key_insights'])  # Auto-generated insights
+    >>> print(viz_data['llm_context']['key_insights'])  # Narrative insights
 
     Notes
     -----
-    - The extracted data is designed for both human visualization and LLM interpretation
     - Per-feature views enable drill-down dashboards
     - Uncertainty metrics enable confidence visualization
-    - Auto-narratives prepare for future LLM integration
+    - Narrative summaries help reports surface the main findings
     """
     # Extract basic info
     consensus_ranking = importance_results.get("consensus_ranking", [])
@@ -137,7 +136,7 @@ def extract_importance_viz_data(
         "interpretation": interpretation,
     }
 
-    # Generate LLM context
+    # Generate narrative context
     llm_context: LLMContextData = {
         "summary_narrative": "",
         "key_insights": [],
@@ -541,7 +540,7 @@ def _generate_llm_context(
     uncertainty: UncertaintyData,
     warnings: list[str],
 ) -> LLMContextData:
-    """Generate auto-narratives and insights for LLM consumption."""
+    """Generate narrative summaries and insights."""
     n_features = summary["n_features"]
     n_methods = summary["n_methods"]
     methods_run = summary["methods_run"]

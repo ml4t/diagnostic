@@ -232,14 +232,14 @@ class TestPrepareData:
 class TestBuildingBlocks:
     """Tests for individual functions."""
 
-    def test_compute_ic_series(self, sample_data):
-        """Test compute_ic_series function."""
-        from ml4t.diagnostic.signal import compute_ic_series, prepare_data
+    def test_extract_signal_ic_series(self, sample_data):
+        """Test extract_signal_ic_series function."""
+        from ml4t.diagnostic.signal import extract_signal_ic_series, prepare_data
 
         factor_df, prices_df = sample_data
         data = prepare_data(factor_df, prices_df, periods=(1,))
 
-        dates, ic_vals = compute_ic_series(data, period=1)
+        dates, ic_vals = extract_signal_ic_series(data, period=1)
 
         assert len(dates) == len(ic_vals)
         assert len(dates) > 0

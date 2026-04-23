@@ -11,7 +11,7 @@ All plot functions follow the standard API defined in docs/plot_api_standards.md
 - Provide comprehensive hover information and interactivity
 
 Example workflow:
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization import plot_importance_bar, set_plot_theme
     >>>
     >>> # Analyze feature importance
@@ -116,7 +116,7 @@ def plot_importance_bar(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization import plot_importance_bar
     >>>
     >>> # Analyze importance
@@ -294,7 +294,7 @@ def plot_importance_heatmap(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization import plot_importance_heatmap
     >>>
     >>> # Analyze with multiple methods
@@ -492,7 +492,7 @@ def plot_importance_distribution(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization import plot_importance_distribution
     >>>
     >>> # Analyze importance
@@ -684,7 +684,7 @@ def plot_importance_summary(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization import plot_importance_summary
     >>>
     >>> # Analyze importance

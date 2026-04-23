@@ -173,7 +173,7 @@ class MetricRegistry:
 
     def _register_defaults(self) -> None:
         """Register default metrics."""
-        from . import metrics
+        from ml4t.diagnostic import metrics
 
         # Core metrics with tier assignments
         self.register(

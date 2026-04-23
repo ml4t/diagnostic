@@ -16,16 +16,17 @@ Its role is to answer four questions:
 1. Are the features or signals statistically credible?
 2. Is the validation scheme leak-free?
 3. Is the backtest performance robust after multiple-testing correction?
-4. Can the results be turned into reports, dashboards, and book-ready analysis?
+4. Can the results be turned into reports, dashboards, and auditable analysis?
 
 ## Public Surfaces
 
-The package exposes five main surfaces:
+The package exposes six main surfaces:
 
 | Surface | Purpose | Typical entry points |
 |---|---|---|
 | `ml4t.diagnostic` | Convenience imports for common workflows | `ValidatedCrossValidation`, `analyze_signal`, `FeatureSelector` |
 | `ml4t.diagnostic.api` | Stable integration-safe API | `ValidatedCrossValidation`, `FeatureDiagnostics`, `PortfolioAnalysis` |
+| `ml4t.diagnostic.metrics` | Reusable metric and feature-statistic functions | `cross_sectional_ic_series`, `pooled_ic`, `sharpe_ratio`, `analyze_ml_importance` |
 | `ml4t.diagnostic.evaluation` | Research and analysis workflows | `FeatureDiagnostics`, `TradeAnalysis`, `PortfolioAnalysis`, factor attribution |
 | `ml4t.diagnostic.splitters` | Time-series CV and fold persistence | `WalkForwardCV`, `CombinatorialCV`, `save_folds()` |
 | `ml4t.diagnostic.visualization` | Plotly figures and report assembly | `plot_cv_folds()`, signal/portfolio/factor plots |
@@ -104,6 +105,7 @@ Choose imports based on how stable and low-level you need them to be:
 |---|---|
 | Application code | `ml4t.diagnostic.api` |
 | Interactive analysis | `ml4t.diagnostic` or `ml4t.diagnostic.evaluation` |
+| Standalone metrics and feature statistics | `ml4t.diagnostic.metrics` |
 | Low-level statistical functions | `ml4t.diagnostic.evaluation.stats` |
 | Cross-validation infrastructure | `ml4t.diagnostic.splitters` |
 | Plotly figures and dashboards | `ml4t.diagnostic.visualization` |

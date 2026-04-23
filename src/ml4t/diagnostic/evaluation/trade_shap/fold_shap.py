@@ -3,7 +3,7 @@
 Computes SHAP values from per-fold boosters and predictions, producing
 row-aligned outputs ready for TradeShapPipeline consumption.
 
-Typical usage with book case studies:
+Typical usage with fold-specific model artifacts:
     >>> boosters = {0: lgb_fold0, 1: lgb_fold1, ...}
     >>> features_df, shap_values = compute_fold_shap(
     ...     boosters=boosters,

@@ -126,7 +126,7 @@ benchmark = np.load("spy_returns.npy")          # optional
 analysis = PortfolioAnalysis(
     returns,
     benchmark=benchmark,
-    risk_free=0.05,         # annual risk-free rate
+    risk_free_rate=0.05,         # annual risk-free rate
     periods_per_year=252,
 )
 
@@ -174,13 +174,15 @@ If you only need a specific metric and don't want the full analysis object:
 
 ```python
 from ml4t.diagnostic.evaluation.portfolio_analysis import (
-    sharpe_ratio,
-    sortino_ratio,
     max_drawdown,
     value_at_risk,
 )
+from ml4t.diagnostic.metrics import (
+    sharpe_ratio,
+    sortino_ratio,
+)
 
-sr = sharpe_ratio(returns, risk_free=0.05)
+sr = sharpe_ratio(returns, risk_free_rate=0.05)
 md = max_drawdown(returns)
 var = value_at_risk(returns, level=0.05)
 ```
@@ -195,7 +197,7 @@ var = value_at_risk(returns, level=0.05)
 ### Quick path
 
 ```python
-from ml4t.diagnostic.evaluation import analyze_ml_importance
+from ml4t.diagnostic.metrics import analyze_ml_importance
 
 result = analyze_ml_importance(
     model,                         # fitted sklearn-compatible model
@@ -243,7 +245,7 @@ export_figures_to_pdf([fig], "importance.pdf")
 ### Feature interactions (SHAP pairwise)
 
 ```python
-from ml4t.diagnostic.evaluation import compute_shap_interactions
+from ml4t.diagnostic.metrics import compute_shap_interactions
 
 interactions = compute_shap_interactions(
     model, X[:200],                # subsample for speed
@@ -374,7 +376,7 @@ config = ValidatedCrossValidationConfig(
     n_groups=10,
     n_test_groups=2,
     embargo_pct=0.01,
-    annualization_factor=252,
+    periods_per_year=252,
 )
 
 vcv = ValidatedCrossValidation(config=config)

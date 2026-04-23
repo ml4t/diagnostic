@@ -16,12 +16,9 @@ import numpy as np
 from numpy.testing import assert_allclose
 
 from ml4t.diagnostic.evaluation.autocorrelation import compute_acf, compute_pacf
-from ml4t.diagnostic.evaluation.portfolio_analysis import (
-    max_drawdown,
-    sharpe_ratio,
-    sortino_ratio,
-)
+from ml4t.diagnostic.evaluation.portfolio_analysis import max_drawdown
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio_from_statistics
+from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.splitters import CombinatorialCV
 
 
@@ -400,8 +397,8 @@ class TestSharpeProperties:
         np.random.seed(42)
         returns = np.random.randn(252) * 0.02 + 0.0005
 
-        sr1 = sharpe_ratio(returns, risk_free=0.0)
-        sr2 = sharpe_ratio(returns * 2, risk_free=0.0)  # Double returns
+        sr1 = sharpe_ratio(returns, risk_free_rate=0.0)
+        sr2 = sharpe_ratio(returns * 2, risk_free_rate=0.0)  # Double returns
 
         # Should be the same (both mean and std scale by 2)
         assert_allclose(sr1, sr2, rtol=0.01, err_msg="Sharpe should be scale invariant")
@@ -413,12 +410,12 @@ class TestSharpeProperties:
 
         # Positive mean returns
         pos_returns = np.abs(np.random.randn(n)) * 0.01 + 0.001
-        sr_pos = sharpe_ratio(pos_returns, risk_free=0.0)
+        sr_pos = sharpe_ratio(pos_returns, risk_free_rate=0.0)
         assert sr_pos > 0, "Sharpe should be positive for positive mean returns"
 
         # Negative mean returns
         neg_returns = -np.abs(np.random.randn(n)) * 0.01 - 0.001
-        sr_neg = sharpe_ratio(neg_returns, risk_free=0.0)
+        sr_neg = sharpe_ratio(neg_returns, risk_free_rate=0.0)
         assert sr_neg < 0, "Sharpe should be negative for negative mean returns"
 
 
@@ -440,8 +437,8 @@ class TestSortinoProperties:
         returns = base_returns.copy()
         returns[: n // 10] += positive_outliers
 
-        sr = sharpe_ratio(returns, risk_free=0.0)
-        sortino = sortino_ratio(returns, risk_free=0.0)
+        sr = sharpe_ratio(returns, risk_free_rate=0.0)
+        sortino = sortino_ratio(returns, risk_free_rate=0.0)
 
         # For right-skewed positive returns, Sortino >= Sharpe
         assert sortino >= sr - 0.1, (  # Allow small tolerance
@@ -565,7 +562,7 @@ class TestEdgeCases:
 
         # Should either return nan or raise
         try:
-            sr = sharpe_ratio(returns, risk_free=0.0)
+            sr = sharpe_ratio(returns, risk_free_rate=0.0)
             # If it returns, should be nan or inf
             assert np.isnan(sr) or np.isinf(sr), f"Single obs Sharpe should be nan/inf, got {sr}"
         except (ValueError, ZeroDivisionError):
@@ -576,7 +573,7 @@ class TestEdgeCases:
         returns = np.ones(100) * 0.01
 
         try:
-            sr = sharpe_ratio(returns, risk_free=0.0)
+            sr = sharpe_ratio(returns, risk_free_rate=0.0)
             # If it returns, should be nan or inf
             assert np.isnan(sr) or np.isinf(sr) or abs(sr) > 1e10, (
                 f"Constant returns Sharpe should be nan/inf/large, got {sr}"

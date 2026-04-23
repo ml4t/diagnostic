@@ -1,12 +1,12 @@
-# evaluation/metrics/ - Feature And Signal Metrics
+# metrics/ - Feature, Signal, And Risk Metrics
 
 Feature-level and signal-level metric functions used by diagnostics, selection, and reporting workflows.
 
 ## Main Modules
 
-- `information_coefficient.py` - IC computation primitives
-- `ic_statistics.py` - HAC-adjusted IC statistics and summary helpers
-- `conditional_ic.py` - conditional IC analysis
+- `ic.py` - IC computation primitives
+- `ic_inference.py` - HAC-adjusted IC statistics and summary helpers
+- `conditional.py` - conditional IC analysis
 - `importance_classical.py`, `importance_mda.py`, `importance_shap.py` - importance methods
 - `importance_analysis.py` - multi-method comparison
 - `interactions.py` - H-statistic and SHAP interaction workflows
@@ -15,7 +15,9 @@ Feature-level and signal-level metric functions used by diagnostics, selection, 
 
 ## Common Entry Points
 
-- `compute_ic_series`
+- `cross_sectional_ic_series`
+- `cross_sectional_ic`
+- `pooled_ic`
 - `compute_ic_hac_stats`
 - `analyze_ml_importance`
 - `compute_shap_importance`

@@ -12,7 +12,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+from ml4t.diagnostic.metrics import compute_shap_importance
 
 # Check for optional dependencies
 HAS_LIGHTGBM = importlib.util.find_spec("lightgbm") is not None
@@ -279,7 +279,7 @@ class TestComputeShapImportanceErrors:
 
         # Should raise ImportError with helpful message
         with pytest.raises(ImportError, match="SHAP library is not installed"):
-            from ml4t.diagnostic.evaluation.metrics import compute_shap_importance as compute_shap
+            from ml4t.diagnostic.metrics import compute_shap_importance as compute_shap
 
             compute_shap(None, np.array([[1, 2, 3]]))
 
@@ -384,7 +384,7 @@ class TestSHAPHelperFunctions:
 
     def test_detect_gpu_available(self):
         """Test GPU detection function."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _detect_gpu_available
+        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
 
         # This should return True or False (bool) without crashing
         result = _detect_gpu_available()
@@ -402,14 +402,14 @@ class TestSHAPHelperFunctions:
 
     def test_format_time_seconds(self):
         """Test time formatting for seconds."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _format_time
+        from ml4t.diagnostic.metrics.importance_shap import _format_time
 
         assert _format_time(45) == "45 seconds"
         assert _format_time(1) == "1 seconds"
 
     def test_format_time_minutes(self):
         """Test time formatting for minutes."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _format_time
+        from ml4t.diagnostic.metrics.importance_shap import _format_time
 
         assert _format_time(60) == "1 minute"
         assert _format_time(120) == "2 minutes"
@@ -417,7 +417,7 @@ class TestSHAPHelperFunctions:
 
     def test_format_time_hours(self):
         """Test time formatting for hours."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _format_time
+        from ml4t.diagnostic.metrics.importance_shap import _format_time
 
         assert _format_time(3600) == "1 hour"
         assert _format_time(7200) == "2 hours"
@@ -426,7 +426,7 @@ class TestSHAPHelperFunctions:
 
     def test_sample_background_random(self):
         """Test random background sampling."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _sample_background
+        from ml4t.diagnostic.metrics.importance_shap import _sample_background
 
         X = np.random.randn(1000, 10)
 
@@ -440,7 +440,7 @@ class TestSHAPHelperFunctions:
 
     def test_sample_background_kmeans(self):
         """Test k-means background sampling."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _sample_background
+        from ml4t.diagnostic.metrics.importance_shap import _sample_background
 
         X = np.random.randn(1000, 10)
 
@@ -450,7 +450,7 @@ class TestSHAPHelperFunctions:
 
     def test_sample_background_invalid_method(self):
         """Test that invalid sampling method raises error."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _sample_background
+        from ml4t.diagnostic.metrics.importance_shap import _sample_background
 
         X = np.random.randn(100, 10)
 
@@ -459,7 +459,7 @@ class TestSHAPHelperFunctions:
 
     def test_estimate_computation_time_fast_explainers_no_warning(self):
         """Test that fast explainers (tree, linear, deep) don't trigger warnings."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _estimate_computation_time
+        from ml4t.diagnostic.metrics.importance_shap import _estimate_computation_time
 
         # These should not raise warnings
         _estimate_computation_time("tree", n_samples=10000, ms_per_sample=5.0)
@@ -468,7 +468,7 @@ class TestSHAPHelperFunctions:
 
     def test_estimate_computation_time_kernel_warning(self):
         """Test that slow KernelExplainer triggers warning."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _estimate_computation_time
+        from ml4t.diagnostic.metrics.importance_shap import _estimate_computation_time
 
         # Should trigger warning for kernel with many samples
         with pytest.warns(UserWarning, match="KernelExplainer is slow"):
@@ -476,7 +476,7 @@ class TestSHAPHelperFunctions:
 
     def test_estimate_computation_time_warning_disabled(self):
         """Test that warnings can be disabled."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _estimate_computation_time
+        from ml4t.diagnostic.metrics.importance_shap import _estimate_computation_time
 
         # Should not warn when performance_warning=False
         _estimate_computation_time(
@@ -485,7 +485,7 @@ class TestSHAPHelperFunctions:
 
     def test_get_explainer_invalid_type(self):
         """Test that invalid explainer type raises error."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X = np.random.randn(100, 10)
 
@@ -494,7 +494,7 @@ class TestSHAPHelperFunctions:
 
     def test_get_explainer_gpu_unavailable_error(self):
         """Test that forcing GPU when unavailable raises error."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import (
+        from ml4t.diagnostic.metrics.importance_shap import (
             _detect_gpu_available,
             _get_explainer,
         )
@@ -539,7 +539,7 @@ class TestGetExplainerAutoSelection:
 
     def test_auto_selection_chooses_tree_for_lgbm(self, tree_model, simple_data):
         """Test that auto-selection chooses TreeExplainer for LightGBM."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, _ = simple_data
         X_test = X[:100]
@@ -553,7 +553,7 @@ class TestGetExplainerAutoSelection:
 
     def test_explicit_tree_explainer(self, tree_model, simple_data):
         """Test explicit tree explainer selection."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, _ = simple_data
         X_test = X[:100]
@@ -566,7 +566,7 @@ class TestGetExplainerAutoSelection:
 
     def test_explicit_kernel_explainer(self, tree_model, simple_data):
         """Test explicit kernel explainer selection (model-agnostic fallback)."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, _ = simple_data
         X_test = X[:50]  # Small sample for speed
@@ -580,7 +580,7 @@ class TestGetExplainerAutoSelection:
 
     def test_gpu_mode_auto(self, tree_model, simple_data):
         """Test GPU auto-detection (uses GPU only for large datasets)."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, _ = simple_data
 
@@ -600,7 +600,7 @@ class TestGetExplainerAutoSelection:
 
     def test_background_data_sampling(self, tree_model, simple_data):
         """Test that background data is sampled for KernelExplainer."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, _ = simple_data
         X_test = X[:50]
@@ -647,7 +647,7 @@ class TestLinearExplainerIntegration:
         """Test LinearExplainer with LogisticRegression."""
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -667,7 +667,7 @@ class TestLinearExplainerIntegration:
         """Test LinearExplainer with LinearRegression."""
         from sklearn.linear_model import LinearRegression
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_regression_data
         X_train, y_train = X[:400], y[:400]
@@ -687,7 +687,7 @@ class TestLinearExplainerIntegration:
         """Test LinearExplainer with Ridge regression."""
         from sklearn.linear_model import Ridge
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_regression_data
         X_train, y_train = X[:400], y[:400]
@@ -707,7 +707,7 @@ class TestLinearExplainerIntegration:
         """Test LinearExplainer with Lasso regression."""
         from sklearn.linear_model import Lasso
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_regression_data
         X_train, y_train = X[:400], y[:400]
@@ -727,7 +727,7 @@ class TestLinearExplainerIntegration:
         """Test LinearExplainer with ElasticNet."""
         from sklearn.linear_model import ElasticNet
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_regression_data
         X_train, y_train = X[:400], y[:400]
@@ -747,7 +747,7 @@ class TestLinearExplainerIntegration:
         """Test explicit LinearExplainer selection."""
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -766,7 +766,7 @@ class TestLinearExplainerIntegration:
         """Test that LinearExplainer produces correct SHAP values format."""
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -793,7 +793,7 @@ class TestLinearExplainerIntegration:
 
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -834,7 +834,7 @@ class TestComputeShapImportanceV11API:
         """Test explicit tree explainer selection."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -849,7 +849,7 @@ class TestComputeShapImportanceV11API:
         """Test explicit linear explainer selection."""
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = LogisticRegression(random_state=42, max_iter=1000)
@@ -864,7 +864,7 @@ class TestComputeShapImportanceV11API:
         """Test auto-selection chooses tree for LightGBM."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -878,7 +878,7 @@ class TestComputeShapImportanceV11API:
         """Test auto-selection chooses linear for sklearn linear models."""
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = LogisticRegression(random_state=42, max_iter=1000)
@@ -892,7 +892,7 @@ class TestComputeShapImportanceV11API:
         """Test that old API (no explainer_type) still works."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -910,7 +910,7 @@ class TestComputeShapImportanceV11API:
         """Test that performance warnings can be disabled."""
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         X_small = X[:50]  # Small dataset for speed
@@ -930,7 +930,7 @@ class TestComputeShapImportanceV11API:
         """Test that explainer_kwargs are passed to explainer constructor."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -1189,7 +1189,7 @@ class TestKernelExplainerIntegration:
         """Test KernelExplainer with SVM (model-agnostic fallback)."""
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -1211,7 +1211,7 @@ class TestKernelExplainerIntegration:
         """Test KernelExplainer with KNN classifier."""
         from sklearn.neighbors import KNeighborsClassifier
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -1231,7 +1231,7 @@ class TestKernelExplainerIntegration:
         """Test explicit KernelExplainer selection even for tree models."""
         lgb = pytest.importorskip("lightgbm")
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -1249,7 +1249,7 @@ class TestKernelExplainerIntegration:
 
     def test_background_sampling_random(self, simple_classification_data):
         """Test random background sampling strategy."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _sample_background
+        from ml4t.diagnostic.metrics.importance_shap import _sample_background
 
         X, _ = simple_classification_data
 
@@ -1261,7 +1261,7 @@ class TestKernelExplainerIntegration:
 
     def test_background_sampling_kmeans(self, simple_classification_data):
         """Test K-means background sampling strategy."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _sample_background
+        from ml4t.diagnostic.metrics.importance_shap import _sample_background
 
         X, _ = simple_classification_data
 
@@ -1273,7 +1273,7 @@ class TestKernelExplainerIntegration:
 
     def test_background_sampling_default(self, simple_classification_data):
         """Test default background sampling (random)."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _sample_background
+        from ml4t.diagnostic.metrics.importance_shap import _sample_background
 
         X, _ = simple_classification_data
 
@@ -1286,7 +1286,7 @@ class TestKernelExplainerIntegration:
         """Test KernelExplainer with custom background dataset."""
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -1314,7 +1314,7 @@ class TestKernelExplainerIntegration:
         """Test auto-fallback to KernelExplainer when TreeExplainer fails."""
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -1336,7 +1336,7 @@ class TestKernelExplainerIntegration:
         """Test auto-fallback to KernelExplainer when LinearExplainer fails."""
         from sklearn.ensemble import RandomForestClassifier
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _create_explainer_by_type
+        from ml4t.diagnostic.metrics.importance_shap import _create_explainer_by_type
 
         X, y = simple_classification_data
         X_train, y_train = X[:400], y[:400]
@@ -1381,7 +1381,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         """Test that auto-selection chooses TreeExplainer for LightGBM."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -1396,7 +1396,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         """Test that auto-selection chooses LinearExplainer for LogisticRegression."""
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = LogisticRegression(random_state=42, max_iter=1000)
@@ -1411,7 +1411,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         """Test that auto-selection falls back to KernelExplainer for SVM."""
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         X_small, y_small = X[:200], y[:200]  # Small dataset for speed
@@ -1430,7 +1430,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         """Test that explicit explainer_type overrides auto-selection."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -1448,7 +1448,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         """Test that v1.0 API (no explainer_type param) still works."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -1469,7 +1469,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         import lightgbm as lgb
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         X_test = X[:50]
@@ -1499,7 +1499,7 @@ class TestAutoSelectionAndBackwardCompatibility:
 
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -1524,7 +1524,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         from sklearn.linear_model import LogisticRegression
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_data
         X_small = X[:100]
@@ -1573,7 +1573,7 @@ class TestPerformanceWarningsAndGPU:
 
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         # Use just above threshold (201 > 200) to test warning without extreme slowness
@@ -1603,7 +1603,7 @@ class TestPerformanceWarningsAndGPU:
         """Test that warning includes time estimate and sample recommendations."""
         import warnings
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _estimate_computation_time
+        from ml4t.diagnostic.metrics.importance_shap import _estimate_computation_time
 
         # Simulate slow KernelExplainer with many samples
         with warnings.catch_warnings(record=True) as w:
@@ -1629,7 +1629,7 @@ class TestPerformanceWarningsAndGPU:
         """Test that TreeExplainer does not issue performance warnings."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         X_test = X[:500]  # Large dataset
@@ -1653,7 +1653,7 @@ class TestPerformanceWarningsAndGPU:
         """Test that LinearExplainer does not issue performance warnings."""
         from sklearn.linear_model import LogisticRegression
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         X_test = X[:500]  # Large dataset
@@ -1677,7 +1677,7 @@ class TestPerformanceWarningsAndGPU:
         """Test that performance_warning=False completely disables warnings."""
         from sklearn.svm import SVC
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
         X_small = X[:100]
@@ -1701,7 +1701,7 @@ class TestPerformanceWarningsAndGPU:
 
     def test_gpu_detection_returns_bool(self):
         """Test that GPU detection returns a boolean value."""
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _detect_gpu_available
+        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
 
         result = _detect_gpu_available()
 
@@ -1712,7 +1712,7 @@ class TestPerformanceWarningsAndGPU:
         """Test that use_gpu='auto' uses CPU for small datasets."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_data
         X_small = X[:100]  # Small dataset
@@ -1732,7 +1732,7 @@ class TestPerformanceWarningsAndGPU:
         """Test that use_gpu='auto' considers using GPU for large datasets."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_data
         # Create larger dataset by repeating
@@ -1753,7 +1753,7 @@ class TestPerformanceWarningsAndGPU:
         """Test graceful fallback to CPU when GPU is unavailable."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import (
+        from ml4t.diagnostic.metrics.importance_shap import (
             _detect_gpu_available,
             _get_explainer,
         )
@@ -1779,7 +1779,7 @@ class TestPerformanceWarningsAndGPU:
         """Test GPU detection when cupy is not available (CI-friendly mock test)."""
         # Mock cupy import to fail
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _detect_gpu_available
+        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
 
         def mock_import_error(name, *args, **kwargs):
             if name == "cupy" or name.startswith("cupy."):
@@ -1798,7 +1798,7 @@ class TestPerformanceWarningsAndGPU:
         """Test TreeExplainer creation with mocked GPU settings (CI-friendly)."""
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _get_explainer
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_data
 
@@ -1807,7 +1807,7 @@ class TestPerformanceWarningsAndGPU:
 
         # Mock _detect_gpu_available to return False
         monkeypatch.setattr(
-            "ml4t.diagnostic.evaluation.metrics.importance_shap._detect_gpu_available",
+            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
             lambda: False,
         )
 
@@ -1826,8 +1826,8 @@ class TestPerformanceWarningsAndGPU:
 
         import lightgbm as lgb
 
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _detect_gpu_available
+        from ml4t.diagnostic.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
 
         # Skip if no GPU
         if not _detect_gpu_available():
@@ -1995,7 +1995,7 @@ class TestDeepExplainerIntegration:
         """
         import shap
 
-        from ml4t.diagnostic.evaluation.metrics.importance_shap import _create_explainer_by_type
+        from ml4t.diagnostic.metrics.importance_shap import _create_explainer_by_type
 
         # Create mock neural network
         class MockNN:
@@ -2021,7 +2021,7 @@ class TestDeepExplainerIntegration:
 
     def test_deep_explainer_documentation_exists(self):
         """Verify DeepExplainer is documented in API."""
-        from ml4t.diagnostic.evaluation.metrics import compute_shap_importance
+        from ml4t.diagnostic.metrics import compute_shap_importance
 
         docstring = compute_shap_importance.__doc__
 

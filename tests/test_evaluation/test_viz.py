@@ -23,7 +23,7 @@ class TestICHeatmap:
             },
         )
 
-        fig = viz.plot_ic_heatmap(predictions, returns)
+        fig = viz.plot_ic_term_structure(predictions, returns)
 
         assert fig is not None
         assert len(fig.data) > 0
@@ -40,7 +40,7 @@ class TestICHeatmap:
             columns=["1d", "5d", "10d"],
         )
 
-        fig = viz.plot_ic_heatmap(predictions, returns, time_index=dates)
+        fig = viz.plot_ic_term_structure(predictions, returns, time_index=dates)
 
         assert fig is not None
         assert "Date" in fig.layout.xaxis.title.text
@@ -51,7 +51,7 @@ class TestICHeatmap:
         predictions = np.random.randn(100)
         returns = np.random.randn(100, 3)
 
-        fig = viz.plot_ic_heatmap(predictions, returns, horizons=[1, 5, 10])
+        fig = viz.plot_ic_term_structure(predictions, returns, horizons=[1, 5, 10])
 
         assert fig is not None
         assert len(fig.data[0].y) == 3  # 3 horizons

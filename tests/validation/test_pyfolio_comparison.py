@@ -29,11 +29,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
     information_ratio,
     max_drawdown,
     omega_ratio,
-    sharpe_ratio,
-    sortino_ratio,
     tail_ratio,
     value_at_risk,
 )
+from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 
 # =============================================================================
 # Test Fixtures
@@ -111,7 +110,7 @@ class TestSharpeRatioComparison:
 
     def test_sharpe_simple_returns(self, simple_returns):
         """Test Sharpe ratio with simple returns."""
-        ml4t_sharpe = sharpe_ratio(simple_returns, risk_free=0.0, periods_per_year=252)
+        ml4t_sharpe = sharpe_ratio(simple_returns, risk_free_rate=0.0, periods_per_year=252)
         emp_sharpe = empyrical.sharpe_ratio(simple_returns, risk_free=0.0, period="daily")
 
         assert_allclose(
@@ -122,7 +121,7 @@ class TestSharpeRatioComparison:
         """Test Sharpe ratio with non-zero risk-free rate."""
         rf_annual = 0.02  # 2% annual
 
-        ml4t_sharpe = sharpe_ratio(positive_returns, risk_free=rf_annual, periods_per_year=252)
+        ml4t_sharpe = sharpe_ratio(positive_returns, risk_free_rate=rf_annual, periods_per_year=252)
 
         # empyrical expects daily risk-free rate
         rf_daily = (1 + rf_annual) ** (1 / 252) - 1
@@ -134,7 +133,7 @@ class TestSharpeRatioComparison:
 
     def test_sharpe_negative_strategy(self, negative_returns):
         """Test Sharpe ratio for losing strategy."""
-        ml4t_sharpe = sharpe_ratio(negative_returns, risk_free=0.0, periods_per_year=252)
+        ml4t_sharpe = sharpe_ratio(negative_returns, risk_free_rate=0.0, periods_per_year=252)
         emp_sharpe = empyrical.sharpe_ratio(negative_returns, risk_free=0.0, period="daily")
 
         # Both should be negative
@@ -153,7 +152,7 @@ class TestSortinoRatioComparison:
 
     def test_sortino_basic(self, simple_returns):
         """Test Sortino ratio basic calculation."""
-        ml4t_sortino = sortino_ratio(simple_returns, risk_free=0.0, periods_per_year=252)
+        ml4t_sortino = sortino_ratio(simple_returns, risk_free_rate=0.0, periods_per_year=252)
         emp_sortino = empyrical.sortino_ratio(simple_returns, required_return=0.0, period="daily")
 
         # Note: Sortino implementations may differ slightly in downside calculation
@@ -167,8 +166,8 @@ class TestSortinoRatioComparison:
 
     def test_sortino_positive_strategy(self, positive_returns):
         """Test Sortino for positive returns - should be higher than Sharpe."""
-        ml4t_sortino = sortino_ratio(positive_returns, risk_free=0.0, periods_per_year=252)
-        ml4t_sharpe = sharpe_ratio(positive_returns, risk_free=0.0, periods_per_year=252)
+        ml4t_sortino = sortino_ratio(positive_returns, risk_free_rate=0.0, periods_per_year=252)
+        ml4t_sharpe = sharpe_ratio(positive_returns, risk_free_rate=0.0, periods_per_year=252)
 
         # For positive-mean returns, Sortino >= Sharpe (downside < total vol)
         assert ml4t_sortino >= ml4t_sharpe - 0.1  # Allow small margin

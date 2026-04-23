@@ -14,7 +14,7 @@ Key properties tested:
 import numpy as np
 import pytest
 
-from ml4t.diagnostic.evaluation.metrics.ic_statistics import (
+from ml4t.diagnostic.metrics.ic_inference import (
     _get_kernel_weights,
     compute_ic_hac_stats,
 )

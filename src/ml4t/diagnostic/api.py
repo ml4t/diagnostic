@@ -1,9 +1,4 @@
-"""Canonical stable API for ml4t-diagnostic.
-
-Use this module for integration-safe imports. The package-level and
-`evaluation` mega re-exports remain available for now but may be reduced
-in a future release.
-"""
+"""Canonical stable API for ml4t-diagnostic."""
 
 from ml4t.diagnostic.config import DiagnosticConfig, ValidatedCrossValidationConfig
 from ml4t.diagnostic.evaluation.barrier_analysis import BarrierAnalysis
@@ -24,11 +19,11 @@ from ml4t.diagnostic.metrics import (
     analyze_ml_importance,
     compute_h_statistic,
     compute_ic_hac_stats,
-    compute_ic_series,
     compute_mdi_importance,
     compute_permutation_importance,
     compute_shap_importance,
     compute_shap_interactions,
+    cross_sectional_ic_series,
 )
 from ml4t.diagnostic.signal import SignalResult, analyze_signal
 from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
@@ -49,7 +44,7 @@ __all__ = [
     "SignalResult",
     "CombinatorialCV",
     "WalkForwardCV",
-    "compute_ic_series",
+    "cross_sectional_ic_series",
     "compute_ic_hac_stats",
     "compute_mdi_importance",
     "compute_permutation_importance",

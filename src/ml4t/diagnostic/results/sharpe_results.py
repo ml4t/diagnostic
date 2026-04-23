@@ -18,7 +18,7 @@ from pydantic import Field
 from ml4t.diagnostic.results.base import BaseResult
 
 
-class PSRResult(BaseResult):
+class PSRResultSchema(BaseResult):
     """Probabilistic Sharpe Ratio (PSR) results.
 
     PSR accounts for non-normality and sample length to compute the
@@ -99,7 +99,7 @@ class PSRResult(BaseResult):
             return ["Conclusion: Unlikely that SR exceeds target"]
 
 
-class MinTRLResult(BaseResult):
+class MinTRLResultSchema(BaseResult):
     """Minimum Track Record Length (MinTRL) results.
 
     MinTRL computes the minimum sample size needed to reject the null
@@ -170,7 +170,7 @@ class MinTRLResult(BaseResult):
         return "\n".join(lines)
 
 
-class DSRResult(BaseResult):
+class DSRResultSchema(BaseResult):
     """Deflated Sharpe Ratio (DSR) results.
 
     DSR adjusts for backtest overfitting by correcting for multiple testing.
@@ -346,9 +346,9 @@ class SharpeFrameworkResult(BaseResult):
 
     analysis_type: str = "sharpe_framework"
 
-    psr: PSRResult | None = Field(None, description="PSR analysis")
-    min_trl: MinTRLResult | None = Field(None, description="MinTRL analysis")
-    dsr: DSRResult | None = Field(None, description="DSR analysis")
+    psr: PSRResultSchema | None = Field(None, description="PSR analysis")
+    min_trl: MinTRLResultSchema | None = Field(None, description="MinTRL analysis")
+    dsr: DSRResultSchema | None = Field(None, description="DSR analysis")
     fdr_results: FDRResult | None = Field(None, description="Bayesian FDR")
 
     def get_dataframe(self, name: str | None = None) -> pl.DataFrame:

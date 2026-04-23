@@ -35,7 +35,7 @@ else:
 
 ### 2. Signal Analysis
 
-Analyze factor/signal quality (replaces Alphalens):
+Analyze factor/signal quality:
 
 ```python
 from ml4t.diagnostic import analyze_signal

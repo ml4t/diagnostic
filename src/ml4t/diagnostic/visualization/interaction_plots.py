@@ -11,7 +11,7 @@ All plot functions follow the standard API defined in docs/plot_api_standards.md
 - Provide comprehensive hover information and interactivity
 
 Example workflow:
-    >>> from ml4t.diagnostic.evaluation import analyze_interactions, compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import analyze_interactions, compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import (
     ...     plot_interaction_bar,
     ...     plot_interaction_heatmap,
@@ -118,7 +118,7 @@ def plot_interaction_bar(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import plot_interaction_bar
     >>>
     >>> # Compute SHAP interactions
@@ -279,7 +279,7 @@ def plot_interaction_heatmap(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import plot_interaction_heatmap
     >>>
     >>> # Compute interactions
@@ -452,7 +452,7 @@ def plot_interaction_network(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import plot_interaction_network
     >>>
     >>> # Compute interactions

@@ -10,7 +10,7 @@ All report functions follow the standard API defined in docs/plot_api_standards.
 - Provide flexible report templates
 
 Example workflow:
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance, compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance, compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import generate_importance_report
     >>>
     >>> # Run evaluations
@@ -387,7 +387,7 @@ def generate_importance_report(
     --------
     Generate full report:
 
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance
     >>> from ml4t.diagnostic.visualization import generate_importance_report
     >>>
     >>> results = analyze_ml_importance(model, X, y, methods=["mdi", "pfi", "shap"])
@@ -560,7 +560,7 @@ def generate_interaction_report(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import generate_interaction_report
     >>>
     >>> interactions = compute_shap_interactions(model, X)
@@ -702,7 +702,7 @@ def generate_combined_report(
 
     Examples
     --------
-    >>> from ml4t.diagnostic.evaluation import analyze_ml_importance, compute_shap_interactions
+    >>> from ml4t.diagnostic.metrics import analyze_ml_importance, compute_shap_interactions
     >>> from ml4t.diagnostic.visualization import generate_combined_report
     >>>
     >>> importance = analyze_ml_importance(model, X, y)

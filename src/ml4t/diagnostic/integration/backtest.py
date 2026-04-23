@@ -337,7 +337,7 @@ def profile_from_run_artifacts(
     benchmark: Any = None,
     confidence_intervals: bool = False,
 ) -> BacktestProfile:
-    """Build a BacktestProfile from case-study run artifacts."""
+    """Build a BacktestProfile from backtest run artifacts."""
     artifact_dir = Path(backtest_dir)
     trades_df = pl.read_parquet(artifact_dir / "trades.parquet")
     daily_returns_df = pl.read_parquet(artifact_dir / "daily_returns.parquet")
@@ -514,7 +514,7 @@ def generate_tearsheet_from_run_artifacts(
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
 ) -> str:
-    """Generate a tearsheet directly from case-study run artifacts."""
+    """Generate a tearsheet directly from backtest run artifacts."""
     from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
     profile = profile_from_run_artifacts(

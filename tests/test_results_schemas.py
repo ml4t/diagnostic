@@ -20,15 +20,15 @@ from ml4t.diagnostic.results import (
     BaseResult,
     BayesianComparisonResult,
     CrossFeatureResult,
-    DSRResult,
+    DSRResultSchema,
     FDRResult,
     FeatureDiagnosticsResultSchema,
     FeatureOutcomeResultSchema,
     ICAnalysisResult,
-    MinTRLResult,
+    MinTRLResultSchema,
     PortfolioEvaluationResult,
-    PortfolioMetrics,
-    PSRResult,
+    PortfolioMetricsResultSchema,
+    PSRResultSchema,
     SharpeFrameworkResult,
     StationarityTestResult,
     ThresholdAnalysisResult,
@@ -354,8 +354,8 @@ def test_feature_outcome_result():
 
 
 def test_portfolio_metrics():
-    """Test PortfolioMetrics."""
-    result = PortfolioMetrics(
+    """Test PortfolioMetricsResultSchema."""
+    result = PortfolioMetricsResultSchema(
         total_return=0.50,
         annualized_return=0.15,
         annualized_volatility=0.20,
@@ -415,7 +415,7 @@ def test_bayesian_comparison_result():
 
 def test_portfolio_evaluation_result():
     """Test PortfolioEvaluationResult."""
-    metrics = PortfolioMetrics(
+    metrics = PortfolioMetricsResultSchema(
         total_return=0.50,
         annualized_return=0.15,
         annualized_volatility=0.20,
@@ -457,8 +457,8 @@ def test_portfolio_evaluation_result():
 
 
 def test_psr_result():
-    """Test PSRResult."""
-    result = PSRResult(
+    """Test PSRResultSchema."""
+    result = PSRResultSchema(
         observed_sharpe=0.85,
         target_sharpe=0.50,
         psr_value=0.92,
@@ -483,8 +483,8 @@ def test_psr_result():
 
 
 def test_min_trl_result():
-    """Test MinTRLResult."""
-    result = MinTRLResult(
+    """Test MinTRLResultSchema."""
+    result = MinTRLResultSchema(
         observed_sharpe=0.75,
         target_sharpe=0.50,
         min_trl_days=500,
@@ -508,8 +508,8 @@ def test_min_trl_result():
 
 
 def test_dsr_result():
-    """Test DSRResult."""
-    result = DSRResult(
+    """Test DSRResultSchema."""
+    result = DSRResultSchema(
         observed_sharpe=0.85,
         dsr_value=0.65,
         adjusted_pvalue=0.03,
@@ -556,7 +556,7 @@ def test_fdr_result():
 
 def test_sharpe_framework_result():
     """Test SharpeFrameworkResult with all components."""
-    psr = PSRResult(
+    psr = PSRResultSchema(
         observed_sharpe=0.85,
         target_sharpe=0.50,
         psr_value=0.92,
@@ -565,7 +565,7 @@ def test_sharpe_framework_result():
         n_observations=1000,
     )
 
-    min_trl = MinTRLResult(
+    min_trl = MinTRLResultSchema(
         observed_sharpe=0.85,
         target_sharpe=0.50,
         min_trl_days=500,
@@ -623,8 +623,8 @@ def test_json_round_trip_stationarity():
 
 
 def test_json_round_trip_portfolio_metrics():
-    """Test JSON serialization round-trip for PortfolioMetrics."""
-    original = PortfolioMetrics(
+    """Test JSON serialization round-trip for PortfolioMetricsResultSchema."""
+    original = PortfolioMetricsResultSchema(
         total_return=0.50,
         annualized_return=0.15,
         annualized_volatility=0.20,
@@ -645,7 +645,7 @@ def test_json_round_trip_portfolio_metrics():
 
     # Deserialize
     data = json.loads(json_str)
-    reconstructed = PortfolioMetrics(**data)
+    reconstructed = PortfolioMetricsResultSchema(**data)
 
     # Compare
     assert reconstructed.sharpe_ratio == pytest.approx(original.sharpe_ratio)
@@ -660,7 +660,7 @@ def test_json_round_trip_portfolio_metrics():
 def test_validation_psr_bounds():
     """Test that PSR value must be between 0 and 1."""
     with pytest.raises(ValidationError):
-        PSRResult(
+        PSRResultSchema(
             observed_sharpe=0.5,
             target_sharpe=0.3,
             psr_value=1.5,  # Invalid: > 1
@@ -673,7 +673,7 @@ def test_validation_psr_bounds():
 def test_validation_min_trl_positive():
     """Test that MinTRL days must be positive."""
     with pytest.raises(ValidationError):
-        MinTRLResult(
+        MinTRLResultSchema(
             observed_sharpe=0.5,
             target_sharpe=0.3,
             min_trl_days=0,  # Invalid: must be > 0

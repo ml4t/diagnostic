@@ -22,11 +22,11 @@ def render_tab(st: Any, bundle: DashboardBundle) -> None:
     bundle : DashboardBundle
         Normalized dashboard data.
     """
+    from ml4t.diagnostic.evaluation.stats import probabilistic_sharpe_ratio
     from ml4t.diagnostic.evaluation.trade_dashboard.stats import (
         compute_distribution_tests,
         compute_return_summary,
         compute_time_series_tests,
-        probabilistic_sharpe_ratio,
     )
 
     st.header("Statistical Validation")
@@ -54,7 +54,7 @@ def render_tab(st: Any, bundle: DashboardBundle) -> None:
             "Sharpe ratio interpretation is limited."
         )
 
-    # PSR section (replaces incorrect DSR usage)
+    # PSR section for single-strategy significance.
     st.subheader("Probabilistic Sharpe Ratio (PSR)")
 
     st.markdown(

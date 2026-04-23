@@ -690,8 +690,8 @@ def parse_time_size_calendar_aware(
 ) -> int:
     """Parse time-based size specification using calendar-aware logic.
 
-    This function replaces the naive sample-counting approach with proper
-    calendar-based selection that respects trading session boundaries.
+    The parser uses calendar-based selection when a trading calendar is
+    provided, so time windows respect trading session boundaries.
 
     Parameters
     ----------
