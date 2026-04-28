@@ -10,7 +10,7 @@ Documentation: https://ml4trading.io/docs/diagnostic/
 
 ## Part of the ML4T Library Ecosystem
 
-This library is one of six interconnected libraries supporting the machine learning for trading workflow described in [Machine Learning for Trading](https://mlfortrading.io):
+This library is one of six interconnected libraries supporting the machine learning for trading workflow described in [Machine Learning for Trading](https://ml4trading.io):
 
 ![ML4T Library Ecosystem](docs/images/ml4t_ecosystem_workflow_color.svg)
 
