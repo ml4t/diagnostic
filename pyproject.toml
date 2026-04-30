@@ -89,7 +89,7 @@ dependencies = [
     # Templating (needed for dashboard module)
     "jinja2>=3.1.0",
     "arch>=7.2.0",
-    "shap>=0.41.0,<0.50.0",
+    "shap>=0.41.0,<0.52.0",
 ]
 
 [project.optional-dependencies]
