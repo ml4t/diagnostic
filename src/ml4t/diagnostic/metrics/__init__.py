@@ -44,6 +44,11 @@ from ml4t.diagnostic.metrics.risk_adjusted import (
     sharpe_ratio_with_ci,
     sortino_ratio,
 )
+from ml4t.diagnostic.metrics.uncertainty import (
+    compute_auc_uncertainty,
+    compute_ic_uncertainty,
+    cross_sectional_auc_series,
+)
 
 __all__ = [
     "hit_rate",
@@ -76,4 +81,7 @@ __all__ = [
     "compute_shap_interactions",
     "analyze_interactions",
     "compute_fold_percentiles",
+    "cross_sectional_auc_series",
+    "compute_ic_uncertainty",
+    "compute_auc_uncertainty",
 ]

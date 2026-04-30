@@ -155,7 +155,7 @@ def create_metrics_sidebar_html(metrics: dict[str, Any]) -> str:
                 continue
             formatted = formatter(value)
             value_cls = "metrics-sidebar-value"
-            if neg_is_bad and isinstance(value, (int, float)) and float(value) < 0:
+            if neg_is_bad and isinstance(value, int | float) and float(value) < 0:
                 value_cls += " negative"
             row_parts.append(
                 f'<div class="metrics-sidebar-row">'
