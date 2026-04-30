@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import polars as pl
 import pytest
+
 from ml4t.backtest import BacktestResult
 from ml4t.backtest.types import Fill, OrderSide, Trade
-
 from ml4t.diagnostic.integration import analyze_backtest_result
 
 

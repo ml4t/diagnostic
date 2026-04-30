@@ -244,8 +244,20 @@ has meaningful autocorrelation and naive significance tests cannot be trusted.
 | `pooled_ic()` | Compute a pooled correlation across all supplied observations |
 | `compute_ic_summary_stats()` | Naive IC statistics (no HAC) |
 | `compute_ic_hac_stats()` | HAC-adjusted IC statistics |
+| `compute_ic_uncertainty()` | Bundle of naive, HAC, and block-bootstrap CIs for a daily-IC series (recommended one-call entry point) |
+| `cross_sectional_auc_series()` | Per-date cross-sectional AUC for binary labels (Polars-vectorized Mann-Whitney U) |
+| `compute_auc_uncertainty()` | AUC analogue of `compute_ic_uncertainty()`, centred on `null_value=0.5` |
 | `robust_ic()` | Stationary bootstrap IC with confidence intervals |
 | `compute_ic_by_horizon()` | IC analysis across multiple forward return horizons |
+
+### Recommended one-call entry point
+
+For a daily-IC series pooled across CV folds, `compute_ic_uncertainty(daily_ic, horizon=H)`
+returns mean IC together with three confidence intervals side-by-side: naive
+(independence assumption), HAC (Newey-West, lag = `max(H-1, NW_auto)`), and
+stationary block bootstrap (block length defaults to `max(H, n^{1/3})`).
+Reporting all three lets the reader see how much of the SE inflation comes
+from autocorrelation versus distributional shape.
 
 ## See It In The Book
 

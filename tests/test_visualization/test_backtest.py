@@ -14,9 +14,9 @@ import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 import pytest
+
 from ml4t.backtest import BacktestResult
 from ml4t.backtest.types import Fill, OrderSide, Trade
-
 from ml4t.diagnostic.integration import BacktestReportMetadata
 
 # =============================================================================

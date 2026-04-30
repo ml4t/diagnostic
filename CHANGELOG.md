@@ -5,6 +5,29 @@ All notable changes to ml4t-diagnostic will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0b15] - 2026-04-30
+
+### Added
+- **Daily-metric uncertainty helpers** for cross-sectional ranking signals
+  (`ml4t.diagnostic.metrics.uncertainty`):
+  - `cross_sectional_auc_series(predictions, labels, ...)` — per-date AUC
+    across the cross-section using a vectorized rank-based Mann-Whitney U
+    formula in pure Polars (no `sklearn` per-date loop).
+  - `compute_ic_uncertainty(daily_ic, horizon, ...)` — bundles naive,
+    Newey-West HAC, and stationary block-bootstrap intervals for the mean
+    of a daily-IC series. The HAC lag defaults to
+    `max(horizon - 1, NW_auto)` because forward returns of horizon `H`
+    induce up to `H-1` lags of serial dependence in the IC.
+  - `compute_auc_uncertainty(daily_auc, horizon, ...)` — analogous wrapper
+    for daily AUC, with the null centred on `null_value=0.5`.
+- All three helpers exported from `ml4t.diagnostic.metrics`.
+
+### Notes
+- These helpers move the primary uncertainty estimate for
+  cross-sectional ranking signals from "fold-level std (N≈8–16 folds)" to
+  the daily-pooled IC/AUC time series (N=hundreds), which is the natural
+  observational unit for daily ranking skill.
+
 ## [0.1.0b13] - 2026-04-22
 
 ### Added
