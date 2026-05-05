@@ -5,6 +5,17 @@ All notable changes to ml4t-diagnostic will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0b19] - 2026-05-05
+
+### Fixed
+- **Removed Python 3.14 dependency split pins**: dropped the Python 3.14-only
+  minimum overrides for `pandas`, `pyarrow`, `scipy`, `scikit-learn`,
+  `statsmodels`, `numba`, and `arch`, keeping the source-level minimums as the
+  unconditional package requirements.
+- **Transitive dependency floor**: updated `ml4t-engineer` to `>=0.1.0b8`,
+  the first release that also removes its Python 3.14-only dependency split
+  pins.
+
 ## [0.1.0b18] - 2026-05-05
 
 ### Fixed
