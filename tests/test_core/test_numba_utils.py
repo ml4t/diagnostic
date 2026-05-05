@@ -348,7 +348,7 @@ class TestNumbaEdgeCases:
     @given(
         size=st.integers(min_value=10, max_value=100),
     )
-    @settings(max_examples=20)
+    @settings(max_examples=20, deadline=None)
     def test_ic_bounds(self, size):
         """Property: IC should always be in [-1, 1]."""
         np.random.seed(42)

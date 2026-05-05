@@ -1790,7 +1790,7 @@ requires-dist = [
     { name = "ml4t-data", marker = "extra == 'all'", specifier = ">=0.1.0b7" },
     { name = "ml4t-data", marker = "extra == 'data'", specifier = ">=0.1.0b7" },
     { name = "ml4t-data", marker = "extra == 'factors'", specifier = ">=0.1.0b7" },
-    { name = "ml4t-engineer", specifier = ">=0.1.0b5" },
+    { name = "ml4t-engineer", specifier = ">=0.1.0b6" },
     { name = "ml4t-specs", specifier = ">=0.1.0b0" },
     { name = "numba", marker = "python_full_version < '3.14'", specifier = ">=0.57.0" },
     { name = "numba", marker = "python_full_version >= '3.14'", specifier = ">=0.64.0" },
@@ -1815,7 +1815,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "scikit-learn", marker = "python_full_version < '3.14'", specifier = ">=1.3.0" },
-    { name = "scikit-learn", marker = "python_full_version >= '3.14'", specifier = ">=1.8.0" },
+    { name = "scikit-learn", marker = "python_full_version >= '3.14'", specifier = ">=1.7.2" },
     { name = "scipy", marker = "python_full_version < '3.14'", specifier = ">=1.10.0" },
     { name = "scipy", marker = "python_full_version >= '3.14'", specifier = ">=1.17.0" },
     { name = "seaborn", marker = "extra == 'all'", specifier = ">=0.12.0" },
@@ -1858,7 +1858,7 @@ dev = [
 
 [[package]]
 name = "ml4t-engineer"
-version = "0.1.0b5"
+version = "0.1.0b6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
@@ -1883,9 +1883,9 @@ dependencies = [
     { name = "statsmodels", version = "0.14.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "structlog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/ca/f0b6968f6ad3fcbdbc86a59591f6da42c8a53d6d74cd9e4cc20f9124bca6/ml4t_engineer-0.1.0b5.tar.gz", hash = "sha256:9de75aedc8a187cd7ffc9be6b566936aab555052bc0f6eee9a987a1f69984948", size = 539792, upload-time = "2026-05-05T12:40:53.541Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/97/d120eab90c1d0a50a165adf2b4f0d72511cdd648ed016b0a2bdf7852c277/ml4t_engineer-0.1.0b6.tar.gz", hash = "sha256:ec72bfb5d2ceea37b0b1c309717cb2bbde01a3b05bff8fffc9305d44558b7b03", size = 539889, upload-time = "2026-05-05T15:46:13.641Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/42/85/4f25d7b475dca03f37119f6b5f687173077794472a6b48607bef6ad47b50/ml4t_engineer-0.1.0b5-py3-none-any.whl", hash = "sha256:026f9a7b68bfe19e434add4b45a425ddfa89f9c0ae919db2e1d3556bc9112ac6", size = 363158, upload-time = "2026-05-05T12:40:50.829Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/f4/01b364fcef160b4eaf819865cf54da2d697d858b4fc9fc5fe57c74e7dd0c/ml4t_engineer-0.1.0b6-py3-none-any.whl", hash = "sha256:74d180fc91ab1c9c06cdf5d3144993f5e98dc13b4726070e7fcc44a00f9898fa", size = 363159, upload-time = "2026-05-05T15:46:11.523Z" },
 ]
 
 [[package]]
