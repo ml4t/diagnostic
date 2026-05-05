@@ -5,6 +5,18 @@ All notable changes to ml4t-diagnostic will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0b16] - 2026-05-05
+
+### Fixed
+- **Python 3.14 install support**: widened `requires-python` from `<3.14` to
+  `<3.15` so `ml4t-diagnostic` no longer blocks Python 3.14 environments.
+- **Python 3.14 dependency resolution**: pinned Python 3.14 onto `ml4t-engineer`
+  and the compiled scientific stack (`pandas`, `pyarrow`, `scipy`,
+  `scikit-learn`, `statsmodels`, `arch`, `numba`) release lines that publish
+  `cp314` wheels, avoiding source-build failures during installation.
+- **Python 3.14 CI coverage**: added Python 3.14 to the main test matrix to
+  keep packaging support aligned with exercised CI coverage.
+
 ## [0.1.0b15] - 2026-04-30
 
 ### Added

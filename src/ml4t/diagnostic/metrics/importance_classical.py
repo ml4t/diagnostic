@@ -329,7 +329,13 @@ def compute_mdi_importance(
             feature_names = model.feature_name_
         elif hasattr(model, "get_booster") and hasattr(model.get_booster(), "feature_names"):
             # XGBoost
-            feature_names = model.get_booster().feature_names
+            booster_feature_names = model.get_booster().feature_names
+            if booster_feature_names is not None:
+                feature_names = list(booster_feature_names)
+            elif hasattr(model, "feature_names_in_"):
+                feature_names = list(model.feature_names_in_)
+            else:
+                feature_names = [f"feature_{i}" for i in range(len(importances))]
         elif hasattr(model, "feature_names_in_"):
             # sklearn
             feature_names = list(model.feature_names_in_)
