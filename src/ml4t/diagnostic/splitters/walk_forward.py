@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from ml4t.diagnostic.core.purging import apply_purging_and_embargo
+from ml4t.diagnostic.core.purging import _searchsorted_timestamp, apply_purging_and_embargo
 from ml4t.diagnostic.splitters.base import BaseSplitter
 from ml4t.diagnostic.splitters.calendar import (
     TradingCalendar,
@@ -538,13 +538,13 @@ class WalkForwardCV(BaseSplitter):
 
             test_start_date = self.config.test_start
             test_start_ts = pd.Timestamp(test_start_date, tz=timestamps.tz)
-            test_start_idx = int(timestamps.searchsorted(test_start_ts, side="left"))
+            test_start_idx = int(_searchsorted_timestamp(timestamps, test_start_ts, side="left"))
 
             if self.config.test_end is not None:
                 test_end_date = self.config.test_end
                 test_end_ts = pd.Timestamp(test_end_date, tz=timestamps.tz)
                 # Find the index of the first timestamp >= test_end
-                test_end_idx = int(timestamps.searchsorted(test_end_ts, side="right"))
+                test_end_idx = int(_searchsorted_timestamp(timestamps, test_end_ts, side="right"))
             else:
                 # Default: end of data
                 test_end_idx = n_samples
@@ -559,7 +559,9 @@ class WalkForwardCV(BaseSplitter):
                     test_start_ts = self.calendar.previous_trading_day(
                         end_timestamp, n=self.config.test_period
                     )
-                    test_start_idx = int(timestamps.searchsorted(test_start_ts, side="left"))
+                    test_start_idx = int(
+                        _searchsorted_timestamp(timestamps, test_start_ts, side="left")
+                    )
                 else:
                     # Sample count interpretation
                     test_start_idx = max(0, n_samples - self.config.test_period)
@@ -573,13 +575,15 @@ class WalkForwardCV(BaseSplitter):
                 time_delta = pd.Timedelta(self.config.test_period)
                 end_timestamp = timestamps[-1]
                 test_start_ts = end_timestamp - time_delta
-                test_start_idx = int(timestamps.searchsorted(test_start_ts, side="left"))
+                test_start_idx = int(
+                    _searchsorted_timestamp(timestamps, test_start_ts, side="left")
+                )
 
             # test_end is always end of data for test_period mode
             if self.config.test_end is not None and timestamps is not None:
                 test_end_date = self.config.test_end
                 test_end_ts = pd.Timestamp(test_end_date, tz=timestamps.tz)
-                test_end_idx = int(timestamps.searchsorted(test_end_ts, side="right"))
+                test_end_idx = int(_searchsorted_timestamp(timestamps, test_end_ts, side="right"))
             else:
                 test_end_idx = n_samples
         else:

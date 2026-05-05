@@ -421,21 +421,15 @@ class TradingCalendar:
         counts samples in each complete block.
         """
         ts_naive = timestamps.tz_localize(None) if timestamps.tz is not None else timestamps
-        day_ns = 24 * 60 * 60 * 1_000_000_000
-        day_keys = ts_naive.normalize().asi8 // day_ns
 
-        # Group by calendar period (atomic unit) with integer keys to avoid
-        # expensive Period conversions and timezone warnings.
-        period_keys: np.ndarray
+        # Period ordinals are stable across pandas datetime storage units,
+        # including pandas 3.x microsecond-backed timestamps.
         if freq == "D":
-            period_keys = day_keys
+            period_keys = ts_naive.to_period("D").asi8
         elif freq == "W":
-            weekday = ts_naive.weekday.to_numpy(dtype=np.int64, copy=False)
-            period_keys = day_keys - weekday
+            period_keys = ts_naive.to_period("W-SUN").asi8
         elif freq == "M":
-            year = ts_naive.year.to_numpy(dtype=np.int64, copy=False)
-            month = ts_naive.month.to_numpy(dtype=np.int64, copy=False)
-            period_keys = year * 12 + (month - 1)
+            period_keys = ts_naive.to_period("M").asi8
         else:
             raise ValueError(f"Unsupported frequency: {freq}")
 
