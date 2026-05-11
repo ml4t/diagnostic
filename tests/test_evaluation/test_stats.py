@@ -14,6 +14,7 @@ from ml4t.diagnostic.evaluation.stats import (
     DSRResult,
     benjamini_hochberg_fdr,
     deflated_sharpe_ratio_from_statistics,
+    effective_number_of_trials,
     holm_bonferroni,
     rademacher_complexity,
     ras_ic_adjustment,
@@ -115,6 +116,120 @@ class TestDeflatedSharpeRatio:
 
         # More trials should lead to lower probability (more deflation)
         assert result_100.probability < result_10.probability
+
+    def test_dsr_effective_trials_override_reduces_deflation(self):
+        """Test correlation-adjusted K_eff lowers deflation versus raw K."""
+        result_raw = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=2.0,
+            n_trials=100,
+            variance_trials=0.5,
+            n_samples=252,
+        )
+        result_eff = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=2.0,
+            n_trials=100,
+            effective_trials=10.0,
+            variance_trials=0.5,
+            n_samples=252,
+            correlation_method="effective_rank",
+        )
+
+        assert result_eff.n_trials_raw == 100
+        assert result_eff.n_trials_effective == pytest.approx(10.0)
+        assert result_eff.correlation_method == "effective_rank"
+        assert result_eff.expected_max_sharpe < result_raw.expected_max_sharpe
+        assert result_eff.probability > result_raw.probability
+
+    def test_dsr_min_k_eff_applies_floor_to_effective_trials(self):
+        """A minimum K_eff floor should make correlation-adjusted DSR more conservative."""
+        result_unfloored = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=2.0,
+            n_trials=100,
+            effective_trials=1.25,
+            variance_trials=0.5,
+            n_samples=252,
+            correlation_method="effective_rank",
+        )
+        result_floored = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=2.0,
+            n_trials=100,
+            effective_trials=1.25,
+            variance_trials=0.5,
+            n_samples=252,
+            correlation_method="effective_rank",
+            min_k_eff=2.0,
+        )
+
+        assert result_unfloored.n_trials_effective == pytest.approx(1.25)
+        assert result_floored.n_trials_effective == pytest.approx(2.0)
+        assert result_floored.min_k_eff == pytest.approx(2.0)
+        assert result_floored.expected_max_sharpe > result_unfloored.expected_max_sharpe
+        assert result_floored.deflated_sharpe < result_unfloored.deflated_sharpe
+        assert result_floored.z_score < result_unfloored.z_score
+
+
+class TestEffectiveNumberOfTrials:
+    """Tests for correlation-adjusted effective trial counts."""
+
+    def test_effective_rank_identical_strategies_near_one(self):
+        """Perfectly correlated strategies should collapse to one effective trial."""
+        base = np.linspace(-0.02, 0.02, 200)
+        matrix = np.column_stack([base, base, base])
+
+        result = effective_number_of_trials(matrix, method="effective_rank")
+
+        assert result.method == "effective_rank"
+        assert result.k_eff == pytest.approx(1.0, abs=1e-6)
+        assert result.diagnostics["n_strategies"] == 3
+
+    def test_effective_rank_independent_strategies_near_raw_k(self):
+        """Independent strategies should retain most of the raw trial count."""
+        rng = np.random.default_rng(42)
+        matrix = rng.normal(size=(5000, 5))
+
+        result = effective_number_of_trials(matrix, method="effective_rank")
+
+        assert result.k_eff > 4.5
+        assert result.k_eff <= 5.0
+
+    def test_marchenko_pastur_recovers_cluster_count(self):
+        """M-P estimator should recover a small number of latent strategy families."""
+        rng = np.random.default_rng(42)
+        n_periods = 1500
+        n_clusters = 10
+        per_cluster = 5
+        factors = rng.standard_t(df=5, size=(n_periods, n_clusters)) * 0.01
+        strategies = []
+        for cluster_id in range(n_clusters):
+            for _ in range(per_cluster):
+                strategies.append(factors[:, cluster_id] + rng.normal(scale=0.002, size=n_periods))
+        matrix = np.column_stack(strategies)
+
+        result = effective_number_of_trials(matrix, method="marchenko_pastur")
+
+        assert result.mp_upper_bound is not None
+        assert 8 <= result.k_eff <= 12
+
+    def test_clustering_recovers_cluster_count_and_variance(self):
+        """Clustering estimator should recover the number of independent ideas."""
+        rng = np.random.default_rng(42)
+        n_periods = 1200
+        n_clusters = 8
+        per_cluster = 4
+        factors = rng.normal(size=(n_periods, n_clusters)) * 0.01
+        strategies = []
+        for cluster_id in range(n_clusters):
+            for _ in range(per_cluster):
+                strategies.append(factors[:, cluster_id] + rng.normal(scale=0.0015, size=n_periods))
+        matrix = np.column_stack(strategies)
+
+        result = effective_number_of_trials(matrix, method="clustering")
+
+        assert result.n_clusters is not None
+        assert result.variance_trials is not None
+        assert 6 <= result.k_eff <= 10
+        assert result.variance_trials > 0
+        assert len(result.diagnostics["cluster_labels"]) == matrix.shape[1]
 
     def test_dsr_high_variance(self):
         """Test DSR with high variance across trials."""
@@ -1619,6 +1734,139 @@ class TestDeflatedSharpeRatioRawReturns:
         # Expected max Sharpe adjustment should reduce probability
         assert result.expected_max_sharpe >= 0
 
+    def test_multiple_strategy_matrix_input_supported(self):
+        """Test 2D return matrix input is treated as multiple strategies."""
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+        rng = np.random.default_rng(42)
+        matrix = rng.normal(loc=[0.0004, 0.001, 0.0002], scale=0.01, size=(252, 3))
+
+        result = deflated_sharpe_ratio(matrix, frequency="daily")
+
+        assert result.n_trials == 3
+        assert result.variance_trials > 0
+
+    def test_correlation_adjusted_dsr_uses_effective_rank(self):
+        """Highly correlated strategies should use K_eff < raw K."""
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+        rng = np.random.default_rng(42)
+        base = rng.normal(0.001, 0.01, size=252)
+        strategies = np.column_stack(
+            [
+                base,
+                base + rng.normal(0.0, 0.001, size=252),
+                base + rng.normal(0.0, 0.001, size=252),
+                base + rng.normal(0.0, 0.001, size=252),
+            ]
+        )
+
+        raw_result = deflated_sharpe_ratio(strategies, frequency="daily")
+        adjusted_result = deflated_sharpe_ratio(
+            strategies,
+            frequency="daily",
+            correlation_method="effective_rank",
+        )
+
+        assert adjusted_result.n_trials_raw == 4
+        assert adjusted_result.n_trials_effective is not None
+        assert adjusted_result.n_trials_effective < 4
+        assert adjusted_result.correlation_method == "effective_rank"
+        assert adjusted_result.expected_max_sharpe < raw_result.expected_max_sharpe
+        assert adjusted_result.deflated_sharpe > raw_result.deflated_sharpe
+
+    def test_correlation_adjusted_dsr_supports_marchenko_pastur(self):
+        """DSR should support the M-P effective trial estimator."""
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+        rng = np.random.default_rng(7)
+        factors = rng.normal(size=(500, 3)) * 0.01
+        matrix = np.column_stack(
+            [
+                factors[:, 0] + rng.normal(scale=0.001, size=500),
+                factors[:, 0] + rng.normal(scale=0.001, size=500),
+                factors[:, 1] + rng.normal(scale=0.001, size=500),
+                factors[:, 1] + rng.normal(scale=0.001, size=500),
+                factors[:, 2] + rng.normal(scale=0.001, size=500),
+                factors[:, 2] + rng.normal(scale=0.001, size=500),
+            ]
+        )
+
+        result = deflated_sharpe_ratio(
+            matrix,
+            frequency="daily",
+            correlation_method="marchenko_pastur",
+        )
+
+        assert result.n_trials_raw == 6
+        assert result.n_trials_effective is not None
+        assert 2 <= result.n_trials_effective <= 4
+        assert result.correlation_method == "marchenko_pastur"
+
+    def test_correlation_adjusted_dsr_supports_clustering(self):
+        """DSR should support clustering-based effective trial estimation."""
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+        rng = np.random.default_rng(11)
+        factors = rng.normal(size=(600, 4)) * 0.01
+        matrix = np.column_stack(
+            [
+                factors[:, 0] + rng.normal(scale=0.001, size=600),
+                factors[:, 0] + rng.normal(scale=0.001, size=600),
+                factors[:, 1] + rng.normal(scale=0.001, size=600),
+                factors[:, 1] + rng.normal(scale=0.001, size=600),
+                factors[:, 2] + rng.normal(scale=0.001, size=600),
+                factors[:, 2] + rng.normal(scale=0.001, size=600),
+                factors[:, 3] + rng.normal(scale=0.001, size=600),
+                factors[:, 3] + rng.normal(scale=0.001, size=600),
+            ]
+        )
+
+        result = deflated_sharpe_ratio(
+            matrix,
+            frequency="daily",
+            correlation_method="clustering",
+        )
+
+        assert result.n_trials_raw == 8
+        assert result.n_trials_effective is not None
+        assert 3 <= result.n_trials_effective <= 5
+        assert result.correlation_method == "clustering"
+
+    def test_correlation_adjusted_dsr_respects_min_k_eff_floor(self):
+        """Estimated K_eff should be floored when min_k_eff is supplied."""
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+        rng = np.random.default_rng(21)
+        base = rng.normal(0.001, 0.01, size=252)
+        strategies = np.column_stack(
+            [
+                base,
+                base + rng.normal(0.0, 0.001, size=252),
+                base + rng.normal(0.0, 0.001, size=252),
+                base + rng.normal(0.0, 0.001, size=252),
+            ]
+        )
+
+        unfloored = deflated_sharpe_ratio(
+            strategies,
+            frequency="daily",
+            correlation_method="effective_rank",
+        )
+        floored = deflated_sharpe_ratio(
+            strategies,
+            frequency="daily",
+            correlation_method="effective_rank",
+            min_k_eff=2.0,
+        )
+
+        assert unfloored.n_trials_effective is not None
+        assert unfloored.n_trials_effective < 2.0
+        assert floored.n_trials_effective == pytest.approx(2.0)
+        assert floored.min_k_eff == pytest.approx(2.0)
+        assert floored.expected_max_sharpe > unfloored.expected_max_sharpe
+        assert floored.deflated_sharpe < unfloored.deflated_sharpe
+
     def test_list_of_single_strategy_treated_as_psr(self):
         """Test that list with single element is treated as PSR."""
         from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
@@ -1800,6 +2048,10 @@ class TestDeflatedSharpeRatioRawReturns:
         assert "sharpe_ratio_annualized" in result_dict
         assert "n_samples" in result_dict
         assert "n_trials" in result_dict
+        assert "n_trials_raw" in result_dict
+        assert "n_trials_effective" in result_dict
+        assert "correlation_method" in result_dict
+        assert "min_k_eff" in result_dict
         assert "skewness" in result_dict
         assert "excess_kurtosis" in result_dict
         assert "min_trl" in result_dict

@@ -29,6 +29,7 @@ The stats package is organized into focused modules:
 **Sharpe Ratio Analysis**:
 - moments.py: Return statistics (Sharpe, skewness, kurtosis, autocorr)
 - sharpe_inference.py: Variance estimation, expected max calculation
+- effective_trials.py: Correlation-adjusted K_eff estimators for DSR
 - minimum_track_record.py: Minimum Track Record Length
 - backtest_overfitting.py: Probability of Backtest Overfitting
 - deflated_sharpe_ratio.py: DSR/PSR orchestration layer (main entry points)
@@ -70,6 +71,11 @@ from ml4t.diagnostic.evaluation.stats.deflated_sharpe_ratio import (
     Frequency,
     deflated_sharpe_ratio,
     deflated_sharpe_ratio_from_statistics,
+)
+from ml4t.diagnostic.evaluation.stats.effective_trials import (
+    EffectiveTrialsMethod,
+    EffectiveTrialsResult,
+    effective_number_of_trials,
 )
 
 # =============================================================================
@@ -169,6 +175,9 @@ __all__ = [
     "Frequency",
     "deflated_sharpe_ratio",
     "deflated_sharpe_ratio_from_statistics",
+    "EffectiveTrialsMethod",
+    "EffectiveTrialsResult",
+    "effective_number_of_trials",
     # RAS
     "RASResult",
     "rademacher_complexity",

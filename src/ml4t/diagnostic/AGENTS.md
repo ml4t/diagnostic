@@ -27,6 +27,10 @@
 
 - Public API is defined by `__all__` exports in package modules.
 - Recent reporting work is centered in `integration/` and `visualization/backtest/`.
+- Correlation-adjusted DSR now lives in `evaluation.stats` via
+  `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.
+- For book and case-study workflows, set `periods_per_year` from the return
+  series cadence, not from rebalance cadence.
 
 ## Migration Notes For Book Agents
 
@@ -37,3 +41,6 @@
 - Use `plot_ic_term_structure()` for horizon heatmaps and `plot_monthly_ic_heatmap()` for monthly signal IC heatmaps.
 - Pydantic result schemas use explicit names such as `PortfolioMetricsResultSchema`,
   `PSRResultSchema`, `MinTRLResultSchema`, and `DSRResultSchema`.
+- For correlated backtest cohorts, prefer `correlation_method="effective_rank"`
+  first, persist `n_trials_raw` and `n_trials_effective`, and only raise
+  `min_k_eff` above `1.0` when you want an explicit conservative floor.

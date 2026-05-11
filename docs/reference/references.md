@@ -70,22 +70,21 @@ Where:
 #### Usage Example
 
 ```python
-from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio_from_statistics
 
-# You tested 50 strategies, selected the best one
-result = deflated_sharpe_ratio(
+# You tested 50 strategies, selected the best one, and already computed the cohort statistics
+result = deflated_sharpe_ratio_from_statistics(
     observed_sharpe=1.5,      # Best strategy's SR
     n_trials=50,              # Number tested
     variance_trials=1.0,      # Var[{SR_1, ..., SR_50}]
     n_samples=252,            # Days of data
     skewness=0.0,             # Return skewness
     excess_kurtosis=0.0,      # Fisher convention (normal=0)
-    return_components=True
 )
 
-print(f"DSR probability: {result['dsr']:.3f}")
-print(f"Expected max under null: {result['expected_max_sharpe']:.3f}")
-print(f"p-value: {result['p_value']:.3f}")
+print(f"DSR probability: {result.probability:.3f}")
+print(f"Expected max under null: {result.expected_max_sharpe:.3f}")
+print(f"p-value: {result.p_value:.3f}")
 ```
 
 **Critical Requirement**: You must provide the **actual variance** of Sharpe ratios across all K strategies tested. DSR cannot be meaningfully calculated without access to all strategies.

@@ -17,9 +17,13 @@ $$
 E[\max\{SR\}] \approx \sqrt{\text{Var}[\{SR_k\}]} \cdot \sqrt{2 \log K}
 $$
 
-For K=50 strategies with typical variance, this spurious maximum is around 0.4-0.8 --
-enough to look like a tradeable signal. This is **selection bias**, and it is the
-most common source of backtest overfitting.
+For K=50 strategies with typical variance, this spurious maximum is around
+0.4-0.8 -- enough to look like a tradeable signal. This is **selection bias**,
+and it is the most common source of backtest overfitting.
+
+When the trial cohort is highly correlated, raw K can be too conservative.
+`ml4t-diagnostic` therefore also supports correlation-adjusted
+`K_eff` via `effective_rank`, `marchenko_pastur`, and `clustering`.
 
 ## The Solution
 
@@ -76,6 +80,7 @@ survives multiple testing correction at the 5% level.
 from ml4t.diagnostic.evaluation.stats import (
     deflated_sharpe_ratio,
     deflated_sharpe_ratio_from_statistics,
+    effective_number_of_trials,
 )
 import numpy as np
 
@@ -87,12 +92,23 @@ trial_returns = [
     np.random.normal(0.0002, 0.012, 252),
 ]
 
-result = deflated_sharpe_ratio(trial_returns, frequency="daily")
+k_eff = effective_number_of_trials(
+    np.column_stack(trial_returns),
+    method="effective_rank",
+)
+
+result = deflated_sharpe_ratio(
+    trial_returns,
+    frequency="daily",
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
+)
 
 print(f"Probability of skill: {result.probability:.3f}")
 print(f"P-value: {result.p_value:.3f}")
 print(f"Expected max from noise: {result.expected_max_sharpe:.3f}")
 print(f"Deflated Sharpe: {result.deflated_sharpe:.3f}")
+print(f"K_eff: {result.n_trials_effective:.2f} (raw K={result.n_trials_raw})")
 
 # Secondary path: use pre-computed statistics if your pipeline already has them
 stats_result = deflated_sharpe_ratio_from_statistics(
@@ -101,6 +117,9 @@ stats_result = deflated_sharpe_ratio_from_statistics(
     n_trials=50,
     variance_trials=0.03,
     frequency="daily",
+    effective_trials=8.5,
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
 )
 ```
 
@@ -117,8 +136,26 @@ Sharpe moments and trial variance upstream.
 | `frequency` | Return frequency | `"daily"` by default; affects annualized display values |
 | `benchmark_sharpe` | Null-hypothesis Sharpe threshold | Leave at `0.0` unless you need a stricter hurdle |
 | `n_trials` | Total strategies tested | Relevant for the statistics-based helper; include all trials |
+| `correlation_method` | Correlation-aware `K_eff` estimator | Use `"effective_rank"` first; compare against `"marchenko_pastur"` or `"clustering"` when needed |
+| `min_k_eff` | Conservative floor for correlation-adjusted `K_eff` | Leave at `1.0` by default; raise only when you want an explicit residual multiplicity penalty |
 | `variance_trials` | Var[{SR_1, ..., SR_K}] across all strategies | Must be computed, not assumed, when using the statistics-based helper |
 | `n_samples` | Number of return observations | T >= 50 minimum, >= 252 recommended |
+
+### Correlation-Adjusted Trial Counts
+
+When your candidate strategies are closely related, raw `K` can overstate the
+true breadth of the search. The library supports three estimators for
+correlation-adjusted `K_eff`:
+
+| Estimator | What it measures | Notes |
+|-----------|------------------|-------|
+| `effective_rank` | entropy-weighted eigenvalue breadth | Recommended default; smooth and cheap |
+| `marchenko_pastur` | non-noise eigenvalue count | Uses the iterative denoising variant |
+| `clustering` | number of independent strategy families | Also swaps in cluster-level Sharpe variance |
+
+The `deflated_sharpe_ratio()` result reports both `n_trials_raw` and
+`n_trials_effective`. If `min_k_eff > 1`, `n_trials_effective` reflects the
+post-floor value actually used in the DSR adjustment.
 
 ## Interpreting Results
 
@@ -145,19 +182,25 @@ and realistic transaction cost modeling.
     Every parameter variation, feature combination, and lookback period counts as a trial.
     If you tested 10 signals x 5 lookbacks x 3 thresholds = 150 trials, not 10.
 
-3. **Misinterpreting the output**
+3. **Mixing return cadence and annualization**
+
+    `periods_per_year` should reflect the cadence of the return series passed to
+    DSR, not the rebalance cadence that generated those returns. Daily crypto
+    return series usually need `periods_per_year=365`, not `252`.
+
+4. **Misinterpreting the output**
 
     DSR = 0.42 does **not** mean "the strategy has 42% of its claimed Sharpe."
     It means "there is 42% probability the true Sharpe exceeds zero after
     accounting for multiple testing."
 
-4. **Ignoring non-normality**
+5. **Ignoring non-normality**
 
     Strategies with negative skewness and fat tails (common in trend-following)
     have higher Sharpe ratio estimation variance. Always provide `skewness` and
     `excess_kurtosis` from your actual returns.
 
-5. **Using DSR without enough data**
+6. **Using DSR without enough data**
 
     With T < 50 observations, the standard error of the Sharpe ratio estimator
     is so large that DSR becomes unreliable regardless of the observed value.

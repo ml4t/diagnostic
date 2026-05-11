@@ -32,6 +32,11 @@ from numpy.typing import ArrayLike
 from scipy.stats import norm
 
 from ml4t.diagnostic.evaluation.stats.backtest_overfitting import PBOResult, compute_pbo
+from ml4t.diagnostic.evaluation.stats.effective_trials import (
+    EffectiveTrialsMethod,
+    EffectiveTrialsResult,
+    effective_number_of_trials,
+)
 
 # Import from decomposed modules
 from ml4t.diagnostic.evaluation.stats.minimum_track_record import (
@@ -81,6 +86,17 @@ class DSRResult:
         Number of return observations (T).
     n_trials : int
         Number of strategies tested (K). K=1 means PSR, K>1 means DSR.
+    n_trials_raw : int
+        Raw number of tested strategies before any correlation adjustment.
+    n_trials_effective : float | None
+        Effective number of trials, K_eff, when a correlation-aware adjustment
+        is used. ``None`` means raw K was used.
+    correlation_method : str | None
+        Correlation-aware effective-trials estimator, if used.
+    min_k_eff : float
+        Minimum effective-trials floor applied to correlation-adjusted K_eff.
+        A value above 1.0 makes the multiple-testing correction more
+        conservative when the estimated K_eff collapses toward one.
     frequency : str
         Return frequency ("daily", "weekly", "monthly").
 
@@ -127,6 +143,10 @@ class DSRResult:
     # Sample information
     n_samples: int
     n_trials: int
+    n_trials_raw: int
+    n_trials_effective: float | None
+    correlation_method: str | None
+    min_k_eff: float
     frequency: str
     periods_per_year: int
 
@@ -155,10 +175,25 @@ class DSRResult:
             selection_note = ""
         else:
             test_type = f"Deflated Sharpe Ratio (DSR) - best of {self.n_trials} strategies"
-            selection_note = (
-                f"\n  Expected max from noise: {self.expected_max_sharpe:.4f}"
-                f"\n  Deflated Sharpe: {self.deflated_sharpe:.4f}"
-            )
+            selection_lines = [
+                f"  Expected max from noise: {self.expected_max_sharpe:.4f}",
+                f"  Deflated Sharpe: {self.deflated_sharpe:.4f}",
+            ]
+            if self.n_trials_effective is not None:
+                selection_lines.insert(0, f"  Raw trials: {self.n_trials_raw}")
+                selection_lines.insert(1, f"  Effective trials: {self.n_trials_effective:.2f}")
+                if self.min_k_eff > 1:
+                    selection_lines.insert(2, f"  Minimum K_eff floor: {self.min_k_eff:.2f}")
+            if self.correlation_method is not None:
+                selection_lines.insert(
+                    3
+                    if self.n_trials_effective is not None and self.min_k_eff > 1
+                    else 2
+                    if self.n_trials_effective is not None
+                    else 0,
+                    f"  Correlation adjustment: {self.correlation_method}",
+                )
+            selection_note = "\n" + "\n".join(selection_lines)
 
         significance = "Yes" if self.is_significant else "No"
         confidence_pct = self.confidence_level * 100
@@ -215,6 +250,10 @@ class DSRResult:
             "benchmark_sharpe": self.benchmark_sharpe,
             "n_samples": self.n_samples,
             "n_trials": self.n_trials,
+            "n_trials_raw": self.n_trials_raw,
+            "n_trials_effective": self.n_trials_effective,
+            "correlation_method": self.correlation_method,
+            "min_k_eff": self.min_k_eff,
             "frequency": self.frequency,
             "periods_per_year": self.periods_per_year,
             "skewness": self.skewness,
@@ -240,6 +279,9 @@ def deflated_sharpe_ratio(
     skewness: float | None = None,
     excess_kurtosis: float | None = None,
     autocorrelation: float | None = None,
+    effective_trials: float | None = None,
+    correlation_method: EffectiveTrialsMethod | None = None,
+    min_k_eff: float = 1.0,
 ) -> DSRResult:
     """Compute Deflated Sharpe Ratio (DSR) or Probabilistic Sharpe Ratio (PSR).
 
@@ -258,7 +300,8 @@ def deflated_sharpe_ratio(
     returns : array-like or Sequence[array-like]
         Strategy returns at the specified frequency.
         - Single array: Computes PSR (no multiple testing adjustment)
-        - Sequence of K arrays: Computes DSR for the best strategy
+        - Sequence of K arrays or a 2D return matrix: Computes DSR for the
+          best strategy
     frequency : {"daily", "weekly", "monthly"}, default "daily"
         Return frequency. Affects annualization for display.
     benchmark_sharpe : float, default 0.0
@@ -273,6 +316,26 @@ def deflated_sharpe_ratio(
         Override computed excess kurtosis (Fisher convention, normal=0).
     autocorrelation : float, optional
         Override computed autocorrelation.
+    effective_trials : float, optional
+        Correlation-adjusted effective number of trials, K_eff. When supplied,
+        it replaces the raw trial count in the False Strategy Theorem.
+    correlation_method : {"effective_rank", "marchenko_pastur", "clustering"}, optional
+        Compute K_eff from the strategy return matrix using the selected
+        estimator. Only valid when multiple strategies are supplied.
+    min_k_eff : float, default 1.0
+        Lower bound applied to correlation-adjusted ``K_eff`` before computing
+        the expected-maximum Sharpe term. This does not change raw-K DSR calls
+        and does not turn a single-strategy PSR call into a multiple-testing
+        problem. Values above 1.0 add a conservative floor when the estimated
+        effective trial count collapses toward one.
+
+    Notes
+    -----
+    For multiple-strategy inputs, the library selects the leader strategy by
+    the highest native-frequency Sharpe ratio. The reported skewness, excess
+    kurtosis, and autocorrelation in the resulting `DSRResult` are computed
+    from that leader series. The cross-sectional variance and expected-maximum
+    correction are computed from the full candidate cohort.
 
     Returns
     -------
@@ -296,23 +359,52 @@ def deflated_sharpe_ratio(
     ----------
     Lopez de Prado et al. (2025). "How to Use the Sharpe Ratio."
     """
+    if effective_trials is not None and effective_trials < 1:
+        raise ValueError("effective_trials must be >= 1")
+    if effective_trials is not None and correlation_method is not None:
+        raise ValueError("effective_trials and correlation_method are mutually exclusive")
+    if min_k_eff < 1:
+        raise ValueError("min_k_eff must be >= 1")
+
     # Resolve periods per year
     if periods_per_year is None:
         periods_per_year = DEFAULT_PERIODS_PER_YEAR[frequency]
 
     annualization_factor = np.sqrt(periods_per_year)
 
-    # Detect multiple strategies
-    is_multiple = (
+    returns_array = (
+        np.asarray(returns, dtype=float) if not isinstance(returns, list | tuple) else None
+    )
+    is_matrix_input = (
+        returns_array is not None and returns_array.ndim == 2 and returns_array.shape[1] > 1
+    )
+    is_multiple = is_matrix_input or (
         isinstance(returns, list | tuple)
         and len(returns) > 1
         and not isinstance(returns[0], int | float)
     )
 
+    effective_trials_result: EffectiveTrialsResult | None = None
+
     if is_multiple:
         # Multiple strategies - DSR
-        returns_seq = list(returns)  # type: ignore[arg-type]
-        n_trials = len(returns_seq)
+        if is_matrix_input:
+            assert returns_array is not None
+            returns_seq = [returns_array[:, i] for i in range(returns_array.shape[1])]
+            returns_matrix = returns_array
+        else:
+            returns_seq = list(returns)  # type: ignore[arg-type]
+            lengths = {len(np.asarray(ret).flatten()) for ret in returns_seq}
+            if correlation_method is not None and len(lengths) != 1:
+                raise ValueError(
+                    "correlation_method requires strategies with equal-length return histories"
+                )
+            returns_matrix = (
+                np.column_stack([np.asarray(ret, dtype=float).flatten() for ret in returns_seq])
+                if len(lengths) == 1
+                else None
+            )
+        n_trials_raw = len(returns_seq)
 
         # Compute Sharpe ratio for each strategy
         sharpe_ratios = []
@@ -332,11 +424,21 @@ def deflated_sharpe_ratio(
         )
 
         # Cross-sectional variance
-        variance_trials = float(np.var(sharpe_ratios, ddof=1)) if n_trials > 1 else 0.0
+        variance_trials = float(np.var(sharpe_ratios, ddof=1)) if n_trials_raw > 1 else 0.0
+
+        if correlation_method is not None:
+            if returns_matrix is None:
+                raise ValueError("correlation_method requires a 2D strategy return matrix")
+            effective_trials_result = effective_number_of_trials(
+                returns_matrix,
+                method=correlation_method,
+            )
+            if effective_trials_result.variance_trials is not None:
+                variance_trials = effective_trials_result.variance_trials
 
     else:
         # Single strategy - PSR
-        n_trials = 1
+        n_trials_raw = 1
         variance_trials = 0.0
 
         if isinstance(returns, list | tuple) and len(returns) == 1:
@@ -347,6 +449,13 @@ def deflated_sharpe_ratio(
         observed_sharpe, comp_skew, comp_kurt, comp_rho, n_samples = compute_return_statistics(
             ret_arr
         )
+        if correlation_method is not None:
+            raise ValueError("correlation_method requires multiple strategies")
+        if effective_trials is not None and effective_trials > 1:
+            raise ValueError(
+                "effective_trials > 1 requires multiple strategies or "
+                "deflated_sharpe_ratio_from_statistics()"
+            )
 
     # Use provided statistics or computed ones
     skew = skewness if skewness is not None else comp_skew
@@ -356,8 +465,15 @@ def deflated_sharpe_ratio(
         kurt = comp_kurt
     rho = autocorrelation if autocorrelation is not None else comp_rho
 
+    effective_k = (
+        effective_trials_result.k_eff if effective_trials_result is not None else effective_trials
+    )
+    if effective_k is not None and n_trials_raw > 1:
+        effective_k = max(float(effective_k), float(min_k_eff))
+    trials_for_adjustment = effective_k if effective_k is not None else float(n_trials_raw)
+
     # Expected max Sharpe (multiple testing adjustment)
-    expected_max = compute_expected_max_sharpe(n_trials, variance_trials)
+    expected_max = compute_expected_max_sharpe(trials_for_adjustment, variance_trials)
     adjusted_threshold = benchmark_sharpe + expected_max
 
     # Variance of Sharpe estimator
@@ -367,7 +483,7 @@ def deflated_sharpe_ratio(
         skewness=skew,
         kurtosis=kurt,
         autocorrelation=rho,
-        n_trials=n_trials,
+        n_trials=trials_for_adjustment,
     )
     std_sr = np.sqrt(variance_sr)
 
@@ -407,7 +523,13 @@ def deflated_sharpe_ratio(
         sharpe_ratio_annualized=float(sharpe_annualized),
         benchmark_sharpe=benchmark_sharpe,
         n_samples=n_samples,
-        n_trials=n_trials,
+        n_trials=n_trials_raw,
+        n_trials_raw=n_trials_raw,
+        n_trials_effective=float(effective_k) if effective_k is not None else None,
+        correlation_method=(
+            effective_trials_result.method if effective_trials_result is not None else None
+        ),
+        min_k_eff=float(min_k_eff),
         frequency=frequency,
         periods_per_year=periods_per_year,
         skewness=float(skew),
@@ -435,6 +557,10 @@ def deflated_sharpe_ratio_from_statistics(
     confidence_level: float = 0.95,
     frequency: Frequency = "daily",
     periods_per_year: int | None = None,
+    *,
+    effective_trials: float | None = None,
+    correlation_method: EffectiveTrialsMethod | None = None,
+    min_k_eff: float = 1.0,
 ) -> DSRResult:
     """Compute DSR/PSR from pre-computed statistics.
 
@@ -465,6 +591,13 @@ def deflated_sharpe_ratio_from_statistics(
         Return frequency.
     periods_per_year : int, optional
         Periods per year.
+    effective_trials : float, optional
+        Correlation-adjusted effective number of trials, K_eff.
+    correlation_method : {"effective_rank", "marchenko_pastur", "clustering"}, optional
+        Metadata describing how ``effective_trials`` was estimated.
+    min_k_eff : float, default 1.0
+        Lower bound applied to ``effective_trials`` before computing the
+        expected-maximum Sharpe term. Ignored when raw ``n_trials`` is used.
 
     Returns
     -------
@@ -480,6 +613,10 @@ def deflated_sharpe_ratio_from_statistics(
         raise ValueError("variance_trials must be positive when n_trials > 1")
     if abs(autocorrelation) >= 1:
         raise ValueError("autocorrelation must be in (-1, 1)")
+    if effective_trials is not None and effective_trials < 1:
+        raise ValueError("effective_trials must be >= 1")
+    if min_k_eff < 1:
+        raise ValueError("min_k_eff must be >= 1")
 
     kurtosis = excess_kurtosis + 3.0
 
@@ -487,9 +624,15 @@ def deflated_sharpe_ratio_from_statistics(
         periods_per_year = DEFAULT_PERIODS_PER_YEAR[frequency]
 
     annualization_factor = np.sqrt(periods_per_year)
+    effective_k = (
+        max(float(effective_trials), float(min_k_eff))
+        if effective_trials is not None and n_trials > 1
+        else effective_trials
+    )
+    trials_for_adjustment = effective_k if effective_k is not None else float(n_trials)
 
     # Expected max Sharpe
-    expected_max = compute_expected_max_sharpe(n_trials, variance_trials)
+    expected_max = compute_expected_max_sharpe(trials_for_adjustment, variance_trials)
     adjusted_threshold = benchmark_sharpe + expected_max
 
     # Variance
@@ -499,7 +642,7 @@ def deflated_sharpe_ratio_from_statistics(
         skewness=skewness,
         kurtosis=kurtosis,
         autocorrelation=autocorrelation,
-        n_trials=n_trials,
+        n_trials=trials_for_adjustment,
     )
     std_sr = np.sqrt(variance_sr)
 
@@ -538,6 +681,10 @@ def deflated_sharpe_ratio_from_statistics(
         benchmark_sharpe=benchmark_sharpe,
         n_samples=n_samples,
         n_trials=n_trials,
+        n_trials_raw=n_trials,
+        n_trials_effective=float(effective_k) if effective_k is not None else None,
+        correlation_method=correlation_method,
+        min_k_eff=float(min_k_eff),
         frequency=frequency,
         periods_per_year=periods_per_year,
         skewness=float(skewness),
@@ -569,9 +716,12 @@ _compute_min_trl = _compute_min_trl_core
 __all__ = [
     # Result classes
     "DSRResult",
+    "EffectiveTrialsMethod",
+    "EffectiveTrialsResult",
     # Main functions
     "deflated_sharpe_ratio",
     "deflated_sharpe_ratio_from_statistics",
+    "effective_number_of_trials",
     # Re-exports from other modules (for backward compat)
     "MinTRLResult",
     "PBOResult",
