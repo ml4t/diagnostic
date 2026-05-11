@@ -4,18 +4,25 @@ ML4T Diagnostic implements rigorous statistical tests to prevent false discoveri
 
 ## Deflated Sharpe Ratio (DSR)
 
-The DSR adjusts the Sharpe ratio for the number of backtests tried:
+DSR asks whether the selected leader still looks credible after accounting for
+the fact that you searched across multiple candidates.
 
 ```python
-from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio, effective_number_of_trials
+
+# returns_matrix shape: (n_periods, n_strategies)
+k_eff = effective_number_of_trials(returns_matrix, method="effective_rank")
 
 result = deflated_sharpe_ratio(
-    returns=strategy_returns,
-    n_trials=100,             # How many strategies tested
-    frequency='daily',        # Return frequency
-    periods_per_year=252
+    returns=returns_matrix,
+    frequency="daily",
+    periods_per_year=252,
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
 )
 
+print(f"Raw trials: {result.n_trials_raw}")
+print(f"Effective trials: {result.n_trials_effective:.2f}")
 print(f"Observed Sharpe: {result.sharpe_ratio:.2f}")
 print(f"Deflated Sharpe: {result.deflated_sharpe:.2f}")
 print(f"p-value: {result.p_value:.4f}")
@@ -24,17 +31,26 @@ print(f"p-value: {result.p_value:.4f}")
 ### When to Use DSR
 
 - After trying multiple strategy variations
+- When those variants are strongly correlated and raw K over-penalizes the leader
 - When selecting among several candidate strategies
 - To report statistically honest performance
 
 ### DSR Formula (López de Prado et al. 2025)
 
-$$DSR = \Phi^{-1}\left(1 - e^{-\frac{1}{2}\gamma}\right)$$
+For multiple strategies, DSR replaces the naive null `SR_0 = 0` with an
+expected-maximum Sharpe threshold:
 
-where $\gamma$ accounts for:
-- Number of trials
-- Expected maximum Sharpe under null hypothesis
-- Autocorrelation in returns
+$$
+SR_0 = E[\max\{\widehat{SR}_k\}]
+$$
+
+and then evaluates the leader's Sharpe ratio relative to that harder hurdle.
+When you provide `correlation_method=...`, the library uses `K_eff` instead of
+raw `K` in the False Strategy Theorem adjustment.
+
+`effective_rank` is the recommended default. `marchenko_pastur` uses the
+iterative denoising variant, and `clustering` estimates the number of
+independent strategy families.
 
 See [Deflated Sharpe Ratio](../methods/deflated-sharpe-ratio.md) for details.
 

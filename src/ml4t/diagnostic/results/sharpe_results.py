@@ -196,6 +196,25 @@ class DSRResultSchema(BaseResult):
     is_significant: bool = Field(..., description="Is significant at alpha")
 
     n_trials: int = Field(..., gt=0, description="Number of trials tested")
+    n_trials_raw: int | None = Field(
+        default=None,
+        gt=0,
+        description="Raw number of tested strategies before correlation adjustment",
+    )
+    n_trials_effective: float | None = Field(
+        default=None,
+        ge=1.0,
+        description="Effective number of trials after correlation adjustment",
+    )
+    correlation_method: str | None = Field(
+        default=None,
+        description="Correlation-aware estimator used for effective trials",
+    )
+    min_k_eff: float = Field(
+        default=1.0,
+        ge=1.0,
+        description="Minimum effective-trials floor used for correlation-adjusted DSR",
+    )
     variance_trials: float = Field(..., ge=0.0, description="Variance of Sharpe across trials")
     alpha: float = Field(default=0.05, description="Significance level")
 
@@ -211,6 +230,10 @@ class DSRResultSchema(BaseResult):
             "adjusted_pvalue": [self.adjusted_pvalue],
             "is_significant": [self.is_significant],
             "n_trials": [self.n_trials],
+            "n_trials_raw": [self.n_trials_raw],
+            "n_trials_effective": [self.n_trials_effective],
+            "correlation_method": [self.correlation_method],
+            "min_k_eff": [self.min_k_eff],
             "variance_trials": [self.variance_trials],
             "alpha": [self.alpha],
         }
@@ -224,6 +247,14 @@ class DSRResultSchema(BaseResult):
         lines.append(f"Adjusted p-value: {self.adjusted_pvalue:.4f}")
         lines.append("")
         lines.append(f"Number of trials: {self.n_trials}")
+        if self.n_trials_raw is not None:
+            lines.append(f"Raw trials: {self.n_trials_raw}")
+        if self.n_trials_effective is not None:
+            lines.append(f"Effective trials: {self.n_trials_effective:.2f}")
+        if self.correlation_method is not None:
+            lines.append(f"Correlation adjustment: {self.correlation_method}")
+        if self.n_trials_effective is not None and self.min_k_eff > 1:
+            lines.append(f"Minimum K_eff floor: {self.min_k_eff:.2f}")
         lines.append(f"Trial variance: {self.variance_trials:.4f}")
         lines.append(f"Significance level: {self.alpha}")
         lines.append("")

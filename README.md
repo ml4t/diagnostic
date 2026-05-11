@@ -21,7 +21,7 @@ Together they cover data infrastructure, feature engineering, modeling, signal e
 Evaluating whether a signal or strategy has genuine predictive power requires statistical rigor. ml4t-diagnostic provides:
 
 - Information coefficient (IC) analysis with HAC-adjusted standard errors
-- Deflated Sharpe Ratio (DSR) and other multiple-testing corrections (RAS, PBO, FDR)
+- Deflated Sharpe Ratio (DSR) with correlation-adjusted K_eff plus other multiple-testing corrections (RAS, PBO, FDR)
 - Combinatorial purged cross-validation (CPCV) with calendar-aware splitting
 - Feature importance analysis (MDI, PFI, MDA, SHAP) with consensus ranking
 - Trade-level diagnostics with SHAP-based error pattern discovery
@@ -109,15 +109,19 @@ html = generate_tearsheet_from_result(
 ```python
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
-# Accounts for multiple testing
+# Accounts for multiple testing across correlated strategy variants
 dsr_result = deflated_sharpe_ratio(
-    returns=strategy_returns,
+    returns=[strategy_a_returns, strategy_b_returns, strategy_c_returns],
     benchmark_sharpe=0.0,
-    n_trials=100,
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
+    periods_per_year=252,
 )
 
 print(f"Sharpe: {dsr_result.sharpe_ratio:.2f}")
 print(f"Deflated Sharpe: {dsr_result.deflated_sharpe:.2f}")
+print(f"Raw trials: {dsr_result.n_trials_raw}")
+print(f"Effective trials: {dsr_result.n_trials_effective:.2f}")
 print(f"Significant: {dsr_result.is_significant}")
 ```
 

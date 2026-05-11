@@ -784,6 +784,10 @@ class Evaluator:
                                 "expected_max_sharpe": dsr_result.expected_max_sharpe,
                                 "z_score": dsr_result.z_score,
                                 "is_significant": dsr_result.is_significant,
+                                "n_trials_raw": dsr_result.n_trials_raw,
+                                "n_trials_effective": dsr_result.n_trials_effective,
+                                "correlation_method": dsr_result.correlation_method,
+                                "min_k_eff": dsr_result.min_k_eff,
                             }
                         else:
                             continue

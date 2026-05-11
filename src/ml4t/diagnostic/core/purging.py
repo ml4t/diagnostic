@@ -22,40 +22,6 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.splitters.calendar import TradingCalendar
 
 
-_DATETIME_UNIT_TO_NS = {
-    "s": 1_000_000_000,
-    "ms": 1_000_000,
-    "us": 1_000,
-    "ns": 1,
-}
-
-
-def _searchsorted_timestamp(
-    timestamps: pd.DatetimeIndex,
-    timestamp: pd.Timestamp,
-    side: Literal["left", "right"],
-) -> np.intp:
-    """Search a DatetimeIndex using the index's native datetime unit.
-
-    pandas 3.x can back DatetimeIndex with microsecond resolution, while
-    Timestamp arithmetic still commonly produces nanosecond values. Converting
-    through the index unit avoids ``Cannot losslessly convert units`` errors
-    while preserving insertion semantics for left/right boundaries.
-    """
-    unit = cast(str, getattr(timestamps, "unit", "ns"))
-    ns_per_unit = _DATETIME_UNIT_TO_NS.get(unit)
-    if ns_per_unit is None:
-        raise ValueError(f"Unsupported datetime unit: {unit}")
-
-    timestamp_ns = int(timestamp.value)
-    if side == "left":
-        target_value = -(-timestamp_ns // ns_per_unit)
-    else:
-        target_value = timestamp_ns // ns_per_unit
-
-    return np.intp(np.searchsorted(timestamps.asi8, target_value, side=side))
-
-
 def _normalize_timezone_aware_inputs(
     timestamps: pd.DatetimeIndex,
     test_start: pd.Timestamp,
@@ -74,6 +40,21 @@ def _normalize_timezone_aware_inputs(
         test_start.tz_convert("UTC"),
         test_end.tz_convert("UTC"),
     )
+
+
+def _searchsorted_timestamp_ns(
+    timestamps: pd.DatetimeIndex,
+    value: pd.Timestamp,
+    *,
+    side: Literal["left", "right"] = "left",
+) -> int:
+    """Search timezone-aware timestamps using nanosecond integers.
+
+    Pandas 3.0 tightened unit conversion rules for DatetimeIndex.searchsorted().
+    Searching on normalized nanosecond integers avoids lossy unit-conversion
+    errors and also gives the type checker a plain numpy path.
+    """
+    return int(np.searchsorted(timestamps.as_unit("ns").asi8, value.value, side=side))
 
 
 def calculate_purge_indices(
@@ -427,8 +408,8 @@ def apply_purging_and_embargo(
     # Also remove test indices themselves
     if timestamps is not None:
         # Use searchsorted for more robust boundary handling
-        test_start_idx = _searchsorted_timestamp(timestamps, test_start, side="left")
-        test_end_idx = _searchsorted_timestamp(timestamps, test_end, side="left")
+        test_start_idx = _searchsorted_timestamp_ns(timestamps, test_start, side="left")
+        test_end_idx = _searchsorted_timestamp_ns(timestamps, test_end, side="left")
         test_arr = np.arange(test_start_idx, test_end_idx, dtype=np.intp)
     else:
         # When timestamps is None, test_start/test_end are integer indices

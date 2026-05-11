@@ -101,9 +101,10 @@ print(signal_result.summary())
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
 result = deflated_sharpe_ratio(
-    returns=strategy_returns,
-    n_trials=100,
+    returns=strategy_matrix,
     frequency="daily",
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
 )
 
 print(f"Probability of skill: {result.probability:.1%}")

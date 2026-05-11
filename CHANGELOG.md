@@ -5,6 +5,33 @@ All notable changes to ml4t-diagnostic will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0b20] - 2026-05-11
+
+### Added
+- **Correlation-adjusted Deflated Sharpe Ratio**: added
+  `effective_number_of_trials()` with `effective_rank`,
+  `marchenko_pastur`, and `clustering` estimators so DSR can use
+  `K_eff` instead of raw `K` for correlated strategy cohorts.
+- **Correlation-aware DSR metadata**: `DSRResult` and `DSRResultSchema`
+  now report `n_trials_raw`, `n_trials_effective`, `correlation_method`,
+  and `min_k_eff`.
+- **2D strategy matrix support for DSR**: `deflated_sharpe_ratio()`
+  now accepts either a sequence of return series or a
+  `(n_periods, n_strategies)` return matrix for multi-strategy evaluation.
+
+### Changed
+- **DSR documentation and agent guidance**: updated public docs and
+  packaged `AGENTS.md` files to cover `K_eff`, cadence-sensitive
+  `periods_per_year`, and the conservative `min_k_eff` floor.
+
+### Fixed
+- **Pandas 3 timestamp handling**: hardened purging and walk-forward
+  splitter searchsorted logic plus calendar period grouping for modern
+  pandas datetime unit semantics.
+- **XGBoost MDI feature names**: fixed the fallback path so classical
+  importance results still emit stable feature names when the booster
+  omits them.
+
 ## [0.1.0b19] - 2026-05-05
 
 ### Fixed

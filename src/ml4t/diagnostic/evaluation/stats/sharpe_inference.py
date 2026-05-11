@@ -109,7 +109,7 @@ def probabilistic_sharpe_ratio(
     return psr
 
 
-def get_variance_rescaling_factor(k: int) -> float:
+def get_variance_rescaling_factor(k: float) -> float:
     """Get variance rescaling factor √V[max{X_k}] for K trials.
 
     Source: López de Prado et al. (2025), Exhibit 3, page 13.
@@ -124,8 +124,12 @@ def get_variance_rescaling_factor(k: int) -> float:
     float
         Rescaling factor (uses linear interpolation for unlisted values)
     """
-    if k in VARIANCE_RESCALING_FACTORS:
-        return VARIANCE_RESCALING_FACTORS[k]
+    if k <= 1:
+        return VARIANCE_RESCALING_FACTORS[1]
+
+    k_int = int(round(k))
+    if abs(k - k_int) < 1e-12 and k_int in VARIANCE_RESCALING_FACTORS:
+        return VARIANCE_RESCALING_FACTORS[k_int]
 
     keys = sorted(VARIANCE_RESCALING_FACTORS.keys())
     if k < keys[0]:
@@ -149,7 +153,7 @@ def compute_sharpe_variance(
     skewness: float,
     kurtosis: float,
     autocorrelation: float,
-    n_trials: int = 1,
+    n_trials: float = 1,
 ) -> float:
     """Compute variance of Sharpe ratio estimator.
 
@@ -231,7 +235,7 @@ def compute_sharpe_variance(
     return max(variance, 0.0)  # Ensure non-negative
 
 
-def compute_expected_max_sharpe(n_trials: int, variance_trials: float) -> float:
+def compute_expected_max_sharpe(n_trials: float, variance_trials: float) -> float:
     """Compute expected maximum Sharpe ratio under null hypothesis.
 
     .. math::
@@ -243,8 +247,8 @@ def compute_expected_max_sharpe(n_trials: int, variance_trials: float) -> float:
 
     Parameters
     ----------
-    n_trials : int
-        Number of strategies tested (K)
+    n_trials : float
+        Number of strategies tested (K or K_eff)
     variance_trials : float
         Cross-sectional variance of Sharpe ratios: Var[{SR_1, ..., SR_K}]
 

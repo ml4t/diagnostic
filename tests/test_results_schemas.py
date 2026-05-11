@@ -515,6 +515,10 @@ def test_dsr_result():
         adjusted_pvalue=0.03,
         is_significant=True,
         n_trials=10,
+        n_trials_raw=25,
+        n_trials_effective=8.5,
+        correlation_method="effective_rank",
+        min_k_eff=2.0,
         variance_trials=0.05,
     )
 
@@ -524,11 +528,14 @@ def test_dsr_result():
     df = result.get_dataframe()
     assert isinstance(df, pl.DataFrame)
     assert len(df) == 1
+    assert "n_trials_effective" in df.columns
 
     # Test summary
     summary = result.summary()
     assert "DSR" in summary
     assert "Significant" in summary
+    assert "effective_rank" in summary
+    assert "Minimum K_eff floor" in summary
 
 
 def test_fdr_result():
