@@ -456,6 +456,23 @@ class TestCostAttribution:
 
         assert isinstance(fig, go.Figure)
 
+    def test_plot_cost_waterfall_shows_small_costs_precisely(self):
+        """Small but non-zero costs should not round away in bar labels."""
+        from ml4t.diagnostic.visualization.backtest import plot_cost_waterfall
+
+        fig = plot_cost_waterfall(
+            gross_pnl=40000.0,
+            commission=12.34,
+            slippage=8.76,
+        )
+
+        assert isinstance(fig, go.Figure)
+        labels = list(fig.data[0].text)
+        assert any("12.34" in label for label in labels)
+        assert any("8.76" in label for label in labels)
+        assert any("0.03%" in label for label in labels)
+        assert "$-0" not in " ".join(labels)
+
     def test_plot_cost_sensitivity(self, sample_returns):
         """Test cost sensitivity analysis."""
         from ml4t.diagnostic.visualization.backtest import plot_cost_sensitivity

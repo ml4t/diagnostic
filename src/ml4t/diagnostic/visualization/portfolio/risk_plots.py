@@ -139,7 +139,9 @@ def plot_rolling_sharpe(
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
-    if windows is None:
+    if rolling_result is not None and windows is None:
+        windows = sorted(rolling_result.sharpe.keys())
+    elif windows is None:
         windows = [63, 126, 252]
 
     # Get rolling metrics
@@ -161,6 +163,7 @@ def plot_rolling_sharpe(
     )
 
     dates = rolling_result.dates.to_list()
+    n_traces = 0
 
     for i, window in enumerate(windows):
         if window in rolling_result.sharpe:
@@ -177,6 +180,12 @@ def plot_rolling_sharpe(
                     hovertemplate=f"{window}d Sharpe: %{{y:.2f}}<extra></extra>",
                 )
             )
+            n_traces += 1
+
+    if n_traces == 0:
+        raise ValueError(
+            "plot_rolling_sharpe: no rolling Sharpe series matched the requested windows"
+        )
 
     # Add reference lines
     fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
@@ -186,7 +195,7 @@ def plot_rolling_sharpe(
         line_color="green",
         line_width=1,
         annotation_text="Good (1.0)",
-        annotation_position="right",
+        annotation_position="top right",
     )
     fig.add_hline(
         y=2,
@@ -194,12 +203,13 @@ def plot_rolling_sharpe(
         line_color="darkgreen",
         line_width=1,
         annotation_text="Excellent (2.0)",
-        annotation_position="right",
+        annotation_position="top right",
     )
 
     fig.update_layout(
         legend={"yanchor": "top", "y": 0.99, "xanchor": "left", "x": 0.01},
         hovermode="x unified",
+        margin={"r": 80},
     )
 
     return fig

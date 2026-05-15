@@ -19,6 +19,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
+from ml4t.diagnostic.visualization.backtest._formatting import (
+    format_currency_adaptive,
+    format_percent_adaptive,
+)
 from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
 if TYPE_CHECKING:
@@ -117,13 +121,13 @@ def plot_cost_waterfall(
 
     # Create hover text with percentages
     if show_percentages and gross_pnl != 0:
-        text = [f"${gross_pnl:,.0f}"]
+        text = [format_currency_adaptive(gross_pnl)]
         for val in values[1:-1]:
             pct = abs(val) / abs(gross_pnl) * 100
-            text.append(f"${val:,.0f} ({pct:.1f}%)")
-        text.append(f"${net_pnl:,.0f}")
+            text.append(f"{format_currency_adaptive(val)} ({format_percent_adaptive(pct)})")
+        text.append(format_currency_adaptive(net_pnl))
     else:
-        text = [f"${v:,.0f}" for v in values]
+        text = [format_currency_adaptive(v) for v in values]
 
     # Colors: green for positive, red for negative
     positive_color = _ML4T_COLORS.get("positive", "#10b981")
