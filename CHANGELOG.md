@@ -5,6 +5,19 @@ All notable changes to ml4t-diagnostic will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0b21] - 2026-05-15
+
+### Fixed
+- **Rolling Sharpe visualization**: `plot_rolling_sharpe()` now derives its
+  window set from externally supplied `RollingMetricsResult` objects when the
+  caller does not pass `windows`, so custom rolling-window analyses no longer
+  render empty figures. The helper also now fails loudly when no requested
+  Sharpe series match and keeps the Sharpe reference annotations inside narrow
+  layouts.
+- **Cost waterfall labels**: `plot_cost_waterfall()` now uses adaptive
+  currency and percentage formatting so small commission and slippage values no
+  longer collapse to misleading labels such as `$-0 (0.0%)`.
+
 ## [0.1.0b20] - 2026-05-11
 
 ### Added
