@@ -14,10 +14,10 @@ import pytest
 from ml4t.diagnostic import (
     CausalityError,
     CausalityReport,
+    LeakEvent,
     assert_causal,
     audit_lookahead,
 )
-from ml4t.diagnostic.evaluation.causality import LeakEvent
 
 SEED = 20260720
 
@@ -207,14 +207,19 @@ def test_explicit_cutoff_must_split_observed_timestamps(cutoff: int) -> None:
         audit_lookahead(causal_expanding, _panel(), cutoffs=[cutoff])
 
 
-def test_ineffective_corruption_cannot_pass_vacuously() -> None:
-    with pytest.raises(ValueError, match="shuffle.*did not modify"):
-        audit_lookahead(
-            causal_expanding,
-            _panel(n_per_symbol=3),
-            cutoffs=[1],
-            corruptions=("shuffle",),
-        )
+def test_single_future_row_shuffle_uses_value_destroying_fallback() -> None:
+    report = audit_lookahead(
+        causal_expanding,
+        _panel(n_per_symbol=3),
+        cutoffs=[1],
+        corruptions=("shuffle",),
+    )
+    assert report.is_causal is True
+
+
+def test_short_panel_with_auto_cutoffs_does_not_fail_on_shuffle() -> None:
+    report = audit_lookahead(causal_expanding, _panel(n_per_symbol=8))
+    assert report.is_causal is True
 
 
 @pytest.mark.parametrize("corruption", ["shuffle", "noise"])
@@ -403,3 +408,44 @@ def test_new_nan_in_pre_cutoff_features_is_a_leak() -> None:
     )
     assert report.is_causal is False
     assert report.leaking_columns["feat"]["max_abs_delta"] == float("inf")
+
+
+def test_noise_preserves_integer_input_dtype() -> None:
+    frame = _panel(n_per_symbol=8).select(
+        "symbol", "timestamp", pl.col("timestamp").alias("volume")
+    )
+
+    def dtype_sensitive(data: pl.DataFrame) -> pl.DataFrame:
+        value = 1.0 if data.schema["volume"] == pl.Int64 else 2.0
+        return data.select("symbol", "timestamp").with_columns(pl.lit(value).alias("feat"))
+
+    report = audit_lookahead(
+        dtype_sensitive,
+        frame,
+        cutoffs=[3],
+        corruptions=("noise",),
+    )
+    assert report.is_causal is True
+
+
+def test_noise_corrupts_non_numeric_future_inputs() -> None:
+    frame = _panel(n_per_symbol=8).with_columns(
+        pl.when(pl.col("timestamp") == 7)
+        .then(pl.lit("future"))
+        .otherwise(pl.lit("past"))
+        .alias("sector")
+    )
+
+    def categorical_last(data: pl.DataFrame) -> pl.DataFrame:
+        return data.select(
+            "symbol", "timestamp", pl.col("sector").last().over("symbol").alias("feat")
+        )
+
+    report = audit_lookahead(
+        categorical_last,
+        frame,
+        cutoffs=[3],
+        corruptions=("noise",),
+    )
+    assert report.is_causal is False
+    assert "feat" in report.leaking_columns

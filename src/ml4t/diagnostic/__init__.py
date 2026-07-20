@@ -68,6 +68,7 @@ from .evaluation import BarrierAnalysis, EvaluationResult, Evaluator
 from .evaluation.causality import (
     CausalityError,
     CausalityReport,
+    LeakEvent,
     assert_causal,
     audit_lookahead,
 )
@@ -129,6 +130,7 @@ __all__ = [
     "assert_causal",
     "CausalityReport",
     "CausalityError",
+    "LeakEvent",
     # Configuration (10 primary configs)
     "DiagnosticConfig",
     "StatisticalConfig",

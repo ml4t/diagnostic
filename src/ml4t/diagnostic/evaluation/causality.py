@@ -344,8 +344,15 @@ def _corrupt(
         shuffled_parts: list[pl.DataFrame] = []
         for part in _partition(post, group_cols):
             n = len(part)
+            if n == 1:
+                shuffled_parts.append(
+                    part.with_columns(
+                        [pl.lit(None, dtype=part.schema[c]).alias(c) for c in input_cols]
+                    )
+                )
+                continue
             perm = rng.permutation(n)
-            if n > 1 and np.array_equal(perm, np.arange(n)):
+            if np.array_equal(perm, np.arange(n)):
                 perm = np.roll(perm, 1)
             keys_rest = part.drop(list(input_cols))
             reordered_inputs = part.select(list(input_cols))[perm.tolist()]
@@ -360,11 +367,7 @@ def _corrupt(
 
     if corruption == "noise":
         numeric = _numeric_cols(frame, input_cols)
-        if not numeric:
-            # No numeric inputs to resample; fall back to nulling non-numeric.
-            return frame.with_columns(
-                [pl.when(future).then(None).otherwise(pl.col(c)).alias(c) for c in input_cols]
-            )
+        non_numeric = [c for c in input_cols if c not in numeric]
         exprs = []
         for c in numeric:
             if group_cols:
@@ -375,7 +378,22 @@ def _corrupt(
                 std = pl.lit(frame.get_column(c).std())
             draw = pl.Series(c + "__z", rng.standard_normal(len(frame)))
             noisy = mean + draw * std.fill_null(0.0)
-            exprs.append(pl.when(future).then(noisy).otherwise(pl.col(c)).alias(c))
+            exprs.append(
+                pl.when(future)
+                .then(noisy)
+                .otherwise(pl.col(c))
+                .cast(frame.schema[c], strict=False)
+                .alias(c)
+            )
+        exprs.extend(
+            [
+                pl.when(future)
+                .then(pl.lit(None, dtype=frame.schema[c]))
+                .otherwise(pl.col(c))
+                .alias(c)
+                for c in non_numeric
+            ]
+        )
         return frame.with_columns(exprs).select(frame.columns)
 
     raise ValueError(f"unknown corruption strategy: {corruption!r}")

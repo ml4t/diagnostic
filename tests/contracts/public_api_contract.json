@@ -11,6 +11,7 @@
       "assert_causal",
       "CausalityReport",
       "CausalityError",
+      "LeakEvent",
       "FeatureDiagnostics",
       "DiagnosticConfig",
       "FeatureDiagnosticsResult",

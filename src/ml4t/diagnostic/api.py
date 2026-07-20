@@ -5,6 +5,7 @@ from ml4t.diagnostic.evaluation.barrier_analysis import BarrierAnalysis
 from ml4t.diagnostic.evaluation.causality import (
     CausalityError,
     CausalityReport,
+    LeakEvent,
     assert_causal,
     audit_lookahead,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "assert_causal",
     "CausalityReport",
     "CausalityError",
+    "LeakEvent",
     "FeatureDiagnostics",
     "DiagnosticConfig",
     "FeatureDiagnosticsResult",
