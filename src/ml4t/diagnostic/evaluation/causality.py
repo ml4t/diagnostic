@@ -257,11 +257,16 @@ def _resolve_cutoffs(
 ) -> list[Any]:
     times = frame.select(time_col).unique().sort(time_col).get_column(time_col)
     n = len(times)
+    if n < 2:
+        raise ValueError("look-ahead audit requires at least two distinct timestamps")
     if isinstance(cutoffs, str):
         if cutoffs != "auto":
             raise ValueError(f"cutoffs must be 'auto' or a sequence, got {cutoffs!r}")
-        if n < 2:
-            return []
+        if not quantiles:
+            raise ValueError("quantiles must be non-empty when cutoffs='auto'")
+        bad_quantiles = [q for q in quantiles if not 0.0 < q < 1.0]
+        if bad_quantiles:
+            raise ValueError(f"quantiles must be strictly between 0 and 1, got {bad_quantiles}")
         # Inner quantiles of the time axis; drop the max so post-cutoff rows exist.
         idxs = sorted({int(round(q * (n - 1))) for q in quantiles})
         idxs = [i for i in idxs if 0 <= i < n - 1]
@@ -271,6 +276,14 @@ def _resolve_cutoffs(
     resolved = list(cutoffs)
     if not resolved:
         raise ValueError("cutoffs sequence is empty")
+    for cutoff in resolved:
+        has_past = frame.select((pl.col(time_col) <= cutoff).any()).item()
+        has_future = frame.select((pl.col(time_col) > cutoff).any()).item()
+        if not has_past or not has_future:
+            raise ValueError(
+                f"cutoff {cutoff!r} must have at least one row on each side "
+                f"({time_col} <= cutoff and {time_col} > cutoff)"
+            )
     return resolved
 
 
@@ -278,6 +291,26 @@ def _partition(frame: pl.DataFrame, group_cols: Sequence[str]) -> list[pl.DataFr
     if not group_cols:
         return [frame]
     return frame.partition_by(list(group_cols), maintain_order=True)
+
+
+def _unused_column_name(columns: Sequence[str], base: str) -> str:
+    name = base
+    while name in columns:
+        name += "_"
+    return name
+
+
+def _validate_unique_keys(frame: pl.DataFrame, keys: Sequence[str], source: str) -> None:
+    key_frame = frame.select(list(keys))
+    null_keys = [key for key in keys if key_frame.get_column(key).null_count()]
+    if null_keys:
+        raise ValueError(f"{source} contains null key values in columns: {null_keys}")
+    duplicate_mask = key_frame.is_duplicated()
+    if duplicate_mask.any():
+        examples = key_frame.filter(duplicate_mask).unique(maintain_order=True).head(5).to_dicts()
+        raise ValueError(
+            f"{source} contains duplicate keys for columns {list(keys)}; examples: {examples}"
+        )
 
 
 def _corrupt(
@@ -302,20 +335,28 @@ def _corrupt(
         )
 
     if corruption == "shuffle":
-        pre = frame.filter(~future)
-        post = frame.filter(future)
+        position_col = _unused_column_name(frame.columns, "__ml4t_causality_row_index")
+        indexed = frame.with_row_index(position_col)
+        pre = indexed.filter(~future)
+        post = indexed.filter(future)
         if post.is_empty():
             return frame
         shuffled_parts: list[pl.DataFrame] = []
         for part in _partition(post, group_cols):
-            part = part.sort(time_col)
             n = len(part)
-            perm = rng.permutation(n).tolist()
+            perm = rng.permutation(n)
+            if n > 1 and np.array_equal(perm, np.arange(n)):
+                perm = np.roll(perm, 1)
             keys_rest = part.drop(list(input_cols))
-            reordered_inputs = part.select(list(input_cols))[perm]
+            reordered_inputs = part.select(list(input_cols))[perm.tolist()]
             shuffled_parts.append(pl.concat([keys_rest, reordered_inputs], how="horizontal"))
-        post_shuffled = pl.concat(shuffled_parts).select(frame.columns)
-        return pl.concat([pre, post_shuffled]).sort(list(group_cols) + [time_col])
+        post_shuffled = pl.concat(shuffled_parts).select(indexed.columns)
+        return (
+            pl.concat([pre, post_shuffled])
+            .sort(position_col)
+            .drop(position_col)
+            .select(frame.columns)
+        )
 
     if corruption == "noise":
         numeric = _numeric_cols(frame, input_cols)
@@ -324,23 +365,18 @@ def _corrupt(
             return frame.with_columns(
                 [pl.when(future).then(None).otherwise(pl.col(c)).alias(c) for c in input_cols]
             )
-        if group_cols:
-            agg = [pl.col(c).mean().alias(f"{c}__mean") for c in numeric]
-            agg += [pl.col(c).std().alias(f"{c}__std") for c in numeric]
-            stats = frame.group_by(list(group_cols)).agg(agg)
-            work = frame.join(stats, on=list(group_cols), how="left")
-        else:
-            lits = []
-            for c in numeric:
-                lits.append(pl.lit(frame.get_column(c).mean()).alias(f"{c}__mean"))
-                lits.append(pl.lit(frame.get_column(c).std()).alias(f"{c}__std"))
-            work = frame.with_columns(lits)
         exprs = []
         for c in numeric:
-            draw = pl.Series(c + "__z", rng.standard_normal(len(work)))
-            noisy = pl.col(f"{c}__mean") + draw * pl.col(f"{c}__std").fill_null(0.0)
+            if group_cols:
+                mean = pl.col(c).mean().over(list(group_cols))
+                std = pl.col(c).std().over(list(group_cols))
+            else:
+                mean = pl.lit(frame.get_column(c).mean())
+                std = pl.lit(frame.get_column(c).std())
+            draw = pl.Series(c + "__z", rng.standard_normal(len(frame)))
+            noisy = mean + draw * std.fill_null(0.0)
             exprs.append(pl.when(future).then(noisy).otherwise(pl.col(c)).alias(c))
-        return work.with_columns(exprs).select(frame.columns)
+        return frame.with_columns(exprs).select(frame.columns)
 
     raise ValueError(f"unknown corruption strategy: {corruption!r}")
 
@@ -357,18 +393,31 @@ def _abs_delta_frame(
     ``delta`` is the absolute difference for numeric columns, or a large sentinel
     where exactly one side is null / the values differ for non-numeric columns.
     """
-    left = base.select([*keys, col])
-    right = other.select([*keys, pl.col(col).alias(col + "__b")])
-    joined = left.join(right, on=list(keys), how="inner")
+    selected_columns = [*keys, col]
+    right_col = _unused_column_name(selected_columns, f"{col}__other")
+    left_present = _unused_column_name([*selected_columns, right_col], "__left_present")
+    right_present = _unused_column_name(
+        [*selected_columns, right_col, left_present], "__right_present"
+    )
+    left = base.select(selected_columns).with_columns(pl.lit(True).alias(left_present))
+    right = other.select([*keys, pl.col(col).alias(right_col)]).with_columns(
+        pl.lit(True).alias(right_present)
+    )
+    joined = left.join(right, on=list(keys), how="full", coalesce=True)
     is_numeric = base.schema[col] in _NUMERIC_DTYPES
-    null_mismatch = pl.col(col).is_null() != pl.col(col + "__b").is_null()
+    row_mismatch = pl.col(left_present).is_null() | pl.col(right_present).is_null()
+    null_mismatch = pl.col(col).is_null() != pl.col(right_col).is_null()
     if is_numeric:
-        raw = (pl.col(col) - pl.col(col + "__b")).abs()
+        nan_mismatch = pl.col(col).is_nan() != pl.col(right_col).is_nan()
+        raw = (pl.col(col) - pl.col(right_col)).abs().fill_nan(0.0)
         delta = (
-            pl.when(null_mismatch).then(float("inf")).otherwise(raw.fill_null(0.0)).alias("__delta")
+            pl.when(row_mismatch | null_mismatch | nan_mismatch)
+            .then(float("inf"))
+            .otherwise(raw.fill_null(0.0))
+            .alias("__delta")
         )
     else:
-        differs = null_mismatch | (pl.col(col) != pl.col(col + "__b"))
+        differs = row_mismatch | null_mismatch | (pl.col(col) != pl.col(right_col))
         delta = pl.when(differs).then(float("inf")).otherwise(0.0).alias("__delta")
     return joined.select(pl.col(time_col), delta)
 
@@ -418,8 +467,8 @@ def audit_lookahead(
             features); falls back to all non-key output columns.
         quantiles: Inner quantiles used when ``cutoffs="auto"``.
         seed: Seed for the corruption RNG (shuffle/noise), for reproducibility.
-        atol: Absolute floor for the leak threshold when an extractor is exactly
-            deterministic (noise floor 0).
+        atol: Absolute floor for every leak threshold, including when a small
+            non-zero determinism noise floor is measured.
         noise_multiplier: Safety factor applied to the measured per-column noise
             floor when judging a leak (``delta > noise_floor * noise_multiplier``).
             Values > 1 keep nondeterministic extractors from false-positiving on
@@ -429,8 +478,8 @@ def audit_lookahead(
         A :class:`CausalityReport`.
 
     Raises:
-        ValueError: If ``keys`` are missing, corruptions are invalid, or the
-            extractor output cannot be aligned to the input on ``keys``.
+        ValueError: If validation fails, a requested probe cannot modify future
+            inputs, or the extractor output cannot be aligned on unique ``keys``.
     """
     keys = tuple(keys)
     corruptions = tuple(corruptions)
@@ -439,6 +488,7 @@ def audit_lookahead(
     missing_keys = [k for k in keys if k not in frame.columns]
     if missing_keys:
         raise ValueError(f"frame is missing key columns: {missing_keys}")
+    _validate_unique_keys(frame, keys, "frame")
     bad = [c for c in corruptions if c not in _VALID_CORRUPTIONS]
     if bad:
         raise ValueError(
@@ -446,14 +496,25 @@ def audit_lookahead(
         )
     if not corruptions:
         raise ValueError("corruptions must be non-empty")
+    if not np.isfinite(atol) or atol < 0.0:
+        raise ValueError(f"atol must be a finite non-negative value, got {atol!r}")
+    if not np.isfinite(noise_multiplier) or noise_multiplier <= 0.0:
+        raise ValueError(
+            f"noise_multiplier must be a finite positive value, got {noise_multiplier!r}"
+        )
 
     time_col = keys[-1]
     group_cols = list(keys[:-1])
     input_cols = [c for c in frame.columns if c not in keys]
+    if not input_cols:
+        raise ValueError("frame must contain at least one non-key input column to corrupt")
+    resolved_cutoffs = _resolve_cutoffs(frame, time_col, cutoffs, quantiles)
 
     # -- reference runs (also the determinism probe) --------------------------
     base_out = _align_output(extract(frame), frame, keys)
     base_out_2 = _align_output(extract(frame), frame, keys)
+    _validate_unique_keys(base_out, keys, "extractor output")
+    _validate_unique_keys(base_out_2, keys, "second extractor output")
 
     # -- resolve feature columns ---------------------------------------------
     if feature_cols is None:
@@ -461,9 +522,14 @@ def audit_lookahead(
         resolved_features = derived or [c for c in base_out.columns if c not in keys]
     else:
         resolved_features = list(feature_cols)
+    if not resolved_features:
+        raise ValueError("extractor output contains no feature columns to audit")
     missing_feats = [c for c in resolved_features if c not in base_out.columns]
     if missing_feats:
         raise ValueError(f"extractor output is missing feature columns: {missing_feats}")
+    missing_second = [c for c in resolved_features if c not in base_out_2.columns]
+    if missing_second:
+        raise ValueError(f"second extractor output is missing feature columns: {missing_second}")
 
     # -- per-column noise floor ----------------------------------------------
     noise_floor: dict[str, float] = {}
@@ -473,12 +539,9 @@ def audit_lookahead(
     max_floor = max(noise_floor.values(), default=0.0)
     is_deterministic = max_floor <= 0.0
 
-    thresholds = {
-        col: (fl * noise_multiplier if fl > 0.0 else atol) for col, fl in noise_floor.items()
-    }
+    thresholds = {col: max(fl * noise_multiplier, atol) for col, fl in noise_floor.items()}
 
     # -- perturbation sweep ---------------------------------------------------
-    resolved_cutoffs = _resolve_cutoffs(frame, time_col, cutoffs, quantiles)
     leak_events: list[LeakEvent] = []
     counter = 0
     for cutoff in resolved_cutoffs:
@@ -486,7 +549,22 @@ def audit_lookahead(
             counter += 1
             rng = np.random.default_rng(seed + counter)
             corrupted = _corrupt(frame, cutoff, corruption, input_cols, group_cols, time_col, rng)
-            pert_out = _align_output(extract(corrupted), frame, keys)
+            if frame.equals(corrupted):
+                raise ValueError(
+                    f"{corruption} corruption at cutoff {cutoff!r} did not modify any "
+                    "future input values"
+                )
+            pert_out = _align_output(extract(corrupted), corrupted, keys)
+            _validate_unique_keys(
+                pert_out,
+                keys,
+                f"extractor output for {corruption} corruption at cutoff {cutoff!r}",
+            )
+            missing_perturbed = [c for c in resolved_features if c not in pert_out.columns]
+            if missing_perturbed:
+                raise ValueError(
+                    f"perturbed extractor output is missing feature columns: {missing_perturbed}"
+                )
             for col in resolved_features:
                 df = _abs_delta_frame(base_out, pert_out, col, keys, time_col)
                 df = df.filter(pl.col(time_col) <= cutoff)

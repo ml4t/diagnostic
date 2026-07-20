@@ -194,6 +194,62 @@ def test_explicit_cutoffs_are_used() -> None:
     assert report.is_causal is False
 
 
+def test_single_timestamp_cannot_pass_vacuously() -> None:
+    frame = _panel(n_per_symbol=1)
+
+    with pytest.raises(ValueError, match="at least two distinct timestamps"):
+        audit_lookahead(causal_expanding, frame)
+
+
+@pytest.mark.parametrize("cutoff", [-1, 39, 40])
+def test_explicit_cutoff_must_split_observed_timestamps(cutoff: int) -> None:
+    with pytest.raises(ValueError, match="must have at least one row on each side"):
+        audit_lookahead(causal_expanding, _panel(), cutoffs=[cutoff])
+
+
+def test_ineffective_corruption_cannot_pass_vacuously() -> None:
+    with pytest.raises(ValueError, match="shuffle.*did not modify"):
+        audit_lookahead(
+            causal_expanding,
+            _panel(n_per_symbol=3),
+            cutoffs=[1],
+            corruptions=("shuffle",),
+        )
+
+
+@pytest.mark.parametrize("corruption", ["shuffle", "noise"])
+def test_corruptions_preserve_unsorted_input_order(corruption: str) -> None:
+    frame = _panel(n_per_symbol=8).reverse()
+
+    def row_position_feature(data: pl.DataFrame) -> pl.DataFrame:
+        return data.select("symbol", "timestamp").with_columns(
+            pl.arange(0, len(data), eager=True).cast(pl.Float64).alias("feat")
+        )
+
+    report = audit_lookahead(
+        row_position_feature,
+        frame,
+        cutoffs=[3],
+        corruptions=(corruption,),
+    )
+    assert report.is_causal is True
+
+
+def test_keyless_output_aligns_to_corrupted_input_order() -> None:
+    frame = _panel(n_per_symbol=8).reverse()
+
+    def keyless_identity(data: pl.DataFrame) -> pl.DataFrame:
+        return data.select(pl.col("x").alias("feat"))
+
+    report = audit_lookahead(
+        keyless_identity,
+        frame,
+        cutoffs=[3],
+        corruptions=("shuffle",),
+    )
+    assert report.is_causal is True
+
+
 # --------------------------------------------------------------------------- #
 # Single-series (no symbol) support
 # --------------------------------------------------------------------------- #
@@ -251,3 +307,99 @@ def test_missing_keys_raise() -> None:
 def test_invalid_corruption_raises() -> None:
     with pytest.raises(ValueError, match="unknown corruption"):
         audit_lookahead(causal_expanding, _panel(), corruptions=("teleport",))
+
+
+def test_duplicate_input_keys_raise() -> None:
+    frame = pl.concat([_panel(n_per_symbol=4), _panel(n_per_symbol=4).head(1)])
+
+    with pytest.raises(ValueError, match="frame.*duplicate keys"):
+        audit_lookahead(causal_expanding, frame)
+
+
+def test_duplicate_output_keys_raise() -> None:
+    def duplicate_first_row(data: pl.DataFrame) -> pl.DataFrame:
+        output = causal_expanding(data)
+        return pl.concat([output, output.head(1)])
+
+    with pytest.raises(ValueError, match="extractor output.*duplicate keys"):
+        audit_lookahead(duplicate_first_row, _panel())
+
+
+def test_atol_is_floor_for_nondeterministic_threshold() -> None:
+    class TinyDrift:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, data: pl.DataFrame) -> pl.DataFrame:
+            initial_offsets = (0.0, 1e-12)
+            offset = initial_offsets[self.calls] if self.calls < 2 else 1e-10
+            self.calls += 1
+            return data.select(
+                "symbol", "timestamp", pl.lit(offset, dtype=pl.Float64).alias("feat")
+            )
+
+    report = audit_lookahead(
+        TinyDrift(),
+        _panel(n_per_symbol=4),
+        cutoffs=[1],
+        corruptions=("nan",),
+        atol=1e-9,
+    )
+    assert report.is_causal is True
+    assert report.determinism["noise_floor"] == pytest.approx(1e-12)
+
+
+def test_missing_pre_cutoff_output_rows_are_a_leak() -> None:
+    def drops_everything_if_future_is_null(data: pl.DataFrame) -> pl.DataFrame:
+        if data.get_column("x").null_count():
+            return pl.DataFrame(
+                schema={"symbol": pl.String, "timestamp": pl.Int64, "feat": pl.Float64}
+            )
+        return data.select("symbol", "timestamp", pl.col("x").alias("feat"))
+
+    report = audit_lookahead(
+        drops_everything_if_future_is_null,
+        _panel(n_per_symbol=4),
+        cutoffs=[1],
+        corruptions=("nan",),
+    )
+    assert report.is_causal is False
+    assert report.leaking_columns["feat"]["max_abs_delta"] == float("inf")
+
+
+def test_matching_nan_features_remain_causal() -> None:
+    def stable_nan(data: pl.DataFrame) -> pl.DataFrame:
+        return data.select(
+            "symbol",
+            "timestamp",
+            pl.when(pl.col("timestamp") == 0)
+            .then(float("nan"))
+            .otherwise(pl.col("x"))
+            .alias("feat"),
+        )
+
+    report = audit_lookahead(
+        stable_nan,
+        _panel(n_per_symbol=4),
+        cutoffs=[1],
+        corruptions=("nan",),
+    )
+    assert report.is_causal is True
+
+
+def test_new_nan_in_pre_cutoff_features_is_a_leak() -> None:
+    def future_null_poisoning(data: pl.DataFrame) -> pl.DataFrame:
+        if data.get_column("x").null_count():
+            feature = pl.lit(float("nan"), dtype=pl.Float64)
+        else:
+            feature = pl.col("x")
+        return data.select("symbol", "timestamp", feature.alias("feat"))
+
+    report = audit_lookahead(
+        future_null_poisoning,
+        _panel(n_per_symbol=4),
+        cutoffs=[1],
+        corruptions=("nan",),
+    )
+    assert report.is_causal is False
+    assert report.leaking_columns["feat"]["max_abs_delta"] == float("inf")
