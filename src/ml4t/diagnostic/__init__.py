@@ -64,6 +64,14 @@ from .config import (
 # Main evaluation framework
 from .evaluation import BarrierAnalysis, EvaluationResult, Evaluator
 
+# Look-ahead / feature causality auditor
+from .evaluation.causality import (
+    CausalityError,
+    CausalityReport,
+    assert_causal,
+    audit_lookahead,
+)
+
 # ValidatedCrossValidation - combines CPCV + DSR in one step
 from .evaluation.validated_cv import ValidatedCrossValidation
 
@@ -116,6 +124,11 @@ __all__ = [
     "SignalResult",
     # Barrier Analysis
     "BarrierAnalysis",
+    # Look-ahead / feature causality auditor
+    "audit_lookahead",
+    "assert_causal",
+    "CausalityReport",
+    "CausalityError",
     # Configuration (10 primary configs)
     "DiagnosticConfig",
     "StatisticalConfig",

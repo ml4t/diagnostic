@@ -1,0 +1,613 @@
+"""Model-class-agnostic look-ahead auditor for feature extractors.
+
+Look-ahead bias in a *model-based* feature is invisible to the eye and survives
+careful-looking code. There is exactly one property that defines a causal
+feature, independent of whether the underlying model is an HMM, a GARCH, a PCA,
+an IPCA, an autoencoder, or an SDF:
+
+    The feature value at ``(symbol, t)`` is a deterministic function of inputs at
+    times ``<= t``. Nothing after ``t`` may change it.
+
+This module tests that property as a **future-perturbation invariance**, without
+reading the model code: destroy the inputs after a cutoff ``T``, re-run the
+extractor, and assert the features at ``t <= T`` are unchanged. If any model was
+fit on (or filtered over) data past ``T`` and applied backward, the past features
+move and the audit fails. One mechanism catches the smoothed-HMM bug, full-sample
+PCA loadings, an autoencoder trained on the whole panel, GARCH full-window
+variance targeting, and a time-axis z-score - one auditor, every model class.
+
+Two entry points share one engine:
+
+- :func:`audit_lookahead` returns a :class:`CausalityReport` (the reader-facing
+  diagnostic, renderable to HTML/JSON/Markdown).
+- :func:`assert_causal` is the CI one-liner; it raises :class:`CausalityError`
+  (with the report attached) on failure.
+
+What this deliberately does **not** catch
+-----------------------------------------
+- **Same-timestamp label leakage** (a feature that uses the contemporaneous
+  target) survives truncation - it needs a separate label-leakage check.
+- **Per-fold train/val seal** - a different invariant, about the CV split rather
+  than the temporal causality of the extractor.
+
+Perturbation invariance is the uniform look-ahead gate; it is one layer, not the
+whole leakage story.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+import polars as pl
+
+from ml4t.diagnostic.errors import DiagnosticError
+from ml4t.diagnostic.reporting.base import ReportFactory, ReportFormat
+from ml4t.diagnostic.results.base import BaseResult
+
+Extractor = Callable[[pl.DataFrame], pl.DataFrame]
+
+DEFAULT_CORRUPTIONS: tuple[str, ...] = ("nan", "shuffle", "noise")
+DEFAULT_KEYS: tuple[str, ...] = ("symbol", "timestamp")
+DEFAULT_QUANTILES: tuple[float, ...] = (0.4, 0.6, 0.8)
+_VALID_CORRUPTIONS = frozenset(DEFAULT_CORRUPTIONS)
+
+_NUMERIC_DTYPES = (
+    pl.Float32,
+    pl.Float64,
+    pl.Int8,
+    pl.Int16,
+    pl.Int32,
+    pl.Int64,
+    pl.UInt8,
+    pl.UInt16,
+    pl.UInt32,
+    pl.UInt64,
+)
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+class CausalityError(DiagnosticError):
+    """Raised when a feature extractor leaks future information.
+
+    The full :class:`CausalityReport` is attached as :attr:`report` so callers
+    (and CI logs) can inspect exactly which columns leaked, where, and by how
+    much.
+
+    Attributes:
+        report: The :class:`CausalityReport` that triggered the failure.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        report: CausalityReport,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, context=context)
+        self.report = report
+
+
+# ---------------------------------------------------------------------------
+# Result containers
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class LeakEvent:
+    """A single detected leak: one column exposed by one cutoff/corruption.
+
+    Attributes:
+        column: Name of the leaking feature column.
+        cutoff: Cutoff timestamp whose future was corrupted.
+        corruption: Corruption strategy that exposed the leak.
+        first_leak: Earliest pre-cutoff timestamp whose feature value moved.
+        max_abs_delta: Largest absolute change over pre-cutoff rows.
+        threshold: Noise-floor-derived threshold the delta had to exceed.
+    """
+
+    column: str
+    cutoff: Any
+    corruption: str
+    first_leak: Any
+    max_abs_delta: float
+    threshold: float
+
+
+class _CausalityResultSchema(BaseResult):
+    """Internal :class:`BaseResult` view so the ``reporting/`` renderers apply.
+
+    Holds only JSON-serializable primitives; the leak table is reconstructed as
+    a Polars DataFrame on demand in :meth:`get_dataframe`.
+    """
+
+    analysis_type: str = "lookahead_causality"
+    is_causal: bool
+    is_deterministic: bool
+    noise_floor: float
+    feature_cols: list[str]
+    leaking_columns: list[str]
+    summary_text: str
+    leak_rows: list[dict[str, Any]]
+
+    def summary(self) -> str:
+        return self.summary_text
+
+    def list_available_dataframes(self) -> list[str]:
+        return ["leaks"] if self.leak_rows else []
+
+    def get_dataframe(self, name: str | None = None) -> pl.DataFrame:
+        if not self.leak_rows:
+            return pl.DataFrame()
+        return pl.DataFrame(self.leak_rows)
+
+
+@dataclass(frozen=True)
+class CausalityReport:
+    """Per-column, per-timestamp look-ahead audit result.
+
+    Attributes:
+        is_causal: True iff no feature column leaked under any requested
+            corruption at any cutoff.
+        leaking_columns: Mapping ``column -> {"first_leak", "max_abs_delta",
+            "cutoff", "corruption"}`` for the worst (largest-delta) leak observed
+            for that column. Empty when :attr:`is_causal` is True.
+        determinism: ``{"is_deterministic": bool, "noise_floor": float}`` measured
+            by running the extractor twice on the unperturbed frame *before* any
+            perturbation. ``noise_floor`` is the max per-column noise across
+            feature columns; a leak is only counted when it rises above this
+            floor.
+        leak_events: Every individual leak detected (column x cutoff x
+            corruption), not just the per-column worst case.
+        feature_cols: Feature columns that were audited.
+        cutoffs: Cutoff timestamps used.
+        corruptions: Corruption strategies applied.
+        keys: Key columns (never corrupted).
+        n_rows: Number of rows in the audited frame.
+    """
+
+    is_causal: bool
+    leaking_columns: dict[str, dict[str, Any]]
+    determinism: dict[str, Any]
+    leak_events: tuple[LeakEvent, ...]
+    feature_cols: tuple[str, ...]
+    cutoffs: tuple[Any, ...]
+    corruptions: tuple[str, ...]
+    keys: tuple[str, ...]
+    n_rows: int = 0
+
+    # -- human-readable summary ------------------------------------------------
+    def summary(self) -> str:
+        """Return a human-readable audit summary."""
+        det = self.determinism
+        det_line = (
+            "deterministic"
+            if det.get("is_deterministic", True)
+            else f"NON-deterministic (noise floor = {det.get('noise_floor', 0.0):.3e})"
+        )
+        lines = [
+            "Look-Ahead Causality Audit",
+            f"  Feature columns audited : {len(self.feature_cols)} "
+            f"({', '.join(self.feature_cols) if self.feature_cols else 'none'})",
+            f"  Cutoffs                 : {len(self.cutoffs)}",
+            f"  Corruptions             : {', '.join(self.corruptions)}",
+            f"  Determinism             : {det_line}",
+            f"  Verdict                 : {'CAUSAL' if self.is_causal else 'LEAK DETECTED'}",
+        ]
+        if not self.is_causal:
+            lines.append("  Leaking columns:")
+            for col, info in self.leaking_columns.items():
+                lines.append(
+                    f"    - {col}: leaks from {info['first_leak']} at "
+                    f"{info['max_abs_delta']:.4g} under {info['corruption']} "
+                    f"(cutoff {info['cutoff']})"
+                )
+        return "\n".join(lines)
+
+    # -- renderer bridge -------------------------------------------------------
+    def _to_schema(self) -> _CausalityResultSchema:
+        leak_rows = [
+            {
+                "column": ev.column,
+                "first_leak": str(ev.first_leak),
+                "cutoff": str(ev.cutoff),
+                "corruption": ev.corruption,
+                "max_abs_delta": float(ev.max_abs_delta),
+                "threshold": float(ev.threshold),
+            }
+            for ev in self.leak_events
+        ]
+        return _CausalityResultSchema(
+            is_causal=self.is_causal,
+            is_deterministic=bool(self.determinism.get("is_deterministic", True)),
+            noise_floor=float(self.determinism.get("noise_floor", 0.0)),
+            feature_cols=list(self.feature_cols),
+            leaking_columns=list(self.leaking_columns.keys()),
+            summary_text=self.summary(),
+            leak_rows=leak_rows,
+        )
+
+    def to_html(self) -> str:
+        """Render the report as a standalone HTML document."""
+        return ReportFactory.render(self._to_schema(), ReportFormat.HTML)
+
+    def to_markdown(self) -> str:
+        """Render the report as Markdown."""
+        return ReportFactory.render(self._to_schema(), ReportFormat.MARKDOWN)
+
+    def to_json(self) -> str:
+        """Render the report as a JSON string."""
+        return ReportFactory.render(self._to_schema(), ReportFormat.JSON)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+def _numeric_cols(frame: pl.DataFrame, cols: Sequence[str]) -> list[str]:
+    return [c for c in cols if frame.schema[c] in _NUMERIC_DTYPES]
+
+
+def _resolve_cutoffs(
+    frame: pl.DataFrame,
+    time_col: str,
+    cutoffs: str | Sequence[Any],
+    quantiles: Sequence[float],
+) -> list[Any]:
+    times = frame.select(time_col).unique().sort(time_col).get_column(time_col)
+    n = len(times)
+    if isinstance(cutoffs, str):
+        if cutoffs != "auto":
+            raise ValueError(f"cutoffs must be 'auto' or a sequence, got {cutoffs!r}")
+        if n < 2:
+            return []
+        # Inner quantiles of the time axis; drop the max so post-cutoff rows exist.
+        idxs = sorted({int(round(q * (n - 1))) for q in quantiles})
+        idxs = [i for i in idxs if 0 <= i < n - 1]
+        if not idxs:
+            idxs = [max(0, n - 2)]
+        return [times[i] for i in idxs]
+    resolved = list(cutoffs)
+    if not resolved:
+        raise ValueError("cutoffs sequence is empty")
+    return resolved
+
+
+def _partition(frame: pl.DataFrame, group_cols: Sequence[str]) -> list[pl.DataFrame]:
+    if not group_cols:
+        return [frame]
+    return frame.partition_by(list(group_cols), maintain_order=True)
+
+
+def _corrupt(
+    frame: pl.DataFrame,
+    cutoff: Any,
+    corruption: str,
+    input_cols: Sequence[str],
+    group_cols: Sequence[str],
+    time_col: str,
+    rng: np.random.Generator,
+) -> pl.DataFrame:
+    """Return a copy of ``frame`` with input columns destroyed for ``t > cutoff``.
+
+    Keys are never touched. ``corruption`` is one of ``nan``, ``shuffle`` or
+    ``noise``.
+    """
+    future = pl.col(time_col) > cutoff
+
+    if corruption == "nan":
+        return frame.with_columns(
+            [pl.when(future).then(None).otherwise(pl.col(c)).alias(c) for c in input_cols]
+        )
+
+    if corruption == "shuffle":
+        pre = frame.filter(~future)
+        post = frame.filter(future)
+        if post.is_empty():
+            return frame
+        shuffled_parts: list[pl.DataFrame] = []
+        for part in _partition(post, group_cols):
+            part = part.sort(time_col)
+            n = len(part)
+            perm = rng.permutation(n).tolist()
+            keys_rest = part.drop(list(input_cols))
+            reordered_inputs = part.select(list(input_cols))[perm]
+            shuffled_parts.append(pl.concat([keys_rest, reordered_inputs], how="horizontal"))
+        post_shuffled = pl.concat(shuffled_parts).select(frame.columns)
+        return pl.concat([pre, post_shuffled]).sort(list(group_cols) + [time_col])
+
+    if corruption == "noise":
+        numeric = _numeric_cols(frame, input_cols)
+        if not numeric:
+            # No numeric inputs to resample; fall back to nulling non-numeric.
+            return frame.with_columns(
+                [pl.when(future).then(None).otherwise(pl.col(c)).alias(c) for c in input_cols]
+            )
+        if group_cols:
+            agg = [pl.col(c).mean().alias(f"{c}__mean") for c in numeric]
+            agg += [pl.col(c).std().alias(f"{c}__std") for c in numeric]
+            stats = frame.group_by(list(group_cols)).agg(agg)
+            work = frame.join(stats, on=list(group_cols), how="left")
+        else:
+            lits = []
+            for c in numeric:
+                lits.append(pl.lit(frame.get_column(c).mean()).alias(f"{c}__mean"))
+                lits.append(pl.lit(frame.get_column(c).std()).alias(f"{c}__std"))
+            work = frame.with_columns(lits)
+        exprs = []
+        for c in numeric:
+            draw = pl.Series(c + "__z", rng.standard_normal(len(work)))
+            noisy = pl.col(f"{c}__mean") + draw * pl.col(f"{c}__std").fill_null(0.0)
+            exprs.append(pl.when(future).then(noisy).otherwise(pl.col(c)).alias(c))
+        return work.with_columns(exprs).select(frame.columns)
+
+    raise ValueError(f"unknown corruption strategy: {corruption!r}")
+
+
+def _abs_delta_frame(
+    base: pl.DataFrame,
+    other: pl.DataFrame,
+    col: str,
+    keys: Sequence[str],
+    time_col: str,
+) -> pl.DataFrame:
+    """Join two extractor outputs on keys and return (time, delta) for ``col``.
+
+    ``delta`` is the absolute difference for numeric columns, or a large sentinel
+    where exactly one side is null / the values differ for non-numeric columns.
+    """
+    left = base.select([*keys, col])
+    right = other.select([*keys, pl.col(col).alias(col + "__b")])
+    joined = left.join(right, on=list(keys), how="inner")
+    is_numeric = base.schema[col] in _NUMERIC_DTYPES
+    null_mismatch = pl.col(col).is_null() != pl.col(col + "__b").is_null()
+    if is_numeric:
+        raw = (pl.col(col) - pl.col(col + "__b")).abs()
+        delta = (
+            pl.when(null_mismatch).then(float("inf")).otherwise(raw.fill_null(0.0)).alias("__delta")
+        )
+    else:
+        differs = null_mismatch | (pl.col(col) != pl.col(col + "__b"))
+        delta = pl.when(differs).then(float("inf")).otherwise(0.0).alias("__delta")
+    return joined.select(pl.col(time_col), delta)
+
+
+def _column_max_delta(delta_frame: pl.DataFrame) -> float:
+    val = delta_frame.select(pl.col("__delta").max()).item()
+    return float(val) if val is not None else 0.0
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+def audit_lookahead(
+    extract: Extractor,
+    frame: pl.DataFrame,
+    cutoffs: str | Sequence[Any] = "auto",
+    corruptions: Sequence[str] = DEFAULT_CORRUPTIONS,
+    keys: Sequence[str] = DEFAULT_KEYS,
+    feature_cols: Sequence[str] | None = None,
+    *,
+    quantiles: Sequence[float] = DEFAULT_QUANTILES,
+    seed: int = 0,
+    atol: float = 1e-9,
+    noise_multiplier: float = 5.0,
+) -> CausalityReport:
+    """Audit a feature extractor for look-ahead bias via future-perturbation.
+
+    The extractor is called on the unperturbed frame (twice, to measure a
+    per-column determinism noise floor) and then once per ``(cutoff, corruption)``
+    pair on a frame whose *input* columns are destroyed for rows after the cutoff.
+    A feature column at ``t <= cutoff`` that moves by more than the noise floor is
+    a leak: its value depended on the future.
+
+    Args:
+        extract: ``Callable[[pl.DataFrame], pl.DataFrame]`` mapping a
+            ``(symbol, timestamp, ...)`` panel to a frame carrying ``keys`` and
+            the feature columns. Output is aligned back to inputs on ``keys``.
+        frame: The input panel. Must contain all ``keys``.
+        cutoffs: ``"auto"`` (inner quantiles of the time axis) or an explicit
+            sequence of cutoff timestamps.
+        corruptions: Subset of ``("nan", "shuffle", "noise")``. A column is
+            declared causal only if invariant under *all* requested corruptions.
+        keys: Key columns. The last key is the time axis; the rest are entity
+            (e.g. ``symbol``) groups. Keys are never corrupted.
+        feature_cols: Columns to audit. Defaults to columns present in the
+            extractor output but absent from ``frame`` (i.e. the derived
+            features); falls back to all non-key output columns.
+        quantiles: Inner quantiles used when ``cutoffs="auto"``.
+        seed: Seed for the corruption RNG (shuffle/noise), for reproducibility.
+        atol: Absolute floor for the leak threshold when an extractor is exactly
+            deterministic (noise floor 0).
+        noise_multiplier: Safety factor applied to the measured per-column noise
+            floor when judging a leak (``delta > noise_floor * noise_multiplier``).
+            Values > 1 keep nondeterministic extractors from false-positiving on
+            their own jitter; the raw noise floor is still reported unscaled.
+
+    Returns:
+        A :class:`CausalityReport`.
+
+    Raises:
+        ValueError: If ``keys`` are missing, corruptions are invalid, or the
+            extractor output cannot be aligned to the input on ``keys``.
+    """
+    keys = tuple(keys)
+    corruptions = tuple(corruptions)
+    if not keys:
+        raise ValueError("keys must be non-empty")
+    missing_keys = [k for k in keys if k not in frame.columns]
+    if missing_keys:
+        raise ValueError(f"frame is missing key columns: {missing_keys}")
+    bad = [c for c in corruptions if c not in _VALID_CORRUPTIONS]
+    if bad:
+        raise ValueError(
+            f"unknown corruption strategies: {bad}; valid: {sorted(_VALID_CORRUPTIONS)}"
+        )
+    if not corruptions:
+        raise ValueError("corruptions must be non-empty")
+
+    time_col = keys[-1]
+    group_cols = list(keys[:-1])
+    input_cols = [c for c in frame.columns if c not in keys]
+
+    # -- reference runs (also the determinism probe) --------------------------
+    base_out = _align_output(extract(frame), frame, keys)
+    base_out_2 = _align_output(extract(frame), frame, keys)
+
+    # -- resolve feature columns ---------------------------------------------
+    if feature_cols is None:
+        derived = [c for c in base_out.columns if c not in frame.columns]
+        resolved_features = derived or [c for c in base_out.columns if c not in keys]
+    else:
+        resolved_features = list(feature_cols)
+    missing_feats = [c for c in resolved_features if c not in base_out.columns]
+    if missing_feats:
+        raise ValueError(f"extractor output is missing feature columns: {missing_feats}")
+
+    # -- per-column noise floor ----------------------------------------------
+    noise_floor: dict[str, float] = {}
+    for col in resolved_features:
+        df = _abs_delta_frame(base_out, base_out_2, col, keys, time_col)
+        noise_floor[col] = _column_max_delta(df)
+    max_floor = max(noise_floor.values(), default=0.0)
+    is_deterministic = max_floor <= 0.0
+
+    thresholds = {
+        col: (fl * noise_multiplier if fl > 0.0 else atol) for col, fl in noise_floor.items()
+    }
+
+    # -- perturbation sweep ---------------------------------------------------
+    resolved_cutoffs = _resolve_cutoffs(frame, time_col, cutoffs, quantiles)
+    leak_events: list[LeakEvent] = []
+    counter = 0
+    for cutoff in resolved_cutoffs:
+        for corruption in corruptions:
+            counter += 1
+            rng = np.random.default_rng(seed + counter)
+            corrupted = _corrupt(frame, cutoff, corruption, input_cols, group_cols, time_col, rng)
+            pert_out = _align_output(extract(corrupted), frame, keys)
+            for col in resolved_features:
+                df = _abs_delta_frame(base_out, pert_out, col, keys, time_col)
+                df = df.filter(pl.col(time_col) <= cutoff)
+                if df.is_empty():
+                    continue
+                max_delta = _column_max_delta(df)
+                threshold = thresholds[col]
+                if max_delta > threshold:
+                    first = (
+                        df.filter(pl.col("__delta") > threshold)
+                        .select(pl.col(time_col).min())
+                        .item()
+                    )
+                    leak_events.append(
+                        LeakEvent(
+                            column=col,
+                            cutoff=cutoff,
+                            corruption=corruption,
+                            first_leak=first,
+                            max_abs_delta=max_delta,
+                            threshold=threshold,
+                        )
+                    )
+
+    # -- aggregate per column (worst leak) ------------------------------------
+    leaking_columns: dict[str, dict[str, Any]] = {}
+    for ev in leak_events:
+        current = leaking_columns.get(ev.column)
+        if current is None or ev.max_abs_delta > current["max_abs_delta"]:
+            leaking_columns[ev.column] = {
+                "first_leak": ev.first_leak,
+                "max_abs_delta": ev.max_abs_delta,
+                "cutoff": ev.cutoff,
+                "corruption": ev.corruption,
+            }
+
+    return CausalityReport(
+        is_causal=len(leaking_columns) == 0,
+        leaking_columns=leaking_columns,
+        determinism={"is_deterministic": is_deterministic, "noise_floor": max_floor},
+        leak_events=tuple(leak_events),
+        feature_cols=tuple(resolved_features),
+        cutoffs=tuple(resolved_cutoffs),
+        corruptions=corruptions,
+        keys=keys,
+        n_rows=len(frame),
+    )
+
+
+def assert_causal(
+    extract: Extractor,
+    frame: pl.DataFrame,
+    cutoffs: str | Sequence[Any] = "auto",
+    corruptions: Sequence[str] = DEFAULT_CORRUPTIONS,
+    keys: Sequence[str] = DEFAULT_KEYS,
+    feature_cols: Sequence[str] | None = None,
+    **kwargs: Any,
+) -> CausalityReport:
+    """Run :func:`audit_lookahead` and raise if any feature leaks.
+
+    Args:
+        extract: See :func:`audit_lookahead`.
+        frame: See :func:`audit_lookahead`.
+        cutoffs: See :func:`audit_lookahead`.
+        corruptions: See :func:`audit_lookahead`.
+        keys: See :func:`audit_lookahead`.
+        feature_cols: See :func:`audit_lookahead`.
+        **kwargs: Forwarded to :func:`audit_lookahead` (``seed``, ``atol``,
+            ``noise_multiplier``, ``quantiles``).
+
+    Returns:
+        The :class:`CausalityReport` on success (all features causal).
+
+    Raises:
+        CausalityError: If any feature column leaks; the report is attached as
+            :attr:`CausalityError.report`.
+    """
+    report = audit_lookahead(
+        extract,
+        frame,
+        cutoffs=cutoffs,
+        corruptions=corruptions,
+        keys=keys,
+        feature_cols=feature_cols,
+        **kwargs,
+    )
+    if not report.is_causal:
+        cols = ", ".join(report.leaking_columns)
+        raise CausalityError(
+            f"Look-ahead leak detected in feature column(s): {cols}",
+            report=report,
+            context={"leaking_columns": list(report.leaking_columns)},
+        )
+    return report
+
+
+def _align_output(
+    output: pl.DataFrame,
+    frame: pl.DataFrame,
+    keys: Sequence[str],
+) -> pl.DataFrame:
+    """Ensure the extractor output carries ``keys`` for join-based comparison.
+
+    If keys are absent but the output is row-aligned with the input frame, the
+    keys are attached from the input by position.
+    """
+    if all(k in output.columns for k in keys):
+        return output
+    if len(output) == len(frame):
+        return output.with_columns([frame.get_column(k) for k in keys])
+    raise ValueError(
+        "extractor output does not contain key columns "
+        f"{list(keys)} and is not row-aligned with the input frame "
+        f"(output rows={len(output)}, input rows={len(frame)})"
+    )
+
+
+__all__ = [
+    "CausalityError",
+    "CausalityReport",
+    "LeakEvent",
+    "audit_lookahead",
+    "assert_causal",
+]

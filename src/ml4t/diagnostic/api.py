@@ -2,6 +2,12 @@
 
 from ml4t.diagnostic.config import DiagnosticConfig, ValidatedCrossValidationConfig
 from ml4t.diagnostic.evaluation.barrier_analysis import BarrierAnalysis
+from ml4t.diagnostic.evaluation.causality import (
+    CausalityError,
+    CausalityReport,
+    assert_causal,
+    audit_lookahead,
+)
 from ml4t.diagnostic.evaluation.feature_diagnostics import (
     FeatureDiagnostics,
     FeatureDiagnosticsResult,
@@ -35,6 +41,10 @@ __all__ = [
     "ValidationResult",
     "validated_cross_val_score",
     "BarrierAnalysis",
+    "audit_lookahead",
+    "assert_causal",
+    "CausalityReport",
+    "CausalityError",
     "FeatureDiagnostics",
     "DiagnosticConfig",
     "FeatureDiagnosticsResult",
