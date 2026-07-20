@@ -127,6 +127,8 @@ class _CausalityResultSchema(BaseResult):
     is_causal: bool
     is_deterministic: bool
     noise_floor: float
+    n_effective_probes: int
+    n_skipped_probes: int
     feature_cols: list[str]
     leaking_columns: list[str]
     summary_text: str
@@ -166,6 +168,10 @@ class CausalityReport:
         corruptions: Corruption strategies applied.
         keys: Key columns (never corrupted).
         n_rows: Number of rows in the audited frame.
+        n_effective_probes: Number of cutoff/corruption pairs that changed at
+            least one future input value and were evaluated.
+        n_skipped_probes: Number of requested probes skipped because the
+            corruption could not change the observed future inputs.
     """
 
     is_causal: bool
@@ -177,6 +183,8 @@ class CausalityReport:
     corruptions: tuple[str, ...]
     keys: tuple[str, ...]
     n_rows: int = 0
+    n_effective_probes: int = 0
+    n_skipped_probes: int = 0
 
     # -- human-readable summary ------------------------------------------------
     def summary(self) -> str:
@@ -193,6 +201,8 @@ class CausalityReport:
             f"({', '.join(self.feature_cols) if self.feature_cols else 'none'})",
             f"  Cutoffs                 : {len(self.cutoffs)}",
             f"  Corruptions             : {', '.join(self.corruptions)}",
+            f"  Effective probes        : {self.n_effective_probes} "
+            f"({self.n_skipped_probes} skipped)",
             f"  Determinism             : {det_line}",
             f"  Verdict                 : {'CAUSAL' if self.is_causal else 'LEAK DETECTED'}",
         ]
@@ -223,6 +233,8 @@ class CausalityReport:
             is_causal=self.is_causal,
             is_deterministic=bool(self.determinism.get("is_deterministic", True)),
             noise_floor=float(self.determinism.get("noise_floor", 0.0)),
+            n_effective_probes=self.n_effective_probes,
+            n_skipped_probes=self.n_skipped_probes,
             feature_cols=list(self.feature_cols),
             leaking_columns=list(self.leaking_columns.keys()),
             summary_text=self.summary(),
@@ -531,6 +543,8 @@ def audit_lookahead(
     # -- reference runs (also the determinism probe) --------------------------
     base_out = _align_output(extract(frame), frame, keys)
     base_out_2 = _align_output(extract(frame), frame, keys)
+    if base_out.is_empty():
+        raise ValueError("extractor output is empty; no feature rows are available to audit")
     _validate_unique_keys(base_out, keys, "extractor output")
     _validate_unique_keys(base_out_2, keys, "second extractor output")
 
@@ -542,6 +556,9 @@ def audit_lookahead(
         resolved_features = list(feature_cols)
     if not resolved_features:
         raise ValueError("extractor output contains no feature columns to audit")
+    key_features = [col for col in resolved_features if col in keys]
+    if key_features:
+        raise ValueError(f"feature columns must not overlap key columns, got: {key_features}")
     missing_feats = [c for c in resolved_features if c not in base_out.columns]
     if missing_feats:
         raise ValueError(f"extractor output is missing feature columns: {missing_feats}")
@@ -554,6 +571,12 @@ def audit_lookahead(
     for col in resolved_features:
         df = _abs_delta_frame(base_out, base_out_2, col, keys, time_col)
         noise_floor[col] = _column_max_delta(df)
+    non_finite_floors = [col for col, floor in noise_floor.items() if not np.isfinite(floor)]
+    if non_finite_floors:
+        raise ValueError(
+            "non-finite determinism noise floor for feature columns "
+            f"{non_finite_floors}; extractor row, null, or NaN output changed between base runs"
+        )
     max_floor = max(noise_floor.values(), default=0.0)
     is_deterministic = max_floor <= 0.0
 
@@ -561,6 +584,9 @@ def audit_lookahead(
 
     # -- perturbation sweep ---------------------------------------------------
     leak_events: list[LeakEvent] = []
+    comparison_counts = dict.fromkeys(resolved_features, 0)
+    n_effective_probes = 0
+    n_skipped_probes = 0
     counter = 0
     for cutoff in resolved_cutoffs:
         for corruption in corruptions:
@@ -568,10 +594,9 @@ def audit_lookahead(
             rng = np.random.default_rng(seed + counter)
             corrupted = _corrupt(frame, cutoff, corruption, input_cols, group_cols, time_col, rng)
             if frame.equals(corrupted):
-                raise ValueError(
-                    f"{corruption} corruption at cutoff {cutoff!r} did not modify any "
-                    "future input values"
-                )
+                n_skipped_probes += 1
+                continue
+            n_effective_probes += 1
             pert_out = _align_output(extract(corrupted), corrupted, keys)
             _validate_unique_keys(
                 pert_out,
@@ -588,6 +613,7 @@ def audit_lookahead(
                 df = df.filter(pl.col(time_col) <= cutoff)
                 if df.is_empty():
                     continue
+                comparison_counts[col] += len(df)
                 max_delta = _column_max_delta(df)
                 threshold = thresholds[col]
                 if max_delta > threshold:
@@ -606,6 +632,16 @@ def audit_lookahead(
                             threshold=threshold,
                         )
                     )
+
+    if n_effective_probes == 0:
+        raise ValueError(
+            "all requested corruption probes were ineffective for the observed future inputs"
+        )
+    never_compared = [col for col, count in comparison_counts.items() if count == 0]
+    if never_compared:
+        raise ValueError(
+            f"no pre-cutoff comparisons were made for feature columns: {never_compared}"
+        )
 
     # -- aggregate per column (worst leak) ------------------------------------
     leaking_columns: dict[str, dict[str, Any]] = {}
@@ -629,6 +665,8 @@ def audit_lookahead(
         corruptions=corruptions,
         keys=keys,
         n_rows=len(frame),
+        n_effective_probes=n_effective_probes,
+        n_skipped_probes=n_skipped_probes,
     )
 
 

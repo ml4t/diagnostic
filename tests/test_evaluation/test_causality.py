@@ -449,3 +449,69 @@ def test_noise_corrupts_non_numeric_future_inputs() -> None:
     )
     assert report.is_causal is False
     assert "feat" in report.leaking_columns
+
+
+def test_non_finite_determinism_floor_raises() -> None:
+    class UnstableRows:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, data: pl.DataFrame) -> pl.DataFrame:
+            self.calls += 1
+            output = data.select("symbol", "timestamp", pl.col("x").alias("feat"))
+            return output if self.calls == 1 else output.head(len(output) - 1)
+
+    with pytest.raises(ValueError, match="non-finite determinism noise floor.*feat"):
+        audit_lookahead(UnstableRows(), _panel(n_per_symbol=4))
+
+
+def test_empty_extractor_output_cannot_pass_vacuously() -> None:
+    def empty_output(data: pl.DataFrame) -> pl.DataFrame:
+        return pl.DataFrame(schema={"symbol": pl.String, "timestamp": pl.Int64, "feat": pl.Float64})
+
+    with pytest.raises(ValueError, match="extractor output is empty"):
+        audit_lookahead(empty_output, _panel(n_per_symbol=4))
+
+
+def test_output_without_pre_cutoff_comparisons_cannot_pass() -> None:
+    def future_only(data: pl.DataFrame) -> pl.DataFrame:
+        return data.filter(pl.col("timestamp") > 2).select(
+            "symbol", "timestamp", pl.col("x").alias("feat")
+        )
+
+    with pytest.raises(ValueError, match="no pre-cutoff comparisons.*feat"):
+        audit_lookahead(
+            future_only,
+            _panel(n_per_symbol=4),
+            cutoffs=[1],
+            corruptions=("nan",),
+        )
+
+
+def test_noop_probe_is_skipped_when_another_probe_is_effective() -> None:
+    frame = _panel(n_per_symbol=4).with_columns(pl.lit(1.0).alias("x"))
+    report = audit_lookahead(
+        causal_expanding,
+        frame,
+        cutoffs=[1],
+        corruptions=("shuffle", "nan"),
+    )
+    assert report.is_causal is True
+    assert report.n_effective_probes == 1
+    assert report.n_skipped_probes == 1
+
+
+def test_all_noop_probes_raise() -> None:
+    frame = _panel(n_per_symbol=4).with_columns(pl.lit(1.0).alias("x"))
+    with pytest.raises(ValueError, match="all requested corruption probes were ineffective"):
+        audit_lookahead(
+            causal_expanding,
+            frame,
+            cutoffs=[1],
+            corruptions=("shuffle",),
+        )
+
+
+def test_feature_columns_cannot_overlap_keys() -> None:
+    with pytest.raises(ValueError, match="feature columns must not overlap key columns"):
+        audit_lookahead(causal_expanding, _panel(), feature_cols=("timestamp",))
