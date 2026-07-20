@@ -31,7 +31,7 @@ This library follows semantic versioning. The public API consists of all symbols
 exported in __all__. Breaking changes will only occur in major version bumps.
 """
 
-__version__ = "0.1.0b22"
+__version__ = "0.1.0b23"
 
 # Sub-modules for advanced usage
 from . import (
@@ -63,6 +63,15 @@ from .config import (
 
 # Main evaluation framework
 from .evaluation import BarrierAnalysis, EvaluationResult, Evaluator
+
+# Look-ahead / feature causality auditor
+from .evaluation.causality import (
+    CausalityError,
+    CausalityReport,
+    LeakEvent,
+    assert_causal,
+    audit_lookahead,
+)
 
 # ValidatedCrossValidation - combines CPCV + DSR in one step
 from .evaluation.validated_cv import ValidatedCrossValidation
@@ -116,6 +125,12 @@ __all__ = [
     "SignalResult",
     # Barrier Analysis
     "BarrierAnalysis",
+    # Look-ahead / feature causality auditor
+    "audit_lookahead",
+    "assert_causal",
+    "CausalityReport",
+    "CausalityError",
+    "LeakEvent",
     # Configuration (10 primary configs)
     "DiagnosticConfig",
     "StatisticalConfig",

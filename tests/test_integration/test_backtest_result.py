@@ -10,10 +10,9 @@ from types import SimpleNamespace
 import numpy as np
 import polars as pl
 import pytest
+
 from ml4t.backtest import BacktestConfig, BacktestResult
 from ml4t.backtest.types import Trade
-from ml4t.specs import FeedSpec
-
 from ml4t.diagnostic.integration import (
     BacktestReportMetadata,
     compute_metrics_from_result,
@@ -22,6 +21,7 @@ from ml4t.diagnostic.integration import (
     portfolio_analysis_from_result,
     profile_from_run_artifacts,
 )
+from ml4t.specs import FeedSpec
 
 
 def create_sample_result(n_trades: int = 20) -> BacktestResult:

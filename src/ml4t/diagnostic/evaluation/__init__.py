@@ -19,6 +19,13 @@ from ml4t.diagnostic.results.multi_signal_results import (  # noqa: F401
 
 from . import drift, stats  # noqa: F401 (module re-export)
 from .barrier_analysis import BarrierAnalysis  # noqa: F401
+from .causality import (  # noqa: F401
+    CausalityError,
+    CausalityReport,
+    LeakEvent,
+    assert_causal,
+    audit_lookahead,
+)
 from .event_analysis import EventStudyAnalysis  # noqa: F401
 
 # Factor exposure and attribution
@@ -128,6 +135,11 @@ __all__: list[str] = [
     "validated_cross_val_score",
     "ValidationFoldResult",
     "ValidationResult",
+    "audit_lookahead",
+    "assert_causal",
+    "CausalityReport",
+    "CausalityError",
+    "LeakEvent",
     # Analysis workflows
     "FeatureDiagnostics",
     "FeatureDiagnosticsAnalysisResult",
