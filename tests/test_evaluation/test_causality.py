@@ -18,6 +18,7 @@ from ml4t.diagnostic import (
     assert_causal,
     audit_lookahead,
 )
+from ml4t.diagnostic.evaluation.causality import _corrupt
 
 SEED = 20260720
 
@@ -253,6 +254,45 @@ def test_keyless_output_aligns_to_corrupted_input_order() -> None:
         corruptions=("shuffle",),
     )
     assert report.is_causal is True
+
+
+def test_keyless_output_still_detects_a_leak() -> None:
+    frame = _panel(n_per_symbol=8).reverse()
+
+    def keyless_full_mean(data: pl.DataFrame) -> pl.DataFrame:
+        return data.select((pl.col("x") - pl.col("x").mean().over("symbol")).alias("feat"))
+
+    report = audit_lookahead(
+        keyless_full_mean,
+        frame,
+        cutoffs=[3],
+        corruptions=("nan",),
+    )
+    assert report.is_causal is False
+
+
+@pytest.mark.parametrize("corruption", ["nan", "shuffle", "noise"])
+def test_corruption_preserves_pre_cutoff_values_bit_for_bit(corruption: str) -> None:
+    frame = pl.DataFrame(
+        {
+            "symbol": ["A", "A", "A", "A"],
+            "timestamp": [0, 1, 2, 3],
+            "large_int": [2**53 + 1, 2**53 + 3, 2**53 + 5, 2**53 + 7],
+        }
+    )
+    corrupted = _corrupt(
+        frame,
+        cutoff=1,
+        corruption=corruption,
+        input_cols=("large_int",),
+        group_cols=("symbol",),
+        time_col="timestamp",
+        rng=np.random.default_rng(SEED),
+    )
+
+    expected = frame.filter(pl.col("timestamp") <= 1)
+    actual = corrupted.filter(pl.col("timestamp") <= 1)
+    assert actual.equals(expected)
 
 
 # --------------------------------------------------------------------------- #

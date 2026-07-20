@@ -392,9 +392,8 @@ def _corrupt(
             noisy = mean + draw * std.fill_null(0.0)
             exprs.append(
                 pl.when(future)
-                .then(noisy)
+                .then(noisy.cast(frame.schema[c], strict=False))
                 .otherwise(pl.col(c))
-                .cast(frame.schema[c], strict=False)
                 .alias(c)
             )
         exprs.extend(
@@ -591,7 +590,7 @@ def audit_lookahead(
     for cutoff in resolved_cutoffs:
         for corruption in corruptions:
             counter += 1
-            rng = np.random.default_rng(seed + counter)
+            rng = np.random.default_rng([seed, counter])
             corrupted = _corrupt(frame, cutoff, corruption, input_cols, group_cols, time_col, rng)
             if frame.equals(corrupted):
                 n_skipped_probes += 1

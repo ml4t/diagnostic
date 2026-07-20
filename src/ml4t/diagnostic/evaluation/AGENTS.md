@@ -5,6 +5,7 @@ This package holds the main research and validation workflows.
 ## Main Entry Points
 
 - `ValidatedCrossValidation` for CPCV plus DSR
+- `audit_lookahead` and `assert_causal` for model-agnostic feature causality checks
 - `FeatureDiagnostics` for feature-quality checks
 - `PortfolioAnalysis` for return and risk analytics
 - `TradeAnalysis` and `TradeShapAnalyzer` for trade-level diagnostics
