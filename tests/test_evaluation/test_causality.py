@@ -18,7 +18,7 @@ from ml4t.diagnostic import (
     assert_causal,
     audit_lookahead,
 )
-from ml4t.diagnostic.evaluation.causality import _corrupt
+from ml4t.diagnostic.evaluation.causality import _abs_delta_frame, _corrupt
 
 SEED = 20260720
 
@@ -333,6 +333,11 @@ def test_report_renders_all_formats() -> None:
     payload = json.loads(report.to_json())
     assert payload["is_causal"] is False
     assert "feat" in payload["leaking_columns"]
+    assert payload["n_effective_probes"] == 9
+    assert payload["n_skipped_probes"] == 0
+    assert payload["skipped_probes"] == []
+    assert payload["uncovered_pairs"] == []
+    assert "Effective probes" in report.summary()
 
 
 def test_summary_reflects_verdict() -> None:
@@ -528,6 +533,42 @@ def test_output_without_pre_cutoff_comparisons_cannot_pass() -> None:
         )
 
 
+def test_detected_leak_is_reported_with_uncovered_cutoff_pair() -> None:
+    frame = pl.DataFrame(
+        {
+            "symbol": ["A"] * 5,
+            "timestamp": [0, 1, 2, 3, 4],
+            "x": [1.0, 2.0, 3.0, 4.0, None],
+        }
+    )
+
+    def late_leaky_feature(data: pl.DataFrame) -> pl.DataFrame:
+        return (
+            data.with_columns((pl.col("x") - pl.col("x").mean()).alias("feat"))
+            .filter(pl.col("timestamp") >= 3)
+            .select("symbol", "timestamp", "feat")
+        )
+
+    report = audit_lookahead(
+        late_leaky_feature,
+        frame,
+        cutoffs=[1, 3],
+        corruptions=("noise",),
+    )
+    assert report.is_causal is False
+    assert "feat" in report.leaking_columns
+    assert report.uncovered_pairs == ((1, "feat"),)
+
+    with pytest.raises(CausalityError) as exc:
+        assert_causal(
+            late_leaky_feature,
+            frame,
+            cutoffs=[1, 3],
+            corruptions=("noise",),
+        )
+    assert exc.value.report.uncovered_pairs == ((1, "feat"),)
+
+
 def test_noop_probe_is_skipped_when_another_probe_is_effective() -> None:
     frame = _panel(n_per_symbol=4).with_columns(pl.lit(1.0).alias("x"))
     report = audit_lookahead(
@@ -539,6 +580,28 @@ def test_noop_probe_is_skipped_when_another_probe_is_effective() -> None:
     assert report.is_causal is True
     assert report.n_effective_probes == 1
     assert report.n_skipped_probes == 1
+    assert report.skipped_probes == ((1, "shuffle"),)
+
+
+def test_each_cutoff_requires_an_effective_probe_for_causal_verdict() -> None:
+    frame = pl.DataFrame(
+        {
+            "symbol": ["A"] * 4,
+            "timestamp": [0, 1, 2, 3],
+            "x": [1.0, 2.0, 3.0, None],
+        }
+    )
+
+    def identity(data: pl.DataFrame) -> pl.DataFrame:
+        return data.select("symbol", "timestamp", pl.col("x").alias("feat"))
+
+    with pytest.raises(ValueError, match="no effective corruption probes at cutoffs.*2"):
+        audit_lookahead(
+            identity,
+            frame,
+            cutoffs=[1, 2],
+            corruptions=("nan",),
+        )
 
 
 def test_all_noop_probes_raise() -> None:
@@ -555,3 +618,10 @@ def test_all_noop_probes_raise() -> None:
 def test_feature_columns_cannot_overlap_keys() -> None:
     with pytest.raises(ValueError, match="feature columns must not overlap key columns"):
         audit_lookahead(causal_expanding, _panel(), feature_cols=("timestamp",))
+
+
+def test_unsigned_feature_delta_does_not_wrap() -> None:
+    base = pl.DataFrame({"timestamp": [0], "feat": pl.Series([5], dtype=pl.UInt64)})
+    other = pl.DataFrame({"timestamp": [0], "feat": pl.Series([7], dtype=pl.UInt64)})
+    delta = _abs_delta_frame(base, other, "feat", ("timestamp",), "timestamp")
+    assert delta.get_column("__delta").item() == 2.0

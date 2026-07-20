@@ -129,6 +129,8 @@ class _CausalityResultSchema(BaseResult):
     noise_floor: float
     n_effective_probes: int
     n_skipped_probes: int
+    skipped_probes: list[dict[str, str]]
+    uncovered_pairs: list[dict[str, str]]
     feature_cols: list[str]
     leaking_columns: list[str]
     summary_text: str
@@ -172,6 +174,11 @@ class CausalityReport:
             least one future input value and were evaluated.
         n_skipped_probes: Number of requested probes skipped because the
             corruption could not change the observed future inputs.
+        skipped_probes: ``(cutoff, corruption)`` pairs that could not change
+            the observed future inputs.
+        uncovered_pairs: ``(cutoff, feature)`` pairs with no comparable
+            pre-cutoff extractor output. A leaking report may carry coverage
+            gaps, but a causal report never does.
     """
 
     is_causal: bool
@@ -185,6 +192,8 @@ class CausalityReport:
     n_rows: int = 0
     n_effective_probes: int = 0
     n_skipped_probes: int = 0
+    skipped_probes: tuple[tuple[Any, str], ...] = ()
+    uncovered_pairs: tuple[tuple[Any, str], ...] = ()
 
     # -- human-readable summary ------------------------------------------------
     def summary(self) -> str:
@@ -203,6 +212,7 @@ class CausalityReport:
             f"  Corruptions             : {', '.join(self.corruptions)}",
             f"  Effective probes        : {self.n_effective_probes} "
             f"({self.n_skipped_probes} skipped)",
+            f"  Coverage gaps           : {len(self.uncovered_pairs)}",
             f"  Determinism             : {det_line}",
             f"  Verdict                 : {'CAUSAL' if self.is_causal else 'LEAK DETECTED'}",
         ]
@@ -235,6 +245,13 @@ class CausalityReport:
             noise_floor=float(self.determinism.get("noise_floor", 0.0)),
             n_effective_probes=self.n_effective_probes,
             n_skipped_probes=self.n_skipped_probes,
+            skipped_probes=[
+                {"cutoff": str(cutoff), "corruption": corruption}
+                for cutoff, corruption in self.skipped_probes
+            ],
+            uncovered_pairs=[
+                {"cutoff": str(cutoff), "column": column} for cutoff, column in self.uncovered_pairs
+            ],
             feature_cols=list(self.feature_cols),
             leaking_columns=list(self.leaking_columns.keys()),
             summary_text=self.summary(),
@@ -438,7 +455,11 @@ def _abs_delta_frame(
     null_mismatch = pl.col(col).is_null() != pl.col(right_col).is_null()
     if is_numeric:
         nan_mismatch = pl.col(col).is_nan() != pl.col(right_col).is_nan()
-        raw = (pl.col(col) - pl.col(right_col)).abs().fill_nan(0.0)
+        value_mismatch = pl.col(col) != pl.col(right_col)
+        raw = (
+            (pl.col(col).cast(pl.Float64) - pl.col(right_col).cast(pl.Float64)).abs().fill_nan(0.0)
+        )
+        raw = pl.when(value_mismatch & (raw == 0.0)).then(1.0).otherwise(raw)
         delta = (
             pl.when(row_mismatch | null_mismatch | nan_mismatch)
             .then(float("inf"))
@@ -487,8 +508,9 @@ def audit_lookahead(
         frame: The input panel. Must contain all ``keys``.
         cutoffs: ``"auto"`` (inner quantiles of the time axis) or an explicit
             sequence of cutoff timestamps.
-        corruptions: Subset of ``("nan", "shuffle", "noise")``. A column is
-            declared causal only if invariant under *all* requested corruptions.
+        corruptions: Subset of ``("nan", "shuffle", "noise")``. Ineffective
+            probes are skipped and reported; every cutoff must retain at least
+            one effective probe before a causal verdict can be returned.
         keys: Key columns. The last key is the time axis; the rest are entity
             (e.g. ``symbol``) groups. Keys are never corrupted.
         feature_cols: Columns to audit. Defaults to columns present in the
@@ -504,11 +526,15 @@ def audit_lookahead(
             their own jitter; the raw noise floor is still reported unscaled.
 
     Returns:
-        A :class:`CausalityReport`.
+        A :class:`CausalityReport`. Probe counts and coverage gaps are included
+        in the report; coverage gaps can coexist with a detected leak but never
+        with a causal verdict.
 
     Raises:
-        ValueError: If validation fails, a requested probe cannot modify future
-            inputs, or the extractor output cannot be aligned on unique ``keys``.
+        ValueError: If validation fails, the extractor output is empty or
+            unstable in row/null structure, every probe is ineffective, any
+            cutoff has no effective probe, a feature has no pre-cutoff
+            comparisons, or output cannot be aligned on unique ``keys``.
     """
     keys = tuple(keys)
     corruptions = tuple(corruptions)
@@ -583,19 +609,25 @@ def audit_lookahead(
 
     # -- perturbation sweep ---------------------------------------------------
     leak_events: list[LeakEvent] = []
-    comparison_counts = dict.fromkeys(resolved_features, 0)
+    comparison_counts = {
+        (cutoff_index, col): 0
+        for cutoff_index in range(len(resolved_cutoffs))
+        for col in resolved_features
+    }
+    effective_by_cutoff = [0] * len(resolved_cutoffs)
+    skipped_probes: list[tuple[Any, str]] = []
     n_effective_probes = 0
-    n_skipped_probes = 0
     counter = 0
-    for cutoff in resolved_cutoffs:
+    for cutoff_index, cutoff in enumerate(resolved_cutoffs):
         for corruption in corruptions:
             counter += 1
             rng = np.random.default_rng([seed, counter])
             corrupted = _corrupt(frame, cutoff, corruption, input_cols, group_cols, time_col, rng)
             if frame.equals(corrupted):
-                n_skipped_probes += 1
+                skipped_probes.append((cutoff, corruption))
                 continue
             n_effective_probes += 1
+            effective_by_cutoff[cutoff_index] += 1
             pert_out = _align_output(extract(corrupted), corrupted, keys)
             _validate_unique_keys(
                 pert_out,
@@ -612,7 +644,7 @@ def audit_lookahead(
                 df = df.filter(pl.col(time_col) <= cutoff)
                 if df.is_empty():
                     continue
-                comparison_counts[col] += len(df)
+                comparison_counts[(cutoff_index, col)] += len(df)
                 max_delta = _column_max_delta(df)
                 threshold = thresholds[col]
                 if max_delta > threshold:
@@ -632,16 +664,6 @@ def audit_lookahead(
                         )
                     )
 
-    if n_effective_probes == 0:
-        raise ValueError(
-            "all requested corruption probes were ineffective for the observed future inputs"
-        )
-    never_compared = [col for col, count in comparison_counts.items() if count == 0]
-    if never_compared:
-        raise ValueError(
-            f"no pre-cutoff comparisons were made for feature columns: {never_compared}"
-        )
-
     # -- aggregate per column (worst leak) ------------------------------------
     leaking_columns: dict[str, dict[str, Any]] = {}
     for ev in leak_events:
@@ -654,6 +676,27 @@ def audit_lookahead(
                 "corruption": ev.corruption,
             }
 
+    uncovered_cutoffs = [
+        resolved_cutoffs[index] for index, count in enumerate(effective_by_cutoff) if count == 0
+    ]
+    uncovered_pairs = tuple(
+        (resolved_cutoffs[cutoff_index], col)
+        for (cutoff_index, col), count in comparison_counts.items()
+        if count == 0
+    )
+    if not leaking_columns:
+        if n_effective_probes == 0:
+            raise ValueError(
+                "all requested corruption probes were ineffective for the observed future inputs"
+            )
+        if uncovered_cutoffs:
+            raise ValueError(f"no effective corruption probes at cutoffs: {uncovered_cutoffs}")
+        if uncovered_pairs:
+            raise ValueError(
+                "no pre-cutoff comparisons were made for cutoff/feature pairs: "
+                f"{list(uncovered_pairs)}"
+            )
+
     return CausalityReport(
         is_causal=len(leaking_columns) == 0,
         leaking_columns=leaking_columns,
@@ -665,7 +708,9 @@ def audit_lookahead(
         keys=keys,
         n_rows=len(frame),
         n_effective_probes=n_effective_probes,
-        n_skipped_probes=n_skipped_probes,
+        n_skipped_probes=len(skipped_probes),
+        skipped_probes=tuple(skipped_probes),
+        uncovered_pairs=uncovered_pairs,
     )
 
 
@@ -708,10 +753,16 @@ def assert_causal(
     )
     if not report.is_causal:
         cols = ", ".join(report.leaking_columns)
+        coverage = (
+            f"; coverage gaps at {list(report.uncovered_pairs)}" if report.uncovered_pairs else ""
+        )
         raise CausalityError(
-            f"Look-ahead leak detected in feature column(s): {cols}",
+            f"Look-ahead leak detected in feature column(s): {cols}{coverage}",
             report=report,
-            context={"leaking_columns": list(report.leaking_columns)},
+            context={
+                "leaking_columns": list(report.leaking_columns),
+                "uncovered_pairs": list(report.uncovered_pairs),
+            },
         )
     return report
 
