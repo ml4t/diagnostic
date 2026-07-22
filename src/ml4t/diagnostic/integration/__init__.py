@@ -34,6 +34,7 @@ from ml4t.diagnostic.integration.report_metadata import BacktestReportMetadata
 
 if TYPE_CHECKING:
     from ml4t.backtest import BacktestResult
+
     from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
 
