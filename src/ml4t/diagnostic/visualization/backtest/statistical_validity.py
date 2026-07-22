@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.evaluation.stats import compute_min_trl
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config
 
@@ -598,26 +599,30 @@ def plot_minimum_track_record(
 
     Notes
     -----
-    The minimum track record length formula is:
-    MinTRL = 1 + (1 - γ₃*SR + γ₄*SR²/4) * (z_α / SR)²
+    The finite-sample minimum track record length formula is:
+    MinTRL = 1 + (1 - γ₃*SR₀ + (γ₄-1)*SR₀²/4) * (z_α / (SR-SR₀))²
 
-    where γ₃ is skewness, γ₄ is excess kurtosis, and z_α is the
-    critical value for confidence level α.
+    where γ₃ is skewness, γ₄ is Pearson kurtosis, and z_α is the
+    critical value for confidence level α. This visualization assumes
+    normally distributed, serially uncorrelated returns.
     """
     from scipy import stats
 
     theme_config = get_theme_config(theme)
     colors = theme_config["colorway"]
 
-    # Calculate MinTRL (simplified, assuming normal returns)
+    # Calculate finite-sample MinTRL under the plot's normal-return assumption.
     z_alpha = stats.norm.ppf(confidence)
-    sharpe_diff = observed_sharpe - sr_benchmark
-
-    if sharpe_diff <= 0:
-        min_trl = float("inf")
-    else:
-        # Simplified MinTRL (assuming γ₃=0, γ₄=3)
-        min_trl = (z_alpha / sharpe_diff) ** 2
+    annualization_factor = np.sqrt(periods_per_year)
+    observed_sharpe_period = observed_sharpe / annualization_factor
+    benchmark_sharpe_period = sr_benchmark / annualization_factor
+    min_trl_result = compute_min_trl(
+        observed_sharpe=observed_sharpe_period,
+        target_sharpe=benchmark_sharpe_period,
+        confidence_level=confidence,
+        periods_per_year=periods_per_year,
+    )
+    min_trl = min_trl_result.min_trl
 
     # Convert to years
     min_trl_years = min_trl / periods_per_year if min_trl != float("inf") else float("inf")
@@ -633,9 +638,12 @@ def plot_minimum_track_record(
     # Generate data for the required SR curve at different track record lengths
     periods_range = np.linspace(10, max_periods, 100)
 
-    # Required SR to achieve significance at each track record length
-    # SR_required = z_alpha / sqrt(T)
-    required_sr = z_alpha / np.sqrt(periods_range) + sr_benchmark
+    # Invert finite-sample MinTRL and return the required annualized Sharpe.
+    variance_adjustment = 1.0 + 0.5 * benchmark_sharpe_period**2
+    required_sr_period = benchmark_sharpe_period + z_alpha * np.sqrt(
+        variance_adjustment / (periods_range - 1.0)
+    )
+    required_sr = required_sr_period * annualization_factor
 
     fig = go.Figure()
 

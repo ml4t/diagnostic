@@ -247,7 +247,7 @@ MINTRL_EXAMPLE_SR0_POINT1 = MinTRLTestCase(
     tolerance=0.05,  # Our calculation gives 27.063, paper says 27.109 (0.17% diff)
 )
 
-# Normal returns case - corrected expected value computed via minimum_track_record_length()
+# Normal returns case - continuous asymptotic reference before finite-sample adjustment
 MINTRL_NORMAL = MinTRLTestCase(
     name="MinTRL with normal returns",
     sharpe_ratio=1.0,
@@ -260,7 +260,7 @@ MINTRL_NORMAL = MinTRLTestCase(
     tolerance=0.02,
 )
 
-# High target SR - corrected expected value computed via minimum_track_record_length()
+# High target SR - continuous asymptotic reference before finite-sample adjustment
 MINTRL_HIGH_TARGET = MinTRLTestCase(
     name="MinTRL with high target SR",
     sharpe_ratio=1.5,

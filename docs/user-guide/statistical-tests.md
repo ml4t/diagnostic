@@ -89,17 +89,23 @@ print(f"Complexity penalty: {result.complexity:.4f}")
 Calculate how long a track record must be for statistical significance:
 
 ```python
+import numpy as np
+
 from ml4t.diagnostic.evaluation.stats import compute_min_trl
 
 result = compute_min_trl(
-    sharpe_ratio=1.5,
-    target_pvalue=0.05,
-    frequency='daily'
+    observed_sharpe=1.5 / np.sqrt(252),
+    target_sharpe=0.5 / np.sqrt(252),
+    confidence_level=0.95,
+    frequency="daily",
 )
 
-print(f"Minimum observations: {result.min_observations}")
-print(f"Minimum years: {result.min_years:.1f}")
+print(f"Minimum observations: {result.min_trl:.0f}")
+print(f"Minimum years: {result.min_trl_years:.1f}")
 ```
+
+Sharpe inputs use the return series' native frequency. The example converts
+annualized Sharpe ratios to daily values before requesting a daily MinTRL.
 
 ### MinTRL with Multiple Testing
 
@@ -109,9 +115,12 @@ For FWER-controlled significance across multiple strategies:
 from ml4t.diagnostic.evaluation.stats import min_trl_fwer
 
 result = min_trl_fwer(
-    sharpe_ratio=1.5,
-    num_trials=50,
-    alpha=0.05
+    observed_sharpe=1.5 / np.sqrt(252),
+    n_trials=50,
+    variance_trials=0.04 / 252,
+    target_sharpe=0.5 / np.sqrt(252),
+    confidence_level=0.95,
+    frequency="daily",
 )
 ```
 
