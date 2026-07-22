@@ -570,10 +570,11 @@ class PortfolioAnalysis:
         valley_depth = 0.0
 
         for i, dd in enumerate(underwater):
-            if dd < -threshold and not in_drawdown:
+            if not in_drawdown and dd >= 0:
+                peak_idx = i
+            elif dd < -threshold and not in_drawdown:
                 # Start of drawdown
                 in_drawdown = True
-                peak_idx = i - 1 if i > 0 else 0
                 valley_idx = i
                 valley_depth = dd
             elif in_drawdown:
@@ -593,6 +594,7 @@ class PortfolioAnalysis:
                     )
                     periods.append(period)
                     in_drawdown = False
+                    peak_idx = i
 
         # Handle ongoing drawdown
         if in_drawdown:

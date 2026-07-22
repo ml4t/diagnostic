@@ -783,6 +783,21 @@ class TestPortfolioAnalysisDrawdown:
         assert result.max_drawdown <= 0
         assert result.num_drawdowns >= 0
 
+    def test_drawdown_peak_precedes_threshold_crossing(self):
+        """Drawdown periods start at the actual high-water mark."""
+        returns = np.array([0.0, -0.005, -0.010, -0.010, 0.031])
+        dates = pl.date_range(pl.date(2026, 1, 1), pl.date(2026, 1, 5), eager=True)
+
+        result = PortfolioAnalysis(returns=returns, dates=dates).compute_drawdown_analysis(
+            threshold=0.01
+        )
+
+        period = result.top_drawdowns[0]
+        assert period.peak_date == dates[0]
+        assert period.valley_date == dates[3]
+        assert period.recovery_date == dates[4]
+        assert period.duration_days == 3
+
     def test_drawdown_caching(self, portfolio_analysis):
         """Test that drawdown results are cached."""
         result1 = portfolio_analysis.compute_drawdown_analysis()
