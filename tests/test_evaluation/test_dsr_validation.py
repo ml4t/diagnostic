@@ -548,16 +548,18 @@ class TestPSRValidation:
 # =============================================================================
 
 
-def minimum_track_record_length(
+def asymptotic_minimum_track_record_length(
     sharpe_ratio: float,
     sharpe_star: float,
     skewness: float,
     excess_kurtosis: float,
     alpha: float = 0.05,
 ) -> float:
-    """Calculate Minimum Track Record Length (MinTRL).
+    """Reproduce the paper's continuous asymptotic MinTRL quantity.
 
     Implementation based on equation (11) from López de Prado et al. (2025).
+    The production implementation adds the finite-sample leading offset and
+    rounds up to an integer observation count.
 
     Args:
         sharpe_ratio: Observed Sharpe ratio (SR_hat*)
@@ -582,7 +584,7 @@ def minimum_track_record_length(
     # So (γ₄-1)/4 = (excess_kurtosis + 2)/4
     variance_adjustment = 1 - skewness * sharpe_star + (excess_kurtosis + 2) / 4 * sharpe_star**2
 
-    # MinTRL = variance_adjustment * (z_alpha / (SR - SR_0))²
+    # Continuous asymptotic quantity before the finite-sample offset and rounding.
     mintrl = variance_adjustment * (z_alpha / (sharpe_ratio - sharpe_star)) ** 2
 
     return mintrl
@@ -600,7 +602,7 @@ class TestMinTRLValidation:
         Paper cases (SR_0=0 and SR_0=0.1) match within <0.2%.
         Other cases use computed expected values for consistency validation.
         """
-        result = minimum_track_record_length(
+        result = asymptotic_minimum_track_record_length(
             sharpe_ratio=case.sharpe_ratio,
             sharpe_star=case.sharpe_star,
             skewness=case.skewness,
@@ -620,7 +622,7 @@ class TestMinTRLValidation:
 
     def test_mintrl_zero_target(self):
         """Edge case: MinTRL with SR_0 = 0."""
-        mintrl = minimum_track_record_length(
+        mintrl = asymptotic_minimum_track_record_length(
             sharpe_ratio=1.0,
             sharpe_star=0.0,
             skewness=0.0,
@@ -634,7 +636,7 @@ class TestMinTRLValidation:
 
     def test_mintrl_equal_sharpes(self):
         """Edge case: MinTRL when SR = SR_0."""
-        mintrl = minimum_track_record_length(
+        mintrl = asymptotic_minimum_track_record_length(
             sharpe_ratio=1.0,
             sharpe_star=1.0,
             skewness=0.0,
@@ -647,7 +649,7 @@ class TestMinTRLValidation:
 
     def test_mintrl_below_target(self):
         """Edge case: MinTRL when SR < SR_0."""
-        mintrl = minimum_track_record_length(
+        mintrl = asymptotic_minimum_track_record_length(
             sharpe_ratio=0.5,
             sharpe_star=1.0,
             skewness=0.0,
@@ -663,7 +665,7 @@ class TestMinTRLValidation:
         sharpe_ratio = 1.0
         sharpe_star = 0.5
 
-        mintrl_lenient = minimum_track_record_length(
+        mintrl_lenient = asymptotic_minimum_track_record_length(
             sharpe_ratio=sharpe_ratio,
             sharpe_star=sharpe_star,
             skewness=0.0,
@@ -671,7 +673,7 @@ class TestMinTRLValidation:
             alpha=0.10,  # Lenient
         )
 
-        mintrl_strict = minimum_track_record_length(
+        mintrl_strict = asymptotic_minimum_track_record_length(
             sharpe_ratio=sharpe_ratio,
             sharpe_star=sharpe_star,
             skewness=0.0,
@@ -1380,7 +1382,7 @@ class TestDSRIntegration:
         )
 
         # Calculate MinTRL
-        mintrl = minimum_track_record_length(
+        mintrl = asymptotic_minimum_track_record_length(
             sharpe_ratio=sharpe_ratio,
             sharpe_star=sharpe_star,
             skewness=skewness,
@@ -1400,7 +1402,7 @@ class TestDSRIntegration:
         assert psr < psr_normal
 
         # MinTRL should be higher with fat tails
-        mintrl_normal = minimum_track_record_length(
+        mintrl_normal = asymptotic_minimum_track_record_length(
             sharpe_ratio=sharpe_ratio,
             sharpe_star=0.0,
             skewness=0.0,

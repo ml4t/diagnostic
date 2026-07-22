@@ -1,13 +1,17 @@
 """Minimum Track Record Length (MinTRL) calculation.
 
 MinTRL is the minimum number of observations required to reject the null
-hypothesis (SR ≤ target) at the specified confidence level.
+hypothesis (SR ≤ target) at the specified confidence level. The implementation
+uses the finite-sample form, with the leading one-observation offset.
 
 References
 ----------
+Bailey, D. H., & López de Prado, M. (2012).
+"The Sharpe Ratio Efficient Frontier." Journal of Risk, 15(2), 3-44.
+
 López de Prado, M., Lipton, A., & Zoonekynd, V. (2025).
 "How to Use the Sharpe Ratio." ADIA Lab Research Paper Series, No. 19.
-Equation 11, page 9.
+Equation 11 supplies the serial-correlation variance adjustment.
 """
 
 from __future__ import annotations
@@ -150,7 +154,8 @@ def _compute_min_trl_core(
     -------
     float
         Minimum number of observations. Returns math.inf if
-        observed SR <= target SR.
+        observed SR <= target SR. The finite-sample result is rounded up
+        after adding the leading one-observation offset.
     """
     rho = autocorrelation
     sr_diff = observed_sharpe - target_sharpe
@@ -178,9 +183,9 @@ def _compute_min_trl_core(
     # Variance term (without 1/T factor)
     var_term = a - b * skewness * target_sharpe + c * (kurtosis - 1) / 4 * target_sharpe**2
 
-    # MinTRL formula (Equation 11)
+    # Finite-sample MinTRL adds one observation to the asymptotic variance term.
     try:
-        min_trl = var_term * (z_alpha / sr_diff) ** 2
+        min_trl = 1.0 + var_term * (z_alpha / sr_diff) ** 2
         if np.isinf(min_trl):
             return float("inf")
         return float(np.ceil(max(min_trl, 1)))

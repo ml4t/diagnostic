@@ -620,6 +620,7 @@ class TestStatisticalValidity:
 
     def test_plot_minimum_track_record(self):
         """Test MinTRL visualization."""
+        from ml4t.diagnostic.evaluation.stats import compute_min_trl
         from ml4t.diagnostic.visualization.backtest import plot_minimum_track_record
 
         fig = plot_minimum_track_record(
@@ -629,6 +630,14 @@ class TestStatisticalValidity:
         )
 
         assert isinstance(fig, go.Figure)
+        expected = compute_min_trl(
+            observed_sharpe=1.8 / np.sqrt(252),
+            target_sharpe=0.5 / np.sqrt(252),
+            periods_per_year=252,
+        )
+        min_trl_line = fig.layout.shapes[0]
+        assert min_trl_line.x0 == pytest.approx(expected.min_trl_years)
+        assert min_trl_line.x1 == pytest.approx(expected.min_trl_years)
 
 
 # =============================================================================
