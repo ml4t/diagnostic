@@ -86,6 +86,9 @@ from .integration.data_contract import (
     Severity,
 )
 
+# Cross-sectional feature profiles
+from .metrics import QuantileProfile, quantile_profile
+
 # Feature selection
 from .selection import FeatureSelector, SelectionReport
 
@@ -123,6 +126,9 @@ __all__ = [
     # Signal Analysis
     "analyze_signal",
     "SignalResult",
+    # Cross-sectional feature profiles
+    "QuantileProfile",
+    "quantile_profile",
     # Barrier Analysis
     "BarrierAnalysis",
     # Look-ahead / feature causality auditor

@@ -28,6 +28,8 @@ def test_metrics_package_exports_core_metric_groups():
         "compute_shap_interactions",
         "analyze_interactions",
         "compute_fold_percentiles",
+        "QuantileProfile",
+        "quantile_profile",
     }
 
     assert expected.issubset(set(metrics.__all__))

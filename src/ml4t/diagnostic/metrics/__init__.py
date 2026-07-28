@@ -36,6 +36,7 @@ from ml4t.diagnostic.metrics.interactions import (
 )
 from ml4t.diagnostic.metrics.monotonicity import compute_monotonicity
 from ml4t.diagnostic.metrics.percentiles import compute_fold_percentiles
+from ml4t.diagnostic.metrics.quantile_profile import QuantileProfile, quantile_profile
 from ml4t.diagnostic.metrics.risk_adjusted import (
     maximum_drawdown,
     periodic_sharpe_ratio,
@@ -81,6 +82,8 @@ __all__ = [
     "compute_shap_interactions",
     "analyze_interactions",
     "compute_fold_percentiles",
+    "QuantileProfile",
+    "quantile_profile",
     "cross_sectional_auc_series",
     "compute_ic_uncertainty",
     "compute_auc_uncertainty",

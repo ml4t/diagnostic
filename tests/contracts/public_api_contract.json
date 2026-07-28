@@ -23,6 +23,8 @@
       "WalkForwardCV",
       "cross_sectional_ic_series",
       "compute_ic_hac_stats",
+      "QuantileProfile",
+      "quantile_profile",
       "compute_mdi_importance",
       "compute_permutation_importance",
       "compute_shap_importance",
