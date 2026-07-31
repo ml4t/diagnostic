@@ -517,7 +517,7 @@ class EventStudyAnalysis:
             return 0.0, 1.0
 
         t_stat = mean_car / se_car
-        p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df=n - 1))
+        p_value = 2 * stats.t.sf(abs(t_stat), df=n - 1)
 
         return float(t_stat), float(p_value)
 
@@ -551,7 +551,7 @@ class EventStudyAnalysis:
             return 0.0, 1.0
 
         z_stat = mean_sar / se_sar
-        p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+        p_value = 2 * stats.norm.sf(abs(z_stat))
 
         return float(z_stat), float(p_value)
 
@@ -592,7 +592,7 @@ class EventStudyAnalysis:
             return 0.0, 1.0
 
         z_stat = mean_deviation / se_rank
-        p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+        p_value = 2 * stats.norm.sf(abs(z_stat))
 
         return float(z_stat), float(p_value)
 

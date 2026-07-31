@@ -1032,7 +1032,7 @@ def _enrich_validation_metrics(
             metrics.setdefault("sharpe_se", se_corrected)
             if se_corrected > 0:
                 z_stat = sr_f / se_corrected
-                p_value = float(2 * (1 - norm.cdf(abs(z_stat))))
+                p_value = float(2 * norm.sf(abs(z_stat)))
                 metrics.setdefault("sharpe_pvalue", p_value)
     except Exception:
         pass
