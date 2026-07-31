@@ -9,7 +9,7 @@ and stays accurate to the smallest normal double.
 These tests fail against the ``1 - cdf`` form and pass against ``sf``.
 """
 
-import re
+import ast
 from pathlib import Path
 
 import numpy as np
@@ -84,37 +84,114 @@ def test_deflated_sharpe_pvalue_survives_extreme_z():
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 
-# `1 - norm.cdf(x)` written out in one expression.
-DIRECT = re.compile(r"1(\.0)?\s*-\s*[A-Za-z_][\w.]*\.cdf\(")
-# `probability = norm.cdf(x)` - a name bound to a CDF value.
-CDF_BINDING = re.compile(r"^\s*([A-Za-z_]\w*)\s*=.*[A-Za-z_][\w.]*\.cdf\(")
+
+def _is_cdf_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "cdf"
+    )
 
 
-def _one_minus(name: str) -> re.Pattern[str]:
-    return re.compile(rf"1(\.0)?\s*-\s*{re.escape(name)}\b")
+def _is_literal_one(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and not isinstance(node.value, bool) and node.value == 1
 
 
-def _offenders(path: Path) -> list[str]:
+def _cdf_bound_names(tree: ast.AST) -> set[str]:
+    """Names assigned an expression that calls ``.cdf`` anywhere inside it."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            value, targets = node.value, node.targets
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            value, targets = node.value, [node.target]
+        else:
+            continue
+        if any(_is_cdf_call(n) for n in ast.walk(value)):
+            names.update(t.id for t in targets if isinstance(t, ast.Name))
+    return names
+
+
+def _offenders(path: Path, rel: str | None = None) -> list[str]:
     """Both spellings of the cancellation, in one file.
 
     The two-line form is the one that hides: ``probability = norm.cdf(z)``
     followed by ``p_value = 1 - probability`` cancels exactly as hard as the
-    inline expression, and reads as arithmetic rather than as a tail. Names
-    bound to a CDF value are collected first, then every ``1 - <that name>`` is
-    flagged wherever it appears in the same file.
-    """
-    lines = path.read_text().splitlines()
-    # Comments are prose, and prose that names the forbidden pattern - including
-    # the ones explaining why a nearby line uses sf - is not the pattern.
-    code = [line.split("#", 1)[0] for line in lines]
-    bound = {m.group(1) for line in code if (m := CDF_BINDING.match(line))}
-    indirect = [_one_minus(name) for name in sorted(bound)]
+    inline expression, and reads as arithmetic rather than as a tail.
 
-    return [
-        f"{path.relative_to(SRC)}:{lineno}: {line.strip()}"
-        for lineno, line in enumerate(code, start=1)
-        if DIRECT.search(line) or any(p.search(line) for p in indirect)
-    ]
+    Parsed rather than grepped, for two reasons. Comments and docstrings are
+    invisible to ``ast``, so prose naming the pattern - including a comment
+    explaining why a nearby line uses ``sf`` - does not trip it. And an
+    assignment spread over several lines is one node, so ``probability = float(``
+    with the ``norm.cdf(...)`` on the next line is still a CDF binding.
+
+    Known limit: a CDF value reached through a subscript or attribute rather
+    than a bare name (``1 - result["psr"]``) is not tracked.
+    """
+    source = path.read_text()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    bound = _cdf_bound_names(tree)
+    lines = source.splitlines()
+    label = rel if rel is not None else str(path.relative_to(SRC))
+
+    hits = {
+        node.lineno: f"{label}:{node.lineno}: {lines[node.lineno - 1].strip()}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.Sub)
+        and _is_literal_one(node.left)
+        and (
+            _is_cdf_call(node.right)
+            or (isinstance(node.right, ast.Name) and node.right.id in bound)
+        )
+    }
+    return [hits[line] for line in sorted(hits)]
+
+
+@pytest.mark.parametrize(
+    ("label", "source"),
+    [
+        ("inline", "p = 2 * (1 - stats.t.cdf(abs(t), df=n))\n"),
+        ("bound name", "probability = norm.cdf(z)\np_value = 1 - probability\n"),
+        (
+            "binding wrapped over lines",
+            "probability = float(\n    stats.norm.cdf(z)\n)\np_value = float(1.0 - probability)\n",
+        ),
+        (
+            "subtraction wrapped over lines",
+            "probability = stats.norm.cdf(z)\np_value = (\n    1\n    - probability\n)\n",
+        ),
+    ],
+)
+def test_detector_finds_every_layout(tmp_path: Path, label: str, source: str) -> None:
+    """Every way of writing it, including the ones no regex sees."""
+    path = tmp_path / "sample.py"
+    path.write_text(source)
+
+    assert _offenders(path, "sample.py"), f"missed the {label} layout"
+
+
+@pytest.mark.parametrize(
+    ("label", "source"),
+    [
+        ("sf", "p_value = 2 * stats.t.sf(abs(t), df=n)\n"),
+        (
+            "a comment naming the pattern",
+            "# sf, not 1 - norm.cdf(z), which cancels\np = norm.sf(z)\n",
+        ),
+        ("a CDF used as a probability", "psr = float(norm.cdf(z))\nis_significant = psr >= 0.95\n"),
+        ("an unrelated subtraction", "share = 1 - weight\n"),
+    ],
+)
+def test_detector_does_not_fire_on_correct_code(tmp_path: Path, label: str, source: str) -> None:
+    path = tmp_path / "sample.py"
+    path.write_text(source)
+
+    assert not _offenders(path, "sample.py"), f"false positive on {label}"
 
 
 def test_no_tail_probability_is_written_as_one_minus_cdf():
