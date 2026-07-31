@@ -495,7 +495,9 @@ def deflated_sharpe_ratio(
 
     # Probability and p-value
     probability = float(norm.cdf(z_score))
-    p_value = float(1 - probability)
+    # sf, not 1 - probability: probability rounds to 1.0 above z ~8.3 and the
+    # subtraction cancels to exactly zero.
+    p_value = float(norm.sf(z_score))
     is_significant = probability >= confidence_level
 
     # Annualized Sharpe
@@ -653,7 +655,9 @@ def deflated_sharpe_ratio_from_statistics(
         z_score = np.inf if observed_sharpe > adjusted_threshold else -np.inf
 
     probability = float(norm.cdf(z_score))
-    p_value = float(1 - probability)
+    # sf, not 1 - probability: probability rounds to 1.0 above z ~8.3 and the
+    # subtraction cancels to exactly zero.
+    p_value = float(norm.sf(z_score))
     is_significant = probability >= confidence_level
 
     sharpe_annualized = observed_sharpe * annualization_factor

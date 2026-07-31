@@ -22,6 +22,8 @@ def render_tab(st: Any, bundle: DashboardBundle) -> None:
     bundle : DashboardBundle
         Normalized dashboard data.
     """
+    from scipy.stats import norm
+
     from ml4t.diagnostic.evaluation.stats import probabilistic_sharpe_ratio
     from ml4t.diagnostic.evaluation.trade_dashboard.stats import (
         compute_distribution_tests,
@@ -100,11 +102,13 @@ def render_tab(st: Any, bundle: DashboardBundle) -> None:
         )
 
     with col3:
-        p_value = 1 - psr_result["psr"]
+        # The left tail of the same normal, not 1 - PSR: PSR rounds to 1.0
+        # above z ~8.3 and the subtraction cancels to exactly zero.
+        p_value = float(norm.sf(psr_result["z_score"]))
         st.metric(
             "P-Value",
             f"{p_value:.4f}",
-            help="1 - PSR: probability true SR <= 0",
+            help="Probability true SR <= 0, the complement of PSR",
         )
 
     with col4:
