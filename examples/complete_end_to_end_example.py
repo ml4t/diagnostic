@@ -33,7 +33,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 # ML4T Evaluation imports
-from ml4t.diagnostic.evaluation import analyze_ml_importance, compute_shap_interactions
+from ml4t.diagnostic.metrics import analyze_ml_importance, compute_shap_interactions
 from ml4t.diagnostic.visualization import (
     generate_combined_report,
     generate_importance_report,

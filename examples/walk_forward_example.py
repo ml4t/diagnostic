@@ -7,16 +7,11 @@ through label_horizon (removing training samples whose labels overlap with
 validation data).
 """
 
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import polars as pl
-
-# Add ml4t-diagnostic source to path
-sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from ml4t.diagnostic.splitters import WalkForwardCV
 
@@ -342,7 +337,7 @@ def demonstrate_model_validation():
     # Get unique labels
     unique_labels = sorted(set(actuals_all) | set(predictions_all))
     label_names = {-1: "Down", 0: "Neutral", 1: "Up"}
-    target_names = [label_names.get(l, str(l)) for l in unique_labels]
+    target_names = [label_names.get(label, str(label)) for label in unique_labels]
     print(
         classification_report(
             actuals_all,

@@ -7,7 +7,14 @@ comprehensive statistical analysis on trading features/signals.
 import numpy as np
 import pandas as pd
 
-from ml4t.diagnostic.evaluation import FeatureDiagnostics, FeatureDiagnosticsConfig
+from ml4t.diagnostic.config import (
+    ACFSettings,
+    DiagnosticConfig,
+    DistributionSettings,
+    StationaritySettings,
+    VolatilitySettings,
+)
+from ml4t.diagnostic.evaluation import FeatureDiagnostics
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -120,12 +127,11 @@ def example_5_custom_configuration():
     feature = np.random.standard_t(df=3, size=1000)
 
     # Custom config: only run stationarity and distribution
-    config = FeatureDiagnosticsConfig(
-        run_stationarity=True,
-        run_autocorrelation=False,
-        run_volatility=False,
-        run_distribution=True,
-        compute_tails=True,  # Enable tail analysis
+    config = DiagnosticConfig(
+        stationarity=StationaritySettings(enabled=True),
+        acf=ACFSettings(enabled=False),
+        volatility=VolatilitySettings(enabled=False),
+        distribution=DistributionSettings(enabled=True, compute_tails=True),
         verbose=False,
     )
 

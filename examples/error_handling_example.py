@@ -5,29 +5,16 @@ Demonstrates all error types, context preservation, error chaining,
 and practical error handling patterns.
 """
 
-import sys
-from pathlib import Path
 from typing import Any
 
-# Add src to path for examples
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-# Import error types (in production, use: from ml4t.diagnostic.errors import ...)
-import importlib.util
-
-spec = importlib.util.spec_from_file_location(
-    "ml4t.diagnostic.errors",
-    Path(__file__).parent.parent / "src" / "ml4t-diagnostic" / "errors" / "__init__.py",
+from ml4t.diagnostic.errors import (
+    ComputationError,
+    ConfigurationError,
+    DataError,
+    DiagnosticError,
+    IntegrationError,
+    ValidationError,
 )
-errors = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-spec.loader.exec_module(errors)  # type: ignore[union-attr,union-attr]
-
-ML4TEvaluationError = errors.ML4TEvaluationError
-ConfigurationError = errors.ConfigurationError
-ValidationError = errors.ValidationError
-ComputationError = errors.ComputationError
-DataError = errors.DataError
-IntegrationError = errors.IntegrationError
 
 
 def example_1_basic_error():
@@ -65,7 +52,7 @@ def example_2_error_chaining():
                 "Sharpe ratio calculation failed",
                 context={"metric": "sharpe_ratio", "n_samples": 100, "std_dev": 0.0},
                 cause=e,
-            )
+            ) from e
     except ComputationError as e:
         print(f"High-level error:\n{e}\n")
         print(f"Original cause: {type(e.cause).__name__}")
@@ -212,16 +199,16 @@ def example_8_error_hierarchy():
         IntegrationError("Integration error"),
     ]
 
-    print("Testing polymorphic catch with ML4TEvaluationError:\n")
+    print("Testing polymorphic catch with DiagnosticError:\n")
     for error in errors_to_test:
         try:
             raise error
-        except ML4TEvaluationError as e:
+        except DiagnosticError as e:
             print(f"  ✅ Caught {type(e).__name__}: {e.message}")
 
-    print("\nAll errors are ML4TEvaluationError instances:")
+    print("\nAll errors are DiagnosticError instances:")
     for error in errors_to_test:
-        is_diagnostic = isinstance(error, ML4TEvaluationError)
+        is_diagnostic = isinstance(error, DiagnosticError)
         print(f"  {type(error).__name__}: {is_diagnostic}")
     print()
 
@@ -279,7 +266,7 @@ def example_10_error_recovery():
         except (KeyError, ZeroDivisionError) as e:
             raise ComputationError(
                 "Failed to compute mean return", context={"data_keys": list(data.keys())}, cause=e
-            )
+            ) from e
 
         # Optional metric - use fallback
         try:

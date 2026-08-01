@@ -113,18 +113,15 @@ def compute_distribution_tests(
         try:
             from scipy.stats import anderson
 
-            result = anderson(returns, dist="norm")
-            # Use 5% significance level
-            critical_idx = 2  # Index for 5% level
+            result = anderson(returns, dist="norm", method="interpolate")
             stat = result.statistic
-            critical = result.critical_values[critical_idx]
-            is_normal = stat < critical
+            p_value = result.pvalue
             results.append(
                 {
                     "test": "Anderson-Darling",
                     "statistic": stat,
-                    "p_value": None,  # Anderson doesn't provide p-value directly
-                    "interpretation": "Normal" if is_normal else "Non-normal",
+                    "p_value": p_value,
+                    "interpretation": "Normal" if p_value > 0.05 else "Non-normal",
                 }
             )
         except Exception:

@@ -14,18 +14,16 @@ Usage:
     python examples/volatility_example.py
 """
 
+import importlib.util
+
 import numpy as np
 
-try:
-    from arch import arch_model
+from ml4t.diagnostic.evaluation.volatility import analyze_volatility, arch_lm_test, fit_garch
 
-    HAS_ARCH = True
-except ImportError:
-    HAS_ARCH = False
+HAS_ARCH = importlib.util.find_spec("arch") is not None
+if not HAS_ARCH:
     print("Warning: arch package not installed. Some examples will be skipped.")
     print("Install with: pip install arch")
-
-from ml4t.diagnostic.evaluation.volatility import analyze_volatility, arch_lm_test, fit_garch
 
 
 def example_white_noise():

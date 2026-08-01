@@ -13,12 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-# Add src to path for local development
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 
 def create_mock_result() -> dict:
     """Create mock TradeShapResult for demonstration.
@@ -111,7 +105,7 @@ def create_mock_result() -> dict:
     mock_explanations = []
 
     # Generate 50 trades with realistic metrics
-    for i in range(50):
+    for _ in range(50):
         # Random symbol
         symbol = random.choice(symbols)
 
@@ -140,7 +134,7 @@ def create_mock_result() -> dict:
 
         # Generate feature values at trade entry
         feature_values = {}
-        for feat_name, shap_val in top_features:
+        for feat_name, _shap_val in top_features:
             # Generate realistic feature values based on name
             if "momentum" in feat_name.lower():
                 feature_values[feat_name] = random.uniform(-0.5, 2.0)
@@ -206,10 +200,7 @@ def main():
             run_diagnostics_dashboard,
         )
     except ImportError as e:
-        print(f"❌ Failed to import dashboard: {e}")
-        print("\nInstall streamlit with: pip install streamlit")
-        print("Or install with: pip install ml4t-diagnostic[dashboard]")
-        sys.exit(1)
+        raise RuntimeError("The dashboard example requires ml4t-diagnostic[dashboard].") from e
 
     # Create mock result
     print("Creating mock Trade-SHAP result...")
