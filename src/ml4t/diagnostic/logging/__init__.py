@@ -11,7 +11,6 @@ Features:
 - Debug mode for intermediate results
 - Performance metrics tracking
 - Context-aware logging
-- Weights & Biases integration
 
 Example:
     >>> from ml4t.diagnostic.logging import get_logger, set_log_level, LogLevel
@@ -49,9 +48,6 @@ from ml4t.diagnostic.logging.progress import (
     spinner,
 )
 
-# Experiment tracking (Weights & Biases)
-from ml4t.diagnostic.logging.wandb import WandbLogger, log_experiment
-
 __all__: list[str] = [
     # Logger
     "DiagnosticLogger",
@@ -71,7 +67,4 @@ __all__: list[str] = [
     "get_performance_monitor",
     "timed",
     "measure_time",
-    # WandB
-    "WandbLogger",
-    "log_experiment",
 ]

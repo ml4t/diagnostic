@@ -126,12 +126,6 @@ ml = [
     "streamlit>=1.28.0",
 ]
 
-# GPU acceleration (SHAP TreeExplainer GPU mode)
-gpu = [
-    "cupy-cuda11x>=11.0.0",  # CUDA 11.x
-    # Alternative: cupy-cuda12x>=12.0.0 for CUDA 12.x
-]
-
 # Dashboard and interactive visualization (Streamlit)
 dashboard = [
     "streamlit>=1.28.0",
@@ -145,11 +139,6 @@ factors = [
 # Backtest integration bridge
 backtest = [
     "ml4t-backtest>=0.1.0b10",
-]
-
-# Experiment tracking integrations
-tracking = [
-    "wandb>=0.16.0",
 ]
 
 # Development tools (testing, linting, debugging)
@@ -176,7 +165,7 @@ docs = [
     "mkdocs-literate-nav>=0.6.0",
 ]
 
-# Complete installation (all features, excluding GPU)
+# Complete installation (all supported features)
 all = [
     "plotly>=5.15.0",
     "matplotlib>=3.7.0",
@@ -188,7 +177,6 @@ all = [
     "ml4t-data>=0.1.0b7",
     "ml4t-backtest>=0.1.0b10",
     "streamlit>=1.28.0",
-    "wandb>=0.16.0",
 ]
 
 [project.urls]

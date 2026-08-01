@@ -3231,17 +3231,6 @@ class TestExplainerCreation:
         assert result["explainer_type"] == "kernel"
 
 
-class TestGPUDetection:
-    """Tests for GPU detection."""
-
-    def test_gpu_detection_returns_bool(self):
-        """Test GPU detection returns a boolean."""
-        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
-
-        result = _detect_gpu_available()
-        assert isinstance(result, bool)
-
-
 class TestMDAImportanceVariations:
     """Additional tests for MDA importance."""
 
@@ -4247,29 +4236,6 @@ class TestExplainerCreationPaths:
         with pytest.raises(ValueError, match="Invalid explainer_type"):
             compute_shap_importance(model, X, explainer_type="invalid_type")
 
-    def test_use_gpu_false_explicit(self):
-        """Test explicit use_gpu=False path."""
-        from sklearn.ensemble import RandomForestRegressor
-
-        from ml4t.diagnostic.metrics import compute_shap_importance
-
-        np.random.seed(42)
-        X = pd.DataFrame(
-            {
-                "a": np.random.randn(20),
-                "b": np.random.randn(20),
-            }
-        )
-        y = X["a"] + np.random.randn(20) * 0.1
-
-        model = RandomForestRegressor(n_estimators=3, random_state=42)
-        model.fit(X, y)
-
-        result = compute_shap_importance(model, X, use_gpu=False)
-
-        assert isinstance(result, dict)
-        assert "importances" in result
-
 
 class TestAnalyzeMLImportanceEdgeCases:
     """Edge cases for analyze_ml_importance."""
@@ -5180,57 +5146,6 @@ class TestConditionalICWithoutDateCol:
         )
 
         # Should handle gracefully - may still compute with fewer quantiles
-        assert isinstance(result, dict)
-
-
-class TestGPUExplainerPaths:
-    """Test GPU-related paths in SHAP explainer creation."""
-
-    def test_gpu_requested_but_not_available(self):
-        """Test error when GPU requested but not available."""
-        from unittest.mock import patch
-
-        from sklearn.ensemble import RandomForestRegressor
-
-        from ml4t.diagnostic.metrics import compute_shap_importance
-
-        np.random.seed(42)
-        X = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
-        y = X["a"] + np.random.randn(30) * 0.1
-
-        model = RandomForestRegressor(n_estimators=2, random_state=42)
-        model.fit(X, y)
-
-        # Mock GPU as unavailable (patch at the module where it's used)
-        with patch(
-            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
-            return_value=False,
-        ):
-            with pytest.raises(RuntimeError, match="GPU requested.*but GPU not available"):
-                compute_shap_importance(model, X, use_gpu=True)
-
-    def test_gpu_auto_detection_small_dataset(self):
-        """Test that GPU auto-detection doesn't use GPU for small datasets."""
-        from unittest.mock import patch
-
-        from sklearn.ensemble import RandomForestRegressor
-
-        from ml4t.diagnostic.metrics import compute_shap_importance
-
-        np.random.seed(42)
-        X = pd.DataFrame({"a": np.random.randn(100), "b": np.random.randn(100)})
-        y = X["a"] + np.random.randn(100) * 0.1
-
-        model = RandomForestRegressor(n_estimators=2, random_state=42)
-        model.fit(X, y)
-
-        # Even if GPU is available, small dataset shouldn't use it (patch at the module where it's used)
-        with patch(
-            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
-            return_value=True,
-        ):
-            result = compute_shap_importance(model, X, use_gpu="auto")
-
         assert isinstance(result, dict)
 
 

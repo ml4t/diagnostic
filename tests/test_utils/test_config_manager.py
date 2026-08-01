@@ -129,23 +129,6 @@ class TestLoggingConfig:
         config = LoggingConfig()
 
         assert config.level == "INFO"
-        assert config.use_wandb is False
-
-    def test_wandb_requires_project(self):
-        """Test that W&B requires project name."""
-        with pytest.raises(ValueError, match="wandb_project is required"):
-            LoggingConfig(use_wandb=True)  # No project specified
-
-    def test_valid_wandb_config(self):
-        """Test valid W&B configuration."""
-        config = LoggingConfig(
-            use_wandb=True,
-            wandb_project="test_project",
-            wandb_entity="test_entity",
-        )
-
-        assert config.use_wandb is True
-        assert config.wandb_project == "test_project"
 
 
 class TestEvaluatorConfig:

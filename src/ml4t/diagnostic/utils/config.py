@@ -96,19 +96,6 @@ class LoggingConfig(BaseModel):
         default="INFO",
         description="Logging level",
     )
-    use_wandb: bool = Field(
-        default=False,
-        description="Whether to use Weights & Biases logging",
-    )
-    wandb_project: str | None = Field(default=None, description="W&B project name")
-    wandb_entity: str | None = Field(default=None, description="W&B entity name")
-
-    @model_validator(mode="after")
-    def validate_wandb_config(self):
-        """Validate W&B configuration consistency."""
-        if self.use_wandb and not self.wandb_project:
-            raise ValueError("wandb_project is required when use_wandb=True")
-        return self
 
 
 class EvaluatorConfig(BaseModel):
@@ -533,9 +520,6 @@ visualization:
 
 logging:
   level: INFO
-  use_wandb: false
-  wandb_project: null
-  wandb_entity: null
 """
 
 
