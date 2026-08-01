@@ -1,14 +1,26 @@
-"""Numba-optimized utility functions for ML4T Diagnostic.
+"""Optionally JIT-compiled utility functions for ML4T Diagnostic.
 
 This module contains JIT-compiled functions for performance-critical operations.
-Numba is used to optimize computationally intensive loops and array operations.
+Numba is used when installed to optimize computationally intensive loops and
+array operations. The functions run as ordinary NumPy functions otherwise.
 
 Note: Numba functions work best with NumPy arrays and simple Python types.
 They cannot handle Pandas objects directly.
 """
 
 import numpy as np
-from numba import jit
+
+try:
+    from numba import jit
+except ImportError:
+
+    def jit(*args, **kwargs):  # type: ignore[misc]
+        """Return an identity decorator when Numba is unavailable."""
+
+        def decorator(func):
+            return func
+
+        return decorator
 
 
 @jit(nopython=True, cache=True)

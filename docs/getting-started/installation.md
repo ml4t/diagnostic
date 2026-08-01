@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.12+
+- CPython 3.12, 3.13, or 3.14
 - Polars 0.20+
 
 ## Basic Installation
@@ -104,7 +104,6 @@ print(diag.__version__)
 | scipy | ≥1.10.0 | Scientific computing |
 | scikit-learn | ≥1.3.0 | ML utilities |
 | statsmodels | ≥0.14.0 | Statistical tests |
-| numba | ≥0.57.0 | JIT compilation |
 
 ### Optional
 
