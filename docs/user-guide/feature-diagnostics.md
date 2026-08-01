@@ -46,3 +46,43 @@ individual sections with `DiagnosticConfig` and the settings classes in
 Feature quality does not establish predictive value. Use the
 [quickstart](../getting-started/quickstart.md) to measure cross-sectional IC and
 the [HAC IC method](../methods/hac-ic.md) for time-series inference.
+
+## Profile labels by feature quantile
+
+`quantile_profile` assigns quantiles within each timestamp by default. Pass
+`by=None` only when pooled quantiles match the research question.
+
+```python
+import polars as pl
+
+from ml4t.diagnostic import quantile_profile
+
+panel = pl.DataFrame(
+    {
+        "timestamp": [date for date in range(3) for _ in range(10)],
+        "asset": [f"asset_{asset}" for _ in range(3) for asset in range(10)],
+        "feature": [float(asset) for _ in range(3) for asset in range(10)],
+        "label": [0.01 * asset + 0.001 * date for date in range(3) for asset in range(10)],
+    }
+)
+
+profile = quantile_profile(
+    panel,
+    feature="feature",
+    label="label",
+    n_quantiles=5,
+    by="timestamp",
+    keys=["timestamp", "asset"],
+    min_per_bucket=6,
+)
+
+print(profile.means)
+print(profile.counts)
+print(f"Monotonicity: {profile.monotonicity:.2f}")
+```
+
+Rows with non-finite feature or label values are excluded. A group with fewer
+valid rows than quantiles is excluded. Pooled input with fewer valid rows than
+quantiles raises `ValueError`. Equal feature values share an average rank, so
+their bucket does not depend on input order. Empty buckets can still occur when
+many rows have the same feature value; in that case monotonicity is `NaN`.

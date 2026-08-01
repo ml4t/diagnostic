@@ -26,7 +26,7 @@ cleanup at the package root.
 | Diagnostics | `FeatureDiagnostics`, `FeatureDiagnosticsResult`, `TradeAnalysis`, `PortfolioAnalysis`, `BarrierAnalysis` |
 | Signal analysis | `analyze_signal`, `SignalResult` |
 | Splitters | `CombinatorialCV`, `WalkForwardCV` |
-| Metrics | `cross_sectional_ic_series`, `cross_sectional_ic`, `pooled_ic`, `compute_ic_hac_stats`, `compute_mdi_importance`, `compute_permutation_importance`, `compute_shap_importance`, `compute_h_statistic`, `compute_shap_interactions`, `analyze_ml_importance`, `analyze_interactions` |
+| Metrics | `quantile_profile`, `QuantileProfile`, `cross_sectional_ic_series`, `cross_sectional_ic`, `pooled_ic`, `compute_ic_hac_stats`, `compute_mdi_importance`, `compute_permutation_importance`, `compute_shap_importance`, `compute_h_statistic`, `compute_shap_interactions`, `analyze_ml_importance`, `analyze_interactions` |
 
 ## Package-Level Convenience API (`ml4t.diagnostic`)
 
@@ -80,6 +80,8 @@ Use `ml4t.diagnostic.metrics` for reusable metric and feature-statistic helpers.
     options:
       show_root_heading: true
       members:
+        - quantile_profile
+        - QuantileProfile
         - pooled_ic
         - cross_sectional_ic_series
         - cross_sectional_ic

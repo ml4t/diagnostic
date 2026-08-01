@@ -129,7 +129,8 @@ def quantile_profile(
         ``"timestamp"``. Pass ``None`` for pooled assignment.
     keys
         Columns that uniquely identify panel rows. When provided, uniqueness is
-        validated and the columns determine stable ordering for tied features.
+        validated. Equal feature values receive the same average rank and the
+        same quantile regardless of row order.
     min_per_bucket
         Minimum aggregate count required in every bucket before monotonicity is
         scored.
