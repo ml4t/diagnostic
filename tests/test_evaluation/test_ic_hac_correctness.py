@@ -29,7 +29,7 @@ class TestHACMathematicalCorrectness:
         # Create IC series with known mean
         ic_series = np.array([0.05, 0.06, 0.04, 0.07, 0.05, 0.06, 0.05, 0.04])
 
-        result = compute_ic_hac_stats(ic_series)
+        result = compute_ic_hac_stats(ic_series, label_horizon=1)
 
         # t_stat should equal mean / SE
         expected_t = result["mean_ic"] / result["hac_se"]
@@ -52,6 +52,18 @@ class TestHACMathematicalCorrectness:
 
         # t-stats should be opposite signs
         assert abs(result_pos["t_stat"] + result_neg["t_stat"]) < 1e-10
+
+    def test_extreme_tail_p_value_does_not_underflow(self):
+        """Representable Student t tails remain nonzero."""
+        from scipy import stats
+
+        ic_series = np.linspace(0.049, 0.051, 100)
+        result = compute_ic_hac_stats(ic_series)
+        expected = 2 * stats.t.sf(abs(result["t_stat"]), df=len(ic_series) - 1)
+
+        assert expected > 0.0
+        assert result["p_value"] > 0.0
+        assert result["p_value"] == pytest.approx(expected, rel=1e-12)
 
     def test_hac_se_larger_with_positive_autocorrelation(self):
         """HAC SE should be larger than naive SE when IC has positive autocorrelation.

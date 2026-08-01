@@ -307,7 +307,7 @@ def sortino_ratio(
     >>> returns = np.array([0.01, 0.02, -0.01, 0.03, -0.02])
     >>> sortino = sortino_ratio(returns, periods_per_year=252)
     >>> print(f"Sortino Ratio: {sortino:.3f}")
-    Sortino Ratio: 0.894
+    Sortino Ratio: 9.525
     """
     return periodic_sortino_ratio(
         returns,
@@ -331,11 +331,9 @@ def periodic_sortino_ratio(
 
     excess_returns = ret_clean - periodic_risk_free_rate - target_return
 
-    # Calculate downside returns (only negative excess returns)
-    downside_returns = excess_returns[excess_returns < 0]
+    downside_returns = np.minimum(excess_returns, 0.0)
 
-    if len(downside_returns) == 0:
-        # No downside - infinite Sortino ratio if mean is positive
+    if not np.any(downside_returns < 0):
         mean_excess = np.mean(excess_returns)
         if mean_excess > 0:
             return np.inf
@@ -345,7 +343,7 @@ def periodic_sortino_ratio(
 
     # Calculate Sortino ratio
     mean_excess = np.mean(excess_returns)
-    downside_std = np.sqrt(np.mean(downside_returns**2))  # Downside deviation
+    downside_std = np.sqrt(np.mean(downside_returns**2))
 
     if downside_std == 0:
         return np.nan

@@ -380,7 +380,7 @@ def compute_conditional_ic(
                 from scipy.stats import t
 
                 df_test = len(valid_ics) - 1
-                pvalue = 2 * (1 - t.cdf(abs(test_statistic), df_test))
+                pvalue = 2 * t.sf(abs(test_statistic), df_test)
             except Exception:
                 test_statistic = np.nan
                 pvalue = np.nan

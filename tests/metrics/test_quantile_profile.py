@@ -181,6 +181,49 @@ def test_rejects_duplicate_panel_keys() -> None:
         )
 
 
+def test_tied_features_are_permutation_invariant() -> None:
+    """Equal feature values cannot manufacture an order-dependent profile."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    panel = pl.DataFrame(
+        {
+            "timestamp": [1] * 5,
+            "feature": [0.0] * 5,
+            "label": [0.0, 1.0, 2.0, 3.0, 4.0],
+        }
+    )
+
+    forward = quantile_profile(
+        panel, feature="feature", label="label", n_quantiles=5, min_per_bucket=1
+    )
+    reverse = quantile_profile(
+        panel.reverse(), feature="feature", label="label", n_quantiles=5, min_per_bucket=1
+    )
+
+    assert forward.counts == reverse.counts
+    assert forward.means[3] == reverse.means[3] == 2.0
+    assert all(math.isnan(forward.means[bucket]) for bucket in (1, 2, 4, 5))
+    assert all(math.isnan(reverse.means[bucket]) for bucket in (1, 2, 4, 5))
+    assert math.isnan(forward.monotonicity)
+
+
+def test_pooled_profile_rejects_fewer_rows_than_quantiles() -> None:
+    """Pooled and grouped modes enforce the same minimum profile size."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    panel = pl.DataFrame({"feature": [1.0, 2.0], "label": [10.0, 20.0]})
+
+    with pytest.raises(ValueError, match="at least 5 valid observations"):
+        quantile_profile(
+            panel,
+            feature="feature",
+            label="label",
+            n_quantiles=5,
+            by=None,
+            min_per_bucket=1,
+        )
+
+
 def test_public_import_paths_export_profile_helper_and_result() -> None:
     """The helper is available through all canonical public namespaces."""
     from ml4t.diagnostic import QuantileProfile, quantile_profile

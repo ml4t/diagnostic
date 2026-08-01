@@ -12,25 +12,15 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_shap.models import TradeShapResult
 
 
-class PickleDisabledError(Exception):
-    """Raised when pickle loading is attempted but disabled."""
-
-    pass
-
-
 def load_result_from_upload(
     uploaded_file: Any,
-    allow_pickle: bool = False,
 ) -> TradeShapResult | dict[str, Any]:
     """Load TradeShapResult from uploaded file.
 
     Parameters
     ----------
     uploaded_file : streamlit.UploadedFile
-        Uploaded JSON or pickle file.
-    allow_pickle : bool, default False
-        Whether to allow pickle files. Disabled by default for security.
-        Pickle files can execute arbitrary code when loaded.
+        Uploaded JSON file.
 
     Returns
     -------
@@ -39,15 +29,8 @@ def load_result_from_upload(
 
     Raises
     ------
-    PickleDisabledError
-        If pickle file uploaded but allow_pickle=False.
     ValueError
         If file format is unsupported or invalid.
-
-    Security Warning
-    ----------------
-    Pickle files can execute arbitrary code when loaded. Only enable
-    pickle loading for files from trusted sources.
     """
     filename = uploaded_file.name
 
@@ -60,27 +43,9 @@ def load_result_from_upload(
             data = json.loads(content)
             return data
 
-        # Pickle files require explicit opt-in
-        elif filename.endswith((".pkl", ".pickle")):
-            if not allow_pickle:
-                raise PickleDisabledError(
-                    "Pickle files are disabled for security. "
-                    "Pickle can execute arbitrary code. "
-                    "Use JSON format or enable allow_pickle_upload in config."
-                )
-
-            import pickle
-
-            data = pickle.loads(uploaded_file.read())
-            return data
-
         else:
-            raise ValueError(
-                f"Unsupported file format: {filename}. Supported formats: .json, .pkl, .pickle"
-            )
+            raise ValueError(f"Unsupported file format: {filename}. Supported format: .json")
 
-    except PickleDisabledError:
-        raise
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON format: {e}") from e
     except Exception as e:

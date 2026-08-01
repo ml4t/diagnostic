@@ -365,7 +365,7 @@ class TestSortinoRatio:
 
         # Calculate expected value manually
         excess_returns = returns - target
-        downside_returns = excess_returns[excess_returns < 0]
+        downside_returns = np.minimum(excess_returns, 0.0)
 
         expected_sortino = np.mean(excess_returns) / np.sqrt(
             np.mean(downside_returns**2),

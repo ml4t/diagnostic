@@ -170,13 +170,15 @@ def quantile_profile(
         valid = valid.sort(key_columns)
 
     if by is None:
-        rank = pl.col(feature).rank(method="ordinal")
+        if valid.height < n_quantiles:
+            raise ValueError(f"Pooled profiles require at least {n_quantiles} valid observations")
+        rank = pl.col(feature).rank(method="average")
         denominator: int | pl.Expr = valid.height
     else:
         valid = valid.filter(pl.len().over(by) >= n_quantiles)
         if valid.is_empty():
             raise ValueError(f"No groups contain at least {n_quantiles} valid observations")
-        rank = pl.col(feature).rank(method="ordinal").over(by)
+        rank = pl.col(feature).rank(method="average").over(by)
         denominator = pl.len().over(by)
 
     bucketed = valid.with_columns(

@@ -440,11 +440,11 @@ def proportions_z_test(
 
     # P-value
     if alternative == "greater":
-        p_value = 1 - stats.norm.cdf(z)
+        p_value = stats.norm.sf(z)
     elif alternative == "less":
         p_value = stats.norm.cdf(z)
     else:  # two-sided
-        p_value = 2 * (1 - stats.norm.cdf(abs(z)))
+        p_value = 2 * stats.norm.sf(abs(z))
 
     return (float(z), float(p_value))
 
@@ -502,11 +502,11 @@ def compare_precisions_z_test(
     z = (p1 - p2) / se
 
     if alternative == "greater":
-        p_value = 1 - stats.norm.cdf(z)
+        p_value = stats.norm.sf(z)
     elif alternative == "less":
         p_value = stats.norm.cdf(z)
     else:
-        p_value = 2 * (1 - stats.norm.cdf(abs(z)))
+        p_value = 2 * stats.norm.sf(abs(z))
 
     return (float(z), float(p_value))
 

@@ -99,7 +99,7 @@ def compute_regularized_model(
 
     alpha_se = float(np.std(boot_alphas, ddof=1))
     alpha_t = alpha_val / alpha_se if alpha_se > 0 else 0.0
-    alpha_p = float(2 * (1 - sp_stats.norm.cdf(abs(alpha_t))))
+    alpha_p = float(2 * sp_stats.norm.sf(abs(alpha_t)))
 
     beta_ses = {}
     beta_ts = {}
@@ -112,7 +112,7 @@ def compute_regularized_model(
         beta_ses[f] = se
         t = betas[f] / se if se > 0 else 0.0
         beta_ts[f] = t
-        beta_ps[f] = float(2 * (1 - sp_stats.norm.cdf(abs(t))))
+        beta_ps[f] = float(2 * sp_stats.norm.sf(abs(t)))
         beta_cis[f] = (betas[f] - z * se, betas[f] + z * se)
 
     # R²

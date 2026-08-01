@@ -412,7 +412,7 @@ def plot_ar_distribution(
     # Calculate statistics
     std_ar = float(np.std(ars_array, ddof=1))
     t_stat = mean_ar / (std_ar / np.sqrt(len(ars))) if std_ar > 0 else 0
-    p_val = 2 * (1 - sp_stats.t.cdf(abs(t_stat), df=len(ars) - 1)) if len(ars) > 1 else 1.0
+    p_val = 2 * sp_stats.t.sf(abs(t_stat), df=len(ars) - 1) if len(ars) > 1 else 1.0
 
     day_label = "Event Day" if day == 0 else f"Day {day:+d}"
 

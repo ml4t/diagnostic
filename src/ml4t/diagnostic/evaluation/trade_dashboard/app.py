@@ -38,7 +38,6 @@ def run_dashboard(
     result: TradeShapResult | dict[str, Any] | None = None,
     title: str = "Trade-SHAP Diagnostics Dashboard",
     styled: bool = False,
-    allow_pickle_upload: bool = False,
 ) -> None:
     """Run the Streamlit diagnostics dashboard.
 
@@ -55,9 +54,6 @@ def run_dashboard(
     styled : bool, default False
         Enable professional styling with custom CSS, load time tracking,
         spinners, export buttons, and enhanced error handling.
-    allow_pickle_upload : bool, default False
-        Allow pickle file uploads. SECURITY WARNING: Pickle files can
-        execute arbitrary code. Only enable for trusted sources.
 
     Examples
     --------
@@ -83,10 +79,7 @@ def run_dashboard(
             "streamlit is required for dashboard functionality. Install with: pip install streamlit"
         ) from None
 
-    from ml4t.diagnostic.evaluation.trade_dashboard.io import (
-        PickleDisabledError,
-        load_result_from_upload,
-    )
+    from ml4t.diagnostic.evaluation.trade_dashboard.io import load_result_from_upload
     from ml4t.diagnostic.evaluation.trade_dashboard.normalize import normalize_result
     from ml4t.diagnostic.evaluation.trade_dashboard.style import STYLED_CSS
     from ml4t.diagnostic.evaluation.trade_dashboard.tabs import (
@@ -142,28 +135,17 @@ def run_dashboard(
 
         if result is None:
             # File upload mode
-            file_types = ["json"]
-            if allow_pickle_upload:
-                file_types.extend(["pkl", "pickle"])
-
             uploaded_file = st.file_uploader(
                 "Upload TradeShapResult",
-                type=file_types,
-                help="Upload a JSON file containing TradeShapResult"
-                + (" (or pickle if enabled)" if allow_pickle_upload else ""),
+                type=["json"],
+                help="Upload a JSON file containing TradeShapResult",
             )
 
             if uploaded_file is not None:
                 try:
                     with st.spinner("Loading data..."):
-                        result = load_result_from_upload(
-                            uploaded_file,
-                            allow_pickle=allow_pickle_upload,
-                        )
+                        result = load_result_from_upload(uploaded_file)
                     st.success("Data loaded successfully!")
-                except PickleDisabledError as e:
-                    st.error(str(e))
-                    return
                 except Exception as e:
                     st.error(f"Failed to load data: {e}")
                     if styled:
@@ -172,10 +154,7 @@ def run_dashboard(
                     return
             else:
                 st.info("Upload a file to get started")
-                if not allow_pickle_upload:
-                    st.caption(
-                        "Pickle uploads disabled for security. Use JSON format for data transfer."
-                    )
+                st.caption("Use JSON format for data transfer.")
                 st.stop()
         else:
             st.success("Data loaded programmatically")
@@ -183,7 +162,6 @@ def run_dashboard(
     # Normalize result once for all tabs
     if result is not None:
         config = DashboardConfig(
-            allow_pickle_upload=allow_pickle_upload,
             styled=styled,
             title=title,
         )

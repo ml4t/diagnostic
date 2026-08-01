@@ -403,6 +403,19 @@ class TestProportionsZTest:
         # With random data, should be close to 0
         assert abs(z_stat) < 3
 
+    def test_extreme_greater_tail_does_not_underflow(self):
+        """Representable normal tails remain nonzero."""
+        from scipy import stats
+
+        signals = pl.Series([1] * 1000 + [0] * 1000)
+        labels = pl.Series([1] * 1000 + [0] * 1000)
+        z_stat, pvalue = proportions_z_test(signals, labels, alternative="greater")
+        expected = stats.norm.sf(z_stat)
+
+        assert expected > 0.0
+        assert pvalue > 0.0
+        assert pvalue == pytest.approx(expected, rel=1e-12)
+
 
 class TestComparePrecisions:
     """Tests for comparing precisions between strategies."""

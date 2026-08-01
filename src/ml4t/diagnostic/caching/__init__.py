@@ -1,7 +1,6 @@
 """Caching framework for ML4T Diagnostic computations.
 
-Provides intelligent caching for expensive statistical computations
-with support for both memory and disk caching.
+Provides in-memory caching for expensive statistical computations.
 
 Examples:
     >>> from ml4t.diagnostic.caching import Cache, CacheConfig

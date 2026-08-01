@@ -1032,7 +1032,7 @@ def _enrich_validation_metrics(
             metrics.setdefault("sharpe_se", se_corrected)
             if se_corrected > 0:
                 z_stat = sr_f / se_corrected
-                p_value = float(2 * (1 - norm.cdf(abs(z_stat))))
+                p_value = float(2 * norm.sf(abs(z_stat)))
                 metrics.setdefault("sharpe_pvalue", p_value)
     except Exception:
         pass
@@ -1429,11 +1429,10 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
                 if bvar > 0:
                     roll_fourth[i] = float(np.cov(w, bw)[0, 1]) / bvar
         else:
-            downside = w[w < 0]
-            if len(downside) > 0:
-                ds = float(np.std(downside, ddof=1)) * sqrt_252
-                if ds > 0:
-                    roll_fourth[i] = mu * 252 / ds
+            downside = np.minimum(w, 0.0)
+            ds = float(np.sqrt(np.mean(downside**2)))
+            if ds > 0:
+                roll_fourth[i] = mu / ds * sqrt_252
 
     theme = validate_theme(ctx.theme)
     theme_config = get_theme_config(theme)

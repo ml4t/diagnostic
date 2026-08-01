@@ -694,5 +694,15 @@ def test_error_handling_implemented():
     assert "traceback" in content
 
 
+def test_pattern_fdr_correction_uses_package_statistics():
+    """Dashboard pattern correction reaches the authoritative FDR implementation."""
+    from ml4t.diagnostic.evaluation.trade_dashboard.tabs.patterns import _apply_fdr_correction
+
+    result = _apply_fdr_correction([("momentum", 0.4, 0.01), ("volatility", 0.2, 0.04)])
+
+    assert [item["adjusted_p"] for item in result] == pytest.approx([0.02, 0.04])
+    assert [item["significant_fdr"] for item in result] == [True, True]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

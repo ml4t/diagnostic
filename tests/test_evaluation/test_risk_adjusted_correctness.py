@@ -148,7 +148,7 @@ class TestSortinoRatioCorrectness:
 
         # Calculate expected manually
         excess = returns - target
-        downside = excess[excess < 0]
+        downside = np.minimum(excess, 0.0)
         downside_std = np.sqrt(np.mean(downside**2))
         expected = np.mean(excess) / downside_std
 

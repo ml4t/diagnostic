@@ -54,7 +54,7 @@ def compute_ic_summary_stats(
     mean_ic = float(np.mean(ic_clean))
     std_ic = float(np.std(ic_clean, ddof=1))
     t_stat = mean_ic / (std_ic / np.sqrt(n)) if std_ic > 0 else np.nan
-    p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df=n - 1)) if not np.isnan(t_stat) else np.nan
+    p_value = 2 * stats.t.sf(abs(t_stat), df=n - 1) if not np.isnan(t_stat) else np.nan
 
     return {
         "mean_ic": mean_ic,
@@ -256,7 +256,7 @@ def compute_ic_hac_stats(
 
     # Compute two-tailed p-value
     # Use t-distribution with n-1 degrees of freedom
-    p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df=n - 1)) if not np.isnan(t_stat) else np.nan
+    p_value = 2 * stats.t.sf(abs(t_stat), df=n - 1) if not np.isnan(t_stat) else np.nan
 
     return {
         "mean_ic": float(mean_ic),

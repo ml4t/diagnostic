@@ -1034,6 +1034,23 @@ class TestInteractiveControls:
         assert isinstance(html, str)
         assert "date" in html.lower()
 
+    def test_date_range_html_rejects_script_callback(self):
+        """Callback names cannot inject JavaScript."""
+        from ml4t.diagnostic.visualization.backtest import get_date_range_html
+
+        with pytest.raises(ValueError, match="JavaScript identifier"):
+            get_date_range_html(on_change_callback="alert(document.domain)//")
+
+    def test_date_range_html_escapes_preset_labels(self):
+        """Preset labels are inert in text and attribute contexts."""
+        from ml4t.diagnostic.visualization.backtest import get_date_range_html
+
+        payload = '<img src=x onerror="alert(1)">'
+        html = get_date_range_html(presets=[payload])
+
+        assert payload not in html
+        assert "&lt;img" in html
+
     def test_get_theme_switcher_html(self):
         """Test theme switcher HTML generation."""
         from ml4t.diagnostic.visualization.backtest import get_theme_switcher_html
