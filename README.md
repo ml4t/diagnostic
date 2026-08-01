@@ -55,12 +55,34 @@ pip install ml4t-diagnostic[all]  # Everything
 ### Signal Analysis
 
 ```python
+import numpy as np
+import polars as pl
+
 from ml4t.diagnostic import analyze_signal
 
+rng = np.random.default_rng(42)
+dates = pl.date_range(pl.date(2025, 1, 1), pl.date(2025, 2, 28), eager=True)[:40]
+assets = [f"asset_{index:02d}" for index in range(20)]
+
+factor_rows = []
+price_rows = []
+prices = np.full(len(assets), 100.0)
+for date in dates:
+    scores = rng.normal(size=len(assets))
+    prices *= 1 + 0.002 * scores + rng.normal(scale=0.005, size=len(assets))
+    factor_rows.extend(
+        {"date": date, "asset": asset, "factor": score}
+        for asset, score in zip(assets, scores, strict=True)
+    )
+    price_rows.extend(
+        {"date": date, "asset": asset, "price": price}
+        for asset, price in zip(assets, prices, strict=True)
+    )
+
 result = analyze_signal(
-    factor=factor_data,  # date, asset, factor
-    prices=price_data,   # date, asset, price
-    periods=(1, 5, 21),
+    factor=pl.DataFrame(factor_rows),
+    prices=pl.DataFrame(price_rows),
+    periods=(1, 5),
 )
 
 print(f"IC (1D): {result.ic['1D']:.4f}")
@@ -68,50 +90,22 @@ print(f"IC t-stat (1D): {result.ic_t_stat['1D']:.2f}")
 print(f"Q5-Q1 spread (1D): {result.spread['1D']:.2%}")
 ```
 
-### Backtest Tear Sheet
-
-```python
-from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
-
-html = generate_backtest_tearsheet(
-    trades=trades_df,
-    returns=daily_returns,
-    metrics={"sharpe": 1.5, "max_drawdown": -0.15},
-    template="hedge_fund",    # or "quant_trader", "risk_manager", "full"
-    theme="default",          # or "dark", "print", "presentation"
-    output_path="report.html",
-    n_trials=100,             # for DSR multiple-testing correction
-)
-```
-
-### Backtest Reporting From `ml4t-backtest`
-
-```python
-from ml4t.diagnostic.integration import (
-    BacktestReportMetadata,
-    generate_tearsheet_from_result,
-)
-
-html = generate_tearsheet_from_result(
-    result=backtest_result,
-    template="risk_manager",
-    report_metadata=BacktestReportMetadata(
-        strategy_name="ETF Momentum",
-        benchmark_name="SPY",
-        evaluation_window="2018-01-01 to 2025-12-31",
-    ),
-    output_path="backtest_result_report.html",
-)
-```
-
 ### Deflated Sharpe Ratio
 
 ```python
+import numpy as np
+
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
-# Accounts for multiple testing across correlated strategy variants
+rng = np.random.default_rng(42)
+strategy_returns = rng.normal(
+    loc=[0.0003, 0.0005, 0.0002],
+    scale=0.01,
+    size=(252, 3),
+)
+
 dsr_result = deflated_sharpe_ratio(
-    returns=[strategy_a_returns, strategy_b_returns, strategy_c_returns],
+    returns=strategy_returns,
     benchmark_sharpe=0.0,
     correlation_method="effective_rank",
     min_k_eff=2.0,
@@ -166,25 +160,8 @@ Tier 4: Portfolio Analysis (Production)
 
 ## Cross-Validation
 
-Calendar-aware splitting with trading-day gaps:
-
-```python
-from ml4t.diagnostic.splitters import WalkForwardCV, CombinatorialCV
-from ml4t.diagnostic.visualization import plot_cv_folds
-
-# Walk-forward with purging (gaps in trading days, not calendar days)
-cv = WalkForwardCV(n_splits=5, train_size=252, test_size=63, purge_days=21)
-
-# Combinatorial purged CV (de Prado)
-cpcv = CombinatorialCV(n_groups=6, n_test_groups=2, purge_days=5)
-
-# Calendar-aware: "4W" = 20 trading sessions, not 28 calendar days
-cv = WalkForwardCV(n_splits=5, train_size="52W", test_size="4W", calendar="NYSE")
-
-# Visualize fold structure
-fig = plot_cv_folds(cv, dates)
-fig.show()
-```
+See the executable [cross-validation guide](docs/user-guide/cross-validation.md) for
+walk-forward and combinatorial purged cross-validation examples.
 
 ## Backtest Tear Sheets
 
@@ -200,111 +177,48 @@ Four presets covering different analysis needs:
 | `risk_manager` | Statistical credibility | overview, validation, performance, trading, factors, ML |
 | `full` | Comprehensive presentation | overview, performance, trading, validation, factors, ML |
 
-Object-oriented API for custom tearsheets:
-
-```python
-from ml4t.diagnostic.visualization.backtest import BacktestTearsheet
-from ml4t.diagnostic.integration import BacktestReportMetadata
-
-tearsheet = BacktestTearsheet(template="quant_trader", theme="dark")
-tearsheet.add_profile(profile)
-tearsheet.add_report_metadata(
-    BacktestReportMetadata(strategy_name="ETF Momentum", benchmark_name="SPY")
-)
-tearsheet.enable_section("shap_errors")
-html = tearsheet.generate(output_path="report.html")
-```
+The [backtest tearsheet guide](docs/user-guide/backtest-tearsheets.md) contains a
+complete example with synthetic trades and returns.
 
 ## Portfolio Analysis
 
 ```python
+import numpy as np
+
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
+rng = np.random.default_rng(42)
+daily_returns = rng.normal(loc=0.0004, scale=0.01, size=252)
 pa = PortfolioAnalysis(daily_returns)
-metrics = pa.compute_metrics()
+metrics = pa.compute_summary_stats()
 
 print(f"Sharpe: {metrics.sharpe_ratio:.2f}")
 print(f"Sortino: {metrics.sortino_ratio:.2f}")
 print(f"Max Drawdown: {metrics.max_drawdown:.2%}")
-print(f"VaR (95%): {metrics.value_at_risk:.2%}")
+print(f"VaR (95%): {metrics.var_95:.2%}")
 ```
 
 Available metrics: `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `omega_ratio`, `tail_ratio`, `max_drawdown`, `annual_return`, `annual_volatility`, `value_at_risk`, `conditional_var`, `stability_of_timeseries`, `alpha_beta`, `information_ratio`, `up_down_capture`, and more.
 
-## Feature Selection
+## Feature and Trade Diagnostics
 
-Systematic multi-criteria feature filtering:
-
-```python
-from ml4t.diagnostic import FeatureSelector
-
-selector = FeatureSelector()
-report = selector.run_pipeline(
-    ic_results=ic_results,
-    importance_results=importance_results,
-    correlation_matrix=corr_matrix,
-)
-
-selected = selector.get_selected_features()
-print(f"Selected {len(selected)} features from {report.initial_count}")
-```
-
-Steps: IC filtering, importance filtering, correlation filtering, drift filtering.
-
-## Feature Importance
-
-```python
-from ml4t.diagnostic.metrics import analyze_ml_importance
-
-# Combines MDI, PFI, MDA, SHAP methods
-results = analyze_ml_importance(model, X, y)
-print(results.consensus_ranking)
-```
-
-## Trade Diagnostics
-
-```python
-from ml4t.diagnostic.evaluation import TradeAnalysis, TradeShapAnalyzer
-
-analyzer = TradeAnalysis(trade_records)
-worst_trades = analyzer.worst_trades(n=20)
-
-# SHAP-based error pattern discovery
-shap_analyzer = TradeShapAnalyzer(model, features_df, shap_values)
-result = shap_analyzer.explain_worst_trades(worst_trades)
-
-for pattern in result.error_patterns:
-    print(f"Pattern: {pattern.hypothesis}")
-    print(f"Potential savings: ${pattern.potential_impact:,.2f}")
-```
-
-Fold-aware SHAP for walk-forward CV models:
-
-```python
-from ml4t.diagnostic.evaluation.trade_shap import compute_fold_shap
-
-# Compute SHAP values across walk-forward folds
-aligned_features, shap_values = compute_fold_shap(
-    boosters=fold_models,        # {fold_id: booster}
-    predictions_df=predictions,
-    features_df=features,
-    feature_names=feature_names,
-)
-```
+The user guides contain executable workflows for [feature selection](docs/user-guide/feature-selection.md),
+[feature diagnostics](docs/user-guide/feature-diagnostics.md), and
+[trade analysis](docs/user-guide/trade-analysis.md).
 
 ## Documentation
 
-- [Docs Site](https://ml4trading.io/docs/diagnostic/) — deployed documentation
-- [Backtest Tearsheets](docs/user-guide/backtest-tearsheets.md) — `BacktestResult`, artifact, and profile-driven reporting
-- [Book Guide](docs/book-guide/index.md) — chapter and case-study map
-- [Workflows](docs/user-guide/workflows.md) — end-to-end analysis patterns
-- [Validation Tiers](docs/user-guide/validation-tiers.md) — four-tier diagnostic framework
-- [Cross-Validation](docs/user-guide/cross-validation.md) — CPCV and walk-forward splitting
-- [CV Configuration](docs/user-guide/cv-configuration.md) — JSON/YAML config and fold persistence
-- [Feature Diagnostics](docs/user-guide/feature-diagnostics.md) — importance and interaction analysis
-- [Feature Selection](docs/user-guide/feature-selection.md) — systematic multi-criteria selection
-- [Statistical Tests](docs/user-guide/statistical-tests.md) — DSR, RAS, PBO, HAC
-- [Trade Analysis](docs/user-guide/trade-analysis.md) — trade-level diagnostics and SHAP
+- [Docs Site](https://ml4trading.io/docs/diagnostic/) - deployed documentation
+- [Backtest Tearsheets](docs/user-guide/backtest-tearsheets.md) - `BacktestResult`, artifact, and profile-driven reporting
+- [Book Guide](docs/book-guide/index.md) - chapter and case-study map
+- [Workflows](docs/user-guide/workflows.md) - end-to-end analysis patterns
+- [Validation Tiers](docs/user-guide/validation-tiers.md) - four-tier diagnostic framework
+- [Cross-Validation](docs/user-guide/cross-validation.md) - CPCV and walk-forward splitting
+- [CV Configuration](docs/user-guide/cv-configuration.md) - JSON/YAML config and fold persistence
+- [Feature Diagnostics](docs/user-guide/feature-diagnostics.md) - importance and interaction analysis
+- [Feature Selection](docs/user-guide/feature-selection.md) - systematic multi-criteria selection
+- [Statistical Tests](docs/user-guide/statistical-tests.md) - DSR, RAS, PBO, HAC
+- [Trade Analysis](docs/user-guide/trade-analysis.md) - trade-level diagnostics and SHAP
 
 ## Technical Characteristics
 
@@ -315,7 +229,7 @@ aligned_features, shap_values = compute_fold_shap(
 - **65+ visualizations**: Plotly-based with 4 themes (default, dark, print, presentation)
 - **PDF/HTML export**: Institutional-grade tear sheets
 - **Type-safe**: 0 type diagnostics (ty/Astral), full type annotations
-- **4,978 tests**: Comprehensive test coverage
+- **Release-blocking examples**: public scripts and documentation execute in CI
 
 ## Related Libraries
 

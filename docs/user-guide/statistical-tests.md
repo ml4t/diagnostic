@@ -1,213 +1,68 @@
 # Statistical Tests
 
-ML4T Diagnostic implements rigorous statistical tests to prevent false discoveries and account for multiple testing bias.
+Use these tests to separate an observed backtest result from the research
+process that selected it. Report the inputs and correction method with every
+result.
 
-## Deflated Sharpe Ratio (DSR)
+## Deflated Sharpe Ratio
 
-DSR asks whether the selected leader still looks credible after accounting for
-the fact that you searched across multiple candidates.
-
-```python
-from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio, effective_number_of_trials
-
-# returns_matrix shape: (n_periods, n_strategies)
-k_eff = effective_number_of_trials(returns_matrix, method="effective_rank")
-
-result = deflated_sharpe_ratio(
-    returns=returns_matrix,
-    frequency="daily",
-    periods_per_year=252,
-    correlation_method="effective_rank",
-    min_k_eff=2.0,
-)
-
-print(f"Raw trials: {result.n_trials_raw}")
-print(f"Effective trials: {result.n_trials_effective:.2f}")
-print(f"Observed Sharpe: {result.sharpe_ratio:.2f}")
-print(f"Deflated Sharpe: {result.deflated_sharpe:.2f}")
-print(f"p-value: {result.p_value:.4f}")
-```
-
-### When to Use DSR
-
-- After trying multiple strategy variations
-- When those variants are strongly correlated and raw K over-penalizes the leader
-- When selecting among several candidate strategies
-- To report statistically honest performance
-
-### DSR Formula (López de Prado et al. 2025)
-
-For multiple strategies, DSR replaces the naive null `SR_0 = 0` with an
-expected-maximum Sharpe threshold:
-
-$$
-SR_0 = E[\max\{\widehat{SR}_k\}]
-$$
-
-and then evaluates the leader's Sharpe ratio relative to that harder hurdle.
-When you provide `correlation_method=...`, the library uses `K_eff` instead of
-raw `K` in the False Strategy Theorem adjustment.
-
-`effective_rank` is the recommended default. `marchenko_pastur` uses the
-iterative denoising variant, and `clustering` estimates the number of
-independent strategy families.
-
-See [Deflated Sharpe Ratio](../methods/deflated-sharpe-ratio.md) for details.
-
-## Rademacher Anti-Serum (RAS)
-
-RAS detects backtest overfitting using complexity theory:
-
-```python
-from ml4t.diagnostic.evaluation.stats import rademacher_complexity, ras_sharpe_adjustment
-
-# returns_matrix shape: (n_periods, n_strategies)
-complexity = rademacher_complexity(returns_matrix)
-observed_sharpes = returns_matrix.mean(axis=0) / returns_matrix.std(axis=0)
-result = ras_sharpe_adjustment(
-    observed_sharpe=observed_sharpes,
-    complexity=complexity,
-    n_samples=returns_matrix.shape[0],
-    n_strategies=returns_matrix.shape[1],
-    return_result=True,
-)
-
-print(f"Number significant after RAS: {result.n_significant}")
-print(f"Complexity penalty: {result.complexity:.4f}")
-```
-
-### Interpretation
-
-| RAS Result | Interpretation |
-|------------|----------------|
-| High RAS | Strategy is robust, not overfit |
-| Low RAS | Strategy may be overfit |
-| Negative RAS | Strategy is likely spurious |
-
-## Minimum Track Record Length (MinTRL)
-
-Calculate how long a track record must be for statistical significance:
+Pass one return series for Probabilistic Sharpe Ratio or a two-dimensional
+array for Deflated Sharpe Ratio across tested variants.
 
 ```python
 import numpy as np
 
-from ml4t.diagnostic.evaluation.stats import compute_min_trl
+from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
-result = compute_min_trl(
-    observed_sharpe=1.5 / np.sqrt(252),
-    target_sharpe=0.5 / np.sqrt(252),
-    confidence_level=0.95,
+rng = np.random.default_rng(42)
+returns = rng.normal(
+    loc=[0.0003, 0.0006, 0.0001, 0.0004],
+    scale=0.01,
+    size=(504, 4),
+)
+dsr = deflated_sharpe_ratio(
+    returns,
     frequency="daily",
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
 )
 
-print(f"Minimum observations: {result.min_trl:.0f}")
-print(f"Minimum years: {result.min_trl_years:.1f}")
+print(f"Annualized Sharpe: {dsr.sharpe_ratio_annualized:.2f}")
+print(f"Probability after correction: {dsr.probability:.3f}")
+print(f"Raw trials: {dsr.n_trials_raw}")
+print(f"Effective trials: {dsr.n_trials_effective:.2f}")
 ```
 
-Sharpe inputs use the return series' native frequency. The example converts
-annualized Sharpe ratios to daily values before requesting a daily MinTRL.
+Include every strategy variant considered during selection. Omitting failed or
+discarded variants understates the multiple-testing penalty.
 
-### MinTRL with Multiple Testing
+## False discovery rate control
 
-For FWER-controlled significance across multiple strategies:
-
-```python
-from ml4t.diagnostic.evaluation.stats import min_trl_fwer
-
-result = min_trl_fwer(
-    observed_sharpe=1.5 / np.sqrt(252),
-    n_trials=50,
-    variance_trials=0.04 / 252,
-    target_sharpe=0.5 / np.sqrt(252),
-    confidence_level=0.95,
-    frequency="daily",
-)
-```
-
-## False Discovery Rate (FDR)
-
-Control the expected proportion of false positives:
+Use Benjamini-Hochberg when testing many hypotheses and you want to control the
+expected fraction of false discoveries among rejected hypotheses.
 
 ```python
 from ml4t.diagnostic.evaluation.stats import benjamini_hochberg_fdr
 
-pvalues = [0.01, 0.03, 0.05, 0.08, 0.12]
-rejected = benjamini_hochberg_fdr(p_values=pvalues, alpha=0.05)
+p_values = [0.001, 0.012, 0.030, 0.080, 0.40]
+fdr = benjamini_hochberg_fdr(p_values, alpha=0.05, return_details=True)
 
-# Identify discoveries
-discoveries = rejected
+print(f"Rejected hypotheses: {fdr['rejected'].tolist()}")
+print(f"Adjusted p-values: {fdr['adjusted_p_values'].round(4).tolist()}")
 ```
 
-### Methods
+Benjamini-Hochberg assumes independent or positively dependent tests. Use
+`holm_bonferroni` when you need family-wise error control instead.
 
-| Method | Description |
-|--------|-------------|
-| `bh` | Benjamini-Hochberg (controls FDR) |
-| `by` | Benjamini-Yekutieli (conservative) |
-| `holm` | Holm-Bonferroni (controls FWER) |
+## HAC-adjusted IC
 
-## HAC-Adjusted Statistics
+Use `compute_ic_hac_stats` for autocorrelated IC series. Always pass the
+forward-return horizon when labels overlap. The [HAC IC method page](../methods/hac-ic.md)
+contains a complete example and the returned fields.
 
-Account for heteroskedasticity and autocorrelation:
+## Probability of backtest overfitting
 
-```python
-from ml4t.diagnostic.evaluation.stats import hac_adjusted_ic
-
-result = hac_adjusted_ic(
-    predictions=predictions,
-    returns=forward_returns,
-    return_details=True,
-)
-
-print(f"HAC t-stat: {result['t_stat']:.2f}")
-print(f"HAC std error: {result['bootstrap_std']:.4f}")
-```
-
-## Probability of Backtest Overfitting (PBO)
-
-Estimate the probability that an optimal strategy is overfit:
-
-```python
-from ml4t.diagnostic.evaluation.stats import compute_pbo
-
-result = compute_pbo(
-    is_performance=is_returns_matrix,
-    oos_performance=oos_returns_matrix,
-)
-
-print(f"PBO: {result.pbo:.1%}")  # e.g., "32.5%"
-```
-
-### Interpretation
-
-| PBO | Interpretation |
-|-----|----------------|
-| < 10% | Low overfitting risk |
-| 10-30% | Moderate risk |
-| > 30% | High overfitting risk |
-
----
-
-## See It In The Book
-
-These statistical tests appear repeatedly in the book:
-
-- **FDR, DSR, MinTRL, and PBO**:
-  `code/07_defining_learning_task/07_multiple_testing.py`
-- **HAC-adjusted IC in causal and robustness checks**:
-  `code/07_defining_learning_task/08_causal_sanity_checks.py`
-- **HAC-adjusted IC plus FDR in the case studies**:
-  `code/case_studies/*/05_evaluation.py`
-- **DSR on real backtest returns**:
-  `code/16_strategy_simulation/12_dsr_validation.py`
-- **Sharpe inference and RAS workflow**:
-  `code/16_strategy_simulation/11_sharpe_ratio_inference.py`,
-  `code/16_strategy_simulation/13_ras_protocol.py`
-
-For the chapter-level map, see the [Book Guide](../book-guide/index.md).
-
-## References
-
-- López de Prado et al. (2025). "How to Use the Sharpe Ratio"
-- Bailey & López de Prado (2014). "The Deflated Sharpe Ratio"
-- Paleologo, G. (2024). *Elements of Quantitative Investing*
+`compute_pbo` compares in-sample and out-of-sample performance matrices across
+strategy variants. Use it when the same variants have been evaluated across
+multiple partitions. PBO complements DSR; it tests ranking decay rather than
+Sharpe significance.
