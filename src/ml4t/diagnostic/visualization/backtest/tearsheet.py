@@ -948,6 +948,12 @@ def _enrich_validation_metrics(
         metrics["n_periods"] = n_obs
     if metrics.get("n_observations") is None:
         metrics["n_observations"] = n_obs
+    if n_obs < 5:
+        metrics["validation_status"] = "insufficient_data"
+        metrics["validation_message"] = (
+            "At least 5 return observations are required for statistical validation"
+        )
+        return metrics
 
     # Compute DSR / PSR
     if not has_dsr:
@@ -967,8 +973,14 @@ def _enrich_validation_metrics(
                 metrics["expected_max_sharpe"] = dsr_result.expected_max_sharpe
             if dsr_result.min_trl is not None:
                 metrics["_dsr_min_trl"] = dsr_result.min_trl
-        except Exception:
-            pass
+        except Exception as exc:
+            from ml4t.diagnostic.errors import ReportGenerationError
+
+            raise ReportGenerationError(
+                "Failed to compute DSR metrics for the tearsheet",
+                context={"phase": "validation_metrics", "metric": "dsr"},
+                cause=exc,
+            ) from exc
 
     # Compute MinTRL (reuse DSR result if available, else compute separately)
     if not has_min_trl:
@@ -982,8 +994,14 @@ def _enrich_validation_metrics(
                 trl_result = compute_min_trl(ret_arr)
                 if trl_result.min_trl != float("inf"):
                     metrics["min_trl"] = trl_result.min_trl
-        except Exception:
-            pass
+        except Exception as exc:
+            from ml4t.diagnostic.errors import ReportGenerationError
+
+            raise ReportGenerationError(
+                "Failed to compute minimum track record length for the tearsheet",
+                context={"phase": "validation_metrics", "metric": "min_trl"},
+                cause=exc,
+            ) from exc
         metrics.pop("_dsr_min_trl", None)
 
     # Compute confidence intervals via bootstrap
@@ -1006,8 +1024,14 @@ def _enrich_validation_metrics(
             if max_dd is not None:
                 metrics["max_drawdown_lower_95"] = float(max_dd) * 1.5
                 metrics["max_drawdown_upper_95"] = float(max_dd) * 0.5
-        except Exception:
-            pass
+        except Exception as exc:
+            from ml4t.diagnostic.errors import ReportGenerationError
+
+            raise ReportGenerationError(
+                "Failed to compute confidence intervals for the tearsheet",
+                context={"phase": "validation_metrics", "metric": "confidence_intervals"},
+                cause=exc,
+            ) from exc
 
     # Compute return statistics for Sharpe validity assessment
     try:
@@ -1034,8 +1058,14 @@ def _enrich_validation_metrics(
                 z_stat = sr_f / se_corrected
                 p_value = float(2 * norm.sf(abs(z_stat)))
                 metrics.setdefault("sharpe_pvalue", p_value)
-    except Exception:
-        pass
+    except Exception as exc:
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        raise ReportGenerationError(
+            "Failed to compute return statistics for the tearsheet",
+            context={"phase": "validation_metrics", "metric": "return_statistics"},
+            cause=exc,
+        ) from exc
 
     return metrics
 
@@ -1203,8 +1233,14 @@ def _generate_section(
             f"{title_html}{body_html}{footnote_html}{provenance_html}</div>"
         )
 
-    except Exception:
-        return None
+    except Exception as exc:
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        raise ReportGenerationError(
+            "Failed to render tearsheet section",
+            context={"section": section_name},
+            cause=exc,
+        ) from exc
 
 
 def _build_portfolio_analysis(
@@ -1241,8 +1277,14 @@ def _build_portfolio_analysis(
             date_col = "session_date" if "session_date" in daily_frame.columns else "date"
             if date_col in daily_frame.columns and daily_frame.height == len(ret_series):
                 analysis_dates = daily_frame[date_col]
-        except Exception:
-            pass
+        except Exception as exc:
+            from ml4t.diagnostic.errors import ReportGenerationError
+
+            raise ReportGenerationError(
+                "Failed to resolve portfolio dates from the backtest profile",
+                context={"phase": "portfolio_dates"},
+                cause=exc,
+            ) from exc
 
     if analysis_dates is None and equity_curve is not None and not equity_curve.is_empty():
         for _dc in ("timestamp", "date", "session_date"):
@@ -1647,16 +1689,13 @@ def _build_position_count_from_trades(ctx: _SectionContext) -> go.Figure | None:
 
 def _build_drawdown_anatomy_from_returns(ctx: _SectionContext) -> str | None:
     """Compute top 5 drawdown episodes from raw returns and render as HTML table."""
-    from ml4t.diagnostic.evaluation.portfolio import PortfolioAnalysis
+    from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
 
     ret = ctx.returns
     ret_arr = ret if isinstance(ret, np.ndarray) else ret.to_numpy()
     pa = PortfolioAnalysis(ret_arr)
-    try:
-        dd_result = pa.compute_drawdown_analysis(top_n=5)
-    except Exception:
-        return None
-    if dd_result.top_drawdowns.is_empty():
+    dd_result = pa.compute_drawdown_analysis(top_n=5)
+    if not dd_result.top_drawdowns:
         return None
 
     from .html_tables import create_top_drawdowns_table_html
@@ -1927,19 +1966,26 @@ def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
                     if not daily_ic.is_empty():
                         ic_arr = daily_ic["ic"].to_numpy()
                         ml_metrics["mean_ic"] = float(np.mean(ic_arr))
-                        std_ic = float(np.std(ic_arr, ddof=1))
-                        if std_ic > 0:
-                            ml_metrics["ic_tstat"] = float(
-                                np.mean(ic_arr) / std_ic * np.sqrt(len(ic_arr))
-                            )
+                        if len(ic_arr) > 1:
+                            std_ic = float(np.std(ic_arr, ddof=1))
+                            if std_ic > 0:
+                                ml_metrics["ic_tstat"] = float(
+                                    np.mean(ic_arr) / std_ic * np.sqrt(len(ic_arr))
+                                )
                     # Hit rate
                     if not frame.is_empty():
                         correct = ((frame["score"] > 0) & (frame["outcome"] > 0)) | (
                             (frame["score"] <= 0) & (frame["outcome"] <= 0)
                         )
                         ml_metrics["hit_rate"] = float(correct.mean())
-            except Exception:
-                pass
+            except Exception as exc:
+                from ml4t.diagnostic.errors import ReportGenerationError
+
+                raise ReportGenerationError(
+                    "Failed to compute model summary metrics",
+                    context={"section": "ml_summary_strip"},
+                    cause=exc,
+                ) from exc
 
     if not any(k in ml_metrics for k in ("mean_ic", "ic_tstat", "hit_rate")):
         return None

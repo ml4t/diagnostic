@@ -2837,29 +2837,24 @@ class TestHACKernelWeights:
         assert "mean_ic" in result
         assert "hac_se" in result
 
-    def test_hac_unknown_kernel_fallback(self):
-        """Test HAC falls back to naive SE for unknown kernel."""
+    def test_hac_unknown_kernel_raises(self):
+        """An invalid kernel is rejected instead of changing the estimator."""
         np.random.seed(42)
         ic_series = np.random.randn(50)
 
-        # Unknown kernel triggers fallback to naive SE (doesn't raise)
-        result = compute_ic_hac_stats(ic_series, kernel="invalid_kernel")
+        with pytest.raises(ValueError, match="Unknown kernel"):
+            compute_ic_hac_stats(ic_series, kernel="invalid_kernel")
 
-        # Should still return valid result with naive SE
-        assert isinstance(result, dict)
-        assert "mean_ic" in result
-        assert "hac_se" in result
-
-    def test_hac_with_exception_fallback(self):
-        """Test HAC falls back to naive SE on numerical issues."""
-        # Edge case: very small series might cause HAC to fail
+    def test_hac_insufficient_sample_returns_nan_statistics(self):
+        """An undersized IC series returns the documented empty statistics."""
         ic_series = np.array([0.1, 0.1])  # Minimal series
 
         result = compute_ic_hac_stats(ic_series, maxlags=0)
 
-        # Should still return a valid result
         assert isinstance(result, dict)
         assert "mean_ic" in result
+        assert np.isnan(result["hac_se"])
+        assert result["used_naive_fallback"] is False
 
 
 class TestMDIEdgeCases:

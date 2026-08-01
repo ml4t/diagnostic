@@ -342,10 +342,15 @@ def plot_monthly_returns_heatmap(
     years = matrix["year"].to_list()
     months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-    # Extract values (columns 1-12 are the months)
+    # A partial year only produces columns for observed months.
     z_values = []
-    for row in matrix.iter_rows():
-        z_values.append([row[i] if row[i] is not None else np.nan for i in range(1, 13)])
+    for row in matrix.iter_rows(named=True):
+        z_values.append(
+            [
+                row.get(str(month), np.nan) if row.get(str(month), np.nan) is not None else np.nan
+                for month in range(1, 13)
+            ]
+        )
 
     z_array = np.array(z_values)
 

@@ -132,6 +132,41 @@ class TestHACMathematicalCorrectness:
         """Horizon-aware lag selection still respects the T/2 cap."""
         assert _newey_west_lag(20, horizon=63) == 10
 
+    def test_hac_failure_raises_by_default(self, monkeypatch, capsys):
+        """A failed robust covariance cannot silently return naive inference."""
+        import ml4t.diagnostic.metrics.ic_inference as module
+
+        def fail_covariance(*args, **kwargs):
+            raise ValueError("injected covariance failure")
+
+        monkeypatch.setattr(module, "cov_hac", fail_covariance)
+
+        with pytest.raises(RuntimeError, match="HAC covariance computation failed"):
+            compute_ic_hac_stats(np.arange(10, dtype=float), label_horizon=1)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_hac_naive_fallback_is_opt_in_and_observable(self, monkeypatch):
+        """Opt-in fallback warns and identifies the returned standard error."""
+        import ml4t.diagnostic.metrics.ic_inference as module
+
+        def fail_covariance(*args, **kwargs):
+            raise ValueError("injected covariance failure")
+
+        monkeypatch.setattr(module, "cov_hac", fail_covariance)
+
+        with pytest.warns(RuntimeWarning, match="using naive standard error"):
+            result = compute_ic_hac_stats(
+                np.arange(10, dtype=float),
+                label_horizon=1,
+                allow_naive_fallback=True,
+            )
+
+        assert result["used_naive_fallback"] is True
+        assert result["hac_se"] == result["naive_se"]
+
 
 class TestKernelWeights:
     """Tests for HAC kernel weight functions."""

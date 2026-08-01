@@ -812,14 +812,14 @@ def plot_trade_waterfall(
     # Add zero line
     fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1, secondary_y=False)
 
-    # Update layout
-    fig.update_layout(
+    layout = {k: v for k, v in theme_config["layout"].items() if k != "margin"}
+    layout.update(
         title="Trade PnL Waterfall",
         height=height,
         width=width,
         legend={"yanchor": "top", "y": 0.99, "xanchor": "left", "x": 0.01},
-        **{k: v for k, v in theme_config["layout"].items() if k != "margin"},
     )
+    fig.update_layout(**layout)
 
     fig.update_yaxes(title_text="Trade PnL ($)", secondary_y=False)
     fig.update_yaxes(title_text="Cumulative Equity ($)", secondary_y=True)

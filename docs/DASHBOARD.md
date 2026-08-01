@@ -1,4 +1,4 @@
-# Trade SHAP Dashboard
+# Trade-SHAP Dashboard
 
 The Streamlit dashboard presents trade-level SHAP results, statistical checks,
 worst trades, feature effects, and recurring error patterns.

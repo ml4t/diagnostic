@@ -267,7 +267,7 @@ class TestEvaluator:
         assert "dsr" in dsr_result
         assert "p_value" in dsr_result
 
-    def test_batch_evaluation(self):
+    def test_batch_evaluation(self, capsys):
         """Test batch evaluation of multiple models."""
         # Generate synthetic data
         np.random.seed(42)
@@ -284,6 +284,10 @@ class TestEvaluator:
 
         evaluator = Evaluator(tier=3, random_state=42)
         results = evaluator.batch_evaluate(models, X, y, model_names)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
 
         assert len(results) == 2
         assert "Linear" in results

@@ -70,10 +70,11 @@ def compute_ic_hac_stats(
     ic_series: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
     ic_col: str = "ic",
     maxlags: int | None = None,
-    label_horizon: int | None = None,
+    label_horizon: int | None = 1,
     kernel: str = "bartlett",
     use_correction: bool = True,
-) -> dict[str, float | int]:
+    allow_naive_fallback: bool = False,
+) -> dict[str, float | int | bool]:
     """Compute HAC-adjusted significance statistics for IC time series.
 
     Uses Newey-West HAC (Heteroskedasticity and Autocorrelation Consistent)
@@ -96,10 +97,12 @@ def compute_ic_hac_stats(
         maxlags = floor(4 * (T/100)^(2/9))
         where T is the sample size. For overlapping forward-return labels,
         pass ``label_horizon`` so the lag is at least ``label_horizon - 1``.
-    label_horizon : int | None, default None
+    label_horizon : int | None, default 1
         Forward-return horizon used to build the IC series. If provided and
         ``maxlags`` is None, the HAC lag is
         ``max(label_horizon - 1, Newey-West auto)`` capped at ``T // 2``.
+        The default assumes non-overlapping one-period labels. Pass the actual
+        horizon when forward-return labels overlap.
     kernel : str, default "bartlett"
         Kernel function for lag weighting:
         - "bartlett": Triangular kernel (Newey-West default)
@@ -107,10 +110,14 @@ def compute_ic_hac_stats(
         - "parzen": Parzen kernel
     use_correction : bool, default True
         Apply small-sample correction to standard errors
+    allow_naive_fallback : bool, default False
+        Return the naive standard error if HAC covariance computation fails.
+        The fallback emits a RuntimeWarning and sets ``used_naive_fallback``.
+        By default, a failed HAC computation raises RuntimeError.
 
     Returns
     -------
-    dict[str, float]
+    dict[str, float | int | bool]
         Dictionary with HAC-adjusted statistics:
         - mean_ic: Mean IC across time series
         - hac_se: HAC-adjusted standard error
@@ -197,6 +204,7 @@ def compute_ic_hac_stats(
             "effective_lags": 0,
             "naive_se": np.nan,
             "naive_t_stat": np.nan,
+            "used_naive_fallback": False,
         }
 
     # Compute mean IC
@@ -209,14 +217,6 @@ def compute_ic_hac_stats(
 
     if maxlags is None:
         if label_horizon is None:
-            warnings.warn(
-                "compute_ic_hac_stats() was called without label_horizon; "
-                "using the sample-size Newey-West lag only. For overlapping "
-                "forward-return labels, pass label_horizon so HAC bandwidth is "
-                "at least horizon - 1.",
-                UserWarning,
-                stacklevel=2,
-            )
             maxlags = _newey_west_lag(n)
         else:
             maxlags = _newey_west_lag(n, label_horizon)
@@ -227,8 +227,10 @@ def compute_ic_hac_stats(
     # This is equivalent to a one-sample t-test
     exog = np.ones((n, 1))  # Just constant term
     y = ic_clean.reshape(-1, 1)
+    weights_func = _get_kernel_weights(kernel)
 
     # Compute HAC covariance matrix
+    used_naive_fallback = False
     try:
         # Fit OLS model
         model = OLS(y, exog)
@@ -238,7 +240,7 @@ def compute_ic_hac_stats(
         hac_cov = cov_hac(
             ols_results,
             nlags=maxlags,
-            weights_func=_get_kernel_weights(kernel),
+            weights_func=weights_func,
             use_correction=use_correction,
         )
 
@@ -246,10 +248,16 @@ def compute_ic_hac_stats(
         hac_var = hac_cov[0, 0]
         hac_se = np.sqrt(hac_var)
 
-    except Exception as e:
-        # If HAC computation fails, fall back to naive SE
-        print(f"Warning: HAC computation failed ({e}), using naive SE")
+    except Exception as exc:
+        if not allow_naive_fallback:
+            raise RuntimeError("HAC covariance computation failed") from exc
+        warnings.warn(
+            f"HAC covariance computation failed; using naive standard error: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         hac_se = naive_se
+        used_naive_fallback = True
 
     # Compute HAC-adjusted t-statistic
     t_stat = mean_ic / hac_se if hac_se > 0 else np.nan
@@ -267,6 +275,7 @@ def compute_ic_hac_stats(
         "effective_lags": maxlags,
         "naive_se": float(naive_se),
         "naive_t_stat": float(naive_t_stat),
+        "used_naive_fallback": used_naive_fallback,
     }
 
 

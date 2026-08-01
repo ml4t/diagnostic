@@ -163,3 +163,11 @@ class TestComputeFoldPercentiles:
         assert "Computing fold-specific percentiles" in captured.out
         assert "Computed 4 percentile arrays" in captured.out
         assert "2 folds × 2 iterations × 2 percentiles" in captured.out
+
+    def test_default_is_quiet(self, sample_predictions_pandas: pd.DataFrame, capsys) -> None:
+        """Public computation does not write to stdout by default."""
+        compute_fold_percentiles(sample_predictions_pandas, [50, 90])
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""

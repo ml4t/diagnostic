@@ -871,6 +871,8 @@ class Evaluator:
         x: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
         y: Union[pl.Series, pd.Series, "NDArray[Any]"],
         model_names: list[str] | None = None,
+        *,
+        verbose: bool = False,
         **kwargs: Any,
     ) -> dict[str, EvaluationResult]:
         """Evaluate multiple models with the same validation framework.
@@ -885,6 +887,8 @@ class Evaluator:
             Target values
         model_names : Optional[List[str]], default None
             Names for the models. If None, uses model class names
+        verbose : bool, default False
+            Print each model name before evaluation.
         **kwargs : Any
             Additional parameters passed to evaluate()
 
@@ -904,7 +908,8 @@ class Evaluator:
 
         results = {}
         for model, name in zip(models, model_names, strict=False):
-            print(f"Evaluating {name}...")
+            if verbose:
+                print(f"Evaluating {name}...")
             results[name] = self.evaluate(x, y, model, **kwargs)
 
         return results

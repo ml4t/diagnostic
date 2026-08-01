@@ -17,7 +17,7 @@ def compute_fold_percentiles(
     fold_col: str = "fold_id",
     iteration_col: str = "iteration",
     prediction_col: str = "prediction",
-    verbose: bool = True,
+    verbose: bool = False,
 ) -> pd.DataFrame:
     """
     Compute percentiles from predictions grouped by fold and iteration.
@@ -34,7 +34,7 @@ def compute_fold_percentiles(
         fold_col: Name of fold identifier column (default: "fold_id")
         iteration_col: Name of iteration/checkpoint column (default: "iteration")
         prediction_col: Name of prediction values column (default: "prediction")
-        verbose: Print progress information (default: True)
+        verbose: Print progress information (default: False)
 
     Returns:
         DataFrame with columns: [fold_col, iteration_col, p{percentile}, ...]

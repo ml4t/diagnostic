@@ -720,6 +720,53 @@ class TestTearsheetGeneration:
         assert isinstance(html, str)
         assert len(html) > 0
 
+    def test_section_failure_is_actionable(self, monkeypatch):
+        """A renderer error names the omitted section instead of returning None."""
+        import ml4t.diagnostic.visualization.backtest.tearsheet as module
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        def fail_renderer(*args, **kwargs):
+            raise ValueError("injected renderer failure")
+
+        monkeypatch.setattr(module, "_create_section_figure", fail_renderer)
+
+        with pytest.raises(ReportGenerationError, match="Failed to render") as exc_info:
+            module._generate_section("equity_curve")
+
+        assert exc_info.value.context == {"section": "equity_curve"}
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
+    def test_validation_enrichment_failure_is_actionable(self, monkeypatch):
+        """A failed statistical enrichment cannot produce an incomplete report."""
+        import importlib
+
+        import ml4t.diagnostic.visualization.backtest.tearsheet as module
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        dsr_module = importlib.import_module(
+            "ml4t.diagnostic.evaluation.stats.deflated_sharpe_ratio"
+        )
+
+        def fail_dsr(*args, **kwargs):
+            raise ValueError("injected DSR failure")
+
+        monkeypatch.setattr(dsr_module, "deflated_sharpe_ratio", fail_dsr)
+
+        with pytest.raises(ReportGenerationError, match="DSR metrics") as exc_info:
+            module._enrich_validation_metrics({}, np.ones(100), n_trials=2)
+
+        assert exc_info.value.context["metric"] == "dsr"
+
+    def test_raw_return_drawdown_anatomy_uses_supported_import(self):
+        """Raw returns render through the public portfolio analysis package."""
+        from ml4t.diagnostic.visualization.backtest.tearsheet import _generate_section
+
+        returns = np.array([0.01, -0.02, 0.015, -0.01, 0.02] * 30)
+        html = _generate_section("drawdown_anatomy", returns=returns)
+
+        assert html is not None
+        assert "drawdown" in html.lower()
+
     def test_generate_backtest_tearsheet_from_profile(self, sample_backtest_profile):
         """Test tearsheet generation directly from BacktestProfile."""
         from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
