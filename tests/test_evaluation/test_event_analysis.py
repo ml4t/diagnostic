@@ -18,6 +18,7 @@ Boehmer, E., Musumeci, J., Poulsen, A.B. (1991). BMP test
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -1130,6 +1131,31 @@ class TestEdgeCases:
             results = analysis.compute_abnormal_returns()
 
         assert results == []
+
+    def test_benchmark_event_date_is_not_required_outside_configured_windows(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A benchmark t=0 gap is irrelevant when neither window consumes t=0."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        benchmark = sample_benchmark_data.filter(pl.col("date") != event_date)
+        window = default_config.window.model_copy(update={"event_start": 1, "event_end": 5})
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config.model_copy(update={"window": window}),
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            results = analysis.compute_abnormal_returns()
+
+        assert len(results) == 1
 
 
 # =============================================================================

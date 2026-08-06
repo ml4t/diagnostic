@@ -201,6 +201,7 @@ class EventStudyAnalysis:
         """
         est_start, est_end = self.config.window.estimation_window
 
+        assert event_date in self._date_to_idx
         event_idx = self._date_to_idx[event_date]
 
         # Calculate estimation window indices
@@ -315,6 +316,7 @@ class EventStudyAnalysis:
         """
         evt_start, evt_end = self.config.window.event_window
 
+        assert event_date in self._date_to_idx
         event_idx = self._date_to_idx[event_date]
 
         required_dates: dict[int, Any] = {}
@@ -391,8 +393,7 @@ class EventStudyAnalysis:
         alpha, beta, r2, residual_std = 0.0, 1.0, 0.0, 0.0
 
         if self.config.model == "market_model":
-            if market_est_returns is None:
-                raise RuntimeError("Market model requires benchmark estimation returns")
+            assert market_est_returns is not None
             alpha, beta, r2, residual_std = self._estimate_market_model(
                 asset_est_returns, market_est_returns
             )
@@ -401,8 +402,7 @@ class EventStudyAnalysis:
             beta = 0.0
             residual_std = float(np.std(asset_est_returns, ddof=1))
         elif self.config.model == "market_adjusted":
-            if market_est_returns is None:
-                raise RuntimeError("Market-adjusted model requires benchmark estimation returns")
+            assert market_est_returns is not None
             alpha = 0.0
             beta = 1.0
             residual_std = float(np.std(asset_est_returns - market_est_returns, ddof=1))
@@ -417,15 +417,14 @@ class EventStudyAnalysis:
         # Compute abnormal returns
         ar_by_day: dict[int, float] = {}
         for rel_day, (asset_ret, market_ret) in event_data.items():
-            if self.config.model == "mean_adjusted":
+            if self.config.model == "market_model":
+                assert market_ret is not None
+                expected_ret = alpha + beta * market_ret
+            elif self.config.model == "mean_adjusted":
                 expected_ret = alpha
             else:
-                if market_ret is None:
-                    raise RuntimeError("Benchmark-based model requires benchmark event returns")
-                if self.config.model == "market_model":
-                    expected_ret = alpha + beta * market_ret
-                else:
-                    expected_ret = market_ret
+                assert market_ret is not None
+                expected_ret = market_ret
 
             ar_by_day[rel_day] = asset_ret - expected_ret
 
