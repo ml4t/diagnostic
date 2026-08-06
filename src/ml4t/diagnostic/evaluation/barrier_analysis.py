@@ -519,7 +519,7 @@ class BarrierAnalysis:
             sum_all_returns[q] = s_all
             avg_tp_return[q] = s_tp / n_tp if n_tp > 0 else 0.0
             avg_sl_return[q] = s_sl / n_sl if n_sl > 0 else 0.0
-            avg_return[q] = float(s_all / n_total) if s_all is not None else 0.0
+            avg_return[q] = s_all / n_total
             count_tp[q] = n_tp
             count_sl[q] = n_sl
             count_total[q] = n_total

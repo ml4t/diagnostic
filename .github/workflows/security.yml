@@ -7,6 +7,8 @@ jobs:
   audit:
     name: Audit release dependencies
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v6.0.3
 
@@ -23,8 +25,8 @@ jobs:
 
       - name: Export release dependency graph
         run: >-
-          uv export --frozen --all-extras --no-dev --no-hashes --no-emit-project
+          uv export --quiet --frozen --all-extras --no-dev --no-emit-project
           --output-file requirements-audit.txt
 
       - name: Audit known vulnerabilities
-        run: uv run pip-audit -r requirements-audit.txt
+        run: uv run pip-audit --strict --require-hashes --disable-pip -r requirements-audit.txt

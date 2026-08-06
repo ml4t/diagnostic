@@ -40,16 +40,14 @@ def compute_quantile_returns(
         return dict.fromkeys(range(1, n_quantiles + 1), float("nan"))
 
     result: dict[int, float] = {}
+    valid_data = data.filter(pl.col(return_col).is_not_null())
+    quantile_values = valid_data.get_column(quantile_col).unique().sort().to_list()
 
-    quantile_means = (
-        data.filter(pl.col(return_col).is_not_null())
-        .group_by(quantile_col)
-        .agg(pl.col(return_col).mean().alias("mean_return"))
-        .sort(quantile_col)
-    )
-
-    for row in quantile_means.iter_rows(named=True):
-        result[int(row[quantile_col])] = float(row["mean_return"])
+    # Polars parallel group reductions may add floats in a different order on
+    # repeated calls. Reduce each quantile in input order for exact reproducibility.
+    for quantile in quantile_values:
+        returns = valid_data.filter(pl.col(quantile_col) == quantile).get_column(return_col)
+        result[int(quantile)] = float(np.mean(returns.to_numpy()))
 
     # Fill missing quantiles
     for q in range(1, n_quantiles + 1):

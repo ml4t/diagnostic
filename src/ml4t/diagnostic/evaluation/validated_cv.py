@@ -209,9 +209,9 @@ class ValidatedCrossValidation:
         model : ModelProtocol
             Model with fit/predict interface
         times : array-like, optional
-            Chronologically sorted datetime-like values for time-based purging.
-            Numeric row positions are not accepted; omit this argument to use
-            integer row-based purging.
+            Chronologically sorted datetime-like values used to validate row order.
+            ``label_horizon`` and ``embargo_pct`` remain sample-based. Use
+            ``CombinatorialCV`` directly for elapsed-time purging.
         returns_fn : callable, optional
             Function(y_true, y_pred) -> returns.
             If None, assumes y contains returns and predictions are positions.
@@ -234,14 +234,12 @@ class ValidatedCrossValidation:
         else:
             y_np = np.asarray(y)
 
-        splitter_input: np.ndarray | pd.DataFrame = X_np
         if times is not None:
-            times_index = self._validate_times(times, len(X_np))
-            splitter_input = pd.DataFrame(index=times_index)
+            self._validate_times(times, len(X_np))
 
         fold_results = []
 
-        for fold_idx, (train_idx, test_idx) in enumerate(self._cv.split(splitter_input, y_np)):
+        for fold_idx, (train_idx, test_idx) in enumerate(self._cv.split(X_np, y_np)):
             # Fit model
             model.fit(X_np[train_idx], y_np[train_idx])
 
@@ -498,7 +496,7 @@ def validated_cross_val_score(
     model: ModelProtocol,
     X: np.ndarray,
     y: np.ndarray,
-    times: np.ndarray | pd.Series | pd.DatetimeIndex | None = None,
+    times: np.ndarray | pd.Series | pd.DatetimeIndex | pl.Series | None = None,
     n_groups: int = 10,
     embargo_pct: float = 0.01,
 ) -> ValidationResult:
@@ -512,13 +510,13 @@ def validated_cross_val_score(
         Features
     y : np.ndarray
         Target (or returns)
-    times : np.ndarray, optional
-        Chronologically sorted datetime-like values for time-based purging.
-        Omit to use integer row-based purging.
+    times : array-like, optional
+        Chronologically sorted datetime-like values used to validate row order.
+        Purging and embargo remain sample-based.
     n_groups : int, default 10
         Number of CV groups
     embargo_pct : float, default 0.01
-        Embargo fraction
+        Embargo fraction of total rows
 
     Returns
     -------

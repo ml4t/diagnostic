@@ -324,8 +324,10 @@ class TestValidatedCrossValidation:
         assert isinstance(result, ValidationResult)
         assert result.n_folds > 0
 
-    def test_fit_evaluate_passes_times_as_datetime_index_not_groups(self, sample_data, monkeypatch):
-        """Explicit timestamps reach CPCV through X rather than the groups argument."""
+    def test_fit_evaluate_validates_times_without_treating_them_as_groups(
+        self, sample_data, monkeypatch
+    ):
+        """Explicit timestamps validate order without changing sample-based purging."""
         X, y, times = sample_data
         vcv = ValidatedCrossValidation(ValidatedCrossValidationConfig(n_groups=2, n_test_groups=1))
         captured = {}
@@ -340,9 +342,26 @@ class TestValidatedCrossValidation:
 
         vcv.fit_evaluate(X, y, SimpleModel(), times=times)
 
-        assert isinstance(captured["X"], pd.DataFrame)
-        assert captured["X"].index.equals(times)
+        np.testing.assert_array_equal(captured["X"], X)
         assert captured["groups"] is None
+
+    def test_fit_evaluate_keeps_sample_purging_when_times_are_supplied(self, sample_data):
+        """Timestamps do not reinterpret an integer horizon as calendar days."""
+        X, y, _ = sample_data
+        times = pd.date_range("2020-01-01", periods=len(X), freq="h", tz="UTC")
+        config = ValidatedCrossValidationConfig(
+            n_groups=5,
+            n_test_groups=1,
+            label_horizon=5,
+            embargo_pct=0.02,
+        )
+
+        without_times = ValidatedCrossValidation(config).fit_evaluate(X, y, SimpleModel())
+        with_times = ValidatedCrossValidation(config).fit_evaluate(X, y, SimpleModel(), times=times)
+
+        assert [fold.train_size for fold in with_times.fold_results] == [
+            fold.train_size for fold in without_times.fold_results
+        ]
 
     def test_fit_evaluate_rejects_numeric_row_positions_as_times(self, sample_data):
         """Numeric row positions cannot silently become asset group labels."""
@@ -359,6 +378,34 @@ class TestValidatedCrossValidation:
 
         with pytest.raises(ValueError, match="sorted"):
             vcv.fit_evaluate(X, y, SimpleModel(), times=times[::-1])
+
+    def test_fit_evaluate_rejects_wrong_length_times(self, sample_data):
+        """Timestamp count must match the feature rows."""
+        X, y, times = sample_data
+
+        with pytest.raises(ValueError, match="times length"):
+            ValidatedCrossValidation().fit_evaluate(X, y, SimpleModel(), times=times[:-1])
+
+    def test_fit_evaluate_rejects_missing_times(self, sample_data):
+        """Missing timestamps cannot define chronological row order."""
+        X, y, times = sample_data
+        invalid = times.to_series().copy()
+        invalid.iloc[10] = pd.NaT
+
+        with pytest.raises(ValueError, match="missing"):
+            ValidatedCrossValidation().fit_evaluate(X, y, SimpleModel(), times=invalid)
+
+    def test_fit_evaluate_rejects_unparseable_times(self, sample_data):
+        """Non-datetime text is rejected with a stable error."""
+        X, y, _ = sample_data
+
+        with pytest.raises(TypeError, match="valid datetime-like"):
+            ValidatedCrossValidation().fit_evaluate(
+                X,
+                y,
+                SimpleModel(),
+                times=np.full(len(X), "not-a-timestamp"),
+            )
 
     def test_evaluate_sharpes(self):
         """Test evaluation of pre-computed Sharpe ratios."""
