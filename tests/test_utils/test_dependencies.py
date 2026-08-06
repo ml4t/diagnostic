@@ -169,7 +169,7 @@ class TestOptionalDependencies:
         shap = DEPS.shap
         assert shap.name == "SHAP"
         assert shap.import_name == "shap"
-        assert "pip install shap" in shap.install_cmd
+        assert shap.install_cmd == "pip install ml4t-diagnostic[ml]"
         assert len(shap.features) > 0
 
     def test_attribute_access(self):

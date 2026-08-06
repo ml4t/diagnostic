@@ -780,7 +780,7 @@ class TestComputeICHACStats:
         dates = pd.date_range("2020-01-01", periods=n_periods, freq="D")
         ic_df = pl.DataFrame({"date": dates, "ic": ic_values})
 
-        result = compute_ic_hac_stats(ic_df, ic_col="ic")
+        result = compute_ic_hac_stats(ic_df, ic_col="ic", label_horizon=1)
 
         assert isinstance(result, dict)
 
@@ -789,7 +789,7 @@ class TestComputeICHACStats:
         np.random.seed(42)
         ic_values = 0.03 + np.random.randn(100) * 0.05
 
-        result = compute_ic_hac_stats(ic_values)
+        result = compute_ic_hac_stats(ic_values, label_horizon=1)
 
         assert isinstance(result, dict)
 
@@ -2820,7 +2820,7 @@ class TestHACKernelWeights:
         np.random.seed(42)
         ic_series = np.random.randn(50)
 
-        result = compute_ic_hac_stats(ic_series, kernel="uniform")
+        result = compute_ic_hac_stats(ic_series, kernel="uniform", label_horizon=1)
 
         assert isinstance(result, dict)
         assert "mean_ic" in result
@@ -2831,7 +2831,7 @@ class TestHACKernelWeights:
         np.random.seed(42)
         ic_series = np.random.randn(50)
 
-        result = compute_ic_hac_stats(ic_series, kernel="parzen")
+        result = compute_ic_hac_stats(ic_series, kernel="parzen", label_horizon=1)
 
         assert isinstance(result, dict)
         assert "mean_ic" in result
