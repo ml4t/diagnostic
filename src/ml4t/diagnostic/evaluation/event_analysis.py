@@ -212,8 +212,11 @@ class EventStudyAnalysis:
         for row in asset_data.iter_rows(named=True):
             date = row["date"]
             if date in self._benchmark_dict:
-                asset_returns.append(row["return"])
-                market_returns.append(self._benchmark_dict[date])
+                asset_return = row["return"]
+                market_return = self._benchmark_dict[date]
+                if np.isfinite(asset_return) and np.isfinite(market_return):
+                    asset_returns.append(asset_return)
+                    market_returns.append(market_return)
 
         if len(asset_returns) < self.config.min_estimation_obs:
             return None
@@ -282,12 +285,13 @@ class EventStudyAnalysis:
                 )
 
                 if len(asset_ret) > 0 and date in self._benchmark_dict:
-                    result[rel_day] = (
-                        asset_ret["return"][0],
-                        self._benchmark_dict[date],
-                    )
+                    asset_return = asset_ret["return"][0]
+                    market_return = self._benchmark_dict[date]
+                    if np.isfinite(asset_return) and np.isfinite(market_return):
+                        result[rel_day] = (asset_return, market_return)
 
-        return result if result else None
+        expected_observations = evt_end - evt_start + 1
+        return result if len(result) == expected_observations else None
 
     def _compute_abnormal_return_single(
         self, event_row: dict[str, Any]
@@ -375,7 +379,7 @@ class EventStudyAnalysis:
 
         if n_skipped > 0:
             warnings.warn(
-                f"Skipped {n_skipped} events due to insufficient data",
+                f"Skipped {n_skipped} events due to insufficient or non-finite data",
                 stacklevel=2,
             )
 
@@ -483,14 +487,24 @@ class EventStudyAnalysis:
         tuple[float, float]
             (test_statistic, p_value)
         """
+        finite_results = [result for result in ar_results if np.isfinite(result.car)]
+        finite_ar_matrix = {
+            day: [
+                result.ar_by_day[day]
+                for result in finite_results
+                if day in result.ar_by_day and np.isfinite(result.ar_by_day[day])
+            ]
+            for day in ar_matrix
+        }
+
         if self.config.test == "t_test":
-            return self._t_test(ar_results, ar_matrix)
+            return self._t_test(finite_results, finite_ar_matrix)
         elif self.config.test == "boehmer":
-            return self._bmp_test(ar_results)
+            return self._bmp_test(finite_results)
         elif self.config.test == "corrado":
-            return self._corrado_test(ar_results, ar_matrix)
+            return self._corrado_test(finite_results, finite_ar_matrix)
         else:
-            return self._t_test(ar_results, ar_matrix)
+            return self._t_test(finite_results, finite_ar_matrix)
 
     def _t_test(
         self,

@@ -700,6 +700,42 @@ class TestResultProperties:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
+    @pytest.mark.parametrize("test_name", ["t_test", "boehmer", "corrado"])
+    def test_non_finite_event_return_is_skipped_before_inference(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+        test_name: str,
+    ) -> None:
+        """A NaN in an event window cannot produce an invalid p-value."""
+        invalid_event = sample_events_data.row(0, named=True)
+        returns_with_nan = sample_returns_data.with_columns(
+            pl.when(
+                (pl.col("asset") == invalid_event["asset"])
+                & (pl.col("date") == invalid_event["date"])
+            )
+            .then(float("nan"))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        analysis = EventStudyAnalysis(
+            returns=returns_with_nan,
+            events=sample_events_data,
+            benchmark=sample_benchmark_data,
+            config=default_config.model_copy(update={"test": test_name}),
+        )
+
+        with pytest.warns(UserWarning, match="non-finite data"):
+            result = analysis.run()
+
+        assert result.n_events == 2
+        assert np.isfinite(result.test_statistic)
+        assert 0.0 <= result.p_value <= 1.0
+        assert result.individual_results is not None
+        assert all(np.isfinite(event.car) for event in result.individual_results)
+
     def test_insufficient_estimation_data_warning(
         self,
         trading_dates: list[datetime],

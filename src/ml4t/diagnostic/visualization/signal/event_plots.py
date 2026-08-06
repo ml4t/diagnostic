@@ -507,6 +507,8 @@ def plot_car_by_event(
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
+    unavailable_count = sum(not math.isfinite(result.car) for result in ar_results)
+
     # Sort results
     if sort_by == "car":
         sorted_results = sorted(
@@ -524,6 +526,7 @@ def plot_car_by_event(
     # Prepare data
     labels = [f"{r.event_id} ({r.asset})" for r in sorted_results]
     cars = [r.car for r in sorted_results]
+    plotted_cars = [car if math.isfinite(car) else 0.0 for car in cars]
     bar_colors = [
         _ML4T_COLORS["silver_muted"]
         if not math.isfinite(car)
@@ -533,14 +536,17 @@ def plot_car_by_event(
         for car in cars
     ]
     car_labels = [format_finite(car, ".4f") for car in cars]
+    bar_text = ["" if math.isfinite(car) else "N/A" for car in cars]
 
     fig = go.Figure(
         data=go.Bar(
             y=labels,
-            x=cars,
+            x=plotted_cars,
             orientation="h",
             marker_color=bar_colors,
             customdata=car_labels,
+            text=bar_text,
+            textposition="outside",
             hovertemplate="Event: %{y}<br>CAR: %{customdata}<extra></extra>",
         )
     )
@@ -550,6 +556,8 @@ def plot_car_by_event(
     title = "Cumulative Abnormal Return by Event"
     if top_n is not None:
         title += f" (Top {top_n})"
+    if unavailable_count:
+        title += f" - {unavailable_count} unavailable"
 
     layout_updates = {
         "title": title,

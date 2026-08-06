@@ -237,6 +237,7 @@ class TestSignalDashboardEventsTab:
         result.individual_results[0].ar_by_day[0] = float("nan")
         result.individual_results[0].ar_by_day[1] = float("inf")
         result.individual_results[0].estimation_beta = float("nan")
+        del result.individual_results[1].ar_by_day[1]
 
         events_html = SignalDashboard()._create_events_tab(result)
         from ml4t.diagnostic.visualization.signal.event_plots import (
@@ -267,9 +268,13 @@ class TestSignalDashboardEventsTab:
         assert "p-value = N/A" in distribution_text
         unavailable_car_index = list(car_trace.customdata).index("N/A")
         assert car_trace.marker.color[unavailable_car_index] == "#e8e8e6"
+        assert car_trace.x[unavailable_car_index] == 0.0
+        assert car_trace.text[unavailable_car_index] == "N/A"
         assert "%{customdata}" in car_trace.hovertemplate
         assert "%{x:.4f}" not in car_trace.hovertemplate
+        assert "1 unavailable" in car_figure.layout.title.text
         assert "AR: N/A" in heatmap_text
+        assert "Day 1: No data" in heatmap_text
         assert "AR: inf" not in heatmap_text.lower()
         assert "nan" not in result.summary().lower()
         assert "nan" not in result.individual_results[0].summary().lower()
