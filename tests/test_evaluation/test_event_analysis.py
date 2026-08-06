@@ -1162,7 +1162,21 @@ class TestEdgeCases:
             results = analysis.compute_abnormal_returns()
 
         assert len(results) == 1
-        assert set(results[0].ar_by_day) == {1, 2, 3, 4, 5}
+        result = results[0]
+        assert result.estimation_alpha is not None
+        assert result.estimation_beta is not None
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        resolved_date = all_dates[all_dates.index(event_date) + 1]
+        asset_return = sample_returns_data.filter(
+            (pl.col("asset") == event["asset"][0]) & (pl.col("date") == resolved_date)
+        )["return"][0]
+        benchmark_return = sample_benchmark_data.filter(pl.col("date") == resolved_date)["return"][
+            0
+        ]
+        expected_ar = asset_return - (
+            result.estimation_alpha + result.estimation_beta * benchmark_return
+        )
+        assert result.ar_by_day[1] == pytest.approx(expected_ar)
 
 
 # =============================================================================

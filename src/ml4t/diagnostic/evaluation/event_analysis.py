@@ -280,23 +280,19 @@ class EventStudyAnalysis:
         X = np.column_stack([np.ones(len(market_returns)), market_returns])
         y = asset_returns
 
-        # Solve normal equations
-        try:
-            coeffs, residuals, _, _ = np.linalg.lstsq(X, y, rcond=None)
-            alpha, beta = coeffs[0], coeffs[1]
+        coeffs, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+        alpha, beta = coeffs[0], coeffs[1]
 
-            # Calculate R-squared
-            y_pred = alpha + beta * market_returns
-            ss_res = np.sum((y - y_pred) ** 2)
-            ss_tot = np.sum((y - np.mean(y)) ** 2)
-            r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+        # Calculate R-squared
+        y_pred = alpha + beta * market_returns
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
 
-            # Residual standard deviation
-            residual_std = np.std(y - y_pred, ddof=2)
+        # Residual standard deviation
+        residual_std = np.std(y - y_pred, ddof=2)
 
-            return alpha, beta, r_squared, residual_std
-        except (np.linalg.LinAlgError, ValueError):
-            return 0.0, 1.0, 0.0, np.std(asset_returns)
+        return alpha, beta, r_squared, residual_std
 
     def _get_event_window_data(
         self, asset: str, event_date: Any
