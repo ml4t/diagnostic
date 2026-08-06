@@ -327,6 +327,23 @@ class TestSignalDashboardEventsTab:
         assert "unavailable" not in figure.layout.title.text
         assert "N/A" not in trace.customdata
 
+    def test_caar_plot_omits_unavailable_confidence_band(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """A result without finite CI bounds does not advertise a CI trace."""
+        from ml4t.diagnostic.visualization.signal.event_plots import plot_caar
+
+        result = sample_event_study_result.model_copy(deep=True)
+        result.caar_ci_lower = [float("nan")] * len(result.caar)
+        result.caar_ci_upper = [float("nan")] * len(result.caar)
+
+        figure = plot_caar(result)
+
+        trace_names = [trace.name for trace in figure.data]
+        assert "CAAR" in trace_names
+        assert all("CI" not in name for name in trace_names)
+
     def test_event_study_rejects_unavailable_p_value(
         self,
         sample_event_study_result,

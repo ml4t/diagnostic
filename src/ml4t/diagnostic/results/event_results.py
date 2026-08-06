@@ -216,7 +216,7 @@ class EventStudyResult(BaseResult):
     )
     test_name: str = Field(
         ...,
-        description="Name of statistical test (t_test, boehmer, corrado)",
+        description="Name of statistical test (t_test or boehmer)",
     )
 
     # Metadata

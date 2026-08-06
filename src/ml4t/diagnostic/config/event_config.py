@@ -20,8 +20,8 @@ class WindowSettings(BaseConfig):
     """Settings for event study windows.
 
     Defines the estimation window (for computing normal returns) and
-    the event window (for measuring abnormal returns). Complete, finite
-    event windows are required by default so CARs cover comparable horizons.
+    the event window (for measuring abnormal returns). Event windows must be
+    complete and finite so CARs cover comparable horizons.
     """
 
     estimation_start: int = Field(
@@ -46,13 +46,6 @@ class WindowSettings(BaseConfig):
         default=5,
         ge=0,
         description="Buffer days between estimation and event windows",
-    )
-    require_complete_event_window: bool = Field(
-        default=True,
-        description=(
-            "Require every relative day in the event window to have finite asset and "
-            "benchmark returns"
-        ),
     )
 
     @field_validator("estimation_end")
@@ -134,7 +127,7 @@ class EventConfig(BaseConfig):
         default="market_model",
         description="Model for computing expected returns",
     )
-    test: Literal["t_test", "boehmer", "corrado"] = Field(
+    test: Literal["t_test", "boehmer"] = Field(
         default="boehmer",
         description="Statistical test for significance",
     )

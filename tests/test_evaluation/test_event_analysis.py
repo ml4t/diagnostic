@@ -535,35 +535,6 @@ class TestStatisticalTests:
         assert np.isfinite(result.test_statistic)
         assert 0 <= result.p_value <= 1
 
-    def test_corrado_test_produces_valid_statistics(
-        self,
-        sample_returns_data: pl.DataFrame,
-        sample_events_data: pl.DataFrame,
-        sample_benchmark_data: pl.DataFrame,
-    ) -> None:
-        """Test Corrado rank test produces valid test statistic and p-value."""
-        config = EventConfig(
-            window=WindowSettings(
-                estimation_start=-252, estimation_end=-20, event_start=-5, event_end=5
-            ),
-            model="market_model",
-            test="corrado",
-            min_estimation_obs=100,
-        )
-
-        analysis = EventStudyAnalysis(
-            returns=sample_returns_data,
-            events=sample_events_data,
-            benchmark=sample_benchmark_data,
-            config=config,
-        )
-
-        result = analysis.run()
-
-        assert result.test_name == "corrado"
-        assert np.isfinite(result.test_statistic)
-        assert 0 <= result.p_value <= 1
-
     def test_t_test_significant_with_large_effect(
         self,
         trading_dates: list[datetime],
@@ -701,7 +672,7 @@ class TestResultProperties:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    @pytest.mark.parametrize("test_name", ["t_test", "boehmer", "corrado"])
+    @pytest.mark.parametrize("test_name", ["t_test", "boehmer"])
     @pytest.mark.parametrize("invalid_return", [float("nan"), None], ids=["nan", "null"])
     def test_non_finite_event_return_is_skipped_before_inference(
         self,
@@ -739,39 +710,34 @@ class TestEdgeCases:
         assert result.individual_results is not None
         assert all(np.isfinite(event.car) for event in result.individual_results)
 
-    def test_partial_event_window_can_be_retained_explicitly(
+    def test_incomplete_event_window_is_skipped(
         self,
         sample_returns_data: pl.DataFrame,
         sample_events_data: pl.DataFrame,
         sample_benchmark_data: pl.DataFrame,
         default_config: EventConfig,
     ) -> None:
-        """The explicit relaxed policy retains an event with a missing day."""
-        partial_event = sample_events_data.row(0, named=True)
-        partial_returns = sample_returns_data.filter(
+        """An event with a missing day cannot enter fixed-horizon inference."""
+        incomplete_event = sample_events_data.row(0, named=True)
+        incomplete_returns = sample_returns_data.filter(
             ~(
-                (pl.col("asset") == partial_event["asset"])
-                & (pl.col("date") == partial_event["date"])
+                (pl.col("asset") == incomplete_event["asset"])
+                & (pl.col("date") == incomplete_event["date"])
             )
         )
-        config = default_config.model_copy(deep=True)
-        config.window.require_complete_event_window = False
         analysis = EventStudyAnalysis(
-            returns=partial_returns,
+            returns=incomplete_returns,
             events=sample_events_data,
             benchmark=sample_benchmark_data,
-            config=config,
+            config=default_config,
         )
 
-        result = analysis.run()
+        with pytest.warns(UserWarning, match="insufficient or non-finite data"):
+            result = analysis.run()
 
-        assert result.n_events == 3
+        assert result.n_events == 2
         assert result.individual_results is not None
-        retained_event = next(
-            event for event in result.individual_results if event.asset == partial_event["asset"]
-        )
-        assert 0 not in retained_event.ar_by_day
-        assert np.isfinite(retained_event.car)
+        assert all(event.asset != incomplete_event["asset"] for event in result.individual_results)
 
     def test_insufficient_estimation_data_warning(
         self,
@@ -949,7 +915,11 @@ class TestEventConfig:
         assert config.min_estimation_obs == 100
         assert config.window.estimation_window == (-252, -20)
         assert config.window.event_window == (-5, 5)
-        assert config.window.require_complete_event_window is True
+
+    def test_unvalidated_corrado_method_is_rejected(self) -> None:
+        """Corrado is unavailable until estimation-window ranks are retained."""
+        with pytest.raises(ValueError, match="t_test.*boehmer"):
+            EventConfig(test="corrado")  # type: ignore[arg-type]
 
     def test_alpha_property(self) -> None:
         """Test alpha property calculation."""

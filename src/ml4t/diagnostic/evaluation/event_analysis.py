@@ -47,7 +47,6 @@ class EventStudyAnalysis:
     And statistical tests:
     - Standard t-test
     - BMP test (Boehmer et al. 1991, robust to event-induced variance)
-    - Corrado rank test (non-parametric)
 
     Parameters
     ----------
@@ -60,9 +59,8 @@ class EventStudyAnalysis:
     benchmark : pl.DataFrame
         Market/benchmark returns with columns: [date, return].
     config : EventConfig, optional
-        Configuration for the analysis. Event windows must be complete by
-        default; set ``window.require_complete_event_window=False`` to retain
-        partial windows after omitting missing or non-finite observations.
+        Configuration for the analysis. Event windows must be complete and
+        finite so every CAR covers the configured horizon.
 
     Examples
     --------
@@ -269,9 +267,7 @@ class EventStudyAnalysis:
     ) -> dict[int, tuple[float, float]] | None:
         """Get finite returns for an event window.
 
-        Complete windows are required by default. Set
-        ``window.require_complete_event_window=False`` to retain events with
-        partial windows; missing and non-finite observations are omitted.
+        Incomplete windows are rejected so every CAR covers the same horizon.
 
         Returns
         -------
@@ -306,9 +302,7 @@ class EventStudyAnalysis:
                     ):
                         result[rel_day] = (asset_return, market_return)
 
-        if self.config.window.require_complete_event_window:
-            return result if len(result) == self.config.window.event_length else None
-        return result if result else None
+        return result if len(result) == self.config.window.event_length else None
 
     def _compute_abnormal_return_single(
         self, event_row: dict[str, Any]
@@ -470,7 +464,7 @@ class EventStudyAnalysis:
             caar_ci_upper.append(caar + z_score * se)
 
         # Run statistical test
-        test_stat, p_value = self._run_statistical_test(ar_results, ar_matrix)
+        test_stat, p_value = self._run_statistical_test(ar_results)
 
         result = EventStudyResult(
             aar_by_day=aar_by_day,
@@ -495,7 +489,6 @@ class EventStudyAnalysis:
     def _run_statistical_test(
         self,
         ar_results: list[AbnormalReturnResult],
-        ar_matrix: dict[int, list[float]],
     ) -> tuple[float, float]:
         """Run statistical significance test.
 
@@ -505,18 +498,12 @@ class EventStudyAnalysis:
             (test_statistic, p_value)
         """
         if self.config.test == "t_test":
-            return self._t_test(ar_results, ar_matrix)
-        elif self.config.test == "boehmer":
-            return self._bmp_test(ar_results)
-        elif self.config.test == "corrado":
-            return self._corrado_test(ar_results, ar_matrix)
-        else:
-            return self._t_test(ar_results, ar_matrix)
+            return self._t_test(ar_results)
+        return self._bmp_test(ar_results)
 
     def _t_test(
         self,
         ar_results: list[AbnormalReturnResult],
-        ar_matrix: dict[int, list[float]],
     ) -> tuple[float, float]:
         """Standard parametric t-test on CAAR.
 
@@ -572,47 +559,6 @@ class EventStudyAnalysis:
             return 0.0, 1.0
 
         z_stat = mean_sar / se_sar
-        p_value = 2 * stats.norm.sf(abs(z_stat))
-
-        return float(z_stat), float(p_value)
-
-    def _corrado_test(
-        self,
-        ar_results: list[AbnormalReturnResult],
-        ar_matrix: dict[int, list[float]],
-    ) -> tuple[float, float]:
-        """Corrado (1989) non-parametric rank test.
-
-        Robust to non-normality in returns. Uses ranks instead of
-        raw abnormal returns.
-        """
-        n_events = len(ar_results)
-        if n_events < 2:
-            return 0.0, 1.0
-
-        # For simplicity, test at t=0 (event day)
-        if 0 not in ar_matrix or len(ar_matrix[0]) < 2:
-            # Fallback to t-test
-            return self._t_test(ar_results, ar_matrix)
-
-        event_day_ars = np.array(ar_matrix[0])
-
-        # Rank the ARs
-        ranks = stats.rankdata(event_day_ars)
-        expected_rank = (n_events + 1) / 2
-
-        # Compute test statistic
-        rank_deviations = ranks - expected_rank
-        mean_deviation = np.mean(rank_deviations)
-
-        # Standard deviation of ranks under null
-        std_rank = np.std(rank_deviations, ddof=1)
-        se_rank = std_rank / np.sqrt(n_events)
-
-        if se_rank == 0:
-            return 0.0, 1.0
-
-        z_stat = mean_deviation / se_rank
         p_value = 2 * stats.norm.sf(abs(z_stat))
 
         return float(z_stat), float(p_value)

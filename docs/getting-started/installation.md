@@ -133,6 +133,7 @@ supported release platforms:
 - `WandbLogger` and `log_experiment`
 - `LoggingConfig.use_wandb`, `wandb_project`, and `wandb_entity`
 - the `use_gpu` argument from `compute_shap_importance` and `TradeShapAnalyzer`
+- the unvalidated `corrado` event-study test option; use `t_test` or `boehmer`
 
 Install the `ml` extra for the supported SHAP implementation. Existing logging
 configuration files containing removed fields now fail validation instead of

@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy import stats as sp_stats
@@ -88,7 +89,11 @@ def plot_caar(
     y = result.caar
 
     # Add confidence band
-    if show_confidence:
+    ci_available = any(
+        np.isfinite(lower) and np.isfinite(upper)
+        for lower, upper in zip(result.caar_ci_lower, result.caar_ci_upper, strict=False)
+    )
+    if show_confidence and ci_available:
         fig.add_trace(
             go.Scatter(
                 x=x + x[::-1],
@@ -362,8 +367,6 @@ def plot_ar_distribution(
 
     if not ars:
         raise ValueError(f"No AR data available for day {day}")
-
-    import numpy as np
 
     ars_array = np.array(ars)
 
