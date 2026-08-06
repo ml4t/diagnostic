@@ -298,8 +298,24 @@ class SignalDashboard(BaseDashboard):
             ic_t = ic.ic_t_stat.get(first_period, 0)
             ic_mean_display = format_finite(ic_mean, ".4f")
             ic_ir_display = format_finite(ic_ir, ".3f")
-            ic_positive_display = format_finite(ic_positive, ".1%")
+            ic_positive_display = format_finite(ic_positive / 100, ".1%")
             ic_t_display = format_finite(ic_t, ".2f")
+            ic_ir_label = (
+                "N/A"
+                if not math.isfinite(ic_ir)
+                else "Good"
+                if ic_ir > 0.5
+                else "Moderate"
+                if ic_ir > 0.2
+                else "Low"
+            )
+            ic_t_label = (
+                "N/A"
+                if not math.isfinite(ic_t)
+                else "Significant"
+                if abs(ic_t) > 2
+                else "Not significant"
+            )
 
             # Quality badge based on IC
             if not math.isfinite(ic_mean):
@@ -322,9 +338,7 @@ class SignalDashboard(BaseDashboard):
                 <div class="metric-card">
                     <div class="metric-label">IC IR</div>
                     <div class="metric-value">{ic_ir_display}</div>
-                    <div class="metric-sublabel">
-                        {"N/A" if not math.isfinite(ic_ir) else "Good" if ic_ir > 0.5 else "Moderate" if ic_ir > 0.2 else "Low"}
-                    </div>
+                    <div class="metric-sublabel">{ic_ir_label}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">IC Positive %</div>
@@ -333,9 +347,7 @@ class SignalDashboard(BaseDashboard):
                 <div class="metric-card">
                     <div class="metric-label">t-statistic</div>
                     <div class="metric-value">{ic_t_display}</div>
-                    <div class="metric-sublabel">
-                        {"N/A" if not math.isfinite(ic_t) else "Significant" if abs(ic_t) > 2 else "Not significant"}
-                    </div>
+                    <div class="metric-sublabel">{ic_t_label}</div>
                 </div>
             </div>
             """)
@@ -344,9 +356,19 @@ class SignalDashboard(BaseDashboard):
             if ic.ras_adjusted_ic is not None and ic.ras_significant is not None:
                 ras_ic = ic.ras_adjusted_ic.get(first_period, 0)
                 ras_sig = ic.ras_significant.get(first_period, False)
-                sig_icon = "✓" if ras_sig else "✗"
-                sig_color = "#10b981" if ras_sig else "#ef4444"
                 ras_ic_display = format_finite(ras_ic, ".4f")
+                if math.isfinite(ras_ic):
+                    sig_icon = "✓" if ras_sig else "✗"
+                    sig_color = "#10b981" if ras_sig else "#ef4444"
+                    sig_description = (
+                        "Signal passes multiple testing correction"
+                        if ras_sig
+                        else "Signal may be spurious"
+                    )
+                else:
+                    sig_icon = "?"
+                    sig_color = "#6b7280"
+                    sig_description = "Not available"
 
                 html_parts.append(f"""
                 <div class="insights-panel">
@@ -354,7 +376,7 @@ class SignalDashboard(BaseDashboard):
                     <p><strong>Adjusted IC:</strong> {ras_ic_display}</p>
                     <p><strong>Significant:</strong>
                         <span style="color: {sig_color}; font-weight: bold;">{sig_icon}</span>
-                        {"Signal passes multiple testing correction" if ras_sig else "Signal may be spurious"}
+                        {sig_description}
                     </p>
                 </div>
                 """)
@@ -649,15 +671,20 @@ class SignalDashboard(BaseDashboard):
             bottom_to = ta.bottom_quantile_turnover.get(period, 0)
             mean_ac = ta.mean_autocorrelation.get(period, 0)
             half_life = ta.half_life.get(period)
+            mean_to_display = format_finite(mean_to, ".1%")
+            top_to_display = format_finite(top_to, ".1%")
+            bottom_to_display = format_finite(bottom_to, ".1%")
+            mean_ac_display = format_finite(mean_ac, ".4f")
+            half_life_display = format_finite(half_life, ".1f") if half_life is not None else "N/A"
 
             rows.append(f"""
             <tr>
                 <td>{period}</td>
-                <td>{mean_to:.1%}</td>
-                <td>{top_to:.1%}</td>
-                <td>{bottom_to:.1%}</td>
-                <td>{mean_ac:.4f}</td>
-                <td>{f"{half_life:.1f}" if half_life is not None else "N/A"}</td>
+                <td>{mean_to_display}</td>
+                <td>{top_to_display}</td>
+                <td>{bottom_to_display}</td>
+                <td>{mean_ac_display}</td>
+                <td>{half_life_display}</td>
             </tr>
             """)
 

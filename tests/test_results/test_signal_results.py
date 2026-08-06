@@ -47,7 +47,7 @@ def sample_ic_result() -> SignalICResult:
         ic_std={"1D": 0.015, "5D": 0.015, "21D": 0.015},
         ic_t_stat={"1D": 2.67, "5D": 4.67, "21D": 7.33},
         ic_p_value={"1D": 0.02, "5D": 0.001, "21D": 0.0001},
-        ic_positive_pct={"1D": 1.0, "5D": 1.0, "21D": 1.0},
+        ic_positive_pct={"1D": 100.0, "5D": 100.0, "21D": 100.0},
         ic_ir={"1D": 2.67, "5D": 4.67, "21D": 7.33},
         ic_t_stat_hac={"1D": 2.5, "5D": 4.5, "21D": 7.0},
         ic_p_value_hac={"1D": 0.03, "5D": 0.002, "21D": 0.0002},
@@ -67,7 +67,7 @@ def sample_ic_result_no_ras() -> SignalICResult:
         ic_std={"1D": 0.015},
         ic_t_stat={"1D": 2.67},
         ic_p_value={"1D": 0.02},
-        ic_positive_pct={"1D": 1.0},
+        ic_positive_pct={"1D": 100.0},
         ic_ir={"1D": 2.67},
     )
 
@@ -1161,7 +1161,7 @@ class TestSignalICResultEdgeCases:
             ic_std={"1D": 0.015},
             ic_t_stat={"1D": 2.67},
             ic_p_value={"1D": 0.02},
-            ic_positive_pct={"1D": 1.0},
+            ic_positive_pct={"1D": 100.0},
             ic_ir={"1D": 2.67},
         )
 
@@ -1320,8 +1320,20 @@ class TestSignalTearSheetDashboard:
         html = SignalDashboard().generate(tear_sheet)
 
         assert '<div class="metric-value">N/A</div>' in html
-        assert '<div class="metric-value">nan' not in html.lower()
-        assert '<div class="metric-sublabel">n/a</div>' in html.lower()
+        assert "nan" not in html.lower().replace("isnan", "")
+        assert "nan" not in tear_sheet.summary().lower()
+
+    def test_dashboard_uses_percentage_point_ic_positive_scale(
+        self, sample_tear_sheet: SignalTearSheet
+    ) -> None:
+        """A stored 100.0 positive rate renders as 100%, not 10000%."""
+        from ml4t.diagnostic.visualization.signal import SignalDashboard
+
+        html = SignalDashboard().generate(sample_tear_sheet)
+
+        assert '<div class="metric-value">100.0%</div>' in html
+        assert "10000.0%" not in html
+        assert "Positive %:     100.0%" in sample_tear_sheet.summary()
 
 
 @pytest.mark.slow

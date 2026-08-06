@@ -16,9 +16,9 @@ import numpy as np
 import plotly.graph_objects as go
 from scipy import stats
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
-    format_percentage,
     get_colorscale,
     get_theme_config,
     validate_theme,
@@ -156,7 +156,7 @@ def plot_ic_ts(
         y=mean_ic,
         line_dash="dot",
         line_color=theme_config["colorway"][2],
-        annotation_text=f"Mean IC: {mean_ic:.4f}",
+        annotation_text=f"Mean IC: {format_finite(mean_ic, '.4f')}",
         annotation_position="right",
     )
 
@@ -185,10 +185,11 @@ def plot_ic_ts(
 
     summary_text = (
         f"<b>Summary:</b><br>"
-        f"Mean IC: {mean_ic:.4f}<br>"
-        f"IC IR: {ir:.3f}<br>"
-        f"Positive %: {format_percentage(positive_pct)}<br>"
-        f"t-stat: {t_stat:.2f} (p={p_value:.4f})"
+        f"Mean IC: {format_finite(mean_ic, '.4f')}<br>"
+        f"IC IR: {format_finite(ir, '.3f')}<br>"
+        f"Positive %: {format_finite(positive_pct / 100, '.1%')}<br>"
+        f"t-stat: {format_finite(t_stat, '.2f')} "
+        f"(p={format_finite(p_value, '.4f')})"
     )
 
     fig.add_annotation(
@@ -315,7 +316,7 @@ def plot_ic_histogram(
         x=mean_ic,
         line_dash="dash",
         line_color=theme_config["colorway"][2],
-        annotation_text=f"Mean: {mean_ic:.4f}",
+        annotation_text=f"Mean: {format_finite(mean_ic, '.4f')}",
     )
 
     # Zero line
@@ -335,10 +336,10 @@ def plot_ic_histogram(
         stats_text = (
             f"<b>Statistics:</b><br>"
             f"N: {len(ic_clean)}<br>"
-            f"Mean: {mean_ic:.4f}<br>"
-            f"Std: {ic_std:.4f}<br>"
-            f"Skew: {skewness:.3f}<br>"
-            f"Kurt: {kurtosis:.3f}"
+            f"Mean: {format_finite(mean_ic, '.4f')}<br>"
+            f"Std: {format_finite(ic_std, '.4f')}<br>"
+            f"Skew: {format_finite(skewness, '.3f')}<br>"
+            f"Kurt: {format_finite(kurtosis, '.3f')}"
         )
 
         fig.add_annotation(

@@ -16,6 +16,7 @@ import polars as pl
 from pydantic import Field, model_validator
 
 from ml4t.diagnostic.results.base import BaseResult
+from ml4t.diagnostic.utils.formatting import format_finite
 
 
 class TurnoverAnalysisResult(BaseResult):
@@ -201,13 +202,18 @@ class TurnoverAnalysisResult(BaseResult):
         for period in self.mean_turnover:
             lines.append(f"Period: {period}")
             lines.append("-" * 40)
-            lines.append(f"  Mean Turnover:        {self.mean_turnover[period]:>8.2%}")
-            lines.append(f"  Top Quantile:         {self.top_quantile_turnover[period]:>8.2%}")
-            lines.append(f"  Bottom Quantile:      {self.bottom_quantile_turnover[period]:>8.2%}")
-            lines.append(f"  Mean Autocorrelation: {self.mean_autocorrelation[period]:>8.4f}")
+            mean = format_finite(self.mean_turnover[period], ".2%")
+            top = format_finite(self.top_quantile_turnover[period], ".2%")
+            bottom = format_finite(self.bottom_quantile_turnover[period], ".2%")
+            autocorrelation = format_finite(self.mean_autocorrelation[period], ".4f")
+            lines.append(f"  Mean Turnover:        {mean:>8}")
+            lines.append(f"  Top Quantile:         {top:>8}")
+            lines.append(f"  Bottom Quantile:      {bottom:>8}")
+            lines.append(f"  Mean Autocorrelation: {autocorrelation:>8}")
 
             if self.half_life[period] is not None:
-                lines.append(f"  Signal Half-Life:     {self.half_life[period]:>8.1f} periods")
+                half_life = format_finite(self.half_life[period], ".1f")
+                lines.append(f"  Signal Half-Life:     {half_life:>8} periods")
             lines.append("")
 
         return "\n".join(lines)
