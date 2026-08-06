@@ -449,16 +449,19 @@ class TestDomainClassifierMetadata:
             max_depth=3,
             cv_folds=3,
             random_state=123,
+            n_jobs=2,
         )
 
         assert "n_estimators" in result.metadata
         assert "max_depth" in result.metadata
         assert "cv_folds" in result.metadata
         assert "random_state" in result.metadata
+        assert "n_jobs" in result.metadata
         assert result.metadata["n_estimators"] == 20
         assert result.metadata["max_depth"] == 3
         assert result.metadata["cv_folds"] == 3
         assert result.metadata["random_state"] == 123
+        assert result.metadata["n_jobs"] == 2
 
     def test_summary_formatting(self):
         """Test summary output is readable."""

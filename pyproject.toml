@@ -228,6 +228,7 @@ python_functions = ["test_*"]
 addopts = [
     "-ra",
     "-n", "auto",
+    "--benchmark-disable",
     "--strict-markers",
     "--hypothesis-show-statistics",
     "-m", "not slow",
@@ -247,7 +248,6 @@ filterwarnings = [
     "ignore::DeprecationWarning:sklearn",
     "ignore::DeprecationWarning:numpy",
     "ignore::PendingDeprecationWarning",
-    "ignore::pytest_benchmark.logger.PytestBenchmarkWarning",
     # Our own intentional deprecation warnings in tests
     "ignore:align_to_sessions.*deprecated:DeprecationWarning:ml4t",
 ]

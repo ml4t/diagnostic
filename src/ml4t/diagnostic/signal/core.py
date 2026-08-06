@@ -18,7 +18,7 @@ from ml4t.diagnostic.signal._utils import (
     quantize_factor,
 )
 from ml4t.diagnostic.signal.quantile import (
-    compute_quantile_returns,
+    _compute_quantile_return_statistics,
     compute_spread,
     monotonicity_score,
 )
@@ -232,21 +232,8 @@ def analyze_signal(
             ic_positive_pct[period_key] = 0.0
 
         # Quantile returns
-        q_returns = compute_quantile_returns(data, period, quantiles)
+        q_returns, q_std = _compute_quantile_return_statistics(data, period, quantiles)
         quantile_returns[period_key] = q_returns
-
-        # Quantile return standard deviations
-        return_col = f"{period}D_fwd_return"
-        q_detail = (
-            data.filter(pl.col(return_col).is_not_null())
-            .group_by("quantile")
-            .agg(pl.col(return_col).std().alias("std_return"))
-            .sort("quantile")
-        )
-        q_std: dict[int, float] = {}
-        for row in q_detail.iter_rows(named=True):
-            std_val = row["std_return"]
-            q_std[int(row["quantile"])] = float(std_val) if std_val is not None else 0.0
         quantile_returns_std[period_key] = q_std
 
         # Spread

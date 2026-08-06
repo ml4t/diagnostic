@@ -5,10 +5,15 @@ on:
 
 jobs:
   audit:
-    name: Audit release dependencies
-    runs-on: ubuntu-latest
+    name: Audit (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.12", "3.13", "3.14"]
     env:
-      UV_PYTHON: "3.12"
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v6.0.3
 
@@ -18,7 +23,7 @@ jobs:
           version: "0.10.9"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install audit tooling
         run: uv sync --frozen --dev
@@ -29,4 +34,6 @@ jobs:
           --output-file requirements-audit.txt
 
       - name: Audit known vulnerabilities
-        run: uv run pip-audit --strict --require-hashes --disable-pip -r requirements-audit.txt
+        run: >-
+          uv run pip-audit --strict --require-hashes --disable-pip
+          --vulnerability-service pypi -r requirements-audit.txt

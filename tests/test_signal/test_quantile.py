@@ -152,14 +152,17 @@ class TestComputeQuantileReturns:
     def test_repeated_calls_are_exactly_deterministic(self):
         """Parallel execution cannot change floating-point reduction order."""
         rng = np.random.default_rng(42)
+        quantiles = np.tile(np.arange(1, 6), 1_000)
+        returns = rng.normal(size=5_000)
         data = pl.DataFrame(
             {
-                "quantile": np.tile(np.arange(1, 6), 1_000),
-                "1D_fwd_return": rng.normal(size=5_000),
+                "quantile": quantiles,
+                "1D_fwd_return": returns,
             }
         )
-
-        expected = compute_quantile_returns(data, period=1, n_quantiles=5)
+        expected = {
+            quantile: float(np.mean(returns[quantiles == quantile])) for quantile in range(1, 6)
+        }
 
         for _ in range(20):
             assert compute_quantile_returns(data, period=1, n_quantiles=5) == expected

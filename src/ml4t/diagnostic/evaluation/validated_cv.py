@@ -273,8 +273,8 @@ class ValidatedCrossValidation:
     def _validate_times(
         times: np.ndarray | pd.Series | pd.DatetimeIndex | pl.Series,
         n_samples: int,
-    ) -> pd.DatetimeIndex:
-        """Validate an explicit timestamp vector for CPCV purging."""
+    ) -> None:
+        """Validate an explicit timestamp vector."""
         values = np.asarray(times)
         if len(values) != n_samples:
             raise ValueError(
@@ -292,9 +292,6 @@ class ValidatedCrossValidation:
             raise ValueError("times must not contain missing values")
         if not index.is_monotonic_increasing:
             raise ValueError("times must be sorted in non-decreasing order")
-        if index.tz is None:
-            index = index.tz_localize("UTC")
-        return index
 
     def evaluate_sharpes(self, sharpe_ratios: list[float]) -> ValidationResult:
         """Evaluate pre-computed Sharpe ratios with DSR.
