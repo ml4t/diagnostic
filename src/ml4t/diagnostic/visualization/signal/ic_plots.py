@@ -457,8 +457,8 @@ def plot_ic_qq(
 
         normality_text = (
             f"<b>Normality Tests:</b><br>"
-            f"Shapiro-Wilk p: {shapiro_p:.4f}<br>"
-            f"Jarque-Bera p: {jb_p:.4f}<br>"
+            f"Shapiro-Wilk p: {format_finite(shapiro_p, '.4f')}<br>"
+            f"Jarque-Bera p: {format_finite(jb_p, '.4f')}<br>"
             f"{'✓ Normal' if min(shapiro_p, jb_p) > 0.05 else '✗ Non-normal'}"
         )
 

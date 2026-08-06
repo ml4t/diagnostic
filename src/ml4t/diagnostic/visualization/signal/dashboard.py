@@ -735,8 +735,18 @@ class SignalDashboard(BaseDashboard):
         theme_name = "dark" if self.theme == "dark" else "default"
 
         # Summary metrics section
-        sig_status = "Significant" if event_analysis.is_significant else "Not Significant"
-        sig_color = "#10b981" if event_analysis.is_significant else "#ef4444"
+        if math.isfinite(event_analysis.p_value):
+            sig_status = "Significant" if event_analysis.is_significant else "Not Significant"
+            sig_color = "#10b981" if event_analysis.is_significant else "#ef4444"
+        else:
+            sig_status = "N/A"
+            sig_color = "#6b7280"
+        final_caar = format_finite(event_analysis.final_caar, "+.4f")
+        final_caar_pct = format_finite(event_analysis.final_caar, "+.2%")
+        event_day_aar = format_finite(event_analysis.event_day_aar, "+.4f")
+        event_day_aar_pct = format_finite(event_analysis.event_day_aar, "+.2%")
+        test_statistic = format_finite(event_analysis.test_statistic, ".3f")
+        p_value = format_finite(event_analysis.p_value, ".4f")
 
         html_parts.append(f"""
         <div class="metric-grid">
@@ -756,8 +766,8 @@ class SignalDashboard(BaseDashboard):
             </div>
             <div class="metric-card">
                 <div class="metric-label">Final CAAR</div>
-                <div class="metric-value">{event_analysis.final_caar:+.4f}</div>
-                <div class="metric-sublabel">{event_analysis.final_caar * 100:+.2f}%</div>
+                <div class="metric-value">{final_caar}</div>
+                <div class="metric-sublabel">{final_caar_pct}</div>
             </div>
         </div>
         """)
@@ -767,8 +777,8 @@ class SignalDashboard(BaseDashboard):
         <div class="metric-grid">
             <div class="metric-card">
                 <div class="metric-label">Event Day AAR (t=0)</div>
-                <div class="metric-value">{event_analysis.event_day_aar:+.4f}</div>
-                <div class="metric-sublabel">{event_analysis.event_day_aar * 100:+.2f}%</div>
+                <div class="metric-value">{event_day_aar}</div>
+                <div class="metric-sublabel">{event_day_aar_pct}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Test</div>
@@ -776,11 +786,11 @@ class SignalDashboard(BaseDashboard):
             </div>
             <div class="metric-card">
                 <div class="metric-label">Test Statistic</div>
-                <div class="metric-value">{event_analysis.test_statistic:.3f}</div>
+                <div class="metric-value">{test_statistic}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">P-value</div>
-                <div class="metric-value">{event_analysis.p_value:.4f}</div>
+                <div class="metric-value">{p_value}</div>
                 <div class="metric-sublabel" style="color: {sig_color};">{sig_status}</div>
             </div>
         </div>
@@ -886,16 +896,22 @@ class SignalDashboard(BaseDashboard):
 
         rows = []
         for r in sorted_results[:20]:  # Limit to top 20
-            car_color = "#10b981" if r.car >= 0 else "#ef4444"
+            car_color = (
+                "#6b7280" if not math.isfinite(r.car) else "#10b981" if r.car >= 0 else "#ef4444"
+            )
             ar_day0 = r.ar_by_day.get(0, 0.0)
-            beta_str = f"{r.estimation_beta:.2f}" if r.estimation_beta is not None else "N/A"
+            beta_str = (
+                format_finite(r.estimation_beta, ".2f") if r.estimation_beta is not None else "N/A"
+            )
+            car_display = format_finite(r.car, "+.4f")
+            ar_day0_display = format_finite(ar_day0, "+.4f")
             rows.append(f"""
             <tr>
                 <td>{r.event_id}</td>
                 <td>{r.asset}</td>
                 <td>{r.event_date[:10] if len(r.event_date) >= 10 else r.event_date}</td>
-                <td style="color: {car_color};">{r.car:+.4f}</td>
-                <td>{ar_day0:+.4f}</td>
+                <td style="color: {car_color};">{car_display}</td>
+                <td>{ar_day0_display}</td>
                 <td>{beta_str}</td>
             </tr>
             """)

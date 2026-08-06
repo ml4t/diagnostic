@@ -220,6 +220,35 @@ class TestSignalDashboardEventsTab:
         # Should show either "Significant" or "Not Significant"
         assert "Significant" in events_html or "Not Significant" in events_html
 
+    def test_events_tab_formats_unavailable_statistics(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """Non-finite event statistics render as unavailable."""
+        result = sample_event_study_result.model_copy(
+            update={"test_statistic": float("nan"), "p_value": float("nan")},
+            deep=True,
+        )
+        result.caar[-1] = float("nan")
+        result.aar_by_day[0] = float("nan")
+        assert result.individual_results
+        result.individual_results[0].car = float("nan")
+        result.individual_results[0].ar_by_day[0] = float("nan")
+        result.individual_results[0].estimation_beta = float("nan")
+
+        events_html = SignalDashboard()._create_events_tab(result)
+        from ml4t.diagnostic.visualization.signal.event_plots import plot_caar
+
+        caar_figure = plot_caar(result)
+        annotation_text = " ".join(annotation.text for annotation in caar_figure.layout.annotations)
+
+        assert '<div class="metric-value">N/A</div>' in events_html
+        assert '<div class="metric-sublabel" style="color: #6b7280;">N/A</div>' in events_html
+        assert "Stat: N/A" in annotation_text
+        assert "p-value: N/A" in annotation_text
+        assert ">N/A</td>" in events_html
+        assert ">nan" not in events_html.lower()
+
     def test_dashboard_save_with_events(
         self,
         sample_event_study_result,

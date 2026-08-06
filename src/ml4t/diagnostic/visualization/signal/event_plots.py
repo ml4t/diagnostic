@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
@@ -190,8 +191,8 @@ def plot_caar(
     # Add statistical info annotation
     annotation_text = (
         f"Test: {result.test_name}<br>"
-        f"Stat: {result.test_statistic:.3f}<br>"
-        f"p-value: {result.p_value:.4f}"
+        f"Stat: {format_finite(result.test_statistic, '.3f')}<br>"
+        f"p-value: {format_finite(result.p_value, '.4f')}"
     )
     fig.add_annotation(
         xref="paper",
@@ -402,7 +403,7 @@ def plot_ar_distribution(
         x=mean_ar,
         line_dash="dash",
         line_color=_ML4T_COLORS["negative"],
-        annotation_text=f"Mean: {mean_ar:.4f}",
+        annotation_text=f"Mean: {format_finite(mean_ar, '.4f')}",
         annotation_position="top right",
     )
 
@@ -433,10 +434,10 @@ def plot_ar_distribution(
     # Add statistics annotation
     annotation_text = (
         f"n = {len(ars)}<br>"
-        f"Mean = {mean_ar:.4f}<br>"
-        f"Std = {std_ar:.4f}<br>"
-        f"t-stat = {t_stat:.3f}<br>"
-        f"p-value = {p_val:.4f}"
+        f"Mean = {format_finite(mean_ar, '.4f')}<br>"
+        f"Std = {format_finite(std_ar, '.4f')}<br>"
+        f"t-stat = {format_finite(t_stat, '.3f')}<br>"
+        f"p-value = {format_finite(p_val, '.4f')}"
     )
     fig.add_annotation(
         xref="paper",

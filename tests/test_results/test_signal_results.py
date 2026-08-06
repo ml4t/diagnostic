@@ -10,6 +10,7 @@ These tests focus on the result class methods:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import plotly.graph_objects as go
@@ -703,6 +704,35 @@ class TestTurnoverAnalysisResultSummary:
         # Should not have half-life line when None
         assert "Signal Half-Life:" not in summary
 
+    def test_autocorrelation_plot_distinguishes_zero_and_missing_half_life(
+        self, sample_turnover_result: TurnoverAnalysisResult
+    ) -> None:
+        """Zero is a valid half-life while None is unavailable."""
+        from ml4t.diagnostic.visualization.signal.turnover_plots import plot_autocorrelation
+
+        missing = sample_turnover_result.model_copy(deep=True)
+        missing.half_life["1D"] = None
+        missing_figure = plot_autocorrelation(missing, period="1D")
+        missing_text = next(
+            annotation.text
+            for annotation in missing_figure.layout.annotations
+            if "Half-life" in annotation.text
+        )
+
+        zero = sample_turnover_result.model_copy(deep=True)
+        zero.half_life["1D"] = 0.0
+        zero_figure = plot_autocorrelation(zero, period="1D")
+        zero_text = next(
+            annotation.text
+            for annotation in zero_figure.layout.annotations
+            if "Half-life" in annotation.text
+        )
+
+        assert "Mean AC (Lag 1-5):" in missing_text
+        assert "Half-life: N/A" in missing_text
+        assert "N/A periods" not in missing_text
+        assert "Half-life: 0.0 periods" in zero_text
+
 
 # =============================================================================
 # IRtcResult Tests
@@ -1318,10 +1348,28 @@ class TestSignalTearSheetDashboard:
         tear_sheet.ir_tc_analysis.cost_drag["1D"] = float("nan")
 
         html = SignalDashboard().generate(tear_sheet)
+        summary = tear_sheet.summary()
+        summary_frame = tear_sheet.get_dataframe("summary")
+        rendered_fields = re.findall(
+            r'<div class="metric-(?:value|sublabel)"[^>]*>(.*?)</div>|<td[^>]*>(.*?)</td>',
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        rendered_text = re.sub(
+            r"<[^>]+>",
+            " ",
+            " ".join(value for pair in rendered_fields for value in pair if value),
+        )
 
         assert '<div class="metric-value">N/A</div>' in html
-        assert "nan" not in html.lower().replace("isnan", "")
-        assert "nan" not in tear_sheet.summary().lower()
+        assert re.search(r"\bnan(?:%|\b)", rendered_text, flags=re.IGNORECASE) is None
+        assert "Adjusted IC:</strong> N/A" in html
+        assert "Not available" in html
+        assert "nan" not in summary.lower()
+        ras_line = next(line for line in summary.splitlines() if "RAS Signif:" in line)
+        assert ras_line.endswith("N/A")
+        ic_row = summary_frame.filter(pl.col("metric") == "ic_mean_1D")
+        assert ic_row.item(0, "value") == "N/A"
 
     def test_dashboard_uses_percentage_point_ic_positive_scale(
         self, sample_tear_sheet: SignalTearSheet

@@ -23,6 +23,7 @@ from ml4t.diagnostic.results.signal_results.irtc import IRtcResult
 from ml4t.diagnostic.results.signal_results.quantile import QuantileAnalysisResult
 from ml4t.diagnostic.results.signal_results.turnover import TurnoverAnalysisResult
 from ml4t.diagnostic.results.signal_results.validation import _figure_from_data
+from ml4t.diagnostic.utils.formatting import format_finite
 
 
 class SignalTearSheet(BaseResult):
@@ -164,7 +165,7 @@ class SignalTearSheet(BaseResult):
 
         if self.ic_analysis:
             for period, ic in self.ic_analysis.ic_mean.items():
-                rows.append({"metric": f"ic_mean_{period}", "value": f"{ic:.4f}"})
+                rows.append({"metric": f"ic_mean_{period}", "value": format_finite(ic, ".4f")})
 
         return pl.DataFrame(rows)
 

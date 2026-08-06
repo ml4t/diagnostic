@@ -151,7 +151,9 @@ def plot_top_bottom_turnover(
         hl_text = "<b>Signal Half-Life:</b><br>"
         for period, hl in half_lives.items():
             if hl is not None:
-                hl_text += f"{period}: {format_finite(hl, '.1f')} periods<br>"
+                hl_display = format_finite(hl, ".1f")
+                unit = " periods" if hl_display != "N/A" else ""
+                hl_text += f"{period}: {hl_display}{unit}<br>"
             else:
                 hl_text += f"{period}: N/A<br>"
 
@@ -283,11 +285,12 @@ def plot_autocorrelation(
     half_life = turnover_result.half_life.get(period)
     mean_ac = turnover_result.mean_autocorrelation.get(period, 0)
     half_life_display = format_finite(half_life, ".1f") if half_life is not None else "N/A"
+    half_life_unit = " periods" if half_life_display != "N/A" else ""
 
     summary_text = (
         f"<b>Signal Persistence:</b><br>"
         f"Mean AC (Lag 1-5): {format_finite(mean_ac, '.4f')}<br>"
-        f"Half-life: {half_life_display} periods"
+        f"Half-life: {half_life_display}{half_life_unit}"
     )
 
     fig.add_annotation(
