@@ -170,7 +170,7 @@ def calculate_purge_indices(
                 label_horizon = pd.Timedelta(days=label_horizon)
 
         # Calculate purge start time
-        purge_start_time = test_start - label_horizon
+        purge_start_time = test_start - cast(pd.Timedelta, label_horizon)
 
         # Find indices to purge
         purge_mask = (timestamps >= purge_start_time) & (timestamps < test_start)
@@ -278,7 +278,7 @@ def calculate_embargo_indices(
             embargo_size = pd.Timedelta(days=cast(int, embargo_size))
 
         # Calculate embargo end time
-        embargo_end_time = test_end + embargo_size
+        embargo_end_time = test_end + cast(pd.Timedelta, embargo_size)
 
         # Find indices to embargo
         embargo_mask = (timestamps >= test_end) & (timestamps < embargo_end_time)

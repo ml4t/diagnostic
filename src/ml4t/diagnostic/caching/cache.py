@@ -6,13 +6,13 @@ import hashlib
 import json
 from collections import OrderedDict
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class CacheBackend(str, Enum):
+class CacheBackend(StrEnum):
     """Cache storage backend options."""
 
     MEMORY = "memory"

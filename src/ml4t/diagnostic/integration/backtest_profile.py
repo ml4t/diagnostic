@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -32,7 +32,7 @@ else:
         ) from exc
 
 
-class AvailabilityState(str, Enum):
+class AvailabilityState(StrEnum):
     """Availability state for a surface, family, or metric."""
 
     AVAILABLE = "available"

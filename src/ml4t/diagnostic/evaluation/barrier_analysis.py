@@ -23,7 +23,7 @@ Lopez de Prado, M. (2018). "Advances in Financial Machine Learning"
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import polars as pl
@@ -196,7 +196,7 @@ class BarrierAnalysis:
         # Filter outliers if configured
         if cfg.filter_zscore is not None:
             signal_mean = merged[cfg.signal_col].mean()
-            signal_std = merged[cfg.signal_col].std()
+            signal_std = cast(float | None, merged[cfg.signal_col].std())
             if signal_std is not None and signal_std > 0:
                 merged = merged.filter(
                     ((pl.col(cfg.signal_col) - signal_mean) / signal_std).abs() <= cfg.filter_zscore
@@ -486,19 +486,25 @@ class BarrierAnalysis:
             # TP returns
             tp_data = q_data.filter(pl.col(cfg.label_col) == BarrierLabel.TAKE_PROFIT.value)
             n_tp = tp_data.height
-            s_tp = tp_data[cfg.label_return_col].sum() if n_tp > 0 else 0.0
+            s_tp_raw = tp_data[cfg.label_return_col].sum() if n_tp > 0 else 0.0
+            s_tp = float(s_tp_raw) if s_tp_raw is not None else 0.0
 
             # SL returns
             sl_data = q_data.filter(pl.col(cfg.label_col) == BarrierLabel.STOP_LOSS.value)
             n_sl = sl_data.height
-            s_sl = sl_data[cfg.label_return_col].sum() if n_sl > 0 else 0.0
+            s_sl_raw = sl_data[cfg.label_return_col].sum() if n_sl > 0 else 0.0
+            s_sl = float(s_sl_raw) if s_sl_raw is not None else 0.0
 
             # Timeout returns
             timeout_data = q_data.filter(pl.col(cfg.label_col) == BarrierLabel.TIMEOUT.value)
-            s_timeout = timeout_data[cfg.label_return_col].sum() if timeout_data.height > 0 else 0.0
+            s_timeout_raw = (
+                timeout_data[cfg.label_return_col].sum() if timeout_data.height > 0 else 0.0
+            )
+            s_timeout = float(s_timeout_raw) if s_timeout_raw is not None else 0.0
 
             # Total returns
-            s_all = q_data[cfg.label_return_col].sum()
+            s_all_raw = q_data[cfg.label_return_col].sum()
+            s_all = float(s_all_raw) if s_all_raw is not None else 0.0
 
             # Profit factor: PF = sum(TP) / |sum(SL)|
             # SL returns are typically negative, so we use abs
@@ -507,12 +513,12 @@ class BarrierAnalysis:
 
             # Store results
             profit_factor[q] = float(pf)
-            sum_tp_returns[q] = float(s_tp) if s_tp is not None else 0.0
-            sum_sl_returns[q] = float(s_sl) if s_sl is not None else 0.0
-            sum_timeout_returns[q] = float(s_timeout) if s_timeout is not None else 0.0
-            sum_all_returns[q] = float(s_all) if s_all is not None else 0.0
-            avg_tp_return[q] = float(s_tp / n_tp) if n_tp > 0 and s_tp is not None else 0.0
-            avg_sl_return[q] = float(s_sl / n_sl) if n_sl > 0 and s_sl is not None else 0.0
+            sum_tp_returns[q] = s_tp
+            sum_sl_returns[q] = s_sl
+            sum_timeout_returns[q] = s_timeout
+            sum_all_returns[q] = s_all
+            avg_tp_return[q] = s_tp / n_tp if n_tp > 0 else 0.0
+            avg_sl_return[q] = s_sl / n_sl if n_sl > 0 else 0.0
             avg_return[q] = float(s_all / n_total) if s_all is not None else 0.0
             count_tp[q] = n_tp
             count_sl[q] = n_sl

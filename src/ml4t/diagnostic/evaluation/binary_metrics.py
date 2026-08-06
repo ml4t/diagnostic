@@ -74,8 +74,8 @@ def precision(signals: pl.Series, labels: pl.Series) -> float:
     if n_signals == 0:
         return float("nan")
 
-    tp = ((signals == 1) & (labels == 1)).sum()
-    fp = ((signals == 1) & (labels == 0)).sum()
+    tp = float(((signals == 1) & (labels == 1)).sum())
+    fp = float(((signals == 1) & (labels == 0)).sum())
 
     return float(tp / (tp + fp))
 
@@ -108,8 +108,8 @@ def recall(signals: pl.Series, labels: pl.Series) -> float:
     if n_positives == 0:
         return float("nan")
 
-    tp = ((signals == 1) & (labels == 1)).sum()
-    fn = ((signals == 0) & (labels == 1)).sum()
+    tp = float(((signals == 1) & (labels == 1)).sum())
+    fn = float(((signals == 0) & (labels == 1)).sum())
 
     return float(tp / (tp + fn))
 
@@ -170,7 +170,7 @@ def lift(signals: pl.Series, labels: pl.Series) -> float:
     if n == 0:
         return float("nan")
 
-    base_rate = labels.sum() / n
+    base_rate = float(labels.sum()) / n
     if base_rate == 0 or signals.sum() == 0:
         return float("nan")
 
@@ -238,8 +238,8 @@ def specificity(signals: pl.Series, labels: pl.Series) -> float:
     if n_negatives == 0:
         return float("nan")
 
-    tn = ((signals == 0) & (labels == 0)).sum()
-    fp = ((signals == 1) & (labels == 0)).sum()
+    tn = float(((signals == 0) & (labels == 0)).sum())
+    fp = float(((signals == 1) & (labels == 0)).sum())
 
     return float(tn / (tn + fp))
 

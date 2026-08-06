@@ -19,7 +19,8 @@ class TestHStatisticBasic:
     """Test basic H-statistic computation."""
 
     @pytest.fixture(scope="class")
-    def additive_data_and_model(self):
+    @classmethod
+    def additive_data_and_model(cls):
         """Create additive data (no interaction) and train model."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -30,7 +31,8 @@ class TestHStatisticBasic:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def xor_data_and_model(self):
+    @classmethod
+    def xor_data_and_model(cls):
         """Create XOR interaction data and train model."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -43,7 +45,8 @@ class TestHStatisticBasic:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def product_data_and_model(self):
+    @classmethod
+    def product_data_and_model(cls):
         """Create multiplicative interaction data and train model."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -97,7 +100,8 @@ class TestHStatisticMultipleFeatures:
     """Test H-statistic with multiple features."""
 
     @pytest.fixture(scope="class")
-    def multi_interaction_data_and_model(self):
+    @classmethod
+    def multi_interaction_data_and_model(cls):
         """Create data with multiple interactions and train model."""
         rng = np.random.RandomState(42)
         n_samples = 400
@@ -115,7 +119,8 @@ class TestHStatisticMultipleFeatures:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def specific_pairs_data_and_model(self):
+    @classmethod
+    def specific_pairs_data_and_model(cls):
         """Create data for specific pairs test."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -166,7 +171,8 @@ class TestHStatisticInputFormats:
     """Test H-statistic with different input formats."""
 
     @pytest.fixture(scope="class")
-    def pandas_data_and_model(self):
+    @classmethod
+    def pandas_data_and_model(cls):
         """Create pandas DataFrame and train model."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -179,7 +185,8 @@ class TestHStatisticInputFormats:
         return X_df, y, model
 
     @pytest.fixture(scope="class")
-    def polars_data_and_model(self):
+    @classmethod
+    def polars_data_and_model(cls):
         """Create polars DataFrame and train model."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -196,7 +203,8 @@ class TestHStatisticInputFormats:
         return X_pl, y, model
 
     @pytest.fixture(scope="class")
-    def numpy_data_and_model(self):
+    @classmethod
+    def numpy_data_and_model(cls):
         """Create numpy data and train model."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -207,7 +215,8 @@ class TestHStatisticInputFormats:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def custom_names_data_and_model(self):
+    @classmethod
+    def custom_names_data_and_model(cls):
         """Create data for custom names test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -270,7 +279,8 @@ class TestHStatisticParameters:
     """Test H-statistic parameter handling."""
 
     @pytest.fixture(scope="class")
-    def large_data_and_model(self):
+    @classmethod
+    def large_data_and_model(cls):
         """Create large dataset for subsampling test."""
         rng = np.random.RandomState(42)
         n_samples = 1000
@@ -281,7 +291,8 @@ class TestHStatisticParameters:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def small_data_and_model(self):
+    @classmethod
+    def small_data_and_model(cls):
         """Create small dataset for no-subsampling test."""
         rng = np.random.RandomState(42)
         n_samples = 80
@@ -292,7 +303,8 @@ class TestHStatisticParameters:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def grid_resolution_data_and_model(self):
+    @classmethod
+    def grid_resolution_data_and_model(cls):
         """Create data for grid resolution test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -303,7 +315,8 @@ class TestHStatisticParameters:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def pairs_name_data_and_model(self):
+    @classmethod
+    def pairs_name_data_and_model(cls):
         """Create pandas DataFrame for pairs-by-name test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -365,7 +378,8 @@ class TestHStatisticOutputFormat:
     """Test H-statistic output structure."""
 
     @pytest.fixture(scope="class")
-    def output_keys_data_and_model(self):
+    @classmethod
+    def output_keys_data_and_model(cls):
         """Create data for output keys test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -376,7 +390,8 @@ class TestHStatisticOutputFormat:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def sorted_data_and_model(self):
+    @classmethod
+    def sorted_data_and_model(cls):
         """Create data with different interaction strengths."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -392,7 +407,8 @@ class TestHStatisticOutputFormat:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def tuple_format_data_and_model(self):
+    @classmethod
+    def tuple_format_data_and_model(cls):
         """Create data for tuple format test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -451,7 +467,8 @@ class TestHStatisticEdgeCases:
     """Test H-statistic edge cases."""
 
     @pytest.fixture(scope="class")
-    def single_pair_data_and_model(self):
+    @classmethod
+    def single_pair_data_and_model(cls):
         """Create data with exactly 2 features (single pair)."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -462,7 +479,8 @@ class TestHStatisticEdgeCases:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def constant_feature_data_and_model(self):
+    @classmethod
+    def constant_feature_data_and_model(cls):
         """Create data with constant feature (no variation)."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -478,7 +496,8 @@ class TestHStatisticEdgeCases:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def perfect_prediction_data_and_model(self):
+    @classmethod
+    def perfect_prediction_data_and_model(cls):
         """Create data with no noise for perfect prediction."""
         rng = np.random.RandomState(42)
         n_samples = 200

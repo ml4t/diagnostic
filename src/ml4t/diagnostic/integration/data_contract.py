@@ -24,12 +24,12 @@ Example workflow:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class AnomalyType(str, Enum):
+class AnomalyType(StrEnum):
     """Types of data anomalies that can be detected.
 
     These anomaly types align with common data quality issues in financial data:
@@ -56,7 +56,7 @@ class AnomalyType(str, Enum):
     OUTLIER = "outlier"
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Severity level of data anomalies.
 
     - INFO: Informational, no action needed

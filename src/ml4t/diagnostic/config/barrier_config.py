@@ -17,7 +17,7 @@ Lopez de Prado, M. (2018). "Advances in Financial Machine Learning"
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -33,7 +33,7 @@ class BarrierLabel(int, Enum):
     TAKE_PROFIT = 1  # Upper barrier hit
 
 
-class DecileMethod(str, Enum):
+class DecileMethod(StrEnum):
     """Method for assigning decile labels."""
 
     QUANTILE = "quantile"  # Equal frequency bins (pd.qcut style)

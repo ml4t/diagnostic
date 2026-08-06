@@ -11,10 +11,13 @@ jobs:
   validate:
     uses: ./.github/workflows/test-matrix.yml
 
+  security:
+    uses: ./.github/workflows/security.yml
+
   build:
     name: Build Package
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [validate, security]
     steps:
       - uses: actions/checkout@v6.0.3
         with:

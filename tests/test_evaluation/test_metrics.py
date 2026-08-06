@@ -876,7 +876,8 @@ class TestImportanceMetrics:
     """Tests for feature importance metrics."""
 
     @pytest.fixture(scope="class")
-    def classification_data(self):
+    @classmethod
+    def classification_data(cls):
         """Create classification data for importance tests."""
         np.random.seed(42)
         n = 500
@@ -891,7 +892,8 @@ class TestImportanceMetrics:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_model(self, classification_data):
+    @classmethod
+    def trained_rf_model(cls, classification_data):
         """Train a RandomForest model once for MDI and permutation tests."""
         from sklearn.ensemble import RandomForestClassifier
 
@@ -901,7 +903,8 @@ class TestImportanceMetrics:
         return model
 
     @pytest.fixture(scope="class")
-    def trained_rf_model_oob(self, classification_data):
+    @classmethod
+    def trained_rf_model_oob(cls, classification_data):
         """Train a RandomForest model with OOB for MDA tests."""
         from sklearn.ensemble import RandomForestClassifier
 
@@ -1004,7 +1007,8 @@ class TestAnalyzeMLImportance:
         assert callable(analyze_ml_importance)
 
     @pytest.fixture(scope="class")
-    def ml_importance_data(self):
+    @classmethod
+    def ml_importance_data(cls):
         """Create data for ML importance tests."""
         np.random.seed(42)
         n = 500
@@ -1019,7 +1023,8 @@ class TestAnalyzeMLImportance:
         return X, y, feature_names
 
     @pytest.fixture(scope="class")
-    def trained_rf_model_ml(self, ml_importance_data):
+    @classmethod
+    def trained_rf_model_ml(cls, ml_importance_data):
         """Train a RandomForest model once for ML importance tests."""
         from sklearn.ensemble import RandomForestClassifier
 
@@ -1361,7 +1366,8 @@ class TestShapImportance:
     """Tests for SHAP-based feature importance."""
 
     @pytest.fixture(scope="class")
-    def shap_data(self):
+    @classmethod
+    def shap_data(cls):
         """Create data for SHAP importance tests."""
         np.random.seed(42)
         n = 200
@@ -1375,7 +1381,8 @@ class TestShapImportance:
         return X, y, feature_names
 
     @pytest.fixture(scope="class")
-    def trained_rf_model_shap(self, shap_data):
+    @classmethod
+    def trained_rf_model_shap(cls, shap_data):
         """Train a RandomForest model once for SHAP tests."""
         from sklearn.ensemble import RandomForestRegressor
 

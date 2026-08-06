@@ -529,7 +529,7 @@ def compute_ic_ir(
     if isinstance(ic_series, pl.DataFrame | pd.DataFrame):
         is_polars = isinstance(ic_series, pl.DataFrame)
         if is_polars:
-            ic_values = cast(pl.DataFrame, ic_series)[ic_col].to_numpy()
+            ic_values = ic_series[ic_col].to_numpy()
         else:
             ic_values = cast(pd.DataFrame, ic_series)[ic_col].to_numpy()
     else:

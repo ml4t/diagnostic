@@ -115,7 +115,7 @@ viz = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "kaleido>=0.2.0",  # For plotly PDF export
-    "pypdf>=5.0.0",     # For PDF merging
+    "pypdf>=6.14.2",    # For PDF merging
 ]
 
 # Additional ML model backends
@@ -148,7 +148,7 @@ backtest = [
 
 # Development tools (testing, linting, debugging)
 dev = [
-    "pytest>=7.4.0",
+    "pytest>=9.0.3",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.3.0",
     "pytest-timeout>=2.1.0",
@@ -176,7 +176,7 @@ all = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "kaleido>=0.2.0",
-    "pypdf>=5.0.0",
+    "pypdf>=6.14.2",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
     "numba>=0.62.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
@@ -195,7 +195,7 @@ Changelog = "https://github.com/ml4t/diagnostic/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
-    "pytest>=7.4.0",
+    "pytest>=9.0.3",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.3.0",
     "pytest-timeout>=2.1.0",
@@ -205,6 +205,7 @@ dev = [
     "ty",
     "pre-commit>=3.3.0",
     "twine>=6.0.0",
+    "pip-audit>=2.10.1",
     # Viz deps needed for running full test suite
     "plotly>=5.15.0",
     "matplotlib>=3.7.0",
@@ -227,6 +228,7 @@ python_functions = ["test_*"]
 addopts = [
     "-ra",
     "-n", "auto",
+    "--benchmark-disable",
     "--strict-markers",
     "--hypothesis-show-statistics",
     "-m", "not slow",
@@ -254,7 +256,7 @@ filterwarnings = [
 line-length = 100
 target-version = "py312"
 fix = true
-exclude = ["scripts"]
+exclude = ["scripts", "*.md"]
 
 [tool.ruff.lint]
 select = [

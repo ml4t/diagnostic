@@ -1,0 +1,30 @@
+name: Dependency security
+
+on:
+  workflow_call:
+
+jobs:
+  audit:
+    name: Audit release dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: "0.10.9"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install audit tooling
+        run: uv sync --frozen --dev
+
+      - name: Export release dependency graph
+        run: >-
+          uv export --frozen --all-extras --no-dev --no-hashes --no-emit-project
+          --output-file requirements-audit.txt
+
+      - name: Audit known vulnerabilities
+        run: uv run pip-audit -r requirements-audit.txt

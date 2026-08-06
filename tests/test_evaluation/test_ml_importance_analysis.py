@@ -14,7 +14,8 @@ class TestMLImportanceBasicFunctionality:
     """Test basic functionality of analyze_ml_importance."""
 
     @pytest.fixture(scope="class")
-    def classification_data_10f(self):
+    @classmethod
+    def classification_data_10f(cls):
         """Create classification dataset with 10 features."""
         X, y = make_classification(
             n_samples=1000,
@@ -26,7 +27,8 @@ class TestMLImportanceBasicFunctionality:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_10f(self, classification_data_10f):
+    @classmethod
+    def trained_rf_10f(cls, classification_data_10f):
         """Train RF classifier on 10-feature data."""
         X, y = classification_data_10f
         model = RandomForestClassifier(n_estimators=50, random_state=42, max_depth=5)
@@ -34,13 +36,15 @@ class TestMLImportanceBasicFunctionality:
         return model
 
     @pytest.fixture(scope="class")
-    def classification_data_5f(self):
+    @classmethod
+    def classification_data_5f(cls):
         """Create classification dataset with 5 features."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_5f(self, classification_data_5f):
+    @classmethod
+    def trained_rf_5f(cls, classification_data_5f):
         """Train RF classifier on 5-feature data."""
         X, y = classification_data_5f
         model = RandomForestClassifier(n_estimators=30, random_state=42)
@@ -48,7 +52,8 @@ class TestMLImportanceBasicFunctionality:
         return model
 
     @pytest.fixture(scope="class")
-    def regression_data_and_model(self):
+    @classmethod
+    def regression_data_and_model(cls):
         """Create regression data and train model."""
         X, y = make_regression(n_samples=500, n_features=10, n_informative=3, random_state=42)
         model = RandomForestRegressor(n_estimators=50, random_state=42)
@@ -133,7 +138,8 @@ class TestMLImportanceMethodAgreement:
     """Test method agreement calculations."""
 
     @pytest.fixture(scope="class")
-    def high_agreement_data_and_model(self):
+    @classmethod
+    def high_agreement_data_and_model(cls):
         """Create data where methods should agree and train model."""
         X, y = make_classification(
             n_samples=1000,
@@ -147,7 +153,8 @@ class TestMLImportanceMethodAgreement:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def multi_method_data_and_model(self):
+    @classmethod
+    def multi_method_data_and_model(cls):
         """Create data for multi-method comparison."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42)
@@ -187,7 +194,8 @@ class TestMLImportanceConsensusFeatures:
     """Test consensus feature identification."""
 
     @pytest.fixture(scope="class")
-    def consensus_data_and_model(self):
+    @classmethod
+    def consensus_data_and_model(cls):
         """Create data with clear informative features and train model."""
         X, y = make_classification(
             n_samples=1000,
@@ -201,7 +209,8 @@ class TestMLImportanceConsensusFeatures:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def ranking_data_and_model(self):
+    @classmethod
+    def ranking_data_and_model(cls):
         """Create data for ranking test."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42)
@@ -235,7 +244,8 @@ class TestMLImportanceWarnings:
     """Test warning generation."""
 
     @pytest.fixture(scope="class")
-    def warning_test_data_and_model(self):
+    @classmethod
+    def warning_test_data_and_model(cls):
         """Create data for warning tests."""
         X, y = make_classification(n_samples=500, n_features=10, n_informative=2, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42)
@@ -243,7 +253,8 @@ class TestMLImportanceWarnings:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def shap_test_data_and_model(self):
+    @classmethod
+    def shap_test_data_and_model(cls):
         """Create data for SHAP failure test."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42)
@@ -275,7 +286,8 @@ class TestMLImportanceInterpretation:
     """Test interpretation generation."""
 
     @pytest.fixture(scope="class")
-    def interpretation_data_and_model(self):
+    @classmethod
+    def interpretation_data_and_model(cls):
         """Create data for interpretation tests."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42)
@@ -307,13 +319,15 @@ class TestMLImportanceDataFormats:
     """Test different data format inputs."""
 
     @pytest.fixture(scope="class")
-    def base_data_5f(self):
+    @classmethod
+    def base_data_5f(cls):
         """Create base classification data with 5 features."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def pandas_data_and_model(self, base_data_5f):
+    @classmethod
+    def pandas_data_and_model(cls, base_data_5f):
         """Create pandas data and train model."""
         X, y = base_data_5f
         X_pd = pd.DataFrame(X, columns=[f"feat_{i}" for i in range(5)])
@@ -323,7 +337,8 @@ class TestMLImportanceDataFormats:
         return X_pd, y_pd, model
 
     @pytest.fixture(scope="class")
-    def polars_data_and_model(self, base_data_5f):
+    @classmethod
+    def polars_data_and_model(cls, base_data_5f):
         """Create polars data and train model on numpy."""
         X, y = base_data_5f
         X_pl = pl.DataFrame({f"feat_{i}": X[:, i] for i in range(5)})
@@ -333,7 +348,8 @@ class TestMLImportanceDataFormats:
         return X_pl, y_pl, model
 
     @pytest.fixture(scope="class")
-    def numpy_model(self, base_data_5f):
+    @classmethod
+    def numpy_model(cls, base_data_5f):
         """Train model on numpy arrays."""
         X, y = base_data_5f
         model = RandomForestClassifier(n_estimators=50, random_state=42)
@@ -389,7 +405,8 @@ class TestMLImportanceEdgeCases:
     """Test edge cases and error handling."""
 
     @pytest.fixture(scope="class")
-    def edge_case_data_and_model(self):
+    @classmethod
+    def edge_case_data_and_model(cls):
         """Create data for edge case tests."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42)
@@ -435,7 +452,8 @@ class TestMLImportanceParameters:
     """Test parameter passing to underlying methods."""
 
     @pytest.fixture(scope="class")
-    def params_data_and_model(self):
+    @classmethod
+    def params_data_and_model(cls):
         """Create data for parameter tests."""
         X, y = make_classification(n_samples=500, n_features=5, n_informative=2, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42)

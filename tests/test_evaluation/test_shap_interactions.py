@@ -13,7 +13,8 @@ class TestSHAPInteractionsBasic:
     """Test basic SHAP interaction computation."""
 
     @pytest.fixture(scope="class")
-    def strong_interaction_data_and_model(self):
+    @classmethod
+    def strong_interaction_data_and_model(cls):
         """Create data with strong multiplicative interaction."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -26,7 +27,8 @@ class TestSHAPInteractionsBasic:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def no_interaction_data_and_model(self):
+    @classmethod
+    def no_interaction_data_and_model(cls):
         """Create data with additive features (no interaction)."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -65,7 +67,8 @@ class TestSHAPInteractionsMultipleFeatures:
     """Test SHAP interactions with multiple features."""
 
     @pytest.fixture(scope="class")
-    def multi_interaction_data_and_model(self):
+    @classmethod
+    def multi_interaction_data_and_model(cls):
         """Create data with multiple interaction patterns."""
         rng = np.random.RandomState(42)
         n_samples = 400
@@ -86,7 +89,8 @@ class TestSHAPInteractionsMultipleFeatures:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def top_k_data_and_model(self):
+    @classmethod
+    def top_k_data_and_model(cls):
         """Create data for top-k filtering test."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -127,7 +131,8 @@ class TestSHAPInteractionsInputFormats:
     """Test SHAP interactions with different input formats."""
 
     @pytest.fixture(scope="class")
-    def pandas_data_and_model(self):
+    @classmethod
+    def pandas_data_and_model(cls):
         """Create pandas DataFrame test data."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -140,7 +145,8 @@ class TestSHAPInteractionsInputFormats:
         return X_df, y, model
 
     @pytest.fixture(scope="class")
-    def polars_data_and_model(self):
+    @classmethod
+    def polars_data_and_model(cls):
         """Create polars DataFrame test data."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -157,7 +163,8 @@ class TestSHAPInteractionsInputFormats:
         return X_pl, y, model
 
     @pytest.fixture(scope="class")
-    def numpy_data_and_model(self):
+    @classmethod
+    def numpy_data_and_model(cls):
         """Create numpy array test data."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -168,7 +175,8 @@ class TestSHAPInteractionsInputFormats:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def custom_names_data_and_model(self):
+    @classmethod
+    def custom_names_data_and_model(cls):
         """Create data for custom feature names test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -232,7 +240,8 @@ class TestSHAPInteractionsParameters:
     """Test SHAP interactions parameter handling."""
 
     @pytest.fixture(scope="class")
-    def large_data_and_model(self):
+    @classmethod
+    def large_data_and_model(cls):
         """Create larger data for subsampling test."""
         rng = np.random.RandomState(42)
         n_samples = 1000
@@ -243,7 +252,8 @@ class TestSHAPInteractionsParameters:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def small_data_and_model(self):
+    @classmethod
+    def small_data_and_model(cls):
         """Create small data for no-subsampling test."""
         rng = np.random.RandomState(42)
         n_samples = 80
@@ -254,7 +264,8 @@ class TestSHAPInteractionsParameters:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def medium_data_and_model(self):
+    @classmethod
+    def medium_data_and_model(cls):
         """Create medium data for max_samples test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -299,7 +310,8 @@ class TestSHAPInteractionsOutputFormat:
     """Test SHAP interactions output structure."""
 
     @pytest.fixture(scope="class")
-    def output_keys_data_and_model(self):
+    @classmethod
+    def output_keys_data_and_model(cls):
         """Create data for output keys test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -310,7 +322,8 @@ class TestSHAPInteractionsOutputFormat:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def matrix_shape_data_and_model(self):
+    @classmethod
+    def matrix_shape_data_and_model(cls):
         """Create data for matrix shape test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -322,7 +335,8 @@ class TestSHAPInteractionsOutputFormat:
         return X, y, model, n_features
 
     @pytest.fixture(scope="class")
-    def sorted_data_and_model(self):
+    @classmethod
+    def sorted_data_and_model(cls):
         """Create data with different interaction strengths for sorting test."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -338,7 +352,8 @@ class TestSHAPInteractionsOutputFormat:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def tuple_format_data_and_model(self):
+    @classmethod
+    def tuple_format_data_and_model(cls):
         """Create data for tuple format test."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -408,7 +423,8 @@ class TestSHAPInteractionsEdgeCases:
     """Test SHAP interactions edge cases."""
 
     @pytest.fixture(scope="class")
-    def single_pair_data_and_model(self):
+    @classmethod
+    def single_pair_data_and_model(cls):
         """Create data with exactly 2 features."""
         rng = np.random.RandomState(42)
         n_samples = 200
@@ -419,7 +435,8 @@ class TestSHAPInteractionsEdgeCases:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def many_features_data_and_model(self):
+    @classmethod
+    def many_features_data_and_model(cls):
         """Create data with many features."""
         rng = np.random.RandomState(42)
         n_samples = 300
@@ -480,7 +497,8 @@ class TestSHAPInteractionsClassification:
     """Test SHAP interactions with classification models."""
 
     @pytest.fixture(scope="class")
-    def binary_classification_data_and_model(self):
+    @classmethod
+    def binary_classification_data_and_model(cls):
         """Create binary classification data and model."""
         from sklearn.ensemble import RandomForestClassifier
 

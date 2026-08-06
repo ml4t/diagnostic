@@ -32,7 +32,8 @@ class TestComputeShapImportanceLightGBM:
     """Test compute_shap_importance with LightGBM models."""
 
     @pytest.fixture(scope="class")
-    def simple_binary_data(self):
+    @classmethod
+    def simple_binary_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -45,7 +46,8 @@ class TestComputeShapImportanceLightGBM:
         return X, y
 
     @pytest.fixture(scope="class")
-    def simple_regression_data(self):
+    @classmethod
+    def simple_regression_data(cls):
         """Create simple regression dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -58,7 +60,8 @@ class TestComputeShapImportanceLightGBM:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_lgbm_classifier(self, simple_binary_data):
+    @classmethod
+    def trained_lgbm_classifier(cls, simple_binary_data):
         """Train a LightGBM classifier."""
         X, y = simple_binary_data
         model = lgb.LGBMClassifier(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
@@ -66,7 +69,8 @@ class TestComputeShapImportanceLightGBM:
         return model
 
     @pytest.fixture(scope="class")
-    def trained_lgbm_regressor(self, simple_regression_data):
+    @classmethod
+    def trained_lgbm_regressor(cls, simple_regression_data):
         """Train a LightGBM regressor."""
         X, y = simple_regression_data
         model = lgb.LGBMRegressor(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
@@ -229,7 +233,8 @@ class TestComputeShapImportanceXGBoost:
     """Test compute_shap_importance with XGBoost models."""
 
     @pytest.fixture(scope="class")
-    def simple_binary_data(self):
+    @classmethod
+    def simple_binary_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -241,7 +246,8 @@ class TestComputeShapImportanceXGBoost:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_xgb_classifier(self, simple_binary_data):
+    @classmethod
+    def trained_xgb_classifier(cls, simple_binary_data):
         """Train an XGBoost classifier."""
         X, y = simple_binary_data
         model = xgb.XGBClassifier(
@@ -334,7 +340,8 @@ class TestShapComparison:
     """Test SHAP importance compared to other methods."""
 
     @pytest.fixture(scope="class")
-    def trained_model_and_data(self):
+    @classmethod
+    def trained_model_and_data(cls):
         """Create model and data for comparison tests."""
         np.random.seed(42)
         n_samples = 500
@@ -496,7 +503,8 @@ class TestGetExplainerAutoSelection:
     """Test _get_explainer auto-selection logic with real models."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         X = np.random.randn(500, 10)
@@ -504,7 +512,8 @@ class TestGetExplainerAutoSelection:
         return X, y
 
     @pytest.fixture(scope="class")
-    def tree_model(self, simple_data):
+    @classmethod
+    def tree_model(cls, simple_data):
         """Create and train tree-based model."""
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
@@ -572,7 +581,8 @@ class TestLinearExplainerIntegration:
     """Test LinearExplainer with sklearn linear models (TASK-003)."""
 
     @pytest.fixture(scope="class")
-    def simple_classification_data(self):
+    @classmethod
+    def simple_classification_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -585,7 +595,8 @@ class TestLinearExplainerIntegration:
         return X, y
 
     @pytest.fixture(scope="class")
-    def simple_regression_data(self):
+    @classmethod
+    def simple_regression_data(cls):
         """Create simple regression dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -777,7 +788,8 @@ class TestComputeShapImportanceV11API:
     """Test v1.1 API extensions (TASK-006)."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         X = np.random.randn(200, 10)
@@ -1127,7 +1139,8 @@ class TestKernelExplainerIntegration:
     """Test KernelExplainer with non-tree/non-linear models (TASK-004)."""
 
     @pytest.fixture(scope="class")
-    def simple_classification_data(self):
+    @classmethod
+    def simple_classification_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -1320,7 +1333,8 @@ class TestAutoSelectionAndBackwardCompatibility:
     """Test auto-selection logic and backward compatibility with v1.0 API (TASK-008)."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -1514,7 +1528,8 @@ class TestPerformanceWarnings:
     """Comprehensive tests for SHAP performance warnings."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         X = np.random.randn(500, 10)
@@ -1663,7 +1678,8 @@ class TestDeepExplainerIntegration:
     """
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple dataset for neural network testing."""
         np.random.seed(42)
         n_samples = 200  # Smaller for faster neural network training

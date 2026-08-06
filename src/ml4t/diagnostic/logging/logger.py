@@ -8,10 +8,10 @@ import json
 import logging
 import sys
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 
-class LogLevel(str, Enum):
+class LogLevel(StrEnum):
     """Log level enumeration."""
 
     DEBUG = "DEBUG"
