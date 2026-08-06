@@ -141,7 +141,7 @@ class EventStudyResult(BaseResult):
     caar_ci_upper : list[float]
         Upper confidence interval bound
     test_statistic : float
-        Test statistic value (t-stat, BMP, or Corrado)
+        Test statistic value (t-stat or BMP)
     p_value : float
         P-value for the test
     test_name : str

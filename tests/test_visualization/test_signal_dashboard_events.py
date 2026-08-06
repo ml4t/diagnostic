@@ -334,6 +334,9 @@ class TestSignalDashboardEventsTab:
         """A result without finite CI bounds does not advertise a CI trace."""
         from ml4t.diagnostic.visualization.signal.event_plots import plot_caar
 
+        available_figure = plot_caar(sample_event_study_result)
+        available_trace_names = [trace.name for trace in available_figure.data]
+
         result = sample_event_study_result.model_copy(deep=True)
         result.caar_ci_lower = [float("nan")] * len(result.caar)
         result.caar_ci_upper = [float("nan")] * len(result.caar)
@@ -341,8 +344,11 @@ class TestSignalDashboardEventsTab:
         figure = plot_caar(result)
 
         trace_names = [trace.name for trace in figure.data]
+        annotation_text = " ".join(annotation.text for annotation in figure.layout.annotations)
+        assert any("CI" in name for name in available_trace_names)
         assert "CAAR" in trace_names
         assert all("CI" not in name for name in trace_names)
+        assert f"CI unavailable (n={result.n_events})" in annotation_text
 
     def test_event_study_rejects_unavailable_p_value(
         self,

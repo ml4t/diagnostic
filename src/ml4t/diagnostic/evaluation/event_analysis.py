@@ -15,8 +15,6 @@ MacKinlay, A.C. (1997). "Event Studies in Economics and Finance",
     Journal of Economic Literature, 35(1), 13-39.
 Boehmer, E., Musumeci, J., Poulsen, A.B. (1991). "Event-study methodology
     under conditions of event-induced variance", Journal of Financial Economics.
-Corrado, C.J. (1989). "A nonparametric test for abnormal security-price
-    performance in event studies", Journal of Financial Economics.
 """
 
 from __future__ import annotations
@@ -306,7 +304,7 @@ class EventStudyAnalysis:
 
     def _compute_abnormal_return_single(
         self, event_row: dict[str, Any]
-    ) -> AbnormalReturnResult | None:
+    ) -> tuple[AbnormalReturnResult | None, str | None]:
         """Compute abnormal returns for a single event."""
         asset = event_row["asset"]
         event_date = event_row["date"]
@@ -315,7 +313,7 @@ class EventStudyAnalysis:
         # Get estimation window data
         est_data = self._get_estimation_window_data(asset, event_date)
         if est_data is None:
-            return None
+            return None, "estimation"
 
         asset_est_returns, market_est_returns = est_data
 
@@ -338,7 +336,7 @@ class EventStudyAnalysis:
         # Get event window data
         event_data = self._get_event_window_data(asset, event_date)
         if event_data is None:
-            return None
+            return None, "event_window"
 
         # Compute abnormal returns
         ar_by_day: dict[int, float] = {}
@@ -355,16 +353,19 @@ class EventStudyAnalysis:
         # Compute CAR
         car = sum(ar_by_day.values())
 
-        return AbnormalReturnResult(
-            event_id=event_id,
-            asset=asset,
-            event_date=str(event_date),
-            ar_by_day=ar_by_day,
-            car=car,
-            estimation_alpha=alpha if self.config.model == "market_model" else None,
-            estimation_beta=beta if self.config.model == "market_model" else None,
-            estimation_r2=r2 if self.config.model == "market_model" else None,
-            estimation_residual_std=residual_std,
+        return (
+            AbnormalReturnResult(
+                event_id=event_id,
+                asset=asset,
+                event_date=str(event_date),
+                ar_by_day=ar_by_day,
+                car=car,
+                estimation_alpha=alpha if self.config.model == "market_model" else None,
+                estimation_beta=beta if self.config.model == "market_model" else None,
+                estimation_r2=r2 if self.config.model == "market_model" else None,
+                estimation_residual_std=residual_std,
+            ),
+            None,
         )
 
     def compute_abnormal_returns(self) -> list[AbnormalReturnResult]:
@@ -379,18 +380,21 @@ class EventStudyAnalysis:
             return self._ar_results
 
         results = []
-        n_skipped = 0
+        rejected = {"estimation": 0, "event_window": 0}
 
         for row in self._events.iter_rows(named=True):
-            result = self._compute_abnormal_return_single(row)
+            result, reason = self._compute_abnormal_return_single(row)
             if result is not None:
                 results.append(result)
-            else:
-                n_skipped += 1
+            elif reason is not None:
+                rejected[reason] += 1
 
+        n_skipped = sum(rejected.values())
         if n_skipped > 0:
             warnings.warn(
-                f"Skipped {n_skipped} events due to insufficient or non-finite data",
+                f"Skipped {n_skipped} events "
+                f"({rejected['estimation']}: insufficient estimation data, "
+                f"{rejected['event_window']}: incomplete or non-finite event window)",
                 stacklevel=2,
             )
 

@@ -6,7 +6,7 @@ Tests the EventStudyAnalysis class including:
 - Mean-adjusted and market-adjusted models
 - Abnormal return computation
 - CAAR aggregation
-- Statistical tests (t-test, BMP, Corrado)
+- Statistical tests (t-test and BMP)
 - Configuration options
 - Edge cases and error handling
 
@@ -14,7 +14,6 @@ References
 ----------
 MacKinlay, A.C. (1997). "Event Studies in Economics and Finance"
 Boehmer, E., Musumeci, J., Poulsen, A.B. (1991). BMP test
-Corrado, C.J. (1989). Non-parametric rank test
 """
 
 from __future__ import annotations
@@ -701,7 +700,10 @@ class TestEdgeCases:
             config=default_config.model_copy(update={"test": test_name}),
         )
 
-        with pytest.warns(UserWarning, match="non-finite data"):
+        with pytest.warns(
+            UserWarning,
+            match=r"0: insufficient estimation data, 1: incomplete or non-finite event window",
+        ):
             result = analysis.run()
 
         assert result.n_events == 2
@@ -732,7 +734,10 @@ class TestEdgeCases:
             config=default_config,
         )
 
-        with pytest.warns(UserWarning, match="insufficient or non-finite data"):
+        with pytest.warns(
+            UserWarning,
+            match=r"0: insufficient estimation data, 1: incomplete or non-finite event window",
+        ):
             result = analysis.run()
 
         assert result.n_events == 2
@@ -768,7 +773,10 @@ class TestEdgeCases:
             returns=returns_df, events=events_df, benchmark=benchmark_df, config=config
         )
 
-        with pytest.warns(UserWarning, match="Skipped .* events"):
+        with pytest.warns(
+            UserWarning,
+            match=r"1: insufficient estimation data, 0: incomplete or non-finite event window",
+        ):
             ar_results = analysis.compute_abnormal_returns()
 
         assert len(ar_results) == 0  # Event should be skipped
