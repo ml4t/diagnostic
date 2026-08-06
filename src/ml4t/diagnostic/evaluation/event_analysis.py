@@ -42,7 +42,6 @@ class EventRejectionReason(StrEnum):
     UNKNOWN_EVENT_DATE = "unknown event date"
     UNKNOWN_ASSET = "unknown asset"
     UNKNOWN_ASSET_AND_DATE = "unknown asset and event date"
-    UNKNOWN_BENCHMARK_DATE = "unknown benchmark event date"
     ESTIMATION_HISTORY = "insufficient estimation history"
     ASSET_ESTIMATION = "insufficient finite asset estimation returns"
     BENCHMARK_ESTIMATION = "insufficient finite benchmark estimation returns"
@@ -188,20 +187,20 @@ class EventStudyAnalysis:
 
     def _get_estimation_window_data(
         self, asset: str, event_date: Any
-    ) -> tuple[tuple[np.ndarray, np.ndarray] | None, EventRejectionReason | None]:
+    ) -> tuple[
+        tuple[np.ndarray, np.ndarray | None] | None,
+        EventRejectionReason | None,
+    ]:
         """Get returns for estimation window.
 
         Returns
         -------
-        tuple[tuple[np.ndarray, np.ndarray] | None, EventRejectionReason | None]
+        tuple[tuple[np.ndarray, np.ndarray | None] | None, EventRejectionReason | None]
             Estimation data and no rejection reason, or no data and the specific
             reason the configured minimum could not be met.
         """
         est_start, est_end = self.config.window.estimation_window
 
-        # Find event date index
-        if event_date not in self._date_to_idx:
-            return None, EventRejectionReason.UNKNOWN_EVENT_DATE
         event_idx = self._date_to_idx[event_date]
 
         # Calculate estimation window indices
@@ -231,7 +230,7 @@ class EventStudyAnalysis:
         if self.config.model == "mean_adjusted":
             if len(asset_returns_by_date) < self.config.min_estimation_obs:
                 return None, EventRejectionReason.ASSET_ESTIMATION
-            return (np.array(list(asset_returns_by_date.values())), np.array([])), None
+            return (np.array(list(asset_returns_by_date.values())), None), None
 
         benchmark_returns_by_date = {
             date: benchmark_return
@@ -301,7 +300,7 @@ class EventStudyAnalysis:
     def _get_event_window_data(
         self, asset: str, event_date: Any
     ) -> tuple[
-        dict[int, tuple[float, float]] | None,
+        dict[int, tuple[float, float | None]] | None,
         EventRejectionReason | None,
     ]:
         """Get finite returns for an event window.
@@ -310,14 +309,12 @@ class EventStudyAnalysis:
 
         Returns
         -------
-        tuple[dict[int, tuple[float, float]] | None, EventRejectionReason | None]
+        tuple[dict[int, tuple[float, float | None]] | None, EventRejectionReason | None]
             Complete event-window data and no rejection reason, or no data and
             the specific incomplete input.
         """
         evt_start, evt_end = self.config.window.event_window
 
-        if event_date not in self._date_to_idx:
-            return None, EventRejectionReason.UNKNOWN_EVENT_DATE
         event_idx = self._date_to_idx[event_date]
 
         required_dates: dict[int, Any] = {}
@@ -342,7 +339,7 @@ class EventStudyAnalysis:
             if missing_asset:
                 return None, EventRejectionReason.ASSET_EVENT_WINDOW
             return {
-                rel_day: (asset_returns_by_date[date], 0.0)
+                rel_day: (asset_returns_by_date[date], None)
                 for rel_day, date in required_dates.items()
             }, None
 
@@ -381,9 +378,6 @@ class EventStudyAnalysis:
             return None, EventRejectionReason.UNKNOWN_EVENT_DATE
         if unknown_asset:
             return None, EventRejectionReason.UNKNOWN_ASSET
-        if self.config.model != "mean_adjusted" and event_date not in self._benchmark_dict:
-            return None, EventRejectionReason.UNKNOWN_BENCHMARK_DATE
-
         # Get estimation window data
         est_data, rejection_reason = self._get_estimation_window_data(asset, event_date)
         if est_data is None:
@@ -397,6 +391,8 @@ class EventStudyAnalysis:
         alpha, beta, r2, residual_std = 0.0, 1.0, 0.0, 0.0
 
         if self.config.model == "market_model":
+            if market_est_returns is None:
+                raise RuntimeError("Market model requires benchmark estimation returns")
             alpha, beta, r2, residual_std = self._estimate_market_model(
                 asset_est_returns, market_est_returns
             )
@@ -405,6 +401,8 @@ class EventStudyAnalysis:
             beta = 0.0
             residual_std = float(np.std(asset_est_returns, ddof=1))
         elif self.config.model == "market_adjusted":
+            if market_est_returns is None:
+                raise RuntimeError("Market-adjusted model requires benchmark estimation returns")
             alpha = 0.0
             beta = 1.0
             residual_std = float(np.std(asset_est_returns - market_est_returns, ddof=1))
@@ -419,12 +417,15 @@ class EventStudyAnalysis:
         # Compute abnormal returns
         ar_by_day: dict[int, float] = {}
         for rel_day, (asset_ret, market_ret) in event_data.items():
-            if self.config.model == "market_model":
-                expected_ret = alpha + beta * market_ret
-            elif self.config.model == "mean_adjusted":
+            if self.config.model == "mean_adjusted":
                 expected_ret = alpha
-            else:  # market_adjusted
-                expected_ret = market_ret
+            else:
+                if market_ret is None:
+                    raise RuntimeError("Benchmark-based model requires benchmark event returns")
+                if self.config.model == "market_model":
+                    expected_ret = alpha + beta * market_ret
+                else:
+                    expected_ret = market_ret
 
             ar_by_day[rel_day] = asset_ret - expected_ret
 

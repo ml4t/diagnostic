@@ -905,9 +905,9 @@ class TestEdgeCases:
             UserWarning,
             match=(
                 r"Skipped 6 events \(1: unknown event date, 1: unknown asset, "
-                r"1: unknown asset and event date, 1: unknown benchmark event date, "
-                r"1: insufficient estimation history, "
-                r"1: incomplete or non-finite asset event window\)"
+                r"1: unknown asset and event date, 1: insufficient estimation history, "
+                r"1: incomplete or non-finite asset event window, "
+                r"1: incomplete or non-finite benchmark event window\)"
             ),
         ):
             results = analysis.compute_abnormal_returns()
@@ -987,6 +987,149 @@ class TestEdgeCases:
         results = analysis.compute_abnormal_returns()
 
         assert len(results) == 1
+
+    def test_event_window_beyond_history_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """An event too close to the panel end reports the history boundary."""
+        event = pl.DataFrame(
+            {
+                "date": [sample_returns_data["date"].max()],
+                "asset": ["ASSET_00"],
+            }
+        )
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=sample_benchmark_data,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: event window extends beyond returns history\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_disjoint_estimation_coverage_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Individually sufficient but disjoint series report alignment failure."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        event_idx = all_dates.index(event_date)
+        estimation_dates = all_dates[event_idx - 252 : event_idx - 19]
+        asset_dates = estimation_dates[:120]
+        benchmark_dates = estimation_dates[120:]
+        asset = event["asset"][0]
+        returns = sample_returns_data.with_columns(
+            pl.when((pl.col("asset") == asset) & pl.col("date").is_in(benchmark_dates))
+            .then(float("nan"))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        benchmark = sample_benchmark_data.with_columns(
+            pl.when(pl.col("date").is_in(asset_dates))
+            .then(float("nan"))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        analysis = EventStudyAnalysis(
+            returns=returns,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 1 event "
+                r"\(1: insufficient aligned finite asset/benchmark estimation returns\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_missing_asset_and_benchmark_estimation_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Concurrent estimation shortages report both inputs."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        cutoff = event_date - timedelta(days=30)
+        asset = event["asset"][0]
+        returns = sample_returns_data.filter(
+            (pl.col("asset") != asset) | (pl.col("date") >= cutoff)
+        )
+        benchmark = sample_benchmark_data.filter(pl.col("date") >= cutoff)
+        analysis = EventStudyAnalysis(
+            returns=returns,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 1 event "
+                r"\(1: insufficient finite asset and benchmark estimation returns\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_missing_asset_and_benchmark_event_window_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Concurrent event-window gaps report both inputs."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        missing_date = all_dates[all_dates.index(event_date) + 1]
+        asset = event["asset"][0]
+        returns = sample_returns_data.filter(
+            ~((pl.col("asset") == asset) & (pl.col("date") == missing_date))
+        )
+        benchmark = sample_benchmark_data.filter(pl.col("date") != missing_date)
+        analysis = EventStudyAnalysis(
+            returns=returns,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 1 event "
+                r"\(1: incomplete or non-finite asset and benchmark event window\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
 
 
 # =============================================================================
