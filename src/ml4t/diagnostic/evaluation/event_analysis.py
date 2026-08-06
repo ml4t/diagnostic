@@ -47,6 +47,7 @@ class EventRejectionReason(StrEnum):
     BENCHMARK_ESTIMATION = "insufficient finite benchmark estimation returns"
     ASSET_AND_BENCHMARK_ESTIMATION = "insufficient finite asset and benchmark estimation returns"
     ALIGNED_ESTIMATION = "insufficient aligned finite asset/benchmark estimation returns"
+    MARKET_MODEL_ESTIMATION = "market model estimation failed numerically"
     EVENT_WINDOW_HISTORY = "event window extends beyond returns history"
     ASSET_EVENT_WINDOW = "incomplete or non-finite asset event window"
     BENCHMARK_EVENT_WINDOW = "incomplete or non-finite benchmark event window"
@@ -392,9 +393,12 @@ class EventStudyAnalysis:
             assert market_est_returns is not None, (
                 "market_model requires benchmark estimation returns"
             )
-            alpha, beta, r2, residual_std = self._estimate_market_model(
-                asset_est_returns, market_est_returns
-            )
+            try:
+                alpha, beta, r2, residual_std = self._estimate_market_model(
+                    asset_est_returns, market_est_returns
+                )
+            except np.linalg.LinAlgError:
+                return None, EventRejectionReason.MARKET_MODEL_ESTIMATION
         elif self.config.model == "mean_adjusted":
             alpha = float(np.mean(asset_est_returns))
             beta = 0.0

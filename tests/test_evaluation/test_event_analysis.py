@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import warnings
 from datetime import datetime, timedelta
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -1170,13 +1171,49 @@ class TestEdgeCases:
         asset_return = sample_returns_data.filter(
             (pl.col("asset") == event["asset"][0]) & (pl.col("date") == resolved_date)
         )["return"][0]
-        benchmark_return = sample_benchmark_data.filter(pl.col("date") == resolved_date)["return"][
-            0
-        ]
+        benchmark_return = benchmark.filter(pl.col("date") == resolved_date)["return"][0]
         expected_ar = asset_return - (
             result.estimation_alpha + result.estimation_beta * benchmark_return
         )
         assert result.ar_by_day[1] == pytest.approx(expected_ar)
+
+    def test_market_model_numerical_failure_skips_only_affected_event(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failed least-squares solve follows the per-event rejection path."""
+        events = sample_events_data.select("date", "asset").head(2)
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=events,
+            benchmark=sample_benchmark_data,
+            config=default_config,
+        )
+
+        lstsq = np.linalg.lstsq
+        calls = 0
+
+        def fail_first_lstsq(*args: Any, **kwargs: Any) -> Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise np.linalg.LinAlgError("SVD did not converge")
+            return lstsq(*args, **kwargs)
+
+        monkeypatch.setattr(np.linalg, "lstsq", fail_first_lstsq)
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: market model estimation failed numerically\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert len(results) == 1
+        assert results[0].asset == events["asset"][1]
 
 
 # =============================================================================
