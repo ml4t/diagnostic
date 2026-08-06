@@ -334,6 +334,34 @@ class TestSignalICResultSummary:
         # Should not have RAS section
         assert "RAS IC:" not in summary
 
+    def test_qq_plot_does_not_infer_normality_from_unavailable_test(
+        self,
+        sample_ic_result: SignalICResult,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An unavailable normality test does not produce a verdict."""
+        from types import SimpleNamespace
+
+        from ml4t.diagnostic.visualization.signal import ic_plots
+
+        result = sample_ic_result.model_copy(deep=True)
+        result.ic_by_date["1D"] = [0.01, 0.03, -0.02, 0.04, -0.01, 0.02, 0.0, 0.05]
+        monkeypatch.setattr(ic_plots.stats, "shapiro", lambda values: (0.0, float("nan")))
+        monkeypatch.setattr(
+            ic_plots.stats,
+            "jarque_bera",
+            lambda values: SimpleNamespace(pvalue=0.9),
+        )
+
+        figure = ic_plots.plot_ic_qq(result, period="1D")
+        annotation_text = " ".join(annotation.text for annotation in figure.layout.annotations)
+
+        assert "Shapiro-Wilk p: N/A" in annotation_text
+        assert "Jarque-Bera p: 0.9000" in annotation_text
+        assert "Normality: N/A" in annotation_text
+        assert "✓ Normal" not in annotation_text
+        assert "✗ Non-normal" not in annotation_text
+
 
 # =============================================================================
 # RASICResult Tests
@@ -732,6 +760,23 @@ class TestTurnoverAnalysisResultSummary:
         assert "Half-life: N/A" in missing_text
         assert "N/A periods" not in missing_text
         assert "Half-life: 0.0 periods" in zero_text
+
+    def test_turnover_plot_omits_unit_for_unavailable_half_life(
+        self, sample_turnover_result: TurnoverAnalysisResult
+    ) -> None:
+        """Unavailable half-life values do not retain a numeric unit."""
+        from ml4t.diagnostic.visualization.signal.turnover_plots import (
+            plot_top_bottom_turnover,
+        )
+
+        result = sample_turnover_result.model_copy(deep=True)
+        result.half_life["1D"] = float("nan")
+
+        figure = plot_top_bottom_turnover(result)
+        annotation_text = " ".join(annotation.text for annotation in figure.layout.annotations)
+
+        assert "1D: N/A<br>" in annotation_text
+        assert "N/A periods" not in annotation_text
 
 
 # =============================================================================

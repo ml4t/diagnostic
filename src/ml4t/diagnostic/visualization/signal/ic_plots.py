@@ -454,12 +454,16 @@ def plot_ic_qq(
         _, shapiro_p = stats.shapiro(ic_clean[:5000])  # Shapiro-Wilk limited to 5000
         jb_result = stats.jarque_bera(ic_clean)
         jb_p = jb_result.pvalue
+        if np.isfinite(shapiro_p) and np.isfinite(jb_p):
+            normality_status = "✓ Normal" if min(shapiro_p, jb_p) > 0.05 else "✗ Non-normal"
+        else:
+            normality_status = "Normality: N/A"
 
         normality_text = (
             f"<b>Normality Tests:</b><br>"
             f"Shapiro-Wilk p: {format_finite(shapiro_p, '.4f')}<br>"
             f"Jarque-Bera p: {format_finite(jb_p, '.4f')}<br>"
-            f"{'✓ Normal' if min(shapiro_p, jb_p) > 0.05 else '✗ Non-normal'}"
+            f"{normality_status}"
         )
 
         fig.add_annotation(

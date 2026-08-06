@@ -735,12 +735,8 @@ class SignalDashboard(BaseDashboard):
         theme_name = "dark" if self.theme == "dark" else "default"
 
         # Summary metrics section
-        if math.isfinite(event_analysis.p_value):
-            sig_status = "Significant" if event_analysis.is_significant else "Not Significant"
-            sig_color = "#10b981" if event_analysis.is_significant else "#ef4444"
-        else:
-            sig_status = "N/A"
-            sig_color = "#6b7280"
+        sig_status = "Significant" if event_analysis.is_significant else "Not Significant"
+        sig_color = "#10b981" if event_analysis.is_significant else "#ef4444"
         final_caar = format_finite(event_analysis.final_caar, "+.4f")
         final_caar_pct = format_finite(event_analysis.final_caar, "+.2%")
         event_day_aar = format_finite(event_analysis.event_day_aar, "+.4f")

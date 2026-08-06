@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from scipy import stats as sp_stats
 
 from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
@@ -377,9 +378,8 @@ def plot_ar_distribution(
     )
 
     # Add KDE if requested
-    if show_kde and len(ars) >= 5:
-        from scipy import stats as sp_stats
-
+    all_finite = bool(np.isfinite(ars_array).all())
+    if show_kde and len(ars) >= 5 and all_finite:
         kde = sp_stats.gaussian_kde(ars_array)
         x_range = np.linspace(min(ars_array), max(ars_array), 100)
         kde_y = kde(x_range)
@@ -399,21 +399,27 @@ def plot_ar_distribution(
 
     # Add vertical line at mean
     mean_ar = float(np.mean(ars_array))
-    fig.add_vline(
-        x=mean_ar,
-        line_dash="dash",
-        line_color=_ML4T_COLORS["negative"],
-        annotation_text=f"Mean: {format_finite(mean_ar, '.4f')}",
-        annotation_position="top right",
-    )
+    if np.isfinite(mean_ar):
+        fig.add_vline(
+            x=mean_ar,
+            line_dash="dash",
+            line_color=_ML4T_COLORS["negative"],
+            annotation_text=f"Mean: {format_finite(mean_ar, '.4f')}",
+            annotation_position="top right",
+        )
 
     # Add vertical line at 0
     fig.add_vline(x=0, line_dash="dot", line_color=_ML4T_COLORS["silver_muted"])
 
     # Calculate statistics
     std_ar = float(np.std(ars_array, ddof=1))
-    t_stat = mean_ar / (std_ar / np.sqrt(len(ars))) if std_ar > 0 else 0
-    p_val = 2 * sp_stats.t.sf(abs(t_stat), df=len(ars) - 1) if len(ars) > 1 else 1.0
+    if not np.isfinite(mean_ar) or not np.isfinite(std_ar):
+        t_stat = p_val = float("nan")
+    elif std_ar > 0:
+        t_stat = mean_ar / (std_ar / np.sqrt(len(ars)))
+        p_val = 2 * sp_stats.t.sf(abs(t_stat), df=len(ars) - 1)
+    else:
+        t_stat, p_val = 0.0, 1.0
 
     day_label = "Event Day" if day == 0 else f"Day {day:+d}"
 
