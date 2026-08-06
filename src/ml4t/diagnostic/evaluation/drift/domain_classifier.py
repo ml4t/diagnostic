@@ -152,7 +152,7 @@ def compute_domain_classifier_drift(
     threshold: float = 0.6,
     cv_folds: int = 5,
     random_state: int = 42,
-    n_jobs: int = 1,
+    n_jobs: int | None = None,
 ) -> DomainClassifierResult:
     """Detect distribution drift using domain classifier.
 
@@ -193,7 +193,7 @@ def compute_domain_classifier_drift(
         threshold: AUC threshold for flagging drift (default: 0.6)
         cv_folds: Number of cross-validation folds (default: 5)
         random_state: Random seed for reproducibility (default: 42)
-        n_jobs: Threads used by the classifier (default: 1). Use -1 for all available cores.
+        n_jobs: Threads used by the classifier. None preserves the backend default.
 
     Returns:
         DomainClassifierResult with AUC, feature importances, drift flag, etc.
@@ -413,7 +413,7 @@ def _train_domain_classifier(
     max_depth: int = 5,
     cv_folds: int = 5,
     random_state: int = 42,
-    n_jobs: int = 1,
+    n_jobs: int | None = None,
 ) -> tuple[Any, np.ndarray]:
     """Train binary classifier for domain classification.
 

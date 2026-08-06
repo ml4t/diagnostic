@@ -244,7 +244,13 @@ class TestDomainClassifierModels:
         reference, test = simple_shift_data
 
         result = compute_domain_classifier_drift(
-            reference, test, model_type="lightgbm", n_estimators=20, cv_folds=3, random_state=42
+            reference,
+            test,
+            model_type="lightgbm",
+            n_estimators=20,
+            cv_folds=3,
+            random_state=42,
+            n_jobs=1,
         )
 
         assert 0 <= result.auc <= 1
@@ -256,7 +262,13 @@ class TestDomainClassifierModels:
         reference, test = simple_shift_data
 
         result = compute_domain_classifier_drift(
-            reference, test, model_type="xgboost", n_estimators=20, cv_folds=3, random_state=42
+            reference,
+            test,
+            model_type="xgboost",
+            n_estimators=20,
+            cv_folds=3,
+            random_state=42,
+            n_jobs=1,
         )
 
         assert 0 <= result.auc <= 1

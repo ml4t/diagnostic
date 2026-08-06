@@ -19,7 +19,8 @@ def _compute_quantile_return_statistics(
     return_col = f"{period}D_fwd_return"
 
     if return_col not in data.columns:
-        return dict.fromkeys(range(1, n_quantiles + 1), float("nan")), {}
+        missing = dict.fromkeys(range(1, n_quantiles + 1), float("nan"))
+        return missing, missing.copy()
 
     means: dict[int, float] = {}
     standard_deviations: dict[int, float] = {}
@@ -36,15 +37,12 @@ def _compute_quantile_return_statistics(
             float(np.std(returns, ddof=1)) if len(returns) > 1 else 0.0
         )
 
-    means = dict(sorted(means.items()))
-    standard_deviations = dict(sorted(standard_deviations.items()))
-
     # Fill missing quantiles
     for q in range(1, n_quantiles + 1):
-        if q not in means:
-            means[q] = float("nan")
+        means.setdefault(q, float("nan"))
+        standard_deviations.setdefault(q, float("nan"))
 
-    return means, standard_deviations
+    return dict(sorted(means.items())), dict(sorted(standard_deviations.items()))
 
 
 def compute_quantile_returns(

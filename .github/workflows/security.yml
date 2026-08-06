@@ -33,7 +33,12 @@ jobs:
           uv export --quiet --frozen --all-extras --no-dev --no-emit-project
           --output-file requirements-audit.txt
 
-      - name: Audit known vulnerabilities
+      - name: Validate hashes and audit PyPI advisories
         run: >-
           uv run pip-audit --strict --require-hashes --disable-pip
           --vulnerability-service pypi -r requirements-audit.txt
+
+      - name: Audit OSV advisories
+        run: >-
+          uv run pip-audit --strict --require-hashes --disable-pip
+          --vulnerability-service osv -r requirements-audit.txt
