@@ -13,6 +13,7 @@ import polars as pl
 from scipy.stats import spearmanr
 
 from ml4t.diagnostic.metrics.conditional import compute_conditional_ic
+from ml4t.diagnostic.utils.dependencies import DEPS
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -258,7 +259,7 @@ def compute_shap_interactions(
         import shap
     except ImportError as e:
         raise ImportError(
-            "SHAP is required for interaction values. Install with: pip install ml4t-diagnostic[ml]"
+            f"SHAP is required for interaction values. {DEPS.shap.install_guidance}"
         ) from e
 
     # Convert input to numpy and extract feature names

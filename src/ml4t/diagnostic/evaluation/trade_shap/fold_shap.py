@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ml4t.diagnostic.utils.dependencies import DEPS
+
 try:
     import shap as _shap
 except ImportError:
@@ -99,9 +101,7 @@ def compute_fold_shap(
         )
 
     if _shap is None:
-        raise ImportError(
-            "shap is required for compute_fold_shap. Install with: pip install ml4t-diagnostic[ml]"
-        )
+        raise ImportError(f"shap is required for compute_fold_shap. {DEPS.shap.install_guidance}")
 
     all_features_parts: list[pl.DataFrame] = []
     all_shap_parts: list[NDArray[np.floating]] = []

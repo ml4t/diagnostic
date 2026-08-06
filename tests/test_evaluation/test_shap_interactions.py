@@ -462,17 +462,18 @@ class TestSHAPInteractionsEdgeCases:
 class TestSHAPInteractionsErrorHandling:
     """Test error handling for SHAP interactions."""
 
-    def test_shap_required_message(self):
-        """Test that function exists and requires SHAP (documentation test)."""
-        # This test just verifies the function exists and has proper ImportError
-        # Actual import mocking is too fragile in pytest
-        from ml4t.diagnostic.metrics import compute_shap_interactions
+    def test_shap_required_message(self, monkeypatch):
+        """The runtime error reports the extra and its platform limit."""
+        import sys
 
-        # Function should exist
-        assert callable(compute_shap_interactions)
-        # Docstring should mention SHAP requirement
-        assert "SHAP" in compute_shap_interactions.__doc__
-        assert "ml4t-diagnostic[ml]" in compute_shap_interactions.__doc__
+        monkeypatch.setitem(sys.modules, "shap", None)
+
+        with pytest.raises(ImportError) as exc_info:
+            compute_shap_interactions(model=None, X=np.array([[1.0, 2.0]]))
+
+        message = str(exc_info.value)
+        assert "pip install ml4t-diagnostic[ml]" in message
+        assert "Intel macOS with Python 3.14" in message
 
 
 class TestSHAPInteractionsClassification:

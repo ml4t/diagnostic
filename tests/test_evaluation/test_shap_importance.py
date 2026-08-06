@@ -278,7 +278,7 @@ class TestComputeShapImportanceErrors:
         monkeypatch.setitem(sys.modules, "shap", None)
 
         # Should raise ImportError with helpful message
-        with pytest.raises(ImportError, match=r"pip install ml4t-diagnostic\[ml\]"):
+        with pytest.raises(ImportError, match=r"Intel macOS with Python 3\.14"):
             from ml4t.diagnostic.metrics import compute_shap_importance as compute_shap
 
             compute_shap(None, np.array([[1, 2, 3]]))
@@ -473,6 +473,21 @@ class TestSHAPHelperFunctions:
 
         with pytest.raises(ValueError, match="Invalid explainer_type"):
             _get_explainer(model=None, X_array=X, explainer_type="invalid")
+
+    def test_get_explainer_missing_shap_uses_supported_install_extra(self, monkeypatch):
+        """The internal explainer path reports the extra and its platform limit."""
+        import sys
+
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
+
+        monkeypatch.setitem(sys.modules, "shap", None)
+
+        with pytest.raises(ImportError) as exc_info:
+            _get_explainer(model=None, X_array=np.array([[1.0]]))
+
+        message = str(exc_info.value)
+        assert "pip install ml4t-diagnostic[ml]" in message
+        assert "Intel macOS with Python 3.14" in message
 
 
 @pytest.mark.skipif(not HAS_SHAP, reason="SHAP library not installed")

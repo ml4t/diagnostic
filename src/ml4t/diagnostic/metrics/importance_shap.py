@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from ml4t.diagnostic.utils.dependencies import DEPS
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -69,9 +71,7 @@ def _get_explainer(
     try:
         import shap
     except ImportError as e:
-        raise ImportError(
-            "SHAP library is not installed. Install with: pip install ml4t-diagnostic[ml]"
-        ) from e
+        raise ImportError(f"SHAP library is not installed. {DEPS.shap.install_guidance}") from e
 
     # Validate explainer_type
     valid_types = {"auto", "tree", "linear", "deep", "kernel"}
@@ -493,9 +493,7 @@ def compute_shap_importance(
     try:
         import shap  # noqa: F401 (availability check)
     except ImportError as e:
-        raise ImportError(
-            "SHAP library is not installed. Install with: pip install ml4t-diagnostic[ml]"
-        ) from e
+        raise ImportError(f"SHAP library is not installed. {DEPS.shap.install_guidance}") from e
 
     # Convert X to appropriate format
     if isinstance(X, pl.DataFrame):

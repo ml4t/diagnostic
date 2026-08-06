@@ -262,6 +262,8 @@ class TestComputeDistributionTests:
         assert any("Jarque" in t for t in tests)
 
         assert df["p_value_note"].notna().all()
+        shapiro_note = df.loc[df["test"] == "Shapiro-Wilk", "p_value_note"].item()
+        assert shapiro_note == "reported only for 3 <= n <= 5000"
 
     @pytest.mark.parametrize(
         ("p_value", "expected"),

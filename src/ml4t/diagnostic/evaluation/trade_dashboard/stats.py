@@ -94,7 +94,7 @@ def compute_distribution_tests(
         - test: Test name
         - statistic: Test statistic
         - p_value: P-value
-        - p_value_note: Limits on tabulated or interpolated p-values
+        - p_value_note: Caveat on how the p-value was obtained
         - interpretation: Human-readable interpretation
     """
     results = []
@@ -112,7 +112,7 @@ def compute_distribution_tests(
                     "test": "Shapiro-Wilk",
                     "statistic": stat,
                     "p_value": p,
-                    "p_value_note": "computed by SciPy Shapiro-Wilk",
+                    "p_value_note": "reported only for 3 <= n <= 5000",
                     "interpretation": "Normal" if p > 0.05 else "Non-normal",
                 }
             )
