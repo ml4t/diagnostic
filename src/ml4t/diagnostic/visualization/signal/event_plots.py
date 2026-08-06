@@ -507,8 +507,6 @@ def plot_car_by_event(
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
-    unavailable_count = sum(not math.isfinite(result.car) for result in ar_results)
-
     # Sort results
     if sort_by == "car":
         sorted_results = sorted(
@@ -522,6 +520,7 @@ def plot_car_by_event(
     # Limit to top_n if specified
     if top_n is not None:
         sorted_results = sorted_results[:top_n]
+    unavailable_count = sum(not math.isfinite(result.car) for result in sorted_results)
 
     # Prepare data
     labels = [f"{r.event_id} ({r.asset})" for r in sorted_results]

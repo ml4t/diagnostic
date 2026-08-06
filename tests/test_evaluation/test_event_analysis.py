@@ -609,6 +609,7 @@ class TestStatisticalTests:
         # With such large effect, should have large positive CAAR
         assert result.final_caar > 0.1  # > 10% cumulative
         # Note: With only 1 event, p-value may not be significant due to lack of cross-section
+        assert all(np.isnan(value) for value in result.caar_std)
 
 
 # =============================================================================
@@ -701,6 +702,7 @@ class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
     @pytest.mark.parametrize("test_name", ["t_test", "boehmer", "corrado"])
+    @pytest.mark.parametrize("invalid_return", [float("nan"), None], ids=["nan", "null"])
     def test_non_finite_event_return_is_skipped_before_inference(
         self,
         sample_returns_data: pl.DataFrame,
@@ -708,15 +710,16 @@ class TestEdgeCases:
         sample_benchmark_data: pl.DataFrame,
         default_config: EventConfig,
         test_name: str,
+        invalid_return: float | None,
     ) -> None:
-        """A NaN in an event window cannot produce an invalid p-value."""
+        """An invalid event return cannot produce an invalid p-value."""
         invalid_event = sample_events_data.row(0, named=True)
         returns_with_nan = sample_returns_data.with_columns(
             pl.when(
                 (pl.col("asset") == invalid_event["asset"])
                 & (pl.col("date") == invalid_event["date"])
             )
-            .then(float("nan"))
+            .then(pl.lit(invalid_return, dtype=pl.Float64))
             .otherwise(pl.col("return"))
             .alias("return")
         )
@@ -735,6 +738,40 @@ class TestEdgeCases:
         assert 0.0 <= result.p_value <= 1.0
         assert result.individual_results is not None
         assert all(np.isfinite(event.car) for event in result.individual_results)
+
+    def test_partial_event_window_can_be_retained_explicitly(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """The explicit relaxed policy retains an event with a missing day."""
+        partial_event = sample_events_data.row(0, named=True)
+        partial_returns = sample_returns_data.filter(
+            ~(
+                (pl.col("asset") == partial_event["asset"])
+                & (pl.col("date") == partial_event["date"])
+            )
+        )
+        config = default_config.model_copy(deep=True)
+        config.window.require_complete_event_window = False
+        analysis = EventStudyAnalysis(
+            returns=partial_returns,
+            events=sample_events_data,
+            benchmark=sample_benchmark_data,
+            config=config,
+        )
+
+        result = analysis.run()
+
+        assert result.n_events == 3
+        assert result.individual_results is not None
+        retained_event = next(
+            event for event in result.individual_results if event.asset == partial_event["asset"]
+        )
+        assert 0 not in retained_event.ar_by_day
+        assert np.isfinite(retained_event.car)
 
     def test_insufficient_estimation_data_warning(
         self,
@@ -793,7 +830,10 @@ class TestEdgeCases:
             returns=returns_df, events=events_df, benchmark=benchmark_df, config=config
         )
 
-        with pytest.raises(ValueError, match="No valid events"):
+        with (
+            pytest.warns(UserWarning, match="Skipped .* events"),
+            pytest.raises(ValueError, match="No valid events"),
+        ):
             analysis.aggregate()
 
     def test_missing_asset_in_returns(
@@ -909,6 +949,7 @@ class TestEventConfig:
         assert config.min_estimation_obs == 100
         assert config.window.estimation_window == (-252, -20)
         assert config.window.event_window == (-5, 5)
+        assert config.window.require_complete_event_window is True
 
     def test_alpha_property(self) -> None:
         """Test alpha property calculation."""

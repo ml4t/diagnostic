@@ -60,7 +60,9 @@ class EventStudyAnalysis:
     benchmark : pl.DataFrame
         Market/benchmark returns with columns: [date, return].
     config : EventConfig, optional
-        Configuration for the analysis.
+        Configuration for the analysis. Event windows must be complete by
+        default; set ``window.require_complete_event_window=False`` to retain
+        partial windows after omitting missing or non-finite observations.
 
     Examples
     --------
@@ -214,7 +216,12 @@ class EventStudyAnalysis:
             if date in self._benchmark_dict:
                 asset_return = row["return"]
                 market_return = self._benchmark_dict[date]
-                if np.isfinite(asset_return) and np.isfinite(market_return):
+                if (
+                    asset_return is not None
+                    and market_return is not None
+                    and np.isfinite(asset_return)
+                    and np.isfinite(market_return)
+                ):
                     asset_returns.append(asset_return)
                     market_returns.append(market_return)
 
@@ -260,7 +267,11 @@ class EventStudyAnalysis:
     def _get_event_window_data(
         self, asset: str, event_date: Any
     ) -> dict[int, tuple[float, float]] | None:
-        """Get returns for event window.
+        """Get finite returns for an event window.
+
+        Complete windows are required by default. Set
+        ``window.require_complete_event_window=False`` to retain events with
+        partial windows; missing and non-finite observations are omitted.
 
         Returns
         -------
@@ -287,11 +298,17 @@ class EventStudyAnalysis:
                 if len(asset_ret) > 0 and date in self._benchmark_dict:
                     asset_return = asset_ret["return"][0]
                     market_return = self._benchmark_dict[date]
-                    if np.isfinite(asset_return) and np.isfinite(market_return):
+                    if (
+                        asset_return is not None
+                        and market_return is not None
+                        and np.isfinite(asset_return)
+                        and np.isfinite(market_return)
+                    ):
                         result[rel_day] = (asset_return, market_return)
 
-        expected_observations = evt_end - evt_start + 1
-        return result if len(result) == expected_observations else None
+        if self.config.window.require_complete_event_window:
+            return result if len(result) == self.config.window.event_length else None
+        return result if result else None
 
     def _compute_abnormal_return_single(
         self, event_row: dict[str, Any]
@@ -436,10 +453,10 @@ class EventStudyAnalysis:
             caar_values.append(cumsum)
 
             # Cross-sectional standard deviation at this day
-            if ar_matrix[day]:
+            if len(ar_matrix[day]) >= 2:
                 caar_std.append(float(np.std(ar_matrix[day], ddof=1)))
             else:
-                caar_std.append(0.0)
+                caar_std.append(float("nan"))
 
         # Compute confidence intervals
         n_events = len(ar_results)
@@ -487,24 +504,14 @@ class EventStudyAnalysis:
         tuple[float, float]
             (test_statistic, p_value)
         """
-        finite_results = [result for result in ar_results if np.isfinite(result.car)]
-        finite_ar_matrix = {
-            day: [
-                result.ar_by_day[day]
-                for result in finite_results
-                if day in result.ar_by_day and np.isfinite(result.ar_by_day[day])
-            ]
-            for day in ar_matrix
-        }
-
         if self.config.test == "t_test":
-            return self._t_test(finite_results, finite_ar_matrix)
+            return self._t_test(ar_results, ar_matrix)
         elif self.config.test == "boehmer":
-            return self._bmp_test(finite_results)
+            return self._bmp_test(ar_results)
         elif self.config.test == "corrado":
-            return self._corrado_test(finite_results, finite_ar_matrix)
+            return self._corrado_test(ar_results, ar_matrix)
         else:
-            return self._t_test(finite_results, finite_ar_matrix)
+            return self._t_test(ar_results, ar_matrix)
 
     def _t_test(
         self,

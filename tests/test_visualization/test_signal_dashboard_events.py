@@ -300,6 +300,33 @@ class TestSignalDashboardEventsTab:
         assert "t-stat = N/A" in annotation_text
         assert "p-value = N/A" in annotation_text
 
+    def test_car_plot_counts_only_displayed_unavailable_events(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """Top-N titles do not count unavailable events excluded from the trace."""
+        from ml4t.diagnostic.visualization.signal.event_plots import plot_car_by_event
+
+        assert sample_event_study_result.individual_results
+        template = sample_event_study_result.individual_results[0]
+        events = []
+        for index in range(21):
+            event = template.model_copy(deep=True)
+            event.event_id = f"finite-{index}"
+            event.car = float(index + 1) / 100
+            events.append(event)
+        for index in range(3):
+            event = template.model_copy(deep=True)
+            event.event_id = f"unavailable-{index}"
+            event.car = float("nan")
+            events.append(event)
+
+        figure = plot_car_by_event(events, top_n=20)
+        trace = figure.data[0]
+
+        assert "unavailable" not in figure.layout.title.text
+        assert "N/A" not in trace.customdata
+
     def test_event_study_rejects_unavailable_p_value(
         self,
         sample_event_study_result,
