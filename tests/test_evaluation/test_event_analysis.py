@@ -329,6 +329,31 @@ class TestMarketModel:
             assert result.estimation_alpha is not None
             assert result.estimation_beta is not None
 
+    def test_constant_benchmark_rejects_rank_deficient_model(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A constant estimation benchmark cannot identify alpha and beta."""
+        event = sample_events_data.select("date", "asset").head(1)
+        benchmark = sample_benchmark_data.with_columns(pl.lit(0.0).alias("return"))
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: market model estimation failed numerically\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
 
 # =============================================================================
 # Alternative Model Tests

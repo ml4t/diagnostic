@@ -281,7 +281,9 @@ class EventStudyAnalysis:
         X = np.column_stack([np.ones(len(market_returns)), market_returns])
         y = asset_returns
 
-        coeffs, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+        coeffs, _, rank, _ = np.linalg.lstsq(X, y, rcond=None)
+        if rank < X.shape[1]:
+            raise np.linalg.LinAlgError("Market-model design matrix is rank-deficient")
         alpha, beta = coeffs[0], coeffs[1]
 
         # Calculate R-squared
@@ -292,6 +294,8 @@ class EventStudyAnalysis:
 
         # Residual standard deviation
         residual_std = np.std(y - y_pred, ddof=2)
+        if not np.all(np.isfinite([alpha, beta, r_squared, residual_std])):
+            raise np.linalg.LinAlgError("Market-model parameters are non-finite")
 
         return alpha, beta, r_squared, residual_std
 
