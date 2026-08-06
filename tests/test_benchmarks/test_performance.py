@@ -4,6 +4,7 @@ Run with: pytest tests/test_benchmarks/ --benchmark-only -m slow
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 
 # Mark entire module as slow (benchmark tests)
@@ -21,7 +22,7 @@ def small_data():
     return {
         "X": np.random.randn(n, 10),
         "y": np.random.randn(n),
-        "times": np.arange(n),
+        "times": pd.date_range("2020-01-01", periods=n, freq="D", tz="UTC"),
     }
 
 
@@ -33,7 +34,7 @@ def medium_data():
     return {
         "X": np.random.randn(n, 20),
         "y": np.random.randn(n),
-        "times": np.arange(n),
+        "times": pd.date_range("2020-01-01", periods=n, freq="h", tz="UTC"),
     }
 
 
@@ -52,10 +53,10 @@ class TestCrossValidationBenchmarks:
         from ml4t.diagnostic.splitters import CombinatorialCV
 
         cv = CombinatorialCV(n_groups=5, embargo_pct=0.01)
-        X, y, times = small_data["X"], small_data["y"], small_data["times"]
+        X, y = small_data["X"], small_data["y"]
 
         def run():
-            return list(cv.split(X, y, times))
+            return list(cv.split(X, y))
 
         result = benchmark(run)
         assert len(result) > 0
@@ -65,10 +66,10 @@ class TestCrossValidationBenchmarks:
         from ml4t.diagnostic.splitters import CombinatorialCV
 
         cv = CombinatorialCV(n_groups=10, embargo_pct=0.01)
-        X, y, times = medium_data["X"], medium_data["y"], medium_data["times"]
+        X, y = medium_data["X"], medium_data["y"]
 
         def run():
-            return list(cv.split(X, y, times))
+            return list(cv.split(X, y))
 
         result = benchmark(run)
         assert len(result) > 0

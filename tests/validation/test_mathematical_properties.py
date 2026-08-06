@@ -460,11 +460,9 @@ class TestCrossValidationProperties:
         n = 500
         X = np.random.randn(n, 5)
         y = np.random.randn(n)
-        times = np.arange(n)
-
         cv = CombinatorialCV(n_groups=8, n_test_groups=2)
 
-        for train_idx, test_idx in cv.split(X, y, times):
+        for train_idx, test_idx in cv.split(X, y):
             train_set = set(train_idx)
             test_set = set(test_idx)
             intersection = train_set & test_set
@@ -479,11 +477,9 @@ class TestCrossValidationProperties:
         n = 500
         X = np.random.randn(n, 5)
         y = np.random.randn(n)
-        times = np.arange(n)
-
         cv = CombinatorialCV(n_groups=8, n_test_groups=2)
 
-        for train_idx, test_idx in cv.split(X, y, times):
+        for train_idx, test_idx in cv.split(X, y):
             all_indices = np.concatenate([train_idx, test_idx])
             assert all_indices.min() >= 0, "Indices must be >= 0"
             assert all_indices.max() < n, f"Indices must be < {n}"
@@ -494,12 +490,10 @@ class TestCrossValidationProperties:
         n = 500
         X = np.random.randn(n, 5)
         y = np.random.randn(n)
-        times = np.arange(n)
-
         # Large purge to make gap obvious
         cv = CombinatorialCV(n_groups=8, n_test_groups=2, embargo_pct=0.05)
 
-        for train_idx, test_idx in cv.split(X, y, times):
+        for train_idx, test_idx in cv.split(X, y):
             train_max = train_idx.max()
             test_min = test_idx.min()
 

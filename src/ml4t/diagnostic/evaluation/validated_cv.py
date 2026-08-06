@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
+import pandas as pd
 
 from ml4t.diagnostic.config import StatisticalConfig, ValidatedCrossValidationConfig
 from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio_from_statistics
@@ -194,7 +195,7 @@ class ValidatedCrossValidation:
         X: np.ndarray | pl.DataFrame,
         y: np.ndarray | pl.Series,
         model: ModelProtocol,
-        times: np.ndarray | pl.Series | None = None,
+        times: np.ndarray | pd.Series | pd.DatetimeIndex | pl.Series | None = None,
         returns_fn: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
     ) -> ValidationResult:
         """Run cross-validation and compute DSR in one call.
@@ -208,7 +209,9 @@ class ValidatedCrossValidation:
         model : ModelProtocol
             Model with fit/predict interface
         times : array-like, optional
-            Timestamps for purging. Required for temporal purging.
+            Chronologically sorted datetime-like values for time-based purging.
+            Numeric row positions are not accepted; omit this argument to use
+            integer row-based purging.
         returns_fn : callable, optional
             Function(y_true, y_pred) -> returns.
             If None, assumes y contains returns and predictions are positions.
@@ -231,17 +234,14 @@ class ValidatedCrossValidation:
         else:
             y_np = np.asarray(y)
 
+        splitter_input: np.ndarray | pd.DataFrame = X_np
         if times is not None:
-            if isinstance(times, pl.Series):
-                times_np = times.to_numpy()
-            else:
-                times_np = np.asarray(times)
-        else:
-            times_np = None
+            times_index = self._validate_times(times, len(X_np))
+            splitter_input = pd.DataFrame(index=times_index)
 
         fold_results = []
 
-        for fold_idx, (train_idx, test_idx) in enumerate(self._cv.split(X_np, y_np, times_np)):
+        for fold_idx, (train_idx, test_idx) in enumerate(self._cv.split(splitter_input, y_np)):
             # Fit model
             model.fit(X_np[train_idx], y_np[train_idx])
 
@@ -270,6 +270,33 @@ class ValidatedCrossValidation:
             )
 
         return self._compute_validation_result(fold_results)
+
+    @staticmethod
+    def _validate_times(
+        times: np.ndarray | pd.Series | pd.DatetimeIndex | pl.Series,
+        n_samples: int,
+    ) -> pd.DatetimeIndex:
+        """Validate an explicit timestamp vector for CPCV purging."""
+        values = np.asarray(times)
+        if len(values) != n_samples:
+            raise ValueError(
+                f"times length ({len(values)}) must match number of samples ({n_samples})"
+            )
+        if pd.api.types.is_numeric_dtype(values):
+            raise TypeError("times must contain datetime-like values, not numeric row positions")
+
+        try:
+            index = pd.DatetimeIndex(pd.to_datetime(values, errors="raise"))
+        except (TypeError, ValueError) as exc:
+            raise TypeError("times must contain valid datetime-like values") from exc
+
+        if index.hasnans:
+            raise ValueError("times must not contain missing values")
+        if not index.is_monotonic_increasing:
+            raise ValueError("times must be sorted in non-decreasing order")
+        if index.tz is None:
+            index = index.tz_localize("UTC")
+        return index
 
     def evaluate_sharpes(self, sharpe_ratios: list[float]) -> ValidationResult:
         """Evaluate pre-computed Sharpe ratios with DSR.
@@ -471,7 +498,7 @@ def validated_cross_val_score(
     model: ModelProtocol,
     X: np.ndarray,
     y: np.ndarray,
-    times: np.ndarray | None = None,
+    times: np.ndarray | pd.Series | pd.DatetimeIndex | None = None,
     n_groups: int = 10,
     embargo_pct: float = 0.01,
 ) -> ValidationResult:
@@ -486,7 +513,8 @@ def validated_cross_val_score(
     y : np.ndarray
         Target (or returns)
     times : np.ndarray, optional
-        Timestamps for purging
+        Chronologically sorted datetime-like values for time-based purging.
+        Omit to use integer row-based purging.
     n_groups : int, default 10
         Number of CV groups
     embargo_pct : float, default 0.01
@@ -513,4 +541,4 @@ def validated_cross_val_score(
         embargo_pct=embargo_pct,
     )
     vcv = ValidatedCrossValidation(config)
-    return vcv.fit_evaluate(X, y, model, times)
+    return vcv.fit_evaluate(X, y, model, times=times)

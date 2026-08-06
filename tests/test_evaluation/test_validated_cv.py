@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from ml4t.diagnostic.config import ValidatedCrossValidationConfig
@@ -51,7 +52,7 @@ def sample_data():
     X = np.random.randn(n_samples, n_features)
     # Add some signal
     y = 0.3 * X[:, 0] + 0.1 * X[:, 1] + np.random.randn(n_samples) * 0.5
-    times = np.arange(n_samples)
+    times = pd.date_range("2020-01-01", periods=n_samples, freq="D", tz="UTC")
 
     return X, y, times
 
@@ -66,7 +67,7 @@ def positive_sharpe_data():
     X = np.random.randn(n_samples, n_features)
     # Strong signal that will produce positive Sharpe
     y = 0.5 * X[:, 0] + 0.3 * X[:, 1] + np.random.randn(n_samples) * 0.3
-    times = np.arange(n_samples)
+    times = pd.date_range("2020-01-01", periods=n_samples, freq="D", tz="UTC")
 
     return X, y, times
 
@@ -322,6 +323,42 @@ class TestValidatedCrossValidation:
 
         assert isinstance(result, ValidationResult)
         assert result.n_folds > 0
+
+    def test_fit_evaluate_passes_times_as_datetime_index_not_groups(self, sample_data, monkeypatch):
+        """Explicit timestamps reach CPCV through X rather than the groups argument."""
+        X, y, times = sample_data
+        vcv = ValidatedCrossValidation(ValidatedCrossValidationConfig(n_groups=2, n_test_groups=1))
+        captured = {}
+
+        def split(splitter_input, split_y=None, groups=None):
+            captured["X"] = splitter_input
+            captured["y"] = split_y
+            captured["groups"] = groups
+            yield np.arange(250, 500), np.arange(250)
+
+        monkeypatch.setattr(vcv._cv, "split", split)
+
+        vcv.fit_evaluate(X, y, SimpleModel(), times=times)
+
+        assert isinstance(captured["X"], pd.DataFrame)
+        assert captured["X"].index.equals(times)
+        assert captured["groups"] is None
+
+    def test_fit_evaluate_rejects_numeric_row_positions_as_times(self, sample_data):
+        """Numeric row positions cannot silently become asset group labels."""
+        X, y, _ = sample_data
+        vcv = ValidatedCrossValidation()
+
+        with pytest.raises(TypeError, match="datetime-like"):
+            vcv.fit_evaluate(X, y, SimpleModel(), times=np.arange(len(X)))
+
+    def test_fit_evaluate_rejects_unsorted_times(self, sample_data):
+        """CPCV timestamp purging requires chronological row order."""
+        X, y, times = sample_data
+        vcv = ValidatedCrossValidation()
+
+        with pytest.raises(ValueError, match="sorted"):
+            vcv.fit_evaluate(X, y, SimpleModel(), times=times[::-1])
 
     def test_evaluate_sharpes(self):
         """Test evaluation of pre-computed Sharpe ratios."""
