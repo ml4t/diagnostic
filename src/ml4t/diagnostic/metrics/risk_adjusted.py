@@ -345,9 +345,6 @@ def periodic_sortino_ratio(
     mean_excess = np.mean(excess_returns)
     downside_std = np.sqrt(np.mean(downside_returns**2))
 
-    if downside_std == 0:
-        return np.nan
-
     sortino = mean_excess / downside_std
 
     # Apply annualization if specified

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from ml4t.diagnostic.evaluation.stats import benjamini_hochberg_fdr, probabilistic_sharpe_ratio
 from ml4t.diagnostic.evaluation.trade_dashboard.stats import (
@@ -251,6 +252,7 @@ class TestComputeDistributionTests:
         assert "test" in df.columns
         assert "statistic" in df.columns
         assert "p_value" in df.columns
+        assert "p_value_note" in df.columns
         assert "interpretation" in df.columns
 
         # Should have Shapiro-Wilk, Anderson-Darling, Jarque-Bera
@@ -258,6 +260,10 @@ class TestComputeDistributionTests:
         assert any("Shapiro" in t for t in tests)
         assert any("Anderson" in t for t in tests)
         assert any("Jarque" in t for t in tests)
+
+        anderson = df.loc[df["test"] == "Anderson-Darling"].iloc[0]
+        if anderson["p_value"] == pytest.approx(0.15):
+            assert anderson["p_value_note"] == "p >= 0.15 (interpolation limit)"
 
     def test_non_normal_distribution(self):
         """Test with clearly non-normal distribution."""

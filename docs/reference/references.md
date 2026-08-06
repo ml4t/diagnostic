@@ -160,7 +160,7 @@ X = np.random.randn(2500, 500)  # 2500 days, 500 strategies
 observed_sharpe = X.mean(axis=0)
 
 # Step 1: Compute Rademacher complexity
-R_hat = rademacher_complexity(X, n_simulations=10000, random_state=42)
+R_hat = rademacher_complexity(X, n_simulations=1000, random_state=42)
 print(f"Rademacher complexity: {R_hat:.4f}")
 print(f"Massart bound: {np.sqrt(2 * np.log(500) / 2500):.4f}")
 

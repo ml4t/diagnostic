@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ConfigError(Exception):
@@ -91,6 +91,8 @@ class VisualizationConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     """Configuration schema for logging settings."""
+
+    model_config = ConfigDict(extra="forbid")
 
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
         default="INFO",

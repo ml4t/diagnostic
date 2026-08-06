@@ -1,4 +1,11 @@
-"""Cross-sectional quantile profiles for panel data."""
+"""Cross-sectional quantile profiles for panel data.
+
+This helper assigns quantiles within a panel group, reports aggregate counts,
+and suppresses its Spearman score below an explicit per-bucket sample minimum.
+Use ``compute_monotonicity`` for a pooled feature/outcome diagnostic with
+adjacent-pair scoring. The signal package's quantile functions operate on the
+multi-horizon ``SignalResult`` workflow and also compute spreads and turnover.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +29,8 @@ class QuantileProfile:
         Number of valid observations in each quantile.
     monotonicity
         Spearman correlation between quantile number and mean label. This is
-        NaN when any quantile has fewer than ``min_per_bucket`` observations.
+        NaN when any quantile has fewer than ``min_per_bucket`` observations,
+        any bucket mean is non-finite, or all bucket means are equal.
     is_pooled
         Whether quantiles were assigned across all rows rather than within a
         grouping column.
@@ -166,9 +174,6 @@ def quantile_profile(
     valid = panel.filter(valid_expr)
     if valid.is_empty():
         raise ValueError("No finite feature-label pairs are available")
-
-    if key_columns:
-        valid = valid.sort(key_columns)
 
     if by is None:
         if valid.height < n_quantiles:

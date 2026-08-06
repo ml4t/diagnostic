@@ -1576,6 +1576,8 @@ dependencies = [
     { name = "pandas" },
     { name = "pandas-market-calendars" },
     { name = "polars" },
+    { name = "pyarrow", version = "21.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
+    { name = "pyarrow", version = "24.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
@@ -1593,6 +1595,8 @@ all = [
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
     { name = "ml4t-data" },
+    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "plotly" },
     { name = "pypdf" },
     { name = "seaborn" },
@@ -1636,8 +1640,11 @@ factors = [
 ml = [
     { name = "lightgbm" },
     { name = "shap" },
-    { name = "streamlit" },
     { name = "xgboost" },
+]
+perf = [
+    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
 ]
 viz = [
     { name = "kaleido" },
@@ -1654,6 +1661,8 @@ dev = [
     { name = "lightgbm" },
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
+    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "plotly" },
     { name = "pre-commit" },
     { name = "pypdf" },
@@ -1664,6 +1673,7 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "seaborn" },
+    { name = "streamlit" },
     { name = "twine" },
     { name = "ty" },
     { name = "xgboost" },
@@ -1693,6 +1703,8 @@ requires-dist = [
     { name = "ml4t-data", marker = "extra == 'all'", specifier = ">=0.1.0b7" },
     { name = "ml4t-data", marker = "extra == 'data'", specifier = ">=0.1.0b7" },
     { name = "ml4t-data", marker = "extra == 'factors'", specifier = ">=0.1.0b7" },
+    { name = "numba", marker = "extra == 'all'", specifier = ">=0.62.0" },
+    { name = "numba", marker = "extra == 'perf'", specifier = ">=0.62.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pandas-market-calendars", specifier = ">=4.0.0" },
@@ -1700,7 +1712,8 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'viz'", specifier = ">=5.15.0" },
     { name = "polars", specifier = ">=0.20.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.3.0" },
-    { name = "pydantic", specifier = ">=2.13.4,<2.14.0" },
+    { name = "pyarrow", specifier = ">=14.0.0" },
+    { name = "pydantic", specifier = ">=2.13.4,<3" },
     { name = "pypdf", marker = "extra == 'all'", specifier = ">=5.0.0" },
     { name = "pypdf", marker = "extra == 'viz'", specifier = ">=5.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
@@ -1720,13 +1733,12 @@ requires-dist = [
     { name = "statsmodels", specifier = ">=0.14.0" },
     { name = "streamlit", marker = "extra == 'all'", specifier = ">=1.28.0" },
     { name = "streamlit", marker = "extra == 'dashboard'", specifier = ">=1.28.0" },
-    { name = "streamlit", marker = "extra == 'ml'", specifier = ">=1.28.0" },
     { name = "tqdm", specifier = ">=4.66.0" },
     { name = "ty", marker = "extra == 'dev'" },
     { name = "xgboost", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["all", "backtest", "dashboard", "data", "dev", "docs", "factors", "ml", "viz"]
+provides-extras = ["all", "backtest", "dashboard", "data", "dev", "docs", "factors", "ml", "perf", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1735,6 +1747,7 @@ dev = [
     { name = "lightgbm", specifier = ">=4.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "ml4t-backtest", specifier = ">=0.1.0b10" },
+    { name = "numba", specifier = ">=0.62.0" },
     { name = "plotly", specifier = ">=5.15.0" },
     { name = "pre-commit", specifier = ">=3.3.0" },
     { name = "pypdf", specifier = ">=5.0.0" },
@@ -1745,6 +1758,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.3.0" },
     { name = "ruff", specifier = ">=0.8.0" },
     { name = "seaborn", specifier = ">=0.12.0" },
+    { name = "streamlit", specifier = ">=1.28.0" },
     { name = "twine", specifier = ">=6.0.0" },
     { name = "ty" },
     { name = "xgboost", specifier = ">=2.0.0" },

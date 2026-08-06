@@ -1495,8 +1495,8 @@ class TestAutoSelectionAndBackwardCompatibility:
 
 @pytest.mark.skipif(not HAS_SHAP, reason="SHAP library not installed")
 @pytest.mark.skipif(not HAS_LIGHTGBM, reason="LightGBM not installed")
-class TestPerformanceWarningsAndGPU:
-    """Comprehensive tests for performance warnings and GPU functionality (TASK-009)."""
+class TestPerformanceWarnings:
+    """Comprehensive tests for SHAP performance warnings."""
 
     @pytest.fixture(scope="class")
     def simple_data(self):

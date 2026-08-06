@@ -433,6 +433,17 @@ class TestTradePlots:
         if fig.data:
             assert len(fig.data[0].x) <= 11  # 10 trades + total
 
+    @pytest.mark.parametrize("theme", ["default", "dark", "print", "presentation"])
+    def test_public_trade_plots_accept_every_theme(self, sample_trades, theme):
+        """Theme defaults cannot collide with explicit Plotly layout values."""
+        from ml4t.diagnostic.visualization.backtest import (
+            plot_consecutive_analysis,
+            plot_trade_waterfall,
+        )
+
+        assert isinstance(plot_trade_waterfall(sample_trades, theme=theme), go.Figure)
+        assert isinstance(plot_consecutive_analysis(sample_trades, theme=theme), go.Figure)
+
     def test_plot_trade_duration_distribution(self, sample_trades):
         """Test trade duration histogram."""
         from ml4t.diagnostic.visualization.backtest import plot_trade_duration_distribution
@@ -756,6 +767,26 @@ class TestTearsheetGeneration:
             module._enrich_validation_metrics({}, np.ones(100), n_trials=2)
 
         assert exc_info.value.context["metric"] == "dsr"
+
+    def test_optional_trade_sections_skip_missing_columns(self):
+        """Ordinary trade frames can omit section-specific optional columns."""
+        from ml4t.diagnostic.visualization.backtest.tearsheet import _generate_section
+
+        trades = pl.DataFrame({"asset": ["A"], "return": [0.01]})
+
+        assert _generate_section("mfe_mae", trades=trades) is None
+        assert _generate_section("exit_reasons", trades=trades) is None
+        assert _generate_section("trade_waterfall", trades=trades) is None
+
+    def test_insufficient_validation_data_is_visible(self):
+        """A short return history explains why validation metrics are absent."""
+        import ml4t.diagnostic.visualization.backtest.tearsheet as module
+
+        metrics = module._enrich_validation_metrics({}, np.array([0.01, 0.02]), n_trials=2)
+        html = module._generate_section("validity_card", metrics=metrics)
+
+        assert html is not None
+        assert "At least 5 return observations" in html
 
     def test_raw_return_drawdown_anatomy_uses_supported_import(self):
         """Raw returns render through the public portfolio analysis package."""
@@ -1098,6 +1129,16 @@ class TestInteractiveControls:
         assert payload not in html
         assert "&lt;img" in html
 
+    def test_date_range_html_escapes_inline_script_terminator(self):
+        """Date strings cannot terminate the generated inline script."""
+        from ml4t.diagnostic.visualization.backtest import get_date_range_html
+
+        payload = "</script><img src=x onerror=alert(1)>"
+        html = get_date_range_html(start_date=payload)
+
+        assert payload not in html
+        assert "\\u003c/script\\u003e" in html
+
     def test_get_theme_switcher_html(self):
         """Test theme switcher HTML generation."""
         from ml4t.diagnostic.visualization.backtest import get_theme_switcher_html
@@ -1318,6 +1359,15 @@ class TestTailRisk:
 
         fig = plot_tail_risk_analysis(returns)
         assert isinstance(fig, go.Figure)
+
+    def test_plot_tail_risk_positive_returns_have_infinite_sortino(self):
+        """No downside risk is not reported as a zero Sortino ratio."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        fig = plot_tail_risk_analysis(np.linspace(0.001, 0.01, 20))
+        table_values = fig.data[-1].cells.values
+
+        assert "inf" in table_values[1]
 
     def test_plot_tail_risk_insufficient_data(self):
         """Test with insufficient data returns placeholder."""

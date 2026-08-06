@@ -33,6 +33,7 @@ def _documented_python_examples() -> tuple[tuple[str, str], ...]:
 
 
 DOCUMENTED_PYTHON_EXAMPLES = _documented_python_examples()
+assert DOCUMENTED_PYTHON_EXAMPLES, "no public documentation examples were discovered"
 
 
 @pytest.mark.parametrize(
@@ -54,15 +55,22 @@ def test_documented_python_examples_execute(
         "PYTHONHASHSEED": "0",
     }
 
-    completed = subprocess.run(
-        [sys.executable, str(script)],
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(
+            f"{relative_path} exceeded 120 seconds\n"
+            f"stdout:\n{(exc.stdout or '')[-4_000:]}\n"
+            f"stderr:\n{(exc.stderr or '')[-4_000:]}"
+        )
 
     assert completed.returncode == 0, (
         f"{relative_path} failed with exit {completed.returncode}\n"

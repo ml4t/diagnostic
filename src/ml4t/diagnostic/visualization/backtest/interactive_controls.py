@@ -47,6 +47,11 @@ def _html(value: object) -> str:
     return escape(str(value), quote=True)
 
 
+def _js(value: object) -> str:
+    """Serialize a value without allowing it to terminate an inline script."""
+    return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
 def get_date_range_html(
     start_date: date | str | None = None,
     end_date: date | str | None = None,
@@ -67,7 +72,7 @@ def get_date_range_html(
     default_preset : str
         Initially selected preset
     on_change_callback : str
-        JavaScript function name to call on date change
+        Name of a function assigned to ``window`` to call on date change
 
     Returns
     -------
@@ -76,7 +81,7 @@ def get_date_range_html(
     """
     if presets is None:
         presets = ["1M", "3M", "YTD", "1Y", "All"]
-    callback_json = json.dumps(_validate_callback_name(on_change_callback))
+    callback_json = _js(_validate_callback_name(on_change_callback))
 
     # Convert dates to strings
     if isinstance(start_date, date):
@@ -96,8 +101,8 @@ def get_date_range_html(
 
     start_html = _html(start_date or "")
     end_html = _html(end_date or "")
-    start_json = json.dumps(start_date or "")
-    end_json = json.dumps(end_date or "")
+    start_json = _js(start_date or "")
+    end_json = _js(end_date or "")
 
     return f"""
     <div class="date-range-selector">
@@ -232,7 +237,7 @@ def get_metric_filter_html(
     multi_select : bool
         Whether to allow multiple selection
     on_change_callback : str
-        JavaScript function name to call on change
+        Name of a function assigned to ``window`` to call on change
 
     Returns
     -------
@@ -241,7 +246,7 @@ def get_metric_filter_html(
     """
     if default_metric is None and metrics:
         default_metric = metrics[0]
-    callback_json = json.dumps(_validate_callback_name(on_change_callback))
+    callback_json = _js(_validate_callback_name(on_change_callback))
 
     options = []
     for metric in metrics:

@@ -26,7 +26,6 @@ price_rows = []
 prices = np.full(len(assets), 100.0)
 for date in dates:
     scores = rng.normal(size=len(assets))
-    prices *= 1 + 0.002 * scores + rng.normal(scale=0.006, size=len(assets))
     factor_rows.extend(
         {"date": date, "asset": asset, "factor": score}
         for asset, score in zip(assets, scores, strict=True)
@@ -35,12 +34,14 @@ for date in dates:
         {"date": date, "asset": asset, "price": price}
         for asset, price in zip(assets, prices, strict=True)
     )
+    prices *= 1 + 0.002 * scores + rng.normal(scale=0.006, size=len(assets))
 
 signal = analyze_signal(
     factor=pl.DataFrame(factor_rows),
     prices=pl.DataFrame(price_rows),
     periods=(1, 5),
 )
+assert signal.ic["1D"] > 0.1
 print(f"Signal IC: {signal.ic['1D']:.4f}")
 print(f"Signal spread: {signal.spread['1D']:.2%}")
 

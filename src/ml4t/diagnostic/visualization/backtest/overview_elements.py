@@ -318,9 +318,16 @@ def create_validity_card_html(metrics: dict[str, Any]) -> str:
     if sig_rows:
         columns.append(_validity_column("Sharpe Significance", sig_dot, sig_rows, sig_context))
 
+    validation_message = metrics.get("validation_message")
+    notice = (
+        f'<div class="validity-context">{html_mod.escape(str(validation_message))}</div>'
+        if validation_message
+        else ""
+    )
     return (
         '<div class="validity-card">'
         '<div class="validity-card-header">STATISTICAL VALIDITY</div>'
+        f"{notice}"
         '<div class="validity-card-body">'
         f"{''.join(columns)}"
         "</div>"

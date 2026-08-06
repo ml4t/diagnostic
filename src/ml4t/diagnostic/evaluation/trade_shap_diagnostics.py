@@ -91,6 +91,7 @@ class TradeShapAnalyzer:
         shap_values: NDArray[np.floating[Any]] | None = None,
         config: TradeConfig | None = None,
         explainer_type: str = "auto",
+        *,
         background_data: NDArray[Any] | None = None,
         explainer_kwargs: dict | None = None,
         show_progress: bool = False,

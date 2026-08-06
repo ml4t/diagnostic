@@ -70,7 +70,7 @@ def compute_ic_hac_stats(
     ic_series: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
     ic_col: str = "ic",
     maxlags: int | None = None,
-    label_horizon: int | None = 1,
+    label_horizon: int | None = None,
     kernel: str = "bartlett",
     use_correction: bool = True,
     allow_naive_fallback: bool = False,
@@ -97,12 +97,13 @@ def compute_ic_hac_stats(
         maxlags = floor(4 * (T/100)^(2/9))
         where T is the sample size. For overlapping forward-return labels,
         pass ``label_horizon`` so the lag is at least ``label_horizon - 1``.
-    label_horizon : int | None, default 1
+    label_horizon : int | None, default None
         Forward-return horizon used to build the IC series. If provided and
         ``maxlags`` is None, the HAC lag is
         ``max(label_horizon - 1, Newey-West auto)`` capped at ``T // 2``.
-        The default assumes non-overlapping one-period labels. Pass the actual
-        horizon when forward-return labels overlap.
+        Pass the actual horizon when forward-return labels overlap. When both
+        this value and ``maxlags`` are omitted, the function warns before using
+        the generic Newey-West bandwidth.
     kernel : str, default "bartlett"
         Kernel function for lag weighting:
         - "bartlett": Triangular kernel (Newey-West default)
@@ -127,6 +128,15 @@ def compute_ic_hac_stats(
         - effective_lags: Number of lags used in HAC adjustment
         - naive_se: Standard OLS standard error (for comparison)
         - naive_t_stat: Naive t-statistic without HAC adjustment
+        - used_naive_fallback: Whether HAC failure caused substitution of the
+          naive standard error
+
+    Raises
+    ------
+    ValueError
+        If ``kernel`` is unknown.
+    RuntimeError
+        If HAC covariance computation fails and ``allow_naive_fallback`` is false.
 
     Examples
     --------
@@ -134,7 +144,7 @@ def compute_ic_hac_stats(
     >>> ic_series = cross_sectional_ic_series(pred_df, ret_df)
     >>>
     >>> # Compute HAC-adjusted statistics
-    >>> stats = compute_ic_hac_stats(ic_series)
+    >>> stats = compute_ic_hac_stats(ic_series, label_horizon=1)
     >>> print(f"Mean IC: {stats['mean_ic']:.4f}")
     >>> print(f"HAC t-stat: {stats['t_stat']:.2f}")
     >>> print(f"P-value: {stats['p_value']:.4f}")
@@ -178,6 +188,8 @@ def compute_ic_hac_stats(
     .. [2] Andrews, D. W. K. (1991). "Heteroskedasticity and Autocorrelation
            Consistent Covariance Matrix Estimation." Econometrica, 59(3), 817-858.
     """
+    weights_func = _get_kernel_weights(kernel)
+
     # Extract IC values
     ic_values: NDArray[Any]
     if isinstance(ic_series, pl.DataFrame | pd.DataFrame):
@@ -217,6 +229,12 @@ def compute_ic_hac_stats(
 
     if maxlags is None:
         if label_horizon is None:
+            warnings.warn(
+                "label_horizon was not provided; the automatic HAC bandwidth may be "
+                "anti-conservative for overlapping forward-return labels",
+                UserWarning,
+                stacklevel=2,
+            )
             maxlags = _newey_west_lag(n)
         else:
             maxlags = _newey_west_lag(n, label_horizon)
@@ -227,8 +245,6 @@ def compute_ic_hac_stats(
     # This is equivalent to a one-sample t-test
     exog = np.ones((n, 1))  # Just constant term
     y = ic_clean.reshape(-1, 1)
-    weights_func = _get_kernel_weights(kernel)
-
     # Compute HAC covariance matrix
     used_naive_fallback = False
     try:

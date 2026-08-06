@@ -142,7 +142,7 @@ class OptionalDependencies:
         self._deps["shap"] = DependencyInfo(
             name="SHAP",
             import_name="shap",
-            install_cmd="pip install shap",
+            install_cmd="pip install ml4t-diagnostic[ml]",
             purpose="Shapley value feature importance and interactions",
             features=[
                 "SHAP-based feature importance",

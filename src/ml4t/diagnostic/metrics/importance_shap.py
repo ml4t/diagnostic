@@ -70,7 +70,8 @@ def _get_explainer(
         import shap
     except ImportError as e:
         raise ImportError(
-            "SHAP library is not installed. Install with: pip install ml4t-diagnostic[ml] or: pip install shap>=0.41.0"
+            "SHAP library is not installed. Install with: pip install ml4t-diagnostic[ml] "
+            'or: pip install "shap>=0.52.0,<0.53.0"'
         ) from e
 
     # Validate explainer_type
@@ -403,6 +404,7 @@ def compute_shap_importance(
     check_additivity: bool = True,
     max_samples: int | None = None,
     explainer_type: str = "auto",
+    *,
     background_data: Union["NDArray[Any]", None] = None,
     explainer_kwargs: dict | None = None,
     show_progress: bool = False,

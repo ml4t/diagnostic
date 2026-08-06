@@ -12,7 +12,10 @@ import numpy as np
 
 try:
     from numba import jit
+
+    NUMBA_AVAILABLE = True
 except ImportError:
+    NUMBA_AVAILABLE = False
 
     def jit(*args, **kwargs):  # type: ignore[misc]
         """Return an identity decorator when Numba is unavailable."""
@@ -135,7 +138,7 @@ def embargo_indices_numba(
 
 
 @jit(nopython=True, cache=True, parallel=True)
-def block_bootstrap_numba(
+def _block_bootstrap_jit(
     indices: np.ndarray,
     n_samples: int,
     sample_length: int,
@@ -191,6 +194,48 @@ def block_bootstrap_numba(
         filled += samples_to_take
 
     return result
+
+
+def _block_bootstrap_numpy(
+    indices: np.ndarray,
+    n_samples: int,
+    sample_length: int,
+    seed: int,
+) -> np.ndarray:
+    """Run block bootstrap sampling without modifying NumPy's global RNG."""
+    n_indices = len(indices)
+    if sample_length >= n_indices:
+        if n_samples <= n_indices:
+            return indices[:n_samples].copy()
+        repeats = (n_samples // n_indices) + 1
+        return np.tile(indices, repeats)[:n_samples]
+
+    rng = np.random.default_rng(seed)
+    result = np.empty(n_samples, dtype=indices.dtype)
+    filled = 0
+    while filled < n_samples:
+        start_idx = int(rng.integers(0, n_indices - sample_length + 1))
+        samples_to_take = min(sample_length, n_samples - filled)
+        result[filled : filled + samples_to_take] = indices[start_idx : start_idx + samples_to_take]
+        filled += samples_to_take
+    return result
+
+
+def block_bootstrap_numba(
+    indices: np.ndarray,
+    n_samples: int,
+    sample_length: int,
+    seed: int,
+) -> np.ndarray:
+    """Sample sequential blocks using Numba when installed, otherwise NumPy.
+
+    Both implementations preserve the caller's global NumPy random state. Their
+    seeded draws are reproducible within a backend but are not identical across
+    the Numba and NumPy random number generators.
+    """
+    if NUMBA_AVAILABLE:
+        return _block_bootstrap_jit(indices, n_samples, sample_length, seed)
+    return _block_bootstrap_numpy(indices, n_samples, sample_length, seed)
 
 
 @jit(nopython=True, cache=True)

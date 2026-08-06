@@ -85,6 +85,7 @@ def compute_distribution_tests(
         - test: Test name
         - statistic: Test statistic
         - p_value: P-value
+        - p_value_note: Limits on tabulated or interpolated p-values
         - interpretation: Human-readable interpretation
     """
     results = []
@@ -115,12 +116,19 @@ def compute_distribution_tests(
 
             result = anderson(returns, dist="norm", method="interpolate")
             stat = result.statistic
-            p_value = result.pvalue
+            p_value = float(result.pvalue)
+            if np.isclose(p_value, 0.15):
+                p_value_note = "p >= 0.15 (interpolation limit)"
+            elif np.isclose(p_value, 0.01):
+                p_value_note = "p <= 0.01 (interpolation limit)"
+            else:
+                p_value_note = "interpolated from critical-value table"
             results.append(
                 {
                     "test": "Anderson-Darling",
                     "statistic": stat,
                     "p_value": p_value,
+                    "p_value_note": p_value_note,
                     "interpretation": "Normal" if p_value > 0.05 else "Non-normal",
                 }
             )
@@ -145,7 +153,9 @@ def compute_distribution_tests(
             logger.debug("Jarque-Bera test failed", exc_info=True)
 
     if not results:
-        return pd.DataFrame(columns=["test", "statistic", "p_value", "interpretation"])
+        return pd.DataFrame(
+            columns=["test", "statistic", "p_value", "p_value_note", "interpretation"]
+        )
 
     return pd.DataFrame(results)
 

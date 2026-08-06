@@ -8,7 +8,10 @@ import polars as pl
 import pytest
 
 from ml4t.diagnostic.evaluation.portfolio_analysis import RollingMetricsResult
-from ml4t.diagnostic.visualization.portfolio import plot_rolling_sharpe
+from ml4t.diagnostic.visualization.portfolio import (
+    plot_monthly_returns_heatmap,
+    plot_rolling_sharpe,
+)
 
 
 def _make_rolling_result(*, windows: list[int]) -> RollingMetricsResult:
@@ -55,3 +58,19 @@ class TestRollingSharpePlots:
         annotation_texts = {annotation.text for annotation in fig.layout.annotations}
         assert "Good (1.0)" in annotation_texts
         assert "Excellent (2.0)" in annotation_texts
+
+
+def test_monthly_heatmap_aligns_partial_year_by_calendar_month() -> None:
+    """A series beginning in June leaves January through May empty."""
+
+    class PartialYearAnalysis:
+        @staticmethod
+        def get_monthly_returns_matrix() -> pl.DataFrame:
+            return pl.DataFrame({"year": [2024], "6": [0.06], "7": [0.07]})
+
+    fig = plot_monthly_returns_heatmap(PartialYearAnalysis())  # type: ignore[arg-type]
+    values = np.asarray(fig.data[0].z, dtype=float)[0]
+
+    assert np.isnan(values[:5]).all()
+    assert values[5] == pytest.approx(0.06)
+    assert values[6] == pytest.approx(0.07)

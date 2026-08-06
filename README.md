@@ -69,7 +69,6 @@ price_rows = []
 prices = np.full(len(assets), 100.0)
 for date in dates:
     scores = rng.normal(size=len(assets))
-    prices *= 1 + 0.002 * scores + rng.normal(scale=0.005, size=len(assets))
     factor_rows.extend(
         {"date": date, "asset": asset, "factor": score}
         for asset, score in zip(assets, scores, strict=True)
@@ -78,12 +77,15 @@ for date in dates:
         {"date": date, "asset": asset, "price": price}
         for asset, price in zip(assets, prices, strict=True)
     )
+    prices *= 1 + 0.002 * scores + rng.normal(scale=0.005, size=len(assets))
 
 result = analyze_signal(
     factor=pl.DataFrame(factor_rows),
     prices=pl.DataFrame(price_rows),
     periods=(1, 5),
 )
+
+assert result.ic["1D"] > 0.1
 
 print(f"IC (1D): {result.ic['1D']:.4f}")
 print(f"IC t-stat (1D): {result.ic_t_stat['1D']:.2f}")
@@ -198,7 +200,12 @@ print(f"Max Drawdown: {metrics.max_drawdown:.2%}")
 print(f"VaR (95%): {metrics.var_95:.2%}")
 ```
 
-Available metrics: `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `omega_ratio`, `tail_ratio`, `max_drawdown`, `annual_return`, `annual_volatility`, `value_at_risk`, `conditional_var`, `stability_of_timeseries`, `alpha_beta`, `information_ratio`, `up_down_capture`, and more.
+`PortfolioMetrics` exposes `total_return`, `annual_return`, `annual_volatility`,
+`sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `omega_ratio`, `tail_ratio`,
+`max_drawdown`, `skewness`, `kurtosis`, `var_95`, `cvar_95`, `stability`,
+`win_rate`, `profit_factor`, `avg_win`, and `avg_loss`. When a benchmark is
+provided, it also exposes `alpha`, `beta`, `information_ratio`, `up_capture`,
+and `down_capture`.
 
 ## Feature and Trade Diagnostics
 

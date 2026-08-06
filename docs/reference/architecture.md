@@ -136,10 +136,11 @@ The package keeps optional dependencies separated by workflow:
 | Extra | Adds |
 |---|---|
 | `viz` | Plotly, matplotlib, kaleido, PDF helpers |
-| `ml` | LightGBM and XGBoost backends |
+| `ml` | LightGBM, XGBoost, and SHAP backends |
+| `perf` | Numba JIT acceleration |
 | `dashboard` | Streamlit-based trade dashboard support |
 | `backtest` | `ml4t-backtest` bridge |
-| `all` | All non-GPU optional extras |
+| `all` | All optional extras |
 
 Core analytical workflows remain importable without the visualization stack.
 

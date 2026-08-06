@@ -42,8 +42,8 @@ class TestHACMathematicalCorrectness:
         ic_positive = np.array([0.05, 0.06, 0.04, 0.07, 0.05])
         ic_negative = -ic_positive
 
-        result_pos = compute_ic_hac_stats(ic_positive)
-        result_neg = compute_ic_hac_stats(ic_negative)
+        result_pos = compute_ic_hac_stats(ic_positive, label_horizon=1)
+        result_neg = compute_ic_hac_stats(ic_negative, label_horizon=1)
 
         # P-values should be identical (two-tailed test)
         assert abs(result_pos["p_value"] - result_neg["p_value"]) < 1e-10, (
@@ -58,7 +58,7 @@ class TestHACMathematicalCorrectness:
         from scipy import stats
 
         ic_series = np.linspace(0.049, 0.051, 100)
-        result = compute_ic_hac_stats(ic_series)
+        result = compute_ic_hac_stats(ic_series, label_horizon=1)
         expected = 2 * stats.t.sf(abs(result["t_stat"]), df=len(ic_series) - 1)
 
         assert expected > 0.0
@@ -81,7 +81,7 @@ class TestHACMathematicalCorrectness:
         for t in range(1, n):
             ic_series[t] = 0.05 + rho * (ic_series[t - 1] - 0.05) + innovations[t]
 
-        result = compute_ic_hac_stats(ic_series)
+        result = compute_ic_hac_stats(ic_series, label_horizon=1)
 
         # HAC SE should be larger due to autocorrelation
         assert result["hac_se"] > result["naive_se"], (
@@ -98,7 +98,7 @@ class TestHACMathematicalCorrectness:
         np.random.seed(123)
         ic_series = np.random.randn(100) * 0.03 + 0.02  # IID normal
 
-        result = compute_ic_hac_stats(ic_series)
+        result = compute_ic_hac_stats(ic_series, label_horizon=1)
 
         # For IID data, HAC and naive should be close
         ratio = result["hac_se"] / result["naive_se"]
@@ -116,9 +116,19 @@ class TestHACMathematicalCorrectness:
         for n, expected_lags in test_cases:
             ic_series = np.random.randn(n) * 0.02
 
-            result = compute_ic_hac_stats(ic_series, maxlags=None, label_horizon=None)
+            result = compute_ic_hac_stats(ic_series, maxlags=None, label_horizon=1)
 
             assert result["effective_lags"] == expected_lags
+
+    def test_missing_label_horizon_warns_about_overlapping_labels(self):
+        """Generic bandwidth selection cannot silently assume one-period labels."""
+        with pytest.warns(UserWarning, match="overlapping forward-return labels"):
+            compute_ic_hac_stats(np.arange(10, dtype=float))
+
+    def test_invalid_kernel_is_rejected_for_undersized_input(self):
+        """Argument validation does not depend on the sample size."""
+        with pytest.raises(ValueError, match="Unknown kernel"):
+            compute_ic_hac_stats(np.array([0.1, 0.2]), kernel="invalid")
 
     def test_label_horizon_floors_automatic_lag_for_overlapping_returns(self):
         """Overlapping h-period labels require HAC bandwidth of at least h-1."""
@@ -250,7 +260,7 @@ class TestEdgeCases:
         """NaN values should be removed before computation."""
         ic_series = np.array([0.05, np.nan, 0.06, 0.04, np.nan, 0.07, 0.05])
 
-        result = compute_ic_hac_stats(ic_series)
+        result = compute_ic_hac_stats(ic_series, label_horizon=1)
 
         # Should compute on 5 valid values
         assert result["n_periods"] == 5
@@ -260,7 +270,7 @@ class TestEdgeCases:
         """Constant IC series should give zero SE and undefined t-stat."""
         ic_series = np.array([0.05] * 10)
 
-        result = compute_ic_hac_stats(ic_series)
+        result = compute_ic_hac_stats(ic_series, label_horizon=1)
 
         assert result["mean_ic"] == 0.05
         assert result["naive_se"] == 0.0
@@ -287,7 +297,7 @@ class TestStatisticalProperties:
             # Generate IID IC under null (mean = 0)
             ic_series = np.random.randn(n_periods) * 0.02
 
-            result = compute_ic_hac_stats(ic_series)
+            result = compute_ic_hac_stats(ic_series, label_horizon=1)
 
             # Reject if p-value < alpha
             if result["p_value"] < alpha:
@@ -310,7 +320,7 @@ class TestStatisticalProperties:
             rejections = 0
             for _ in range(n_simulations):
                 ic_series = np.random.randn(n_periods) * 0.02 + true_ic
-                result = compute_ic_hac_stats(ic_series)
+                result = compute_ic_hac_stats(ic_series, label_horizon=1)
                 if result["p_value"] < 0.05:
                     rejections += 1
             return rejections / n_simulations
@@ -335,13 +345,13 @@ class TestInputFormats:
     def test_numpy_array_input(self):
         """Should accept numpy array."""
         ic = np.array([0.05, 0.06, 0.04, 0.07, 0.05])
-        result = compute_ic_hac_stats(ic)
+        result = compute_ic_hac_stats(ic, label_horizon=1)
         assert not np.isnan(result["mean_ic"])
 
     def test_list_input(self):
         """Should accept Python list."""
         ic = [0.05, 0.06, 0.04, 0.07, 0.05]
-        result = compute_ic_hac_stats(ic)
+        result = compute_ic_hac_stats(ic, label_horizon=1)
         assert not np.isnan(result["mean_ic"])
 
     def test_polars_dataframe_input(self):
@@ -349,7 +359,7 @@ class TestInputFormats:
         import polars as pl
 
         df = pl.DataFrame({"ic": [0.05, 0.06, 0.04, 0.07, 0.05]})
-        result = compute_ic_hac_stats(df, ic_col="ic")
+        result = compute_ic_hac_stats(df, ic_col="ic", label_horizon=1)
         assert not np.isnan(result["mean_ic"])
 
     def test_pandas_dataframe_input(self):
@@ -357,5 +367,5 @@ class TestInputFormats:
         import pandas as pd
 
         df = pd.DataFrame({"ic": [0.05, 0.06, 0.04, 0.07, 0.05]})
-        result = compute_ic_hac_stats(df, ic_col="ic")
+        result = compute_ic_hac_stats(df, ic_col="ic", label_horizon=1)
         assert not np.isnan(result["mean_ic"])

@@ -181,6 +181,90 @@ def test_rejects_duplicate_panel_keys() -> None:
         )
 
 
+def test_rejects_null_panel_keys() -> None:
+    """A declared panel key must identify every row."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    panel = _time_trending_panel().with_columns(
+        pl.when(pl.int_range(pl.len()) == 0).then(None).otherwise(pl.col("symbol")).alias("symbol")
+    )
+
+    with pytest.raises(ValueError, match="keys cannot contain null"):
+        quantile_profile(
+            panel,
+            feature="feature",
+            label="label",
+            keys=("symbol", "timestamp"),
+        )
+
+
+def test_rejects_non_numeric_feature() -> None:
+    """Bucket inputs must have numeric data types."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    panel = _time_trending_panel().with_columns(pl.col("feature").cast(pl.String))
+
+    with pytest.raises(ValueError, match="'feature' must be numeric"):
+        quantile_profile(panel, feature="feature", label="label")
+
+
+def test_rejects_panel_without_finite_pairs() -> None:
+    """Filtering every pair is an explicit input error."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    panel = pl.DataFrame(
+        {"timestamp": [1, 1], "feature": [float("nan"), None], "label": [1.0, 2.0]}
+    )
+
+    with pytest.raises(ValueError, match="No finite feature-label pairs"):
+        quantile_profile(panel, feature="feature", label="label", n_quantiles=2)
+
+
+@pytest.mark.parametrize("keys", ["", ("symbol", "symbol")])
+def test_rejects_invalid_key_names(keys: object) -> None:
+    """Key declarations must contain unique non-empty names."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    with pytest.raises(ValueError, match="keys must"):
+        quantile_profile(
+            _time_trending_panel(),
+            feature="feature",
+            label="label",
+            keys=keys,  # type: ignore[arg-type]
+        )
+
+
+def test_rejects_non_dataframe_panel() -> None:
+    """The public contract requires a Polars DataFrame."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    with pytest.raises(TypeError, match="Polars DataFrame"):
+        quantile_profile([], feature="feature", label="label")  # type: ignore[arg-type]
+
+
+def test_non_finite_and_null_group_rows_are_excluded() -> None:
+    """Only complete finite feature-label pairs enter grouped profiles."""
+    from ml4t.diagnostic.metrics import quantile_profile
+
+    panel = pl.DataFrame(
+        {
+            "timestamp": [1, 1, 1, None, 1],
+            "feature": [0.0, 1.0, 2.0, 3.0, float("inf")],
+            "label": [0.0, 1.0, 2.0, 3.0, 4.0],
+        }
+    )
+
+    profile = quantile_profile(
+        panel,
+        feature="feature",
+        label="label",
+        n_quantiles=3,
+        min_per_bucket=1,
+    )
+
+    assert sum(profile.counts.values()) == 3
+
+
 def test_tied_features_are_permutation_invariant() -> None:
     """Equal feature values cannot manufacture an order-dependent profile."""
     from ml4t.diagnostic.metrics import quantile_profile

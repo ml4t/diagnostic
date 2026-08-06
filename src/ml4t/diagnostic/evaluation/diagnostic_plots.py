@@ -1022,7 +1022,8 @@ def get_figure_data(fig: go.Figure) -> pd.DataFrame:
 
     Notes
     -----
-    The DataFrame structure depends on the plot type.
+    The DataFrame structure depends on the plot type. Traces with different
+    lengths are aligned by position and shorter traces are padded with NaN.
     Inspect df.columns to understand available data.
     """
     data_dict = {}

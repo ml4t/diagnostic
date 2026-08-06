@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import html as html_mod
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -43,6 +44,8 @@ from .template_system import (
     TearsheetTemplate,
     get_template,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -1277,14 +1280,12 @@ def _build_portfolio_analysis(
             date_col = "session_date" if "session_date" in daily_frame.columns else "date"
             if date_col in daily_frame.columns and daily_frame.height == len(ret_series):
                 analysis_dates = daily_frame[date_col]
-        except Exception as exc:
-            from ml4t.diagnostic.errors import ReportGenerationError
-
-            raise ReportGenerationError(
-                "Failed to resolve portfolio dates from the backtest profile",
-                context={"phase": "portfolio_dates"},
-                cause=exc,
-            ) from exc
+        except Exception:
+            logger.warning(
+                "Could not resolve portfolio dates from the backtest profile; "
+                "using the equity-curve fallback",
+                exc_info=True,
+            )
 
     if analysis_dates is None and equity_curve is not None and not equity_curve.is_empty():
         for _dc in ("timestamp", "date", "session_date"):
@@ -1785,7 +1786,7 @@ def _render_sharpe_bootstrap(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_mfe_mae(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or not {"mfe", "mae"}.issubset(ctx.trades.columns):
         return None
     from .trade_plots import plot_mfe_mae_scatter
 
@@ -1793,7 +1794,7 @@ def _render_mfe_mae(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_exit_reasons(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or not {"exit_reason", "pnl"}.issubset(ctx.trades.columns):
         return None
     # Skip if fewer than 3 distinct exit reasons (not informative)
     if "exit_reason" in ctx.trades.columns:
@@ -1806,7 +1807,7 @@ def _render_exit_reasons(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_trade_waterfall(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or "pnl" not in ctx.trades.columns:
         return None
     from .trade_plots import plot_trade_waterfall
 

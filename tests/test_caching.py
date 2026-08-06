@@ -550,10 +550,6 @@ class TestCachePerformance:
         assert second_time < first_time * 0.5  # At least 2x speedup
 
 
-class TestIntegration:
-    """Integration tests for caching framework."""
-
-
 # SmartCache tests - for Polars DataFrame fingerprinting cache
 from unittest.mock import MagicMock
 

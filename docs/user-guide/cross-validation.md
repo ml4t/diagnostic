@@ -23,6 +23,7 @@ cv = WalkForwardCV(
 walk_forward_splits = list(cv.split(features))
 assert len(walk_forward_splits) == 4
 assert all(train.max() < test.min() for train, test in walk_forward_splits)
+assert all(test.min() - train.max() > cv.label_horizon for train, test in walk_forward_splits)
 
 for fold, (train, test) in enumerate(walk_forward_splits, start=1):
     print(f"Fold {fold}: {len(train)} train, {len(test)} test")
@@ -55,7 +56,29 @@ assert all(
     len(np.intersect1d(train, test)) == 0
     for train, test in combinatorial_splits
 )
+assert all(
+    not any(
+        np.intersect1d(np.arange(index + 1, index + cpcv.label_horizon + 1), test).size
+        for index in train
+    )
+    for train, test in combinatorial_splits
+)
 print(f"CPCV combinations: {len(combinatorial_splits)}")
+```
+
+## Combine CPCV results with DSR
+
+`ValidatedCrossValidation` summarizes fold Sharpe ratios and corrects the best
+observed result for the number of trials.
+
+```python
+from ml4t.diagnostic import ValidatedCrossValidation
+
+validation = ValidatedCrossValidation()
+validation_result = validation.evaluate_sharpes([0.42, 0.51, 0.37, 0.48, 0.45])
+
+assert validation_result.n_folds == 5
+print(validation_result.summary())
 ```
 
 ## Select a splitter

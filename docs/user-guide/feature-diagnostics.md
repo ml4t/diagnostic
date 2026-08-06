@@ -53,16 +53,22 @@ the [HAC IC method](../methods/hac-ic.md) for time-series inference.
 `by=None` only when pooled quantiles match the research question.
 
 ```python
+from datetime import date, timedelta
+
 import polars as pl
 
 from ml4t.diagnostic import quantile_profile
 
 panel = pl.DataFrame(
     {
-        "timestamp": [date for date in range(3) for _ in range(10)],
+        "timestamp": [
+            date(2024, 1, 2) + timedelta(days=day)
+            for day in range(3)
+            for _ in range(10)
+        ],
         "asset": [f"asset_{asset}" for _ in range(3) for asset in range(10)],
         "feature": [float(asset) for _ in range(3) for asset in range(10)],
-        "label": [0.01 * asset + 0.001 * date for date in range(3) for asset in range(10)],
+        "label": [0.01 * asset + 0.001 * day for day in range(3) for asset in range(10)],
     }
 )
 
@@ -81,8 +87,11 @@ print(profile.counts)
 print(f"Monotonicity: {profile.monotonicity:.2f}")
 ```
 
-Rows with non-finite feature or label values are excluded. A group with fewer
-valid rows than quantiles is excluded. Pooled input with fewer valid rows than
-quantiles raises `ValueError`. Equal feature values share an average rank, so
-their bucket does not depend on input order. Empty buckets can still occur when
-many rows have the same feature value; in that case monotonicity is `NaN`.
+Rows with null or non-finite feature or label values, and rows with a null group,
+are excluded. A group with fewer valid rows than quantiles is excluded. The call
+raises `ValueError` when no finite pairs remain, no group is large enough, or
+pooled input has fewer valid rows than quantiles. Equal feature values share an
+average rank, so their bucket does not depend on input order. Monotonicity is
+`NaN` when a bucket has fewer than `min_per_bucket` observations, a bucket is
+empty, or all bucket means are equal. The example lowers `min_per_bucket` from
+its default of 20 to 6 because the toy panel contains only 30 rows.

@@ -91,7 +91,14 @@ def plot_tail_risk_analysis(
     # Sortino ratio (annualized, assuming daily returns)
     downside = np.minimum(returns, 0.0)
     downside_std = float(np.sqrt(np.mean(downside**2)))
-    sortino = mu / downside_std * np.sqrt(252) if downside_std > 0 else 0.0
+    if downside_std > 0:
+        sortino = mu / downside_std * np.sqrt(252)
+    elif mu > 0:
+        sortino = np.inf
+    elif mu < 0:
+        sortino = -np.inf
+    else:
+        sortino = np.nan
 
     # Compute VaR/CVaR at each level
     var_results: dict[float, dict[str, float]] = {}

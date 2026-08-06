@@ -16,6 +16,8 @@ namespaces = true
 include = [
     "/src",
     "/tests",
+    "/docs",
+    "/examples",
     "/README.md",
     "/LICENSE",
     "/CHANGELOG.md",
@@ -71,6 +73,7 @@ dependencies = [
     # Data processing
     "polars>=0.20.0",
     "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
     "numpy>=1.24.0",
     # Scientific computing
     "scipy>=1.17.0",
@@ -80,7 +83,7 @@ dependencies = [
     # Progress reporting
     "tqdm>=4.66.0",
     # Configuration management
-    "pydantic>=2.13.4,<2.14.0",
+    "pydantic>=2.13.4,<3",
     "pyyaml>=6.0",
     # Trading calendars (for calendar-aware CV)
     "pandas_market_calendars>=4.0.0",
@@ -119,8 +122,12 @@ viz = [
 ml = [
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "streamlit>=1.28.0",
     "shap>=0.52.0,<0.53.0",
+]
+
+# Optional JIT acceleration for bootstrap and rolling computations
+perf = [
+    "numba>=0.62.0",
 ]
 
 # Dashboard and interactive visualization (Streamlit)
@@ -172,6 +179,7 @@ all = [
     "pypdf>=5.0.0",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
+    "numba>=0.62.0",
     "ml4t-data>=0.1.0b7",
     "ml4t-backtest>=0.1.0b10",
     "streamlit>=1.28.0",
@@ -207,6 +215,8 @@ dev = [
     # ML backends needed for SHAP/importance test coverage
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
+    "numba>=0.62.0",
+    "streamlit>=1.28.0",
 ]
 
 [tool.pytest.ini_options]

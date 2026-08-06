@@ -36,6 +36,28 @@ print(path.read_text())
 Use `to_yaml` and `from_yaml` for YAML. Both formats preserve the validated
 configuration values.
 
+## Persist generated folds
+
+Persist the actual train/test indices when an audit or later model run must use
+the same observations, not just the same splitter settings.
+
+```python
+from ml4t.diagnostic.splitters import load_folds, save_folds
+
+fold_path = Path("walk_forward_folds.json")
+save_folds(splits, features, fold_path, metadata={"dataset": "example-v1"})
+loaded_folds, metadata = load_folds(fold_path)
+
+assert metadata["dataset"] == "example-v1"
+assert all(
+    np.array_equal(saved_train, loaded_train)
+    and np.array_equal(saved_test, loaded_test)
+    for (saved_train, saved_test), (loaded_train, loaded_test) in zip(
+        splits, loaded_folds, strict=True
+    )
+)
+```
+
 ## Configuration classes
 
 | Splitter | Configuration |

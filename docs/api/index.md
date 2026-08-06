@@ -35,6 +35,7 @@ The package root re-exports the most common classes and configs for interactive 
 | Category | Objects |
 |---|---|
 | Core workflows | `ValidatedCrossValidation`, `FeatureSelector`, `analyze_signal`, `BarrierAnalysis` |
+| Metrics | `quantile_profile`, `QuantileProfile` |
 | Result types | `SignalResult`, data-quality schemas |
 | Configuration | `DiagnosticConfig`, `StatisticalConfig`, `PortfolioConfig`, `TradeConfig`, `SignalConfig`, `EventConfig`, `BarrierConfig`, `ReportConfig`, `RuntimeConfig` |
 | Optional visuals | selected barrier-analysis plot functions when viz dependencies are installed |

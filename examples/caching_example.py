@@ -6,11 +6,13 @@ This example shows:
 1. Basic caching with decorator
 2. Manual cache control
 3. LRU caching
-4. TTL and expiration
-5. LRU eviction
+4. Explicit invalidation
+5. TTL and expiration
 6. Performance benchmarking
 7. Custom key functions
-8. Integration patterns
+8. Cache invalidation
+9. Disabled caching
+10. Integration patterns
 """
 
 import time

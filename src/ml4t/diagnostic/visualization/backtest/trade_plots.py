@@ -1310,13 +1310,14 @@ def plot_consecutive_analysis(
         font={"size": 11, "color": _ML4T_COLORS["negative"]},
     )
 
-    fig.update_layout(
+    layout = {k: v for k, v in theme_config["layout"].items() if k != "margin"}
+    layout.update(
         title="Consecutive Trade Streak Analysis",
         height=height,
         width=width,
         showlegend=False,
-        **{k: v for k, v in theme_config["layout"].items() if k != "margin"},
     )
+    fig.update_layout(**layout)
 
     fig.update_xaxes(title_text="Streak Length", row=1, col=1)
     fig.update_xaxes(title_text="Streak Length", row=1, col=2)
