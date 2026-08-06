@@ -34,7 +34,7 @@ def _compute_quantile_return_statistics(
         quantile_number = int(quantile)
         means[quantile_number] = float(np.mean(returns))
         standard_deviations[quantile_number] = (
-            float(np.std(returns, ddof=1)) if len(returns) > 1 else 0.0
+            float(np.std(returns, ddof=1)) if len(returns) > 1 else float("nan")
         )
 
     # Fill missing quantiles

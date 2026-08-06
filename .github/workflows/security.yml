@@ -39,6 +39,7 @@ jobs:
           --vulnerability-service pypi -r requirements-audit.txt
 
       - name: Audit OSV advisories
+        if: ${{ always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' }}
         run: >-
           uv run pip-audit --strict --require-hashes --disable-pip
           --vulnerability-service osv -r requirements-audit.txt

@@ -185,7 +185,7 @@ class TestComputeQuantileReturns:
         assert means[2] == float(np.mean([2.0, 6.0]))
         assert standard_deviations[1] == float(np.std([1.0, 3.0], ddof=1))
         assert standard_deviations[2] == float(np.std([2.0, 6.0], ddof=1))
-        assert standard_deviations[3] == 0.0
+        assert np.isnan(standard_deviations[3])
         assert np.isnan(means[4]) and np.isnan(standard_deviations[4])
         assert np.isnan(means[5]) and np.isnan(standard_deviations[5])
 

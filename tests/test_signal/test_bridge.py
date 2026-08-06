@@ -314,8 +314,7 @@ class TestToQuantileResult:
             quantiles=3,
         )
         qr = result.to_quantile_result()
-        # std_returns should be 0.0 when not available
-        assert qr.std_returns["1D"]["Q1"] == 0.0
+        assert np.isnan(qr.std_returns["1D"]["Q1"])
 
 
 # =============================================================================

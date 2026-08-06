@@ -243,18 +243,27 @@ class TestDomainClassifierModels:
         pytest.importorskip("lightgbm")
         reference, test = simple_shift_data
 
-        result = compute_domain_classifier_drift(
+        first = compute_domain_classifier_drift(
             reference,
             test,
             model_type="lightgbm",
             n_estimators=20,
             cv_folds=3,
             random_state=42,
-            n_jobs=1,
+        )
+        second = compute_domain_classifier_drift(
+            reference,
+            test,
+            model_type="lightgbm",
+            n_estimators=20,
+            cv_folds=3,
+            random_state=42,
         )
 
-        assert 0 <= result.auc <= 1
-        assert result.model_type == "lightgbm"
+        assert 0 <= first.auc <= 1
+        assert first.model_type == "lightgbm"
+        assert first.auc == second.auc
+        assert first.cv_auc_mean == second.cv_auc_mean
 
     def test_xgboost_model(self, simple_shift_data):
         """Test XGBoost model."""

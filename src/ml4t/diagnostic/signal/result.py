@@ -249,13 +249,13 @@ class SignalResult:
 
         mean_returns = {pk: _relabel(self.quantile_returns[pk]) for pk in period_keys}
 
-        # std_returns: use captured data or fill with 0.0
+        # std_returns: use captured data or mark unavailable values as NaN
         std_returns: dict[str, dict[str, float]] = {}
         for pk in period_keys:
             if pk in self.quantile_returns_std:
                 std_returns[pk] = _relabel(self.quantile_returns_std[pk])
             else:
-                std_returns[pk] = dict.fromkeys(quantile_labels, 0.0)
+                std_returns[pk] = dict.fromkeys(quantile_labels, float("nan"))
 
         # count_by_quantile with string labels
         count_by_q: dict[str, int]

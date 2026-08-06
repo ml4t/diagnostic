@@ -192,7 +192,8 @@ def compute_domain_classifier_drift(
         max_depth: Maximum tree depth (default: 5)
         threshold: AUC threshold for flagging drift (default: 0.6)
         cv_folds: Number of cross-validation folds (default: 5)
-        random_state: Random seed for reproducibility (default: 42)
+        random_state: Random seed for reproducibility (default: 42). LightGBM and
+            XGBoost results are reproducible when the thread count is unchanged.
         n_jobs: Threads used by the classifier. None preserves the backend default.
 
     Returns:
@@ -450,6 +451,7 @@ def _train_domain_classifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             random_state=random_state,
+            deterministic=True,
             verbose=-1,
             force_col_wise=True,  # Suppress warning
             n_jobs=n_jobs,

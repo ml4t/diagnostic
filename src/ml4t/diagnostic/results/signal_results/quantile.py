@@ -10,6 +10,7 @@ Lopez de Prado, M. (2018). "Advances in Financial Machine Learning"
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import polars as pl
@@ -287,7 +288,9 @@ class QuantileAnalysisResult(BaseResult):
             for q in self.quantile_labels:
                 mean = self.mean_returns[period][q]
                 std = self.std_returns[period][q]
-                lines.append(f"  {q:<10} {mean:>10.4%}  {std:>10.4%}")
+                mean_display = "N/A" if not math.isfinite(mean) else f"{mean:.4%}"
+                std_display = "N/A" if not math.isfinite(std) else f"{std:.4%}"
+                lines.append(f"  {q:<10} {mean_display:>10}  {std_display:>10}")
 
             lines.append("")
             lines.append(f"Spread (Top-Bottom): {self.spread_mean[period]:>10.4%}")
