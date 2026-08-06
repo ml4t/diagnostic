@@ -560,11 +560,17 @@ class TestQuantileAnalysisResultSummary:
         result = sample_quantile_result.model_copy(deep=True)
         result.mean_returns["1D"]["Q1"] = float("nan")
         result.std_returns["1D"]["Q1"] = float("nan")
+        result.spread_mean["1D"] = float("nan")
+        result.spread_t_stat["1D"] = float("nan")
+        result.spread_p_value["1D"] = float("nan")
 
         summary = result.summary()
 
         assert "Q1                N/A         N/A" in summary
-        assert "nan%" not in summary
+        assert "Spread (Top-Bottom):        N/A" in summary
+        assert "Spread t-stat:              N/A" in summary
+        assert "Spread p-value:             N/A" in summary
+        assert "nan" not in summary.lower()
 
 
 # =============================================================================

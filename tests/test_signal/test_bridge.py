@@ -386,6 +386,28 @@ class TestVizRoundtrip:
         assert fig is not None
         assert len(fig.data) > 0
 
+    def test_quantile_plots_handle_single_observation(self, signal_result):
+        """Unavailable sample deviation does not produce NaN plot data."""
+        from ml4t.diagnostic.visualization.signal.quantile_plots import (
+            plot_quantile_returns_bar,
+            plot_quantile_returns_violin,
+        )
+
+        result = signal_result.to_quantile_result()
+        result.std_returns["1D"]["Q1"] = float("nan")
+        result.count_by_quantile["Q1"] = 1
+        result.spread_mean["1D"] = float("nan")
+        result.spread_t_stat["1D"] = float("nan")
+        result.spread_p_value["1D"] = float("nan")
+
+        bar = plot_quantile_returns_bar(result, period="1D")
+        violin = plot_quantile_returns_violin(result, period="1D")
+
+        assert bar.data[0].error_y.array[0] == 0.0
+        assert np.isfinite(np.asarray(violin.data[0].y)).all()
+        assert "N/A" in bar.layout.annotations[-1].text
+        assert "nan" not in bar.layout.annotations[-1].text.lower()
+
     def test_ic_single_period_roundtrip(self, signal_result):
         """Single-period IC result works with plot_ic_ts."""
         from ml4t.diagnostic.visualization.signal.ic_plots import plot_ic_ts
