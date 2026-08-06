@@ -17,6 +17,15 @@ from ml4t.diagnostic.evaluation.trade_dashboard.types import ReturnSummary
 logger = logging.getLogger(__name__)
 
 
+def _anderson_p_value_note(p_value: float) -> str:
+    """Describe the interpolation range represented by an Anderson p-value."""
+    if np.isclose(p_value, 0.15):
+        return "p >= 0.15 (interpolation limit)"
+    if np.isclose(p_value, 0.01):
+        return "p <= 0.01 (interpolation limit)"
+    return "interpolated from critical-value table"
+
+
 def compute_return_summary(returns: np.ndarray) -> ReturnSummary:
     """Compute summary statistics for a returns series.
 
@@ -103,6 +112,7 @@ def compute_distribution_tests(
                     "test": "Shapiro-Wilk",
                     "statistic": stat,
                     "p_value": p,
+                    "p_value_note": "computed by SciPy Shapiro-Wilk",
                     "interpretation": "Normal" if p > 0.05 else "Non-normal",
                 }
             )
@@ -117,18 +127,12 @@ def compute_distribution_tests(
             result = anderson(returns, dist="norm", method="interpolate")
             stat = result.statistic
             p_value = float(result.pvalue)
-            if np.isclose(p_value, 0.15):
-                p_value_note = "p >= 0.15 (interpolation limit)"
-            elif np.isclose(p_value, 0.01):
-                p_value_note = "p <= 0.01 (interpolation limit)"
-            else:
-                p_value_note = "interpolated from critical-value table"
             results.append(
                 {
                     "test": "Anderson-Darling",
                     "statistic": stat,
                     "p_value": p_value,
-                    "p_value_note": p_value_note,
+                    "p_value_note": _anderson_p_value_note(p_value),
                     "interpretation": "Normal" if p_value > 0.05 else "Non-normal",
                 }
             )
@@ -146,6 +150,7 @@ def compute_distribution_tests(
                     "test": "Jarque-Bera",
                     "statistic": stat,
                     "p_value": p,
+                    "p_value_note": "asymptotic chi-squared approximation",
                     "interpretation": "Normal" if p > 0.05 else "Non-normal",
                 }
             )

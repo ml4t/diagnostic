@@ -119,8 +119,8 @@ print(diag.__version__)
 |---------|-------|---------|
 | lightgbm | ml | Gradient boosting |
 | xgboost | ml | Gradient boosting |
-| shap | ml | SHAP explanations |
-| numba | perf | JIT acceleration |
+| shap | ml | SHAP explanations (not installed on Intel macOS with Python 3.14) |
+| numba | perf | JIT acceleration (not installed on Intel macOS with Python 3.14) |
 | plotly | viz | Interactive charts |
 | matplotlib | viz | Static charts |
 

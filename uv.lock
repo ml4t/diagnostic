@@ -1068,7 +1068,6 @@ name = "llvmlite"
 version = "0.45.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/99/8d/5baf1cef7f9c084fb35a8afbde88074f0d6a727bc63ef764fe0e7543ba40/llvmlite-0.45.1.tar.gz", hash = "sha256:09430bb9d0bb58fc45a45a57c7eae912850bedc095cd0810a57de109c69e1c32", size = 185600, upload-time = "2025-10-01T17:59:52.046Z" }
@@ -1595,12 +1594,12 @@ all = [
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
     { name = "ml4t-data" },
-    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "plotly" },
     { name = "pypdf" },
     { name = "seaborn" },
-    { name = "shap" },
+    { name = "shap", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "streamlit" },
     { name = "xgboost" },
 ]
@@ -1608,7 +1607,7 @@ backtest = [
     { name = "ml4t-backtest" },
 ]
 dashboard = [
-    { name = "shap" },
+    { name = "shap", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "streamlit" },
 ]
 data = [
@@ -1639,11 +1638,11 @@ factors = [
 ]
 ml = [
     { name = "lightgbm" },
-    { name = "shap" },
+    { name = "shap", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "xgboost" },
 ]
 perf = [
-    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
 ]
 viz = [
@@ -1661,7 +1660,7 @@ dev = [
     { name = "lightgbm" },
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
-    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "plotly" },
     { name = "pre-commit" },
@@ -1703,8 +1702,8 @@ requires-dist = [
     { name = "ml4t-data", marker = "extra == 'all'", specifier = ">=0.1.0b7" },
     { name = "ml4t-data", marker = "extra == 'data'", specifier = ">=0.1.0b7" },
     { name = "ml4t-data", marker = "extra == 'factors'", specifier = ">=0.1.0b7" },
-    { name = "numba", marker = "extra == 'all'", specifier = ">=0.62.0" },
-    { name = "numba", marker = "extra == 'perf'", specifier = ">=0.62.0" },
+    { name = "numba", marker = "(python_full_version < '3.14' and extra == 'all') or (platform_machine != 'x86_64' and extra == 'all') or (sys_platform != 'darwin' and extra == 'all')", specifier = ">=0.62.0" },
+    { name = "numba", marker = "(python_full_version < '3.14' and extra == 'perf') or (platform_machine != 'x86_64' and extra == 'perf') or (sys_platform != 'darwin' and extra == 'perf')", specifier = ">=0.62.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pandas-market-calendars", specifier = ">=4.0.0" },
@@ -1727,9 +1726,9 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.17.0" },
     { name = "seaborn", marker = "extra == 'all'", specifier = ">=0.12.0" },
     { name = "seaborn", marker = "extra == 'viz'", specifier = ">=0.12.0" },
-    { name = "shap", marker = "extra == 'all'", specifier = ">=0.52.0,<0.53.0" },
-    { name = "shap", marker = "extra == 'dashboard'", specifier = ">=0.52.0,<0.53.0" },
-    { name = "shap", marker = "extra == 'ml'", specifier = ">=0.52.0,<0.53.0" },
+    { name = "shap", marker = "(python_full_version < '3.14' and extra == 'all') or (platform_machine != 'x86_64' and extra == 'all') or (sys_platform != 'darwin' and extra == 'all')", specifier = ">=0.52.0,<0.53.0" },
+    { name = "shap", marker = "(python_full_version < '3.14' and extra == 'dashboard') or (platform_machine != 'x86_64' and extra == 'dashboard') or (sys_platform != 'darwin' and extra == 'dashboard')", specifier = ">=0.52.0,<0.53.0" },
+    { name = "shap", marker = "(python_full_version < '3.14' and extra == 'ml') or (platform_machine != 'x86_64' and extra == 'ml') or (sys_platform != 'darwin' and extra == 'ml')", specifier = ">=0.52.0,<0.53.0" },
     { name = "statsmodels", specifier = ">=0.14.0" },
     { name = "streamlit", marker = "extra == 'all'", specifier = ">=1.28.0" },
     { name = "streamlit", marker = "extra == 'dashboard'", specifier = ">=1.28.0" },
@@ -1747,7 +1746,7 @@ dev = [
     { name = "lightgbm", specifier = ">=4.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "ml4t-backtest", specifier = ">=0.1.0b10" },
-    { name = "numba", specifier = ">=0.62.0" },
+    { name = "numba", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'", specifier = ">=0.62.0" },
     { name = "plotly", specifier = ">=5.15.0" },
     { name = "pre-commit", specifier = ">=3.3.0" },
     { name = "pypdf", specifier = ">=5.0.0" },
@@ -1842,12 +1841,11 @@ name = "numba"
 version = "0.62.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "llvmlite", version = "0.45.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
-    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "llvmlite", version = "0.45.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a3/20/33dbdbfe60e5fd8e3dbfde299d106279a33d9f8308346022316781368591/numba-0.62.1.tar.gz", hash = "sha256:7b774242aa890e34c21200a1fc62e5b5757d5286267e71103257f4e2af0d5161", size = 2749817, upload-time = "2025-09-29T10:46:31.551Z" }
 wheels = [
@@ -3169,20 +3167,20 @@ name = "shap"
 version = "0.52.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cloudpickle" },
-    { name = "llvmlite", version = "0.45.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "cloudpickle", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "llvmlite", version = "0.45.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "llvmlite", version = "0.48.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
-    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
-    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
-    { name = "packaging" },
-    { name = "pandas" },
+    { name = "packaging", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "pandas", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
-    { name = "scipy" },
-    { name = "slicer" },
-    { name = "tqdm" },
+    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.14' and platform_machine != 'x86_64') or (python_full_version >= '3.14' and sys_platform != 'darwin')" },
+    { name = "scipy", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "slicer", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "tqdm", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fc/0a/aa278f42c08cb47f2bb503085be0c521da2886929c6605b6105748a7590f/shap-0.52.0.tar.gz", hash = "sha256:81d4ae478f67f8122de1bb411dc4e3ddff0604cbc27dc9cb8ea66d5c73462fd2", size = 4192842, upload-time = "2026-05-28T14:17:49.011Z" }
 wheels = [

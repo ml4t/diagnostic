@@ -777,6 +777,7 @@ class TestTearsheetGeneration:
         assert _generate_section("mfe_mae", trades=trades) is None
         assert _generate_section("exit_reasons", trades=trades) is None
         assert _generate_section("trade_waterfall", trades=trades) is None
+        assert _generate_section("duration", trades=trades) is None
 
     def test_insufficient_validation_data_is_visible(self):
         """A short return history explains why validation metrics are absent."""

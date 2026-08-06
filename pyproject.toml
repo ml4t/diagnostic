@@ -122,18 +122,18 @@ viz = [
 ml = [
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "shap>=0.52.0,<0.53.0",
+    "shap>=0.52.0,<0.53.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
 ]
 
 # Optional JIT acceleration for bootstrap and rolling computations
 perf = [
-    "numba>=0.62.0",
+    "numba>=0.62.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
 ]
 
 # Dashboard and interactive visualization (Streamlit)
 dashboard = [
     "streamlit>=1.28.0",
-    "shap>=0.52.0,<0.53.0",
+    "shap>=0.52.0,<0.53.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
 ]
 
 # Factor analysis with automatic data sourcing (Fama-French, AQR)
@@ -179,11 +179,11 @@ all = [
     "pypdf>=5.0.0",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "numba>=0.62.0",
+    "numba>=0.62.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
     "ml4t-data>=0.1.0b7",
     "ml4t-backtest>=0.1.0b10",
     "streamlit>=1.28.0",
-    "shap>=0.52.0,<0.53.0",
+    "shap>=0.52.0,<0.53.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
 ]
 
 [project.urls]
@@ -215,7 +215,7 @@ dev = [
     # ML backends needed for SHAP/importance test coverage
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
-    "numba>=0.62.0",
+    "numba>=0.62.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
     "streamlit>=1.28.0",
 ]
 

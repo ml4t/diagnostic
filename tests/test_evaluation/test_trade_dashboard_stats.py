@@ -261,9 +261,33 @@ class TestComputeDistributionTests:
         assert any("Anderson" in t for t in tests)
         assert any("Jarque" in t for t in tests)
 
-        anderson = df.loc[df["test"] == "Anderson-Darling"].iloc[0]
-        if anderson["p_value"] == pytest.approx(0.15):
-            assert anderson["p_value_note"] == "p >= 0.15 (interpolation limit)"
+        assert df["p_value_note"].notna().all()
+
+    @pytest.mark.parametrize(
+        ("p_value", "expected"),
+        [
+            (0.15, "p >= 0.15 (interpolation limit)"),
+            (0.01, "p <= 0.01 (interpolation limit)"),
+            (0.07, "interpolated from critical-value table"),
+        ],
+    )
+    def test_anderson_p_value_bounds_are_explicit(self, p_value, expected):
+        """Every interpolation branch has deterministic coverage."""
+        from ml4t.diagnostic.evaluation.trade_dashboard.stats import _anderson_p_value_note
+
+        assert _anderson_p_value_note(p_value) == expected
+
+    def test_three_observations_keep_documented_schema(self):
+        """Shapiro-only results retain the note column."""
+        df = compute_distribution_tests(np.array([0.01, 0.02, 0.03]))
+
+        assert list(df.columns) == [
+            "test",
+            "statistic",
+            "p_value",
+            "p_value_note",
+            "interpretation",
+        ]
 
     def test_non_normal_distribution(self):
         """Test with clearly non-normal distribution."""

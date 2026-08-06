@@ -258,9 +258,7 @@ def compute_shap_interactions(
         import shap
     except ImportError as e:
         raise ImportError(
-            "SHAP is required for interaction values. "
-            "Install with: pip install ml4t-diagnostic[ml] "
-            "or: pip install shap>=0.43.0"
+            "SHAP is required for interaction values. Install with: pip install ml4t-diagnostic[ml]"
         ) from e
 
     # Convert input to numpy and extract feature names

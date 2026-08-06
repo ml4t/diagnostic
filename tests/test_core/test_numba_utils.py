@@ -162,6 +162,23 @@ class TestBlockBootstrapNumba:
 
         np.testing.assert_array_equal(actual, expected)
 
+    def test_dispatch_uses_isolated_numpy_fallback(self, monkeypatch):
+        """The public dispatcher covers no-Numba installs without global RNG changes."""
+        import ml4t.diagnostic.core.numba_utils as module
+
+        indices = np.arange(100)
+        expected = module._block_bootstrap_numpy(indices, 50, 5, 42)
+        monkeypatch.setattr(module, "NUMBA_AVAILABLE", False)
+        np.random.seed(123)
+        expected_random = np.random.random(3)
+
+        np.random.seed(123)
+        actual = module.block_bootstrap_numba(indices, 50, 5, 42)
+        actual_random = np.random.random(3)
+
+        np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_array_equal(actual_random, expected_random)
+
 
 class TestRollingSharpeNumba:
     """Test Numba-optimized rolling Sharpe ratio."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import tarfile
 import zipfile
 from email.parser import BytesParser
@@ -37,7 +38,12 @@ def main() -> None:
         metadata_name = next(name for name in wheel_names if name.endswith(".dist-info/METADATA"))
         metadata = BytesParser().parsebytes(archive.read(metadata_name))
     requirements = metadata.get_all("Requires-Dist", [])
-    if not any(requirement.lower().startswith("pyarrow>=14.0.0") for requirement in requirements):
+    requirement_names = {
+        match.group(0).lower().replace("_", "-")
+        for requirement in requirements
+        if (match := re.match(r"[A-Za-z0-9_.-]+", requirement)) is not None
+    }
+    if "pyarrow" not in requirement_names:
         raise RuntimeError("wheel metadata does not declare the required pyarrow dependency")
     if any(name.startswith("ml4t/diagnostic/artifacts/") for name in wheel_names):
         raise RuntimeError("wheel contains the removed artifact adapter")

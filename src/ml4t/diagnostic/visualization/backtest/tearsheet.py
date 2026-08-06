@@ -1797,10 +1797,9 @@ def _render_exit_reasons(ctx: _SectionContext) -> go.Figure | None:
     if ctx.trades is None or not {"exit_reason", "pnl"}.issubset(ctx.trades.columns):
         return None
     # Skip if fewer than 3 distinct exit reasons (not informative)
-    if "exit_reason" in ctx.trades.columns:
-        n_reasons = ctx.trades["exit_reason"].n_unique()
-        if n_reasons < 3:
-            return None
+    n_reasons = ctx.trades["exit_reason"].n_unique()
+    if n_reasons < 3:
+        return None
     from .trade_plots import plot_exit_reason_breakdown
 
     return plot_exit_reason_breakdown(ctx.trades, chart_type="bar", theme=ctx.theme)
@@ -1815,7 +1814,7 @@ def _render_trade_waterfall(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_duration(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or "bars_held" not in ctx.trades.columns:
         return None
     from .trade_plots import plot_trade_duration_distribution
 

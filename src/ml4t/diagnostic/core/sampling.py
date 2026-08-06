@@ -55,6 +55,12 @@ def block_bootstrap(
     >>> bootstrap_idx = block_bootstrap(indices, n_samples=80, sample_length=5)
     >>> len(bootstrap_idx)
     80
+
+    Notes
+    -----
+    A fixed seed is reproducible within the active backend. Installing the
+    ``perf`` extra selects Numba, whose random number generator does not produce
+    the same draws as the NumPy fallback for an identical seed.
     """
     # Import here to avoid circular dependency
     from ml4t.diagnostic.core.numba_utils import block_bootstrap_numba

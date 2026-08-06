@@ -2843,13 +2843,13 @@ class TestHACKernelWeights:
         ic_series = np.random.randn(50)
 
         with pytest.raises(ValueError, match="Unknown kernel"):
-            compute_ic_hac_stats(ic_series, kernel="invalid_kernel")
+            compute_ic_hac_stats(ic_series, kernel="invalid_kernel", label_horizon=1)
 
     def test_hac_insufficient_sample_returns_nan_statistics(self):
         """An undersized IC series returns the documented empty statistics."""
         ic_series = np.array([0.1, 0.1])  # Minimal series
 
-        result = compute_ic_hac_stats(ic_series, maxlags=0)
+        result = compute_ic_hac_stats(ic_series, maxlags=0, label_horizon=1)
 
         assert isinstance(result, dict)
         assert "mean_ic" in result

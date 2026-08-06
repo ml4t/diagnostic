@@ -278,7 +278,7 @@ class TestComputeShapImportanceErrors:
         monkeypatch.setitem(sys.modules, "shap", None)
 
         # Should raise ImportError with helpful message
-        with pytest.raises(ImportError, match="SHAP library is not installed"):
+        with pytest.raises(ImportError, match=r"pip install ml4t-diagnostic\[ml\]"):
             from ml4t.diagnostic.metrics import compute_shap_importance as compute_shap
 
             compute_shap(None, np.array([[1, 2, 3]]))

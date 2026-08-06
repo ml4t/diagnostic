@@ -100,7 +100,7 @@ def compute_fold_shap(
 
     if _shap is None:
         raise ImportError(
-            "shap is required for compute_fold_shap. Install with:\n  pip install shap>=0.41.0"
+            "shap is required for compute_fold_shap. Install with: pip install ml4t-diagnostic[ml]"
         )
 
     all_features_parts: list[pl.DataFrame] = []
