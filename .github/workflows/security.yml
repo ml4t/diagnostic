@@ -48,6 +48,19 @@ jobs:
           ${{ !cancelled() && matrix.osv == true &&
           (steps.pypi-audit.outcome == 'success' || steps.pypi-audit.outcome == 'failure') }}
         continue-on-error: true
-        run: >-
-          uv run pip-audit --strict --require-hashes --disable-pip
-          --vulnerability-service osv -r requirements-audit.txt
+        shell: bash
+        run: |
+          set +e
+          uv run pip-audit --strict --require-hashes --disable-pip \
+            --vulnerability-service osv -r requirements-audit.txt 2>&1 | tee osv-audit.txt
+          audit_status=${PIPESTATUS[0]}
+          {
+            echo "### Advisory OSV audit"
+            echo '```text'
+            cat osv-audit.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if (( audit_status != 0 )); then
+            echo "::warning title=OSV advisory audit::Review the OSV findings in the job summary"
+          fi
+          exit "$audit_status"

@@ -1292,6 +1292,20 @@ class TestSignalTearSheetDashboard:
 
         assert saved_path.exists()
 
+    def test_dashboard_formats_unavailable_spread(self, sample_tear_sheet: SignalTearSheet) -> None:
+        """The public dashboard does not expose raw NaN spread statistics."""
+        from ml4t.diagnostic.visualization.signal import SignalDashboard
+
+        tear_sheet = sample_tear_sheet.model_copy(deep=True)
+        assert tear_sheet.quantile_analysis is not None
+        tear_sheet.quantile_analysis.spread_mean["1D"] = float("nan")
+        tear_sheet.quantile_analysis.spread_t_stat["1D"] = float("nan")
+
+        html = SignalDashboard().generate(tear_sheet)
+
+        assert '<div class="metric-value">N/A</div>' in html
+        assert '<div class="metric-value">nan%</div>' not in html.lower()
+
 
 @pytest.mark.slow
 class TestSignalTearSheetPngExport:

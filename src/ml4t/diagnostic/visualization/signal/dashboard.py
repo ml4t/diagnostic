@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.dashboards import (
     BaseDashboard,
     DashboardSection,
@@ -359,17 +360,19 @@ class SignalDashboard(BaseDashboard):
             spread = qa.spread_mean.get(first_period, 0)
             spread_t = qa.spread_t_stat.get(first_period, 0)
             monotonic = qa.is_monotonic.get(first_period, False)
+            spread_display = format_finite(spread, ".4%")
+            spread_t_display = format_finite(spread_t, ".2f")
 
             html_parts.append(f"""
             <h3>Quantile Analysis ({first_period})</h3>
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Spread (Top-Bottom)</div>
-                    <div class="metric-value">{spread:.4%}</div>
+                    <div class="metric-value">{spread_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Spread t-stat</div>
-                    <div class="metric-value">{spread_t:.2f}</div>
+                    <div class="metric-value">{spread_t_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Monotonic</div>

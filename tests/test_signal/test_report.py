@@ -170,6 +170,27 @@ class TestGenerateHtml:
 
         assert output_path.exists()
 
+    def test_unavailable_statistics_render_as_na(self, minimal_result, monkeypatch):
+        """Plotly summary tables do not expose raw NaN values."""
+        import plotly.graph_objects as go
+
+        captured = {}
+        minimal_result.spread["1D"] = float("nan")
+        minimal_result.spread_t_stat["1D"] = float("nan")
+        minimal_result.monotonicity["1D"] = float("nan")
+
+        def capture_figure(figure, *_args, **_kwargs):
+            captured["figure"] = figure
+
+        monkeypatch.setattr(go.Figure, "write_html", capture_figure)
+
+        generate_html(minimal_result, "unused.html")
+
+        spread_table = captured["figure"].data[-1]
+        assert list(spread_table.cells.values[1]) == ["N/A"]
+        assert list(spread_table.cells.values[2]) == ["N/A"]
+        assert list(spread_table.cells.values[3]) == ["N/A"]
+
 
 # =============================================================================
 # Tests: _generate_text_html (fallback without Plotly)

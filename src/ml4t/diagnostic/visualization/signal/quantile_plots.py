@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
     get_quantile_colors,
@@ -29,10 +30,6 @@ if TYPE_CHECKING:
 def _get_quantile_colors(n_quantiles: int, theme_config: dict[str, Any]) -> list[str]:
     """Get diverging colors for quantiles (red -> green progression)."""
     return get_quantile_colors(n_quantiles, theme_config)
-
-
-def _format_finite(value: float, format_spec: str) -> str:
-    return format(value, format_spec) if np.isfinite(value) else "N/A"
 
 
 def plot_quantile_returns_bar(
@@ -147,9 +144,9 @@ def plot_quantile_returns_bar(
 
         spread_text = (
             f"<b>Spread Analysis:</b><br>"
-            f"Top - Bottom: {_format_finite(spread, '.1%')}<br>"
-            f"t-stat: {_format_finite(spread_t, '.2f')} "
-            f"(p={_format_finite(spread_p, '.4f')})<br>"
+            f"Top - Bottom: {format_finite(spread, '.1%')}<br>"
+            f"t-stat: {format_finite(spread_t, '.2f')} "
+            f"(p={format_finite(spread_p, '.4f')})<br>"
             f"Monotonic: {'✓ ' + direction if monotonic else '✗ No'}"
         )
 
@@ -594,9 +591,9 @@ def plot_spread_timeseries(
 
     summary_text = (
         f"<b>Spread Statistics:</b><br>"
-        f"Mean: {_format_finite(mean_spread, '.1%')}<br>"
-        f"t-stat: {_format_finite(t_stat, '.2f')}<br>"
-        f"p-value: {_format_finite(p_value, '.4f')}"
+        f"Mean: {format_finite(mean_spread, '.1%')}<br>"
+        f"t-stat: {format_finite(t_stat, '.2f')}<br>"
+        f"p-value: {format_finite(p_value, '.4f')}"
     )
 
     fig.add_annotation(
