@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import plotly.graph_objects as go
 from scipy import stats
+from scipy.stats import jarque_bera as _jarque_bera
+from scipy.stats import shapiro as _shapiro
 
 from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.core import (
@@ -451,8 +453,8 @@ def plot_ic_qq(
 
     # Normality test
     if len(ic_clean) >= 8:
-        _, shapiro_p = stats.shapiro(ic_clean[:5000])  # Shapiro-Wilk limited to 5000
-        jb_result = stats.jarque_bera(ic_clean)
+        _, shapiro_p = _shapiro(ic_clean[:5000])  # Shapiro-Wilk limited to 5000
+        jb_result = _jarque_bera(ic_clean)
         jb_p = jb_result.pvalue
         if np.isfinite(shapiro_p) and np.isfinite(jb_p):
             normality_status = "✓ Normal" if min(shapiro_p, jb_p) > 0.05 else "✗ Non-normal"

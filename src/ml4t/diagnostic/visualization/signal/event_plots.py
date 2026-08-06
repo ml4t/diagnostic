@@ -10,6 +10,7 @@ All plots follow ML4T Diagnostic visualization standards.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
@@ -266,13 +267,16 @@ def plot_event_heatmap(
         row = []
         hover_row = []
         for day in sorted_days:
+            has_observation = day in r.ar_by_day
             ar = r.ar_by_day.get(day, float("nan"))
             row.append(ar)
-            hover_row.append(
-                f"Event: {r.event_id}<br>Asset: {r.asset}<br>Day: {day}<br>AR: {ar:.4f}"
-                if not (ar != ar)  # not nan check
-                else f"Day {day}: No data"
-            )
+            if has_observation:
+                hover_row.append(
+                    f"Event: {r.event_id}<br>Asset: {r.asset}<br>Day: {day}<br>"
+                    f"AR: {format_finite(ar, '.4f')}"
+                )
+            else:
+                hover_row.append(f"Day {day}: No data")
         z_matrix.append(row)
         hover_texts.append(hover_row)
         y_labels.append(f"{r.event_id} ({r.asset})")
@@ -418,8 +422,10 @@ def plot_ar_distribution(
     elif std_ar > 0:
         t_stat = mean_ar / (std_ar / np.sqrt(len(ars)))
         p_val = 2 * sp_stats.t.sf(abs(t_stat), df=len(ars) - 1)
-    else:
+    elif mean_ar == 0:
         t_stat, p_val = 0.0, 1.0
+    else:
+        t_stat = p_val = float("nan")
 
     day_label = "Event Day" if day == 0 else f"Day {day:+d}"
 
@@ -503,7 +509,11 @@ def plot_car_by_event(
 
     # Sort results
     if sort_by == "car":
-        sorted_results = sorted(ar_results, key=lambda x: abs(x.car), reverse=True)
+        sorted_results = sorted(
+            ar_results,
+            key=lambda result: abs(result.car) if math.isfinite(result.car) else -math.inf,
+            reverse=True,
+        )
     else:
         sorted_results = sorted(ar_results, key=lambda x: x.event_date)
 
@@ -514,7 +524,15 @@ def plot_car_by_event(
     # Prepare data
     labels = [f"{r.event_id} ({r.asset})" for r in sorted_results]
     cars = [r.car for r in sorted_results]
-    bar_colors = [_ML4T_COLORS["positive"] if c >= 0 else _ML4T_COLORS["negative"] for c in cars]
+    bar_colors = [
+        _ML4T_COLORS["silver_muted"]
+        if not math.isfinite(car)
+        else _ML4T_COLORS["positive"]
+        if car >= 0
+        else _ML4T_COLORS["negative"]
+        for car in cars
+    ]
+    car_labels = [format_finite(car, ".4f") for car in cars]
 
     fig = go.Figure(
         data=go.Bar(
@@ -522,7 +540,8 @@ def plot_car_by_event(
             x=cars,
             orientation="h",
             marker_color=bar_colors,
-            hovertemplate="Event: %{y}<br>CAR: %{x:.4f}<extra></extra>",
+            customdata=car_labels,
+            hovertemplate="Event: %{y}<br>CAR: %{customdata}<extra></extra>",
         )
     )
 

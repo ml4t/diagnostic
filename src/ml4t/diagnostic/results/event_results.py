@@ -335,7 +335,7 @@ class EventStudyResult(BaseResult):
             "STATISTICAL TEST",
             f"  Test: {self.test_name}",
             f"  Test statistic: {format_finite(self.test_statistic, '.4f')}",
-            f"  P-value: {format_finite(self.p_value, '.4f')}",
+            f"  P-value: {self.p_value:.4f}",
             f"  Result: {significance} at α={alpha:.2f}",
             "=" * 50,
         ]

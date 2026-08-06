@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
+from pydantic import ValidationError
 
 from ml4t.diagnostic.config.event_config import EventConfig, WindowSettings
 from ml4t.diagnostic.evaluation.event_analysis import EventStudyAnalysis
@@ -234,12 +235,15 @@ class TestSignalDashboardEventsTab:
         result.individual_results = result.individual_results[:2]
         result.individual_results[0].car = float("nan")
         result.individual_results[0].ar_by_day[0] = float("nan")
+        result.individual_results[0].ar_by_day[1] = float("inf")
         result.individual_results[0].estimation_beta = float("nan")
 
         events_html = SignalDashboard()._create_events_tab(result)
         from ml4t.diagnostic.visualization.signal.event_plots import (
             plot_ar_distribution,
             plot_caar,
+            plot_car_by_event,
+            plot_event_heatmap,
         )
 
         caar_figure = plot_caar(result)
@@ -248,6 +252,10 @@ class TestSignalDashboardEventsTab:
         distribution_text = " ".join(
             annotation.text for annotation in distribution_figure.layout.annotations
         )
+        car_figure = plot_car_by_event(result.individual_results)
+        car_trace = car_figure.data[0]
+        heatmap_figure = plot_event_heatmap(result.individual_results)
+        heatmap_text = " ".join(str(value) for row in heatmap_figure.data[0].text for value in row)
 
         assert '<div class="metric-value">N/A</div>' in events_html
         assert "Stat: N/A" in caar_text
@@ -257,8 +265,43 @@ class TestSignalDashboardEventsTab:
         assert "Std = N/A" in distribution_text
         assert "t-stat = N/A" in distribution_text
         assert "p-value = N/A" in distribution_text
+        unavailable_car_index = list(car_trace.customdata).index("N/A")
+        assert car_trace.marker.color[unavailable_car_index] == "#e8e8e6"
+        assert "%{customdata}" in car_trace.hovertemplate
+        assert "%{x:.4f}" not in car_trace.hovertemplate
+        assert "AR: N/A" in heatmap_text
+        assert "AR: inf" not in heatmap_text.lower()
         assert "nan" not in result.summary().lower()
         assert "nan" not in result.individual_results[0].summary().lower()
+
+    def test_ar_distribution_does_not_infer_from_nonzero_constant_returns(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """A nonzero mean with zero dispersion has no finite t-test result."""
+        from ml4t.diagnostic.visualization.signal.event_plots import plot_ar_distribution
+
+        result = sample_event_study_result.model_copy(deep=True)
+        assert result.individual_results
+        result.individual_results = result.individual_results[:2]
+        for event in result.individual_results:
+            event.ar_by_day[0] = 0.05
+
+        figure = plot_ar_distribution(result, show_kde=False)
+        annotation_text = " ".join(annotation.text for annotation in figure.layout.annotations)
+
+        assert "Mean = 0.0500" in annotation_text
+        assert "Std = 0.0000" in annotation_text
+        assert "t-stat = N/A" in annotation_text
+        assert "p-value = N/A" in annotation_text
+
+    def test_event_study_rejects_unavailable_p_value(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """The result model enforces a finite probability-like p-value."""
+        with pytest.raises(ValidationError):
+            sample_event_study_result.p_value = float("nan")
 
     def test_dashboard_save_with_events(
         self,
