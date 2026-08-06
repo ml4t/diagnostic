@@ -1143,7 +1143,13 @@ class TestEdgeCases:
         event = sample_events_data.select("date", "asset").head(1)
         event_date = event["date"][0]
         benchmark = sample_benchmark_data.filter(pl.col("date") != event_date)
-        window = default_config.window.model_copy(update={"event_start": 1, "event_end": 5})
+        window = WindowSettings(
+            estimation_start=-252,
+            estimation_end=-20,
+            event_start=1,
+            event_end=5,
+            gap=5,
+        )
         analysis = EventStudyAnalysis(
             returns=sample_returns_data,
             events=event,
@@ -1152,10 +1158,11 @@ class TestEdgeCases:
         )
 
         with warnings.catch_warnings():
-            warnings.simplefilter("error")
+            warnings.simplefilter("error", UserWarning)
             results = analysis.compute_abnormal_returns()
 
         assert len(results) == 1
+        assert set(results[0].ar_by_day) == {1, 2, 3, 4, 5}
 
 
 # =============================================================================

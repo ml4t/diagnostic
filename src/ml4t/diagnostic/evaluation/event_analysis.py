@@ -295,7 +295,7 @@ class EventStudyAnalysis:
             residual_std = np.std(y - y_pred, ddof=2)
 
             return alpha, beta, r_squared, residual_std
-        except Exception:
+        except (np.linalg.LinAlgError, ValueError):
             return 0.0, 1.0, 0.0, np.std(asset_returns)
 
     def _get_event_window_data(
@@ -393,7 +393,9 @@ class EventStudyAnalysis:
         alpha, beta, r2, residual_std = 0.0, 1.0, 0.0, 0.0
 
         if self.config.model == "market_model":
-            assert market_est_returns is not None
+            assert market_est_returns is not None, (
+                "market_model requires benchmark estimation returns"
+            )
             alpha, beta, r2, residual_std = self._estimate_market_model(
                 asset_est_returns, market_est_returns
             )
@@ -402,7 +404,9 @@ class EventStudyAnalysis:
             beta = 0.0
             residual_std = float(np.std(asset_est_returns, ddof=1))
         elif self.config.model == "market_adjusted":
-            assert market_est_returns is not None
+            assert market_est_returns is not None, (
+                "market_adjusted requires benchmark estimation returns"
+            )
             alpha = 0.0
             beta = 1.0
             residual_std = float(np.std(asset_est_returns - market_est_returns, ddof=1))
@@ -418,12 +422,12 @@ class EventStudyAnalysis:
         ar_by_day: dict[int, float] = {}
         for rel_day, (asset_ret, market_ret) in event_data.items():
             if self.config.model == "market_model":
-                assert market_ret is not None
+                assert market_ret is not None, "market_model requires benchmark event returns"
                 expected_ret = alpha + beta * market_ret
             elif self.config.model == "mean_adjusted":
                 expected_ret = alpha
             else:
-                assert market_ret is not None
+                assert market_ret is not None, "market_adjusted requires benchmark event returns"
                 expected_ret = market_ret
 
             ar_by_day[rel_day] = asset_ret - expected_ret
