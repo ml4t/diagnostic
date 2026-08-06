@@ -1292,19 +1292,36 @@ class TestSignalTearSheetDashboard:
 
         assert saved_path.exists()
 
-    def test_dashboard_formats_unavailable_spread(self, sample_tear_sheet: SignalTearSheet) -> None:
-        """The public dashboard does not expose raw NaN spread statistics."""
+    def test_dashboard_formats_unavailable_statistics(
+        self, sample_tear_sheet: SignalTearSheet
+    ) -> None:
+        """The public dashboard does not expose raw NaN statistics."""
         from ml4t.diagnostic.visualization.signal import SignalDashboard
 
         tear_sheet = sample_tear_sheet.model_copy(deep=True)
+        assert tear_sheet.ic_analysis is not None
         assert tear_sheet.quantile_analysis is not None
+        assert tear_sheet.turnover_analysis is not None
+        assert tear_sheet.ir_tc_analysis is not None
+        tear_sheet.ic_analysis.ic_mean["1D"] = float("nan")
+        tear_sheet.ic_analysis.ic_ir["1D"] = float("nan")
+        tear_sheet.ic_analysis.ic_positive_pct["1D"] = float("nan")
+        tear_sheet.ic_analysis.ic_t_stat["1D"] = float("nan")
+        assert tear_sheet.ic_analysis.ras_adjusted_ic is not None
+        tear_sheet.ic_analysis.ras_adjusted_ic["1D"] = float("nan")
         tear_sheet.quantile_analysis.spread_mean["1D"] = float("nan")
         tear_sheet.quantile_analysis.spread_t_stat["1D"] = float("nan")
+        tear_sheet.turnover_analysis.mean_turnover["1D"] = float("nan")
+        tear_sheet.turnover_analysis.half_life["1D"] = float("nan")
+        tear_sheet.ir_tc_analysis.ir_gross["1D"] = float("nan")
+        tear_sheet.ir_tc_analysis.ir_tc["1D"] = float("nan")
+        tear_sheet.ir_tc_analysis.cost_drag["1D"] = float("nan")
 
         html = SignalDashboard().generate(tear_sheet)
 
         assert '<div class="metric-value">N/A</div>' in html
-        assert '<div class="metric-value">nan%</div>' not in html.lower()
+        assert '<div class="metric-value">nan' not in html.lower()
+        assert '<div class="metric-sublabel">n/a</div>' in html.lower()
 
 
 @pytest.mark.slow

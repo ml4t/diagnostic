@@ -3,6 +3,8 @@
 Tests _report.py: generate_html, _generate_text_html.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from ml4t.diagnostic.signal._report import _generate_text_html, generate_html
@@ -243,6 +245,33 @@ class TestGenerateTextHtml:
         content = output_path.read_text()
         assert "<style>" in content
         assert "monospace" in content
+
+    def test_unavailable_statistics_render_as_na(self, minimal_result, tmp_path):
+        """The Plotly-less report path does not expose raw NaN values."""
+        for values in (
+            minimal_result.ic,
+            minimal_result.ic_t_stat,
+            minimal_result.ic_p_value,
+            minimal_result.ic_ir,
+            minimal_result.ic_positive_pct,
+            minimal_result.spread,
+            minimal_result.spread_t_stat,
+            minimal_result.spread_p_value,
+            minimal_result.monotonicity,
+        ):
+            values["1D"] = float("nan")
+        result = replace(
+            minimal_result,
+            turnover={"1D": float("nan")},
+            half_life=float("nan"),
+        )
+        output_path = tmp_path / "report.html"
+
+        _generate_text_html(result, str(output_path))
+
+        content = output_path.read_text()
+        assert "N/A" in content
+        assert "nan" not in content.lower()
 
     def test_multi_period(self, multi_period_result, tmp_path):
         """Test text report with multiple periods."""

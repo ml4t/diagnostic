@@ -11,6 +11,8 @@ import math
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ml4t.diagnostic.utils.formatting import format_finite
+
 if TYPE_CHECKING:
     from ml4t.diagnostic.results.signal_results.ic import SignalICResult
     from ml4t.diagnostic.results.signal_results.quantile import QuantileAnalysisResult
@@ -122,8 +124,14 @@ class SignalResult:
             ir = self.ic_ir.get(period, float("nan"))
             pos_pct = self.ic_positive_pct.get(period, float("nan"))
             sig = "*" if p < 0.05 else ""
+            ic_display = format_finite(ic_val, "+.4f")
+            t_display = format_finite(t, ".2f")
+            p_display = format_finite(p, ".3f")
+            ir_display = format_finite(ir, ".2f")
+            pos_display = format_finite(pos_pct / 100, ".0%")
             lines.append(
-                f"  {period}: IC={ic_val:+.4f} (t={t:.2f}, p={p:.3f}){sig}, IR={ir:.2f}, +%={pos_pct:.0f}%"
+                f"  {period}: IC={ic_display} (t={t_display}, p={p_display}){sig}, "
+                f"IR={ir_display}, +%={pos_display}"
             )
 
         lines.append("\nSpread (Top - Bottom):")
@@ -132,21 +140,24 @@ class SignalResult:
             t = self.spread_t_stat.get(period, float("nan"))
             p = self.spread_p_value.get(period, float("nan"))
             sig = "*" if p < 0.05 else ""
-            lines.append(f"  {period}: {spread:+.4f} (t={t:.2f}, p={p:.3f}){sig}")
+            spread_display = format_finite(spread, "+.4f")
+            t_display = format_finite(t, ".2f")
+            p_display = format_finite(p, ".3f")
+            lines.append(f"  {period}: {spread_display} (t={t_display}, p={p_display}){sig}")
 
         lines.append("\nMonotonicity:")
         for period in [f"{p}D" for p in self.periods]:
             mono = self.monotonicity.get(period, float("nan"))
-            lines.append(f"  {period}: {mono:+.3f}")
+            lines.append(f"  {period}: {format_finite(mono, '+.3f')}")
 
         if self.turnover:
             lines.append("\nTurnover:")
             for period in [f"{p}D" for p in self.periods]:
                 t = self.turnover.get(period, float("nan"))
-                lines.append(f"  {period}: {t:.1%}")
+                lines.append(f"  {period}: {format_finite(t, '.1%')}")
 
         if self.half_life is not None:
-            lines.append(f"\nHalf-life: {self.half_life:.1f} periods")
+            lines.append(f"\nHalf-life: {format_finite(self.half_life, '.1f')} periods")
 
         return "\n".join(lines)
 

@@ -14,6 +14,7 @@ The dashboard follows the BaseDashboard pattern with 5 tabs:
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING, Any, Literal
 
 from ml4t.diagnostic.utils.formatting import format_finite
@@ -295,9 +296,15 @@ class SignalDashboard(BaseDashboard):
             ic_ir = ic.ic_ir.get(first_period, 0)
             ic_positive = ic.ic_positive_pct.get(first_period, 0)
             ic_t = ic.ic_t_stat.get(first_period, 0)
+            ic_mean_display = format_finite(ic_mean, ".4f")
+            ic_ir_display = format_finite(ic_ir, ".3f")
+            ic_positive_display = format_finite(ic_positive, ".1%")
+            ic_t_display = format_finite(ic_t, ".2f")
 
             # Quality badge based on IC
-            if abs(ic_mean) > 0.05:
+            if not math.isfinite(ic_mean):
+                quality_badge = '<span class="badge badge-low">N/A</span>'
+            elif abs(ic_mean) > 0.05:
                 quality_badge = '<span class="badge badge-high">Strong</span>'
             elif abs(ic_mean) > 0.02:
                 quality_badge = '<span class="badge badge-medium">Moderate</span>'
@@ -309,25 +316,25 @@ class SignalDashboard(BaseDashboard):
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Mean IC</div>
-                    <div class="metric-value">{ic_mean:.4f}</div>
+                    <div class="metric-value">{ic_mean_display}</div>
                     <div class="metric-sublabel">{quality_badge}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">IC IR</div>
-                    <div class="metric-value">{ic_ir:.3f}</div>
+                    <div class="metric-value">{ic_ir_display}</div>
                     <div class="metric-sublabel">
-                        {"Good" if ic_ir > 0.5 else "Moderate" if ic_ir > 0.2 else "Low"}
+                        {"N/A" if not math.isfinite(ic_ir) else "Good" if ic_ir > 0.5 else "Moderate" if ic_ir > 0.2 else "Low"}
                     </div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">IC Positive %</div>
-                    <div class="metric-value">{ic_positive:.1%}</div>
+                    <div class="metric-value">{ic_positive_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">t-statistic</div>
-                    <div class="metric-value">{ic_t:.2f}</div>
+                    <div class="metric-value">{ic_t_display}</div>
                     <div class="metric-sublabel">
-                        {"Significant" if abs(ic_t) > 2 else "Not significant"}
+                        {"N/A" if not math.isfinite(ic_t) else "Significant" if abs(ic_t) > 2 else "Not significant"}
                     </div>
                 </div>
             </div>
@@ -339,11 +346,12 @@ class SignalDashboard(BaseDashboard):
                 ras_sig = ic.ras_significant.get(first_period, False)
                 sig_icon = "✓" if ras_sig else "✗"
                 sig_color = "#10b981" if ras_sig else "#ef4444"
+                ras_ic_display = format_finite(ras_ic, ".4f")
 
                 html_parts.append(f"""
                 <div class="insights-panel">
                     <h3>RAS-Adjusted IC (Multiple Testing Correction)</h3>
-                    <p><strong>Adjusted IC:</strong> {ras_ic:.4f}</p>
+                    <p><strong>Adjusted IC:</strong> {ras_ic_display}</p>
                     <p><strong>Significant:</strong>
                         <span style="color: {sig_color}; font-weight: bold;">{sig_icon}</span>
                         {"Signal passes multiple testing correction" if ras_sig else "Signal may be spurious"}
@@ -389,22 +397,29 @@ class SignalDashboard(BaseDashboard):
 
             turnover = ta.mean_turnover.get(first_period, 0)
             half_life = ta.half_life.get(first_period)
+            turnover_display = format_finite(turnover, ".1%")
+            turnover_label = (
+                "N/A"
+                if not math.isfinite(turnover)
+                else "High"
+                if turnover > 0.3
+                else "Moderate"
+                if turnover > 0.15
+                else "Low"
+            )
+            half_life_display = format_finite(half_life, ".1f") if half_life is not None else "N/A"
 
             html_parts.append(f"""
             <h3>Turnover ({first_period})</h3>
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Mean Turnover</div>
-                    <div class="metric-value">{turnover:.1%}</div>
-                    <div class="metric-sublabel">
-                        {"High" if turnover > 0.3 else "Moderate" if turnover > 0.15 else "Low"}
-                    </div>
+                    <div class="metric-value">{turnover_display}</div>
+                    <div class="metric-sublabel">{turnover_label}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Signal Half-Life</div>
-                    <div class="metric-value">
-                        {f"{half_life:.1f}" if half_life else "N/A"}
-                    </div>
+                    <div class="metric-value">{half_life_display}</div>
                     <div class="metric-sublabel">periods</div>
                 </div>
             </div>
@@ -419,21 +434,24 @@ class SignalDashboard(BaseDashboard):
             ir_gross = ir_tc.ir_gross.get(first_period, 0)
             ir_net = ir_tc.ir_tc.get(first_period, 0)
             cost_drag = ir_tc.cost_drag.get(first_period, 0)
+            ir_gross_display = format_finite(ir_gross, ".3f")
+            ir_net_display = format_finite(ir_net, ".3f")
+            cost_drag_display = format_finite(cost_drag, ".1%")
 
             html_parts.append(f"""
             <h3>Transaction Cost Impact ({first_period})</h3>
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Gross IR</div>
-                    <div class="metric-value">{ir_gross:.3f}</div>
+                    <div class="metric-value">{ir_gross_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Net IR (after costs)</div>
-                    <div class="metric-value">{ir_net:.3f}</div>
+                    <div class="metric-value">{ir_net_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Cost Drag</div>
-                    <div class="metric-value">{cost_drag:.1%}</div>
+                    <div class="metric-value">{cost_drag_display}</div>
                 </div>
             </div>
             """)
