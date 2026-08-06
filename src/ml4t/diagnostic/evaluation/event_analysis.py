@@ -20,7 +20,9 @@ Boehmer, E., Musumeci, J., Poulsen, A.B. (1991). "Event-study methodology
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Literal
+from collections import Counter
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
@@ -33,12 +35,23 @@ from ml4t.diagnostic.results.event_results import AbnormalReturnResult, EventStu
 if TYPE_CHECKING:
     import pandas as pd
 
-EventRejectionReason = Literal[
-    "unknown_event_date",
-    "unknown_asset",
-    "estimation",
-    "event_window",
-]
+
+class EventRejectionReason(StrEnum):
+    """Reason an event cannot enter fixed-horizon inference."""
+
+    UNKNOWN_EVENT_DATE = "unknown event date"
+    UNKNOWN_ASSET = "unknown asset"
+    UNKNOWN_ASSET_AND_DATE = "unknown asset and event date"
+    UNKNOWN_BENCHMARK_DATE = "unknown benchmark event date"
+    ESTIMATION_HISTORY = "insufficient estimation history"
+    ASSET_ESTIMATION = "insufficient finite asset estimation returns"
+    BENCHMARK_ESTIMATION = "insufficient finite benchmark estimation returns"
+    ASSET_AND_BENCHMARK_ESTIMATION = "insufficient finite asset and benchmark estimation returns"
+    ALIGNED_ESTIMATION = "insufficient aligned finite asset/benchmark estimation returns"
+    EVENT_WINDOW_HISTORY = "event window extends beyond returns history"
+    ASSET_EVENT_WINDOW = "incomplete or non-finite asset event window"
+    BENCHMARK_EVENT_WINDOW = "incomplete or non-finite benchmark event window"
+    ASSET_AND_BENCHMARK_EVENT_WINDOW = "incomplete or non-finite asset and benchmark event window"
 
 
 class EventStudyAnalysis:
@@ -175,20 +188,20 @@ class EventStudyAnalysis:
 
     def _get_estimation_window_data(
         self, asset: str, event_date: Any
-    ) -> tuple[np.ndarray, np.ndarray] | None:
+    ) -> tuple[tuple[np.ndarray, np.ndarray] | None, EventRejectionReason | None]:
         """Get returns for estimation window.
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray] | None
-            (asset_returns, market_returns) for estimation window,
-            or None if insufficient data.
+        tuple[tuple[np.ndarray, np.ndarray] | None, EventRejectionReason | None]
+            Estimation data and no rejection reason, or no data and the specific
+            reason the configured minimum could not be met.
         """
         est_start, est_end = self.config.window.estimation_window
 
         # Find event date index
         if event_date not in self._date_to_idx:
-            return None
+            return None, EventRejectionReason.UNKNOWN_EVENT_DATE
         event_idx = self._date_to_idx[event_date]
 
         # Calculate estimation window indices
@@ -196,43 +209,60 @@ class EventStudyAnalysis:
         end_idx = event_idx + est_end
 
         if start_idx < 0:
-            return None
+            return None, EventRejectionReason.ESTIMATION_HISTORY
 
         # Get dates in estimation window
         est_dates = self._all_dates[start_idx : end_idx + 1]
 
         if len(est_dates) < self.config.min_estimation_obs:
-            return None
+            return None, EventRejectionReason.ESTIMATION_HISTORY
 
         # Get asset returns
         asset_data = self._returns.filter(
             (pl.col("asset") == asset) & (pl.col("date").is_in(est_dates))
         ).sort("date")
 
-        if len(asset_data) < self.config.min_estimation_obs:
-            return None
-
-        # Get benchmark returns
-        asset_returns = []
-        market_returns = []
+        asset_returns_by_date: dict[Any, float] = {}
         for row in asset_data.iter_rows(named=True):
-            date = row["date"]
-            if date in self._benchmark_dict:
-                asset_return = row["return"]
-                market_return = self._benchmark_dict[date]
-                if (
-                    asset_return is not None
-                    and market_return is not None
-                    and np.isfinite(asset_return)
-                    and np.isfinite(market_return)
-                ):
-                    asset_returns.append(asset_return)
-                    market_returns.append(market_return)
+            asset_return = row["return"]
+            if asset_return is not None and np.isfinite(asset_return):
+                asset_returns_by_date[row["date"]] = asset_return
 
-        if len(asset_returns) < self.config.min_estimation_obs:
-            return None
+        if self.config.model == "mean_adjusted":
+            if len(asset_returns_by_date) < self.config.min_estimation_obs:
+                return None, EventRejectionReason.ASSET_ESTIMATION
+            return (np.array(list(asset_returns_by_date.values())), np.array([])), None
 
-        return np.array(asset_returns), np.array(market_returns)
+        benchmark_returns_by_date = {
+            date: benchmark_return
+            for date in est_dates
+            if (benchmark_return := self._benchmark_dict.get(date)) is not None
+            and np.isfinite(benchmark_return)
+        }
+        missing_asset = len(asset_returns_by_date) < self.config.min_estimation_obs
+        missing_benchmark = len(benchmark_returns_by_date) < self.config.min_estimation_obs
+        if missing_asset and missing_benchmark:
+            return None, EventRejectionReason.ASSET_AND_BENCHMARK_ESTIMATION
+        if missing_asset:
+            return None, EventRejectionReason.ASSET_ESTIMATION
+        if missing_benchmark:
+            return None, EventRejectionReason.BENCHMARK_ESTIMATION
+
+        paired_dates = [
+            date
+            for date in est_dates
+            if date in asset_returns_by_date and date in benchmark_returns_by_date
+        ]
+        if len(paired_dates) < self.config.min_estimation_obs:
+            return None, EventRejectionReason.ALIGNED_ESTIMATION
+
+        return (
+            (
+                np.array([asset_returns_by_date[date] for date in paired_dates]),
+                np.array([benchmark_returns_by_date[date] for date in paired_dates]),
+            ),
+            None,
+        )
 
     def _estimate_market_model(
         self, asset_returns: np.ndarray, market_returns: np.ndarray
@@ -270,45 +300,70 @@ class EventStudyAnalysis:
 
     def _get_event_window_data(
         self, asset: str, event_date: Any
-    ) -> dict[int, tuple[float, float]] | None:
+    ) -> tuple[
+        dict[int, tuple[float, float]] | None,
+        EventRejectionReason | None,
+    ]:
         """Get finite returns for an event window.
 
         Incomplete windows are rejected so every CAR covers the same horizon.
 
         Returns
         -------
-        dict[int, tuple[float, float]] | None
-            {relative_day: (asset_return, market_return)}
+        tuple[dict[int, tuple[float, float]] | None, EventRejectionReason | None]
+            Complete event-window data and no rejection reason, or no data and
+            the specific incomplete input.
         """
         evt_start, evt_end = self.config.window.event_window
 
         if event_date not in self._date_to_idx:
-            return None
+            return None, EventRejectionReason.UNKNOWN_EVENT_DATE
         event_idx = self._date_to_idx[event_date]
 
-        result = {}
+        required_dates: dict[int, Any] = {}
         for rel_day in range(evt_start, evt_end + 1):
             day_idx = event_idx + rel_day
-            if 0 <= day_idx < len(self._all_dates):
-                date = self._all_dates[day_idx]
+            if not 0 <= day_idx < len(self._all_dates):
+                return None, EventRejectionReason.EVENT_WINDOW_HISTORY
+            required_dates[rel_day] = self._all_dates[day_idx]
 
-                # Get asset return
-                asset_ret = self._returns.filter(
-                    (pl.col("asset") == asset) & (pl.col("date") == date)
-                )
+        window_dates = list(required_dates.values())
+        asset_data = self._returns.filter(
+            (pl.col("asset") == asset) & (pl.col("date").is_in(window_dates))
+        )
+        asset_returns_by_date = {
+            row["date"]: row["return"]
+            for row in asset_data.iter_rows(named=True)
+            if row["return"] is not None and np.isfinite(row["return"])
+        }
+        missing_asset = len(asset_returns_by_date) != self.config.window.event_length
 
-                if len(asset_ret) > 0 and date in self._benchmark_dict:
-                    asset_return = asset_ret["return"][0]
-                    market_return = self._benchmark_dict[date]
-                    if (
-                        asset_return is not None
-                        and market_return is not None
-                        and np.isfinite(asset_return)
-                        and np.isfinite(market_return)
-                    ):
-                        result[rel_day] = (asset_return, market_return)
+        if self.config.model == "mean_adjusted":
+            if missing_asset:
+                return None, EventRejectionReason.ASSET_EVENT_WINDOW
+            return {
+                rel_day: (asset_returns_by_date[date], 0.0)
+                for rel_day, date in required_dates.items()
+            }, None
 
-        return result if len(result) == self.config.window.event_length else None
+        benchmark_returns_by_date = {
+            date: benchmark_return
+            for date in window_dates
+            if (benchmark_return := self._benchmark_dict.get(date)) is not None
+            and np.isfinite(benchmark_return)
+        }
+        missing_benchmark = len(benchmark_returns_by_date) != self.config.window.event_length
+        if missing_asset and missing_benchmark:
+            return None, EventRejectionReason.ASSET_AND_BENCHMARK_EVENT_WINDOW
+        if missing_asset:
+            return None, EventRejectionReason.ASSET_EVENT_WINDOW
+        if missing_benchmark:
+            return None, EventRejectionReason.BENCHMARK_EVENT_WINDOW
+
+        return {
+            rel_day: (asset_returns_by_date[date], benchmark_returns_by_date[date])
+            for rel_day, date in required_dates.items()
+        }, None
 
     def _compute_abnormal_return_single(
         self, event_row: dict[str, Any]
@@ -318,15 +373,23 @@ class EventStudyAnalysis:
         event_date = event_row["date"]
         event_id = str(event_row.get("event_id", f"{asset}_{event_date}"))
 
-        if event_date not in self._date_to_idx:
-            return None, "unknown_event_date"
-        if asset not in self._return_assets:
-            return None, "unknown_asset"
+        unknown_event_date = event_date not in self._date_to_idx
+        unknown_asset = asset not in self._return_assets
+        if unknown_event_date and unknown_asset:
+            return None, EventRejectionReason.UNKNOWN_ASSET_AND_DATE
+        if unknown_event_date:
+            return None, EventRejectionReason.UNKNOWN_EVENT_DATE
+        if unknown_asset:
+            return None, EventRejectionReason.UNKNOWN_ASSET
+        if self.config.model != "mean_adjusted" and event_date not in self._benchmark_dict:
+            return None, EventRejectionReason.UNKNOWN_BENCHMARK_DATE
 
         # Get estimation window data
-        est_data = self._get_estimation_window_data(asset, event_date)
+        est_data, rejection_reason = self._get_estimation_window_data(asset, event_date)
         if est_data is None:
-            return None, "estimation"
+            if rejection_reason is None:
+                raise RuntimeError("Missing rejection reason for unavailable estimation data")
+            return None, rejection_reason
 
         asset_est_returns, market_est_returns = est_data
 
@@ -347,9 +410,11 @@ class EventStudyAnalysis:
             residual_std = float(np.std(asset_est_returns - market_est_returns, ddof=1))
 
         # Get event window data
-        event_data = self._get_event_window_data(asset, event_date)
+        event_data, rejection_reason = self._get_event_window_data(asset, event_date)
         if event_data is None:
-            return None, "event_window"
+            if rejection_reason is None:
+                raise RuntimeError("Missing rejection reason for unavailable event-window data")
+            return None, rejection_reason
 
         # Compute abnormal returns
         ar_by_day: dict[int, float] = {}
@@ -393,12 +458,7 @@ class EventStudyAnalysis:
             return self._ar_results
 
         results = []
-        rejected: dict[EventRejectionReason, int] = {
-            "unknown_event_date": 0,
-            "unknown_asset": 0,
-            "estimation": 0,
-            "event_window": 0,
-        }
+        rejected: Counter[EventRejectionReason] = Counter()
 
         for row in self._events.iter_rows(named=True):
             result, reason = self._compute_abnormal_return_single(row)
@@ -411,12 +471,14 @@ class EventStudyAnalysis:
 
         n_skipped = sum(rejected.values())
         if n_skipped > 0:
+            details = ", ".join(
+                f"{rejected[reason]}: {reason.value}"
+                for reason in EventRejectionReason
+                if rejected[reason]
+            )
+            event_label = "event" if n_skipped == 1 else "events"
             warnings.warn(
-                f"Skipped {n_skipped} events "
-                f"({rejected['unknown_event_date']}: unknown event date, "
-                f"{rejected['unknown_asset']}: unknown asset, "
-                f"{rejected['estimation']}: insufficient estimation data, "
-                f"{rejected['event_window']}: incomplete or non-finite event window)",
+                f"Skipped {n_skipped} {event_label} ({details})",
                 stacklevel=2,
             )
 

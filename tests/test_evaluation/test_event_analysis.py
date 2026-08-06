@@ -702,7 +702,7 @@ class TestEdgeCases:
 
         with pytest.warns(
             UserWarning,
-            match=r"0: insufficient estimation data, 1: incomplete or non-finite event window",
+            match=r"Skipped 1 event \(1: incomplete or non-finite asset event window\)",
         ):
             result = analysis.run()
 
@@ -736,7 +736,7 @@ class TestEdgeCases:
 
         with pytest.warns(
             UserWarning,
-            match=r"0: insufficient estimation data, 1: incomplete or non-finite event window",
+            match=r"Skipped 1 event \(1: incomplete or non-finite asset event window\)",
         ):
             result = analysis.run()
 
@@ -775,7 +775,7 @@ class TestEdgeCases:
 
         with pytest.warns(
             UserWarning,
-            match=r"1: insufficient estimation data, 0: incomplete or non-finite event window",
+            match=r"Skipped 1 event \(1: insufficient estimation history\)",
         ):
             ar_results = analysis.compute_abnormal_returns()
 
@@ -805,7 +805,7 @@ class TestEdgeCases:
         )
 
         with (
-            pytest.warns(UserWarning, match="Skipped .* events"),
+            pytest.warns(UserWarning, match="Skipped 1 event"),
             pytest.raises(ValueError, match="No valid events"),
         ):
             analysis.aggregate()
@@ -860,37 +860,133 @@ class TestEdgeCases:
         default_config: EventConfig,
     ) -> None:
         """A single warning reports each event rejection cause separately."""
-        valid_event = sample_events_data.select("date", "asset").head(1)
-        invalid_date_event = pl.DataFrame({"date": [datetime(2025, 1, 1)], "asset": ["ASSET_01"]})
-        events = pl.concat([valid_event, invalid_date_event])
-        valid_event_row = valid_event.row(0, named=True)
+        source_events = sample_events_data.select("date", "asset").to_dicts()
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        events = pl.DataFrame(
+            {
+                "date": [
+                    source_events[0]["date"],
+                    source_events[1]["date"],
+                    source_events[2]["date"],
+                    datetime(2025, 1, 1),
+                    datetime(2025, 1, 2),
+                    all_dates[10],
+                ],
+                "asset": [
+                    source_events[0]["asset"],
+                    "UNKNOWN_ASSET",
+                    source_events[2]["asset"],
+                    "ASSET_03",
+                    "UNKNOWN_ASSET",
+                    "ASSET_06",
+                ],
+            }
+        )
         returns_with_nan = sample_returns_data.with_columns(
             pl.when(
-                (pl.col("asset") == valid_event_row["asset"])
-                & (pl.col("date") == valid_event_row["date"])
+                (pl.col("asset") == source_events[0]["asset"])
+                & (pl.col("date") == source_events[0]["date"])
             )
             .then(float("nan"))
             .otherwise(pl.col("return"))
             .alias("return")
         )
+        benchmark_with_gap = sample_benchmark_data.filter(
+            pl.col("date") != source_events[2]["date"]
+        )
         analysis = EventStudyAnalysis(
             returns=returns_with_nan,
             events=events,
-            benchmark=sample_benchmark_data,
+            benchmark=benchmark_with_gap,
             config=default_config,
         )
 
         with pytest.warns(
             UserWarning,
             match=(
-                r"Skipped 2 events \(1: unknown event date, 0: unknown asset, "
-                r"0: insufficient estimation data, "
-                r"1: incomplete or non-finite event window\)"
+                r"Skipped 6 events \(1: unknown event date, 1: unknown asset, "
+                r"1: unknown asset and event date, 1: unknown benchmark event date, "
+                r"1: insufficient estimation history, "
+                r"1: incomplete or non-finite asset event window\)"
             ),
         ):
             results = analysis.compute_abnormal_returns()
 
         assert results == []
+
+    def test_missing_benchmark_estimation_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A short benchmark is not reported as missing asset data."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        benchmark = sample_benchmark_data.filter(pl.col("date") >= event_date - timedelta(days=30))
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: insufficient finite benchmark estimation returns\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_missing_benchmark_event_window_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A benchmark event-window gap is reported as benchmark data."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        event_idx = sample_benchmark_data["date"].to_list().index(event_date)
+        missing_date = sample_benchmark_data["date"][event_idx + 1]
+        benchmark = sample_benchmark_data.filter(pl.col("date") != missing_date)
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: incomplete or non-finite benchmark event window\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_mean_adjusted_model_does_not_require_benchmark_coverage(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Mean-adjusted returns depend only on the asset series."""
+        event = sample_events_data.select("date", "asset").head(1)
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=sample_benchmark_data.head(1),
+            config=default_config.model_copy(update={"model": "mean_adjusted"}),
+        )
+
+        results = analysis.compute_abnormal_returns()
+
+        assert len(results) == 1
 
 
 # =============================================================================
