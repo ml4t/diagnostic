@@ -202,7 +202,7 @@ def plot_caar(
         f"p-value: {format_finite(result.p_value, '.4f')}"
     )
     if show_confidence and not ci_available:
-        annotation_text += f"<br>CI unavailable (n={result.n_events})"
+        annotation_text += "<br>CI unavailable"
     fig.add_annotation(
         xref="paper",
         yref="paper",

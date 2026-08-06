@@ -348,7 +348,7 @@ class TestSignalDashboardEventsTab:
         assert any("CI" in name for name in available_trace_names)
         assert "CAAR" in trace_names
         assert all("CI" not in name for name in trace_names)
-        assert f"CI unavailable (n={result.n_events})" in annotation_text
+        assert "CI unavailable" in annotation_text
 
     def test_event_study_rejects_unavailable_p_value(
         self,

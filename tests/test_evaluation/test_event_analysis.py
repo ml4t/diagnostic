@@ -825,7 +825,7 @@ class TestEdgeCases:
             benchmark=sample_benchmark_data,
         )
 
-        with pytest.warns(UserWarning, match="Skipped"):
+        with pytest.warns(UserWarning, match=r"1: unknown asset"):
             ar_results = analysis.compute_abnormal_returns()
 
         assert len(ar_results) == 0
@@ -847,10 +847,50 @@ class TestEdgeCases:
             benchmark=sample_benchmark_data,
         )
 
-        with pytest.warns(UserWarning, match="Skipped"):
+        with pytest.warns(UserWarning, match=r"1: unknown event date"):
             ar_results = analysis.compute_abnormal_returns()
 
         assert len(ar_results) == 0
+
+    def test_rejection_warning_reports_mixed_causes(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A single warning reports each event rejection cause separately."""
+        valid_event = sample_events_data.select("date", "asset").head(1)
+        invalid_date_event = pl.DataFrame({"date": [datetime(2025, 1, 1)], "asset": ["ASSET_01"]})
+        events = pl.concat([valid_event, invalid_date_event])
+        valid_event_row = valid_event.row(0, named=True)
+        returns_with_nan = sample_returns_data.with_columns(
+            pl.when(
+                (pl.col("asset") == valid_event_row["asset"])
+                & (pl.col("date") == valid_event_row["date"])
+            )
+            .then(float("nan"))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        analysis = EventStudyAnalysis(
+            returns=returns_with_nan,
+            events=events,
+            benchmark=sample_benchmark_data,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 2 events \(1: unknown event date, 0: unknown asset, "
+                r"0: insufficient estimation data, "
+                r"1: incomplete or non-finite event window\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
 
 
 # =============================================================================

@@ -20,7 +20,7 @@ Boehmer, E., Musumeci, J., Poulsen, A.B. (1991). "Event-study methodology
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import polars as pl
@@ -32,6 +32,13 @@ from ml4t.diagnostic.results.event_results import AbnormalReturnResult, EventStu
 
 if TYPE_CHECKING:
     import pandas as pd
+
+EventRejectionReason = Literal[
+    "unknown_event_date",
+    "unknown_asset",
+    "estimation",
+    "event_window",
+]
 
 
 class EventStudyAnalysis:
@@ -158,6 +165,7 @@ class EventStudyAnalysis:
         # Get unique dates for index mapping
         self._all_dates = sorted(self._returns["date"].unique().to_list())
         self._date_to_idx = {d: i for i, d in enumerate(self._all_dates)}
+        self._return_assets = set(self._returns["asset"].unique().to_list())
 
         # Add event_id if not present
         if "event_id" not in self._events.columns:
@@ -304,11 +312,16 @@ class EventStudyAnalysis:
 
     def _compute_abnormal_return_single(
         self, event_row: dict[str, Any]
-    ) -> tuple[AbnormalReturnResult | None, str | None]:
+    ) -> tuple[AbnormalReturnResult | None, EventRejectionReason | None]:
         """Compute abnormal returns for a single event."""
         asset = event_row["asset"]
         event_date = event_row["date"]
         event_id = str(event_row.get("event_id", f"{asset}_{event_date}"))
+
+        if event_date not in self._date_to_idx:
+            return None, "unknown_event_date"
+        if asset not in self._return_assets:
+            return None, "unknown_asset"
 
         # Get estimation window data
         est_data = self._get_estimation_window_data(asset, event_date)
@@ -380,20 +393,29 @@ class EventStudyAnalysis:
             return self._ar_results
 
         results = []
-        rejected = {"estimation": 0, "event_window": 0}
+        rejected: dict[EventRejectionReason, int] = {
+            "unknown_event_date": 0,
+            "unknown_asset": 0,
+            "estimation": 0,
+            "event_window": 0,
+        }
 
         for row in self._events.iter_rows(named=True):
             result, reason = self._compute_abnormal_return_single(row)
             if result is not None:
                 results.append(result)
-            elif reason is not None:
+            else:
+                if reason is None:
+                    raise RuntimeError("Rejected event did not include a rejection reason")
                 rejected[reason] += 1
 
         n_skipped = sum(rejected.values())
         if n_skipped > 0:
             warnings.warn(
                 f"Skipped {n_skipped} events "
-                f"({rejected['estimation']}: insufficient estimation data, "
+                f"({rejected['unknown_event_date']}: unknown event date, "
+                f"{rejected['unknown_asset']}: unknown asset, "
+                f"{rejected['estimation']}: insufficient estimation data, "
                 f"{rejected['event_window']}: incomplete or non-finite event window)",
                 stacklevel=2,
             )
