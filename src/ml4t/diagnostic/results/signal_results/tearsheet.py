@@ -263,7 +263,7 @@ class SignalTearSheet(BaseResult):
                 theme=theme,
             )
             html = dashboard.generate(self)
-            path.write_text(html)
+            path.write_text(html, encoding="utf-8")
         else:
             # Use simple stacked layout (legacy behavior)
             import plotly.io as pio
@@ -308,7 +308,7 @@ class SignalTearSheet(BaseResult):
                 plotlyjs_included = True
 
             html_parts.extend(["</body>", "</html>"])
-            path.write_text("\n".join(html_parts))
+            path.write_text("\n".join(html_parts), encoding="utf-8")
 
         return path
 

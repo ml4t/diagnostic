@@ -637,7 +637,7 @@ class DashboardBuilder:
 
         # Save to file
         output_path = Path(filename)
-        output_path.write_text(html_content)
+        output_path.write_text(html_content, encoding="utf-8")
 
     def export_plots(self, output_dir: str, format: str = "png") -> None:
         """Export individual plots as static images.

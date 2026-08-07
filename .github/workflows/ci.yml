@@ -108,7 +108,7 @@ jobs:
       - name: Run visualization tests with coverage gate
         run: |
           uv run pytest tests/test_visualization/ -q -n 0 \
-            --cov=ml4t.diagnostic.visualization \
+            --cov=src/ml4t/diagnostic/visualization \
             --cov-report=term-missing \
             --cov-fail-under=45
 

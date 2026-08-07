@@ -53,13 +53,13 @@ def load_templates(library: str = "comprehensive") -> list[Template]:
     # Try to load from package resources first
     try:
         files = resources.files("ml4t.diagnostic.evaluation.trade_shap.hypotheses")
-        yaml_content = files.joinpath("templates.yaml").read_text()
+        yaml_content = files.joinpath("templates.yaml").read_text(encoding="utf-8")
     except (TypeError, FileNotFoundError):
         # Fall back to direct file path
         template_path = Path(__file__).parent / "templates.yaml"
         if not template_path.exists():
             raise FileNotFoundError(f"Template file not found: {template_path}") from None
-        yaml_content = template_path.read_text()
+        yaml_content = template_path.read_text(encoding="utf-8")
 
     data = yaml.safe_load(yaml_content)
 

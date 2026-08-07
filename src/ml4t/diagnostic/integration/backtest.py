@@ -496,7 +496,7 @@ def generate_tearsheet_from_result(
     if output_path is not None:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html)
+        output_path.write_text(html, encoding="utf-8")
 
     return html
 
@@ -552,7 +552,7 @@ def _load_artifact_spec(backtest_dir: Path) -> dict[str, Any]:
     spec_path = backtest_dir / "spec.json"
     if not spec_path.exists():
         return {}
-    return json.loads(spec_path.read_text())
+    return json.loads(spec_path.read_text(encoding="utf-8"))
 
 
 def _load_artifact_config(spec: dict[str, Any]) -> BacktestConfig | None:

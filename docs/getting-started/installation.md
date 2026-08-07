@@ -29,6 +29,14 @@ Includes: `plotly`, `matplotlib`, `seaborn`, `kaleido`, `pypdf`
 
 For LightGBM and XGBoost model analysis:
 
+On macOS, install the OpenMP runtime required by LightGBM first:
+
+```bash
+brew install libomp
+```
+
+Then install the optional dependencies on every supported platform:
+
 ```bash
 pip install ml4t-diagnostic[ml]
 ```

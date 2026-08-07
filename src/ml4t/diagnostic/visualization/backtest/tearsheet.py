@@ -925,7 +925,7 @@ def generate_backtest_tearsheet(
     if output_path:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html)
+        output_path.write_text(html, encoding="utf-8")
 
     return html
 
@@ -2942,6 +2942,6 @@ class BacktestTearsheet:
         if output_path:
             path = Path(output_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(html)
+            path.write_text(html, encoding="utf-8")
 
         return html
