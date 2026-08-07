@@ -120,7 +120,7 @@ def save_folds(
 
     # Save to JSON
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    with filepath.open("w") as f:
+    with filepath.open("w", encoding="utf-8") as f:
         json.dump(fold_data, f, indent=2)
 
 
@@ -152,7 +152,7 @@ def load_folds(
     if not filepath.exists():
         raise FileNotFoundError(f"Fold file not found: {filepath}")
 
-    with filepath.open("r") as f:
+    with filepath.open("r", encoding="utf-8") as f:
         fold_data = json.load(f)
 
     # Validate version

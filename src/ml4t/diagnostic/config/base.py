@@ -60,7 +60,7 @@ class BaseConfig(BaseModel):
         path = Path(file_path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with path.open("w") as f:
+        with path.open("w", encoding="utf-8") as f:
             json.dump(self.to_dict(mode="json"), f, indent=indent)
 
     @classmethod
@@ -78,7 +78,7 @@ class BaseConfig(BaseModel):
             ValueError: If JSON is invalid
         """
         path = Path(file_path)
-        with path.open() as f:
+        with path.open(encoding="utf-8") as f:
             data = json.load(f)
         return cls(**data)
 
@@ -91,7 +91,7 @@ class BaseConfig(BaseModel):
         path = Path(file_path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with path.open("w") as f:
+        with path.open("w", encoding="utf-8") as f:
             yaml.dump(self.to_dict(mode="json"), f, default_flow_style=False, sort_keys=False)
 
     @classmethod
@@ -109,7 +109,7 @@ class BaseConfig(BaseModel):
             ValueError: If YAML is invalid
         """
         path = Path(file_path)
-        with path.open() as f:
+        with path.open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls(**data)
 

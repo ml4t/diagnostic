@@ -263,7 +263,7 @@ class EvaluationConfigManager:
             raise ConfigError(f"Configuration file not found: {config_path}")
 
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 user_config = yaml.safe_load(f)
         except yaml.YAMLError as e:
             raise ConfigError(f"Invalid YAML in {config_path}: {e}") from e
@@ -380,7 +380,7 @@ class EvaluationConfigManager:
         config_path = Path(config_path)
 
         try:
-            with open(config_path, "w") as f:
+            with open(config_path, "w", encoding="utf-8") as f:
                 # Convert Pydantic model to dict and save as YAML
                 config_dict = self.config.model_dump(exclude_none=True)
                 yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
@@ -533,7 +533,7 @@ def create_example_config(output_path: str | Path = "ml4t-diagnostic.yaml") -> N
     output_path : str or Path
         Path for example configuration file
     """
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(EXAMPLE_CONFIG)
     print(f"Example configuration created at: {output_path}")
 

@@ -406,7 +406,7 @@ class SignalResult:
         json_str = json.dumps(serialized, indent=indent)
 
         if path:
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(json_str)
 
         return json_str
@@ -425,7 +425,7 @@ class SignalResult:
         SignalResult
             Loaded result.
         """
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Convert lists back to tuples for immutable fields
