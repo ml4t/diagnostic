@@ -123,7 +123,7 @@ class TestGenerateHtml:
         generate_html(minimal_result, str(output_path))
 
         assert output_path.exists()
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "<html" in content.lower()
 
     def test_html_contains_plotly(self, minimal_result, tmp_path):
@@ -131,7 +131,7 @@ class TestGenerateHtml:
         output_path = tmp_path / "report.html"
         generate_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         # Plotly includes its JS library
         assert "plotly" in content.lower()
 
@@ -140,7 +140,7 @@ class TestGenerateHtml:
         output_path = tmp_path / "report.html"
         generate_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "100" in content  # n_assets
         assert "20" in content  # n_dates
 
@@ -149,7 +149,7 @@ class TestGenerateHtml:
         output_path = tmp_path / "report.html"
         generate_html(multi_period_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert output_path.exists()
         # Should contain period labels
         assert "1D" in content
@@ -214,7 +214,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "<!DOCTYPE html>" in content
 
     def test_contains_summary(self, minimal_result, tmp_path):
@@ -222,7 +222,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         # Should contain summary output
         assert "Signal Analysis" in content
         assert "100 assets" in content
@@ -233,7 +233,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "IC" in content
         assert "1D" in content
 
@@ -242,7 +242,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "<style>" in content
         assert "monospace" in content
 
@@ -269,7 +269,7 @@ class TestGenerateTextHtml:
 
         _generate_text_html(result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "N/A" in content
         assert "nan" not in content.lower()
 
@@ -278,7 +278,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(multi_period_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "1D" in content
         assert "5D" in content
         assert "21D" in content

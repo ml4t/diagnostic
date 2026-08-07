@@ -259,7 +259,7 @@ def test_generate_tearsheet_from_result_extracts_fallback_metrics(tmp_path, monk
     html = generate_tearsheet_from_result(result, output_path=output_path)
 
     assert html == "<html></html>"
-    assert output_path.read_text() == html
+    assert output_path.read_text(encoding="utf-8") == html
     metrics = captured["metrics"]
     assert isinstance(metrics, dict)
     assert metrics["total_slippage"] == pytest.approx(trade.total_slippage_cost)
@@ -327,7 +327,8 @@ def test_profile_from_run_artifacts_resolves_predictions_and_weights(tmp_path):
                     "metadata": {"prediction_hash": prediction_hash},
                 },
             }
-        )
+        ),
+        encoding="utf-8",
     )
     pl.DataFrame(
         {
@@ -412,7 +413,8 @@ def test_profile_from_run_artifacts_respects_feed_column_contract(tmp_path):
                     "metadata": {"prediction_hash": prediction_hash},
                 }
             }
-        )
+        ),
+        encoding="utf-8",
     )
     pl.DataFrame(
         {
@@ -490,7 +492,8 @@ def test_profile_from_run_artifacts_trims_pre_live_warmup_window(tmp_path):
                     "calendar": {"calendar": "NYSE"},
                 }
             }
-        )
+        ),
+        encoding="utf-8",
     )
 
     profile = profile_from_run_artifacts(backtest_dir)
@@ -562,7 +565,8 @@ def test_generate_tearsheet_from_run_artifacts_renders_ml_workspace(tmp_path):
                     "metadata": {"prediction_hash": prediction_hash},
                 },
             }
-        )
+        ),
+        encoding="utf-8",
     )
     pl.DataFrame(
         {

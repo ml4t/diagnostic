@@ -141,7 +141,7 @@ def extract_signature_ast(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
 
 def analyze_module_ast(path: Path) -> ModuleDoc:
     """Analyze a Python module using AST parsing."""
-    source = path.read_text()
+    source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     line_count = len(source.splitlines())
 
@@ -333,7 +333,7 @@ def main():
         sys.exit(1)
 
     if args.output:
-        args.output.write_text(output)
+        args.output.write_text(output, encoding="utf-8")
         print(f"Written to {args.output}")
     else:
         print(output)

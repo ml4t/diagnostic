@@ -73,7 +73,7 @@ class TestComponentQuality:
 
         for module_path in modules_to_check:
             full_path = base_path / module_path
-            content = full_path.read_text()
+            content = full_path.read_text(encoding="utf-8")
 
             # Check for docstring
             assert '"""' in content, f"Missing docstring in {module_path}"

@@ -390,7 +390,7 @@ class TestSignalDashboardEventsTab:
 
         # Verify file was created
         assert output_path.exists()
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "Event Study Analysis" in content
         assert len(content) > 10000  # Should be substantial HTML
 

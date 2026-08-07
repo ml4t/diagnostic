@@ -204,7 +204,7 @@ class TestHTMLExport:
             path = Path(tmpdir) / "barrier_report.html"
             tear_sheet.save_html(path)
 
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
 
             # Should contain figure divs
             assert "plot-container" in content
@@ -221,7 +221,7 @@ class TestHTMLExport:
             path = Path(tmpdir) / "barrier_report.html"
             tear_sheet.save_html(path)
 
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
 
             # Should contain metadata
             assert "test_signal" in content  # signal name
@@ -237,7 +237,7 @@ class TestHTMLExport:
             path = Path(tmpdir) / "barrier_report.html"
             tear_sheet.save_html(path)
 
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
 
             # Should have proper HTML structure
             assert "<!DOCTYPE html>" in content
@@ -254,7 +254,7 @@ class TestHTMLExport:
             path = Path(tmpdir) / "barrier_report.html"
             tear_sheet.save_html(path, include_plotlyjs="cdn")
 
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
 
             # Should include Plotly.js CDN reference
             assert "plotly" in content.lower()
@@ -441,7 +441,7 @@ class TestFullWorkflow:
             result = tear_sheet.save_html(html_path)
 
             assert result.exists()
-            content = result.read_text()
+            content = result.read_text(encoding="utf-8")
             assert len(content) > 10000  # Should be a substantial file
 
         # 7. Export to JSON

@@ -900,7 +900,7 @@ class TestSignalTearSheetSaveHtml:
         assert saved_path.exists()
         assert saved_path.stat().st_size > 0
 
-        content = saved_path.read_text()
+        content = saved_path.read_text(encoding="utf-8")
         assert "test_signal" in content
         assert "Signal Analysis" in content
         assert "<html>" in content

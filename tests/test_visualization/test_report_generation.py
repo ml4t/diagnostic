@@ -168,7 +168,7 @@ class TestGenerateImportanceReport:
             assert Path(result).exists()
 
             # Check content
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Feature Importance Analysis" in content
             assert "Executive Summary" in content
 
@@ -183,7 +183,7 @@ class TestGenerateImportanceReport:
                 title="Custom Analysis Title",
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Custom Analysis Title" in content
 
     def test_custom_sections(self, mock_importance_results):
@@ -197,7 +197,7 @@ class TestGenerateImportanceReport:
                 include_sections=["summary", "rankings"],
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Executive Summary" in content
             assert "Consensus Feature Rankings" in content
 
@@ -220,7 +220,7 @@ class TestGenerateImportanceReport:
                 theme="dark",
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             # Should contain dark theme colors (ml4t-style deep blue)
             assert "#0a1628" in content.lower() or "#152238" in content.lower()
 
@@ -243,7 +243,7 @@ class TestGenerateImportanceReport:
                 importance_results=mock_importance_results, output_file=Path(tmpdir) / "report.html"
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
 
             # Check all default sections
             assert "Executive Summary" in content
@@ -274,7 +274,7 @@ class TestGenerateInteractionReport:
             assert Path(result).exists()
 
             # Check content
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Interaction" in content
 
     def test_custom_title(self, mock_interaction_results):
@@ -286,7 +286,7 @@ class TestGenerateInteractionReport:
                 title="Custom Interaction Report",
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Custom Interaction Report" in content
 
     def test_custom_sections(self, mock_interaction_results):
@@ -298,7 +298,7 @@ class TestGenerateInteractionReport:
                 include_sections=["top_pairs", "matrix"],
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Top" in content and "Interaction" in content
             assert "Matrix" in content
 
@@ -337,7 +337,7 @@ class TestGenerateCombinedReport:
             assert Path(result).exists()
 
             # Check content includes both analyses
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Feature Importance" in content or "Importance" in content
             assert "Interaction" in content
 
@@ -350,7 +350,7 @@ class TestGenerateCombinedReport:
                 output_file=Path(tmpdir) / "report.html",
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             # Should still work without interaction section
             assert Path(result).exists()
             assert "Importance" in content
@@ -364,7 +364,7 @@ class TestGenerateCombinedReport:
                 title="My Custom Report",
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "My Custom Report" in content
 
     def test_theme_parameter(self, mock_importance_results, mock_interaction_results):
@@ -387,7 +387,7 @@ class TestGenerateCombinedReport:
                 output_file=Path(tmpdir) / "report.html",
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Overview" in content or "Analysis" in content
 
     def test_contains_recommendations(self, mock_importance_results, mock_interaction_results):
@@ -399,7 +399,7 @@ class TestGenerateCombinedReport:
                 output_file=Path(tmpdir) / "report.html",
             )
 
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
             assert "Recommendation" in content or "Action" in content
 
 
@@ -423,7 +423,7 @@ class TestReportIntegration:
 
             # Verify file exists and is valid HTML
             assert Path(result).exists()
-            content = Path(result).read_text()
+            content = Path(result).read_text(encoding="utf-8")
 
             # Check HTML structure
             assert content.startswith("<!DOCTYPE html>")
@@ -464,9 +464,9 @@ class TestReportIntegration:
             assert Path(result3).exists()
 
             # Files should be different
-            content1 = Path(result1).read_text()
-            content2 = Path(result2).read_text()
-            content3 = Path(result3).read_text()
+            content1 = Path(result1).read_text(encoding="utf-8")
+            content2 = Path(result2).read_text(encoding="utf-8")
+            content3 = Path(result3).read_text(encoding="utf-8")
 
             assert len(content1) > 1000  # Non-trivial content
             assert len(content2) > 1000

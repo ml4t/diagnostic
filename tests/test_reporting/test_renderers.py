@@ -93,7 +93,7 @@ class TestReportGenerator:
         generator.save(content, filepath)
 
         assert filepath.exists()
-        assert filepath.read_text() == content
+        assert filepath.read_text(encoding="utf-8") == content
 
     def test_save_creates_parent_directories(self, temp_dir):
         """Test that save creates parent directories."""
