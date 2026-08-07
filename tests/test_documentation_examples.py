@@ -53,6 +53,7 @@ def test_documented_python_examples_execute(
         **os.environ,
         "MPLBACKEND": "Agg",
         "PYTHONHASHSEED": "0",
+        "PYTHONIOENCODING": "utf-8",
     }
 
     try:
@@ -61,7 +62,7 @@ def test_documented_python_examples_execute(
             cwd=tmp_path,
             env=environment,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             timeout=120,
             check=False,
         )

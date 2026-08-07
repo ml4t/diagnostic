@@ -30,6 +30,7 @@ def test_public_python_example_executes(relative_path: Path, tmp_path: Path) -> 
         **os.environ,
         "MPLBACKEND": "Agg",
         "PYTHONHASHSEED": "0",
+        "PYTHONIOENCODING": "utf-8",
     }
 
     try:
@@ -38,7 +39,7 @@ def test_public_python_example_executes(relative_path: Path, tmp_path: Path) -> 
             cwd=tmp_path,
             env=environment,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             timeout=120,
             check=False,
         )
