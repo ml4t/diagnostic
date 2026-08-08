@@ -1,0 +1,66 @@
+name: Dependency security
+
+on:
+  workflow_call:
+
+jobs:
+  audit:
+    name: Audit (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.14"
+            osv: true
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: "0.10.9"
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install audit tooling
+        run: uv sync --frozen --dev
+
+      - name: Export release dependency graph
+        run: >-
+          uv export --quiet --frozen --all-extras --no-dev --no-emit-project
+          --output-file requirements-audit.txt
+
+      - name: Validate hashes and audit PyPI advisories
+        id: pypi-audit
+        run: >-
+          uv run pip-audit --strict --require-hashes --disable-pip
+          --vulnerability-service pypi -r requirements-audit.txt
+
+      - name: Advisory OSV audit
+        if: >-
+          ${{ !cancelled() && matrix.osv == true &&
+          (steps.pypi-audit.outcome == 'success' || steps.pypi-audit.outcome == 'failure') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          uv run pip-audit --strict --require-hashes --disable-pip \
+            --vulnerability-service osv -r requirements-audit.txt 2>&1 | tee osv-audit.txt
+          audit_status=${PIPESTATUS[0]}
+          {
+            echo "### Advisory OSV audit"
+            echo '```text'
+            cat osv-audit.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if (( audit_status != 0 )); then
+            echo "::warning title=OSV advisory audit::Review the OSV findings in the job summary"
+          fi
+          exit "$audit_status"

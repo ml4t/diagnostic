@@ -10,6 +10,7 @@ These tests focus on the result class methods:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import plotly.graph_objects as go
@@ -47,7 +48,7 @@ def sample_ic_result() -> SignalICResult:
         ic_std={"1D": 0.015, "5D": 0.015, "21D": 0.015},
         ic_t_stat={"1D": 2.67, "5D": 4.67, "21D": 7.33},
         ic_p_value={"1D": 0.02, "5D": 0.001, "21D": 0.0001},
-        ic_positive_pct={"1D": 1.0, "5D": 1.0, "21D": 1.0},
+        ic_positive_pct={"1D": 100.0, "5D": 100.0, "21D": 100.0},
         ic_ir={"1D": 2.67, "5D": 4.67, "21D": 7.33},
         ic_t_stat_hac={"1D": 2.5, "5D": 4.5, "21D": 7.0},
         ic_p_value_hac={"1D": 0.03, "5D": 0.002, "21D": 0.0002},
@@ -67,7 +68,7 @@ def sample_ic_result_no_ras() -> SignalICResult:
         ic_std={"1D": 0.015},
         ic_t_stat={"1D": 2.67},
         ic_p_value={"1D": 0.02},
-        ic_positive_pct={"1D": 1.0},
+        ic_positive_pct={"1D": 100.0},
         ic_ir={"1D": 2.67},
     )
 
@@ -553,6 +554,25 @@ class TestQuantileAnalysisResultSummary:
         assert "Spread (Top-Bottom):" in summary
         assert "Monotonic:" in summary
 
+    def test_summary_formats_unavailable_statistics(
+        self, sample_quantile_result: QuantileAnalysisResult
+    ) -> None:
+        """Unavailable means and deviations render as N/A."""
+        result = sample_quantile_result.model_copy(deep=True)
+        result.mean_returns["1D"]["Q1"] = float("nan")
+        result.std_returns["1D"]["Q1"] = float("nan")
+        result.spread_mean["1D"] = float("nan")
+        result.spread_t_stat["1D"] = float("nan")
+        result.spread_p_value["1D"] = float("nan")
+
+        summary = result.summary()
+
+        assert "Q1                N/A         N/A" in summary
+        assert "Spread (Top-Bottom):        N/A" in summary
+        assert "Spread t-stat:              N/A" in summary
+        assert "Spread p-value:             N/A" in summary
+        assert "nan" not in summary.lower()
+
 
 # =============================================================================
 # TurnoverAnalysisResult Tests
@@ -880,7 +900,7 @@ class TestSignalTearSheetSaveHtml:
         assert saved_path.exists()
         assert saved_path.stat().st_size > 0
 
-        content = saved_path.read_text()
+        content = saved_path.read_text(encoding="utf-8")
         assert "test_signal" in content
         assert "Signal Analysis" in content
         assert "<html>" in content
@@ -1142,7 +1162,7 @@ class TestSignalICResultEdgeCases:
             ic_std={"1D": 0.015},
             ic_t_stat={"1D": 2.67},
             ic_p_value={"1D": 0.02},
-            ic_positive_pct={"1D": 1.0},
+            ic_positive_pct={"1D": 100.0},
             ic_ir={"1D": 2.67},
         )
 
@@ -1272,6 +1292,67 @@ class TestSignalTearSheetDashboard:
         )
 
         assert saved_path.exists()
+
+    def test_dashboard_formats_unavailable_statistics(
+        self, sample_tear_sheet: SignalTearSheet
+    ) -> None:
+        """The public dashboard does not expose raw NaN statistics."""
+        from ml4t.diagnostic.visualization.signal import SignalDashboard
+
+        tear_sheet = sample_tear_sheet.model_copy(deep=True)
+        assert tear_sheet.ic_analysis is not None
+        assert tear_sheet.quantile_analysis is not None
+        assert tear_sheet.turnover_analysis is not None
+        assert tear_sheet.ir_tc_analysis is not None
+        tear_sheet.ic_analysis.ic_mean["1D"] = float("nan")
+        tear_sheet.ic_analysis.ic_ir["1D"] = float("nan")
+        tear_sheet.ic_analysis.ic_positive_pct["1D"] = float("nan")
+        tear_sheet.ic_analysis.ic_t_stat["1D"] = float("nan")
+        assert tear_sheet.ic_analysis.ras_adjusted_ic is not None
+        tear_sheet.ic_analysis.ras_adjusted_ic["1D"] = float("nan")
+        tear_sheet.quantile_analysis.spread_mean["1D"] = float("nan")
+        tear_sheet.quantile_analysis.spread_t_stat["1D"] = float("nan")
+        tear_sheet.turnover_analysis.mean_turnover["1D"] = float("nan")
+        tear_sheet.turnover_analysis.half_life["1D"] = float("nan")
+        tear_sheet.ir_tc_analysis.ir_gross["1D"] = float("nan")
+        tear_sheet.ir_tc_analysis.ir_tc["1D"] = float("nan")
+        tear_sheet.ir_tc_analysis.cost_drag["1D"] = float("nan")
+
+        html = SignalDashboard().generate(tear_sheet)
+        summary = tear_sheet.summary()
+        summary_frame = tear_sheet.get_dataframe("summary")
+        rendered_fields = re.findall(
+            r'<div class="metric-(?:value|sublabel)"[^>]*>(.*?)</div>|<td[^>]*>(.*?)</td>',
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        rendered_text = re.sub(
+            r"<[^>]+>",
+            " ",
+            " ".join(value for pair in rendered_fields for value in pair if value),
+        )
+
+        assert '<div class="metric-value">N/A</div>' in html
+        assert re.search(r"\bnan(?:%|\b)", rendered_text, flags=re.IGNORECASE) is None
+        assert "Adjusted IC:</strong> N/A" in html
+        assert "Not available" in html
+        assert "nan" not in summary.lower()
+        ras_line = next(line for line in summary.splitlines() if "RAS Signif:" in line)
+        assert ras_line.endswith("N/A")
+        ic_row = summary_frame.filter(pl.col("metric") == "ic_mean_1D")
+        assert ic_row.item(0, "value") == "N/A"
+
+    def test_dashboard_uses_percentage_point_ic_positive_scale(
+        self, sample_tear_sheet: SignalTearSheet
+    ) -> None:
+        """A stored 100.0 positive rate renders as 100%, not 10000%."""
+        from ml4t.diagnostic.visualization.signal import SignalDashboard
+
+        html = SignalDashboard().generate(sample_tear_sheet)
+
+        assert '<div class="metric-value">100.0%</div>' in html
+        assert "10000.0%" not in html
+        assert "Positive %:     100.0%" in sample_tear_sheet.summary()
 
 
 @pytest.mark.slow

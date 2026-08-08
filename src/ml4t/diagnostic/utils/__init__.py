@@ -19,6 +19,7 @@ from ml4t.diagnostic.utils.dependencies import (
     require_dependency,
     warn_if_missing,
 )
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.utils.sessions import (
     assign_session_dates,
     get_complete_sessions,
@@ -39,4 +40,5 @@ __all__: list[str] = [
     "require_dependency",
     "warn_if_missing",
     "get_dependency_summary",
+    "format_finite",
 ]

@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
-    format_percentage,
     get_quantile_colors,
     get_theme_config,
     validate_theme,
@@ -109,7 +109,8 @@ def plot_quantile_returns_bar(
     y_stderr = []
     for q, std in zip(quantile_labels, y_std, strict=False):
         count = counts.get(q, 1)
-        y_stderr.append(std / np.sqrt(count) if count > 0 else 0)
+        finite_std = std if np.isfinite(std) else 0.0
+        y_stderr.append(finite_std / np.sqrt(count) if count > 0 else 0)
 
     # Bar chart
     fig.add_trace(
@@ -143,8 +144,9 @@ def plot_quantile_returns_bar(
 
         spread_text = (
             f"<b>Spread Analysis:</b><br>"
-            f"Top - Bottom: {format_percentage(spread)}<br>"
-            f"t-stat: {spread_t:.2f} (p={spread_p:.4f})<br>"
+            f"Top - Bottom: {format_finite(spread, '.1%')}<br>"
+            f"t-stat: {format_finite(spread_t, '.2f')} "
+            f"(p={format_finite(spread_p, '.4f')})<br>"
             f"Monotonic: {'✓ ' + direction if monotonic else '✗ No'}"
         )
 
@@ -265,7 +267,11 @@ def plot_quantile_returns_violin(
 
             # Generate synthetic sample
             np.random.seed(42 + i)  # Reproducible
-            synthetic = np.random.normal(mean, std, min(n, 1000))
+            if not np.isfinite(mean) or n <= 0:
+                synthetic = np.array([], dtype=float)
+            else:
+                finite_std = std if np.isfinite(std) else 0.01
+                synthetic = np.random.normal(mean, finite_std, min(n, 1000))
 
             fig.add_trace(
                 go.Violin(
@@ -585,9 +591,9 @@ def plot_spread_timeseries(
 
     summary_text = (
         f"<b>Spread Statistics:</b><br>"
-        f"Mean: {format_percentage(mean_spread)}<br>"
-        f"t-stat: {t_stat:.2f}<br>"
-        f"p-value: {p_value:.4f}"
+        f"Mean: {format_finite(mean_spread, '.1%')}<br>"
+        f"t-stat: {format_finite(t_stat, '.2f')}<br>"
+        f"p-value: {format_finite(p_value, '.4f')}"
     )
 
     fig.add_annotation(

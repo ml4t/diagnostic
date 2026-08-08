@@ -32,7 +32,8 @@ class TestComputeShapImportanceLightGBM:
     """Test compute_shap_importance with LightGBM models."""
 
     @pytest.fixture(scope="class")
-    def simple_binary_data(self):
+    @classmethod
+    def simple_binary_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -45,7 +46,8 @@ class TestComputeShapImportanceLightGBM:
         return X, y
 
     @pytest.fixture(scope="class")
-    def simple_regression_data(self):
+    @classmethod
+    def simple_regression_data(cls):
         """Create simple regression dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -58,7 +60,8 @@ class TestComputeShapImportanceLightGBM:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_lgbm_classifier(self, simple_binary_data):
+    @classmethod
+    def trained_lgbm_classifier(cls, simple_binary_data):
         """Train a LightGBM classifier."""
         X, y = simple_binary_data
         model = lgb.LGBMClassifier(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
@@ -66,7 +69,8 @@ class TestComputeShapImportanceLightGBM:
         return model
 
     @pytest.fixture(scope="class")
-    def trained_lgbm_regressor(self, simple_regression_data):
+    @classmethod
+    def trained_lgbm_regressor(cls, simple_regression_data):
         """Train a LightGBM regressor."""
         X, y = simple_regression_data
         model = lgb.LGBMRegressor(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
@@ -229,7 +233,8 @@ class TestComputeShapImportanceXGBoost:
     """Test compute_shap_importance with XGBoost models."""
 
     @pytest.fixture(scope="class")
-    def simple_binary_data(self):
+    @classmethod
+    def simple_binary_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -241,7 +246,8 @@ class TestComputeShapImportanceXGBoost:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_xgb_classifier(self, simple_binary_data):
+    @classmethod
+    def trained_xgb_classifier(cls, simple_binary_data):
         """Train an XGBoost classifier."""
         X, y = simple_binary_data
         model = xgb.XGBClassifier(
@@ -278,7 +284,7 @@ class TestComputeShapImportanceErrors:
         monkeypatch.setitem(sys.modules, "shap", None)
 
         # Should raise ImportError with helpful message
-        with pytest.raises(ImportError, match="SHAP library is not installed"):
+        with pytest.raises(ImportError, match=r"Intel macOS with Python 3\.14"):
             from ml4t.diagnostic.metrics import compute_shap_importance as compute_shap
 
             compute_shap(None, np.array([[1, 2, 3]]))
@@ -334,7 +340,8 @@ class TestShapComparison:
     """Test SHAP importance compared to other methods."""
 
     @pytest.fixture(scope="class")
-    def trained_model_and_data(self):
+    @classmethod
+    def trained_model_and_data(cls):
         """Create model and data for comparison tests."""
         np.random.seed(42)
         n_samples = 500
@@ -381,24 +388,6 @@ class TestShapComparison:
 @pytest.mark.skipif(not HAS_SHAP, reason="SHAP library not installed")
 class TestSHAPHelperFunctions:
     """Test new helper functions for model-agnostic SHAP support (v1.1)."""
-
-    def test_detect_gpu_available(self):
-        """Test GPU detection function."""
-        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
-
-        # This should return True or False (bool) without crashing
-        result = _detect_gpu_available()
-        assert isinstance(result, bool)
-
-        # If cupy is available, should be True
-        try:
-            import cupy as cp
-
-            _ = cp.cuda.Device(0)
-            assert result is True
-        except (ImportError, RuntimeError):
-            # cupy not available or no GPU
-            assert result is False
 
     def test_format_time_seconds(self):
         """Test time formatting for seconds."""
@@ -492,28 +481,20 @@ class TestSHAPHelperFunctions:
         with pytest.raises(ValueError, match="Invalid explainer_type"):
             _get_explainer(model=None, X_array=X, explainer_type="invalid")
 
-    def test_get_explainer_gpu_unavailable_error(self):
-        """Test that forcing GPU when unavailable raises error."""
-        from ml4t.diagnostic.metrics.importance_shap import (
-            _detect_gpu_available,
-            _get_explainer,
-        )
+    def test_get_explainer_missing_shap_uses_supported_install_extra(self, monkeypatch):
+        """The internal explainer path reports the extra and its platform limit."""
+        import sys
 
-        # Only test if GPU is not available
-        if not _detect_gpu_available():
-            X = np.random.randn(100, 10)
-            # Create a simple model for testing
-            try:
-                import lightgbm as lgb
+        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
-                y = (X[:, 0] > 0).astype(int)
-                model = lgb.LGBMClassifier(n_estimators=10, verbose=-1)
-                model.fit(X, y)
+        monkeypatch.setitem(sys.modules, "shap", None)
 
-                with pytest.raises(RuntimeError, match="GPU requested.*but GPU not available"):
-                    _get_explainer(model, X, explainer_type="tree", use_gpu=True)
-            except ImportError:
-                pytest.skip("LightGBM not installed")
+        with pytest.raises(ImportError) as exc_info:
+            _get_explainer(model=None, X_array=np.array([[1.0]]))
+
+        message = str(exc_info.value)
+        assert "pip install ml4t-diagnostic[ml]" in message
+        assert "Intel macOS with Python 3.14" in message
 
 
 @pytest.mark.skipif(not HAS_SHAP, reason="SHAP library not installed")
@@ -522,7 +503,8 @@ class TestGetExplainerAutoSelection:
     """Test _get_explainer auto-selection logic with real models."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         X = np.random.randn(500, 10)
@@ -530,7 +512,8 @@ class TestGetExplainerAutoSelection:
         return X, y
 
     @pytest.fixture(scope="class")
-    def tree_model(self, simple_data):
+    @classmethod
+    def tree_model(cls, simple_data):
         """Create and train tree-based model."""
         X, y = simple_data
         model = lgb.LGBMClassifier(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
@@ -578,26 +561,6 @@ class TestGetExplainerAutoSelection:
         assert type_name == "kernel"
         assert ms_per_sample > 1000.0  # Should be slow
 
-    def test_gpu_mode_auto(self, tree_model, simple_data):
-        """Test GPU auto-detection (uses GPU only for large datasets)."""
-        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
-
-        X, _ = simple_data
-
-        # Small dataset - should use CPU even if GPU available
-        X_small = X[:100]
-        explainer_small, _, _ = _get_explainer(
-            tree_model, X_small, explainer_type="tree", use_gpu="auto"
-        )
-        # Should succeed regardless of GPU availability
-
-        # Large dataset - would use GPU if available
-        X_large = np.random.randn(6000, 10)
-        explainer_large, _, _ = _get_explainer(
-            tree_model, X_large, explainer_type="tree", use_gpu="auto"
-        )
-        # Should succeed regardless of GPU availability
-
     def test_background_data_sampling(self, tree_model, simple_data):
         """Test that background data is sampled for KernelExplainer."""
         from ml4t.diagnostic.metrics.importance_shap import _get_explainer
@@ -618,7 +581,8 @@ class TestLinearExplainerIntegration:
     """Test LinearExplainer with sklearn linear models (TASK-003)."""
 
     @pytest.fixture(scope="class")
-    def simple_classification_data(self):
+    @classmethod
+    def simple_classification_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -631,7 +595,8 @@ class TestLinearExplainerIntegration:
         return X, y
 
     @pytest.fixture(scope="class")
-    def simple_regression_data(self):
+    @classmethod
+    def simple_regression_data(cls):
         """Create simple regression dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -823,7 +788,8 @@ class TestComputeShapImportanceV11API:
     """Test v1.1 API extensions (TASK-006)."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         X = np.random.randn(200, 10)
@@ -1173,7 +1139,8 @@ class TestKernelExplainerIntegration:
     """Test KernelExplainer with non-tree/non-linear models (TASK-004)."""
 
     @pytest.fixture(scope="class")
-    def simple_classification_data(self):
+    @classmethod
+    def simple_classification_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -1366,7 +1333,8 @@ class TestAutoSelectionAndBackwardCompatibility:
     """Test auto-selection logic and backward compatibility with v1.0 API (TASK-008)."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         n_samples = 500
@@ -1454,7 +1422,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
         model.fit(X, y)
 
-        # Old API signature - no explainer_type, use_gpu, etc.
+        # Old API signature with no explainer selection parameters.
         result = compute_shap_importance(model, X[:100])
 
         # Should work and auto-select tree
@@ -1556,11 +1524,12 @@ class TestAutoSelectionAndBackwardCompatibility:
 
 @pytest.mark.skipif(not HAS_SHAP, reason="SHAP library not installed")
 @pytest.mark.skipif(not HAS_LIGHTGBM, reason="LightGBM not installed")
-class TestPerformanceWarningsAndGPU:
-    """Comprehensive tests for performance warnings and GPU functionality (TASK-009)."""
+class TestPerformanceWarnings:
+    """Comprehensive tests for SHAP performance warnings."""
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple binary classification dataset."""
         np.random.seed(42)
         X = np.random.randn(500, 10)
@@ -1699,169 +1668,6 @@ class TestPerformanceWarningsAndGPU:
         assert "warning" not in captured.out.lower()
         assert "shap_values" in result
 
-    def test_gpu_detection_returns_bool(self):
-        """Test that GPU detection returns a boolean value."""
-        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
-
-        result = _detect_gpu_available()
-
-        # Should always return a bool
-        assert isinstance(result, bool)
-
-    def test_gpu_auto_mode_small_dataset(self, simple_data):
-        """Test that use_gpu='auto' uses CPU for small datasets."""
-        import lightgbm as lgb
-
-        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
-
-        X, y = simple_data
-        X_small = X[:100]  # Small dataset
-
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
-        model.fit(X, y)
-
-        # Auto mode should use CPU for small datasets
-        explainer, type_name, ms_per_sample = _get_explainer(
-            model, X_small, explainer_type="tree", use_gpu="auto"
-        )
-
-        assert type_name == "tree"
-        # Should succeed regardless of GPU availability
-
-    def test_gpu_auto_mode_large_dataset(self, simple_data):
-        """Test that use_gpu='auto' considers using GPU for large datasets."""
-        import lightgbm as lgb
-
-        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
-
-        X, y = simple_data
-        # Create larger dataset by repeating
-        X_large = np.vstack([X] * 100)  # ~10K samples
-
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
-        model.fit(X, y)
-
-        # Auto mode would use GPU if available for large datasets
-        explainer, type_name, ms_per_sample = _get_explainer(
-            model, X_large, explainer_type="tree", use_gpu="auto"
-        )
-
-        assert type_name == "tree"
-        # Should succeed regardless of GPU availability (falls back to CPU if needed)
-
-    def test_gpu_fallback_when_unavailable(self, simple_data):
-        """Test graceful fallback to CPU when GPU is unavailable."""
-        import lightgbm as lgb
-
-        from ml4t.diagnostic.metrics.importance_shap import (
-            _detect_gpu_available,
-            _get_explainer,
-        )
-
-        X, y = simple_data
-
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
-        model.fit(X, y)
-
-        # If GPU is not available, requesting use_gpu=True should raise error
-        # (this is expected behavior to catch misconfigurations)
-        if not _detect_gpu_available():
-            with pytest.raises(RuntimeError, match="GPU requested.*but GPU not available"):
-                _get_explainer(model, X[:100], explainer_type="tree", use_gpu=True)
-        else:
-            # If GPU is available, it should work
-            explainer, type_name, ms_per_sample = _get_explainer(
-                model, X[:100], explainer_type="tree", use_gpu=True
-            )
-            assert type_name == "tree"
-
-    def test_mock_gpu_detection_with_cupy_unavailable(self, simple_data, monkeypatch):
-        """Test GPU detection when cupy is not available (CI-friendly mock test)."""
-        # Mock cupy import to fail
-
-        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
-
-        def mock_import_error(name, *args, **kwargs):
-            if name == "cupy" or name.startswith("cupy."):
-                raise ImportError("Mocked cupy unavailable")
-            return __import__(name, *args, **kwargs)
-
-        # This will cause _detect_gpu_available to return False
-        # Note: This is testing the error handling path
-        result = _detect_gpu_available()
-
-        # Should return False when cupy not available
-        # (or True if cupy is actually installed and working)
-        assert isinstance(result, bool)
-
-    def test_mock_gpu_explainer_creation(self, simple_data, monkeypatch):
-        """Test TreeExplainer creation with mocked GPU settings (CI-friendly)."""
-        import lightgbm as lgb
-
-        from ml4t.diagnostic.metrics.importance_shap import _get_explainer
-
-        X, y = simple_data
-
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
-        model.fit(X, y)
-
-        # Mock _detect_gpu_available to return False
-        monkeypatch.setattr(
-            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
-            lambda: False,
-        )
-
-        # use_gpu='auto' should use CPU when GPU not detected
-        explainer, type_name, ms_per_sample = _get_explainer(
-            model, X[:100], explainer_type="tree", use_gpu="auto"
-        )
-
-        assert type_name == "tree"
-        # Should have successfully created TreeExplainer in CPU mode
-
-    @pytest.mark.skipif(not HAS_LIGHTGBM, reason="LightGBM not installed for GPU benchmark")
-    def test_gpu_benchmark_optional(self, simple_data):
-        """Optional GPU benchmark test (skips if GPU not available)."""
-        import time
-
-        import lightgbm as lgb
-
-        from ml4t.diagnostic.metrics import compute_shap_importance
-        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
-
-        # Skip if no GPU
-        if not _detect_gpu_available():
-            pytest.skip("GPU not available for benchmark test")
-
-        X, y = simple_data
-        # Create large dataset for meaningful benchmark
-        X_large = np.vstack([X] * 100)  # ~10K samples
-        y_large = np.tile(y, 100)
-
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
-        model.fit(X_large, y_large)
-
-        X_test = X_large[:1000]
-
-        # Benchmark CPU
-        start_cpu = time.time()
-        result_cpu = compute_shap_importance(model, X_test, use_gpu=False)
-        time.time() - start_cpu
-
-        # Benchmark GPU
-        start_gpu = time.time()
-        result_gpu = compute_shap_importance(model, X_test, use_gpu=True)
-        time.time() - start_gpu
-
-        # Both should succeed
-        assert "shap_values" in result_cpu
-        assert "shap_values" in result_gpu
-
-        # GPU should be faster (or at least not significantly slower) for large datasets
-        # Note: For small datasets, GPU overhead may make it slower
-        # Just verify both methods work correctly
-        assert result_cpu["shap_values"].shape == result_gpu["shap_values"].shape
-
 
 @pytest.mark.skipif(not HAS_SHAP, reason="SHAP library not installed")
 class TestDeepExplainerIntegration:
@@ -1872,7 +1678,8 @@ class TestDeepExplainerIntegration:
     """
 
     @pytest.fixture(scope="class")
-    def simple_data(self):
+    @classmethod
+    def simple_data(cls):
         """Create simple dataset for neural network testing."""
         np.random.seed(42)
         n_samples = 200  # Smaller for faster neural network training
@@ -2014,7 +1821,6 @@ class TestDeepExplainerIntegration:
                 explainer_type="deep",
                 model=mock_model,
                 X_array=X_test,
-                use_gpu=False,
                 background_data=None,  # Missing - should raise ValueError
                 shap=shap,
             )

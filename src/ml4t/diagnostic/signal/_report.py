@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ml4t.diagnostic.utils.formatting import format_finite
+
 if TYPE_CHECKING:
     from ml4t.diagnostic.signal.result import SignalResult
 
@@ -77,9 +79,9 @@ def generate_html(result: SignalResult, path: str) -> None:
         ic_data.append(
             [
                 period_key,
-                f"{result.ic.get(period_key, float('nan')):.4f}",
-                f"{result.ic_t_stat.get(period_key, float('nan')):.2f}",
-                f"{result.ic_p_value.get(period_key, float('nan')):.4f}",
+                format_finite(result.ic.get(period_key, float("nan")), ".4f"),
+                format_finite(result.ic_t_stat.get(period_key, float("nan")), ".2f"),
+                format_finite(result.ic_p_value.get(period_key, float("nan")), ".4f"),
             ]
         )
 
@@ -99,9 +101,9 @@ def generate_html(result: SignalResult, path: str) -> None:
         spread_data.append(
             [
                 period_key,
-                f"{result.spread.get(period_key, float('nan')):.4f}",
-                f"{result.spread_t_stat.get(period_key, float('nan')):.2f}",
-                f"{result.monotonicity.get(period_key, float('nan')):.3f}",
+                format_finite(result.spread.get(period_key, float("nan")), ".4f"),
+                format_finite(result.spread_t_stat.get(period_key, float("nan")), ".2f"),
+                format_finite(result.monotonicity.get(period_key, float("nan")), ".3f"),
             ]
         )
 
@@ -147,7 +149,7 @@ def _generate_text_html(result: SignalResult, path: str) -> None:
 </body>
 </html>"""
 
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(html)
 
 

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
+from pydantic import ValidationError
 
 from ml4t.diagnostic.config.event_config import EventConfig, WindowSettings
 from ml4t.diagnostic.evaluation.event_analysis import EventStudyAnalysis
@@ -220,6 +221,143 @@ class TestSignalDashboardEventsTab:
         # Should show either "Significant" or "Not Significant"
         assert "Significant" in events_html or "Not Significant" in events_html
 
+    def test_events_tab_formats_unavailable_statistics(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """Non-finite event statistics render as unavailable."""
+        result = sample_event_study_result.model_copy(deep=True)
+        result.test_statistic = float("nan")
+        result.caar[-1] = float("nan")
+        result.caar_ci_lower[-1] = float("nan")
+        result.aar_by_day[0] = float("nan")
+        assert result.individual_results
+        result.individual_results = result.individual_results[:2]
+        result.individual_results[0].car = float("nan")
+        result.individual_results[0].ar_by_day[0] = float("nan")
+        result.individual_results[0].ar_by_day[1] = float("inf")
+        result.individual_results[0].estimation_beta = float("nan")
+        del result.individual_results[1].ar_by_day[1]
+
+        events_html = SignalDashboard()._create_events_tab(result)
+        from ml4t.diagnostic.visualization.signal.event_plots import (
+            plot_ar_distribution,
+            plot_caar,
+            plot_car_by_event,
+            plot_event_heatmap,
+        )
+
+        caar_figure = plot_caar(result)
+        caar_text = " ".join(annotation.text for annotation in caar_figure.layout.annotations)
+        distribution_figure = plot_ar_distribution(result)
+        distribution_text = " ".join(
+            annotation.text for annotation in distribution_figure.layout.annotations
+        )
+        car_figure = plot_car_by_event(result.individual_results)
+        car_trace = car_figure.data[0]
+        heatmap_figure = plot_event_heatmap(result.individual_results)
+        heatmap_text = " ".join(str(value) for row in heatmap_figure.data[0].text for value in row)
+
+        assert '<div class="metric-value">N/A</div>' in events_html
+        assert "Stat: N/A" in caar_text
+        assert ">N/A</td>" in events_html
+        assert ">nan" not in events_html.lower()
+        assert "Mean = N/A" in distribution_text
+        assert "Std = N/A" in distribution_text
+        assert "t-stat = N/A" in distribution_text
+        assert "p-value = N/A" in distribution_text
+        unavailable_car_index = list(car_trace.customdata).index("N/A")
+        assert car_trace.marker.color[unavailable_car_index] == "#e8e8e6"
+        assert car_trace.x[unavailable_car_index] == 0.0
+        assert car_trace.text[unavailable_car_index] == "N/A"
+        assert "%{customdata}" in car_trace.hovertemplate
+        assert "%{x:.4f}" not in car_trace.hovertemplate
+        assert "1 unavailable" in car_figure.layout.title.text
+        assert "AR: N/A" in heatmap_text
+        assert "Day 1: No data" in heatmap_text
+        assert "AR: inf" not in heatmap_text.lower()
+        assert "nan" not in result.summary().lower()
+        assert "nan" not in result.individual_results[0].summary().lower()
+
+    def test_ar_distribution_does_not_infer_from_nonzero_constant_returns(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """A nonzero mean with zero dispersion has no finite t-test result."""
+        from ml4t.diagnostic.visualization.signal.event_plots import plot_ar_distribution
+
+        result = sample_event_study_result.model_copy(deep=True)
+        assert result.individual_results
+        result.individual_results = result.individual_results[:2]
+        for event in result.individual_results:
+            event.ar_by_day[0] = 0.05
+
+        figure = plot_ar_distribution(result, show_kde=False)
+        annotation_text = " ".join(annotation.text for annotation in figure.layout.annotations)
+
+        assert "Mean = 0.0500" in annotation_text
+        assert "Std = 0.0000" in annotation_text
+        assert "t-stat = N/A" in annotation_text
+        assert "p-value = N/A" in annotation_text
+
+    def test_car_plot_counts_only_displayed_unavailable_events(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """Top-N titles do not count unavailable events excluded from the trace."""
+        from ml4t.diagnostic.visualization.signal.event_plots import plot_car_by_event
+
+        assert sample_event_study_result.individual_results
+        template = sample_event_study_result.individual_results[0]
+        events = []
+        for index in range(21):
+            event = template.model_copy(deep=True)
+            event.event_id = f"finite-{index}"
+            event.car = float(index + 1) / 100
+            events.append(event)
+        for index in range(3):
+            event = template.model_copy(deep=True)
+            event.event_id = f"unavailable-{index}"
+            event.car = float("nan")
+            events.append(event)
+
+        figure = plot_car_by_event(events, top_n=20)
+        trace = figure.data[0]
+
+        assert "unavailable" not in figure.layout.title.text
+        assert "N/A" not in trace.customdata
+
+    def test_caar_plot_omits_unavailable_confidence_band(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """A result without finite CI bounds does not advertise a CI trace."""
+        from ml4t.diagnostic.visualization.signal.event_plots import plot_caar
+
+        available_figure = plot_caar(sample_event_study_result)
+        available_trace_names = [trace.name for trace in available_figure.data]
+
+        result = sample_event_study_result.model_copy(deep=True)
+        result.caar_ci_lower = [float("nan")] * len(result.caar)
+        result.caar_ci_upper = [float("nan")] * len(result.caar)
+
+        figure = plot_caar(result)
+
+        trace_names = [trace.name for trace in figure.data]
+        annotation_text = " ".join(annotation.text for annotation in figure.layout.annotations)
+        assert any("CI" in name for name in available_trace_names)
+        assert "CAAR" in trace_names
+        assert all("CI" not in name for name in trace_names)
+        assert "CI unavailable" in annotation_text
+
+    def test_event_study_rejects_unavailable_p_value(
+        self,
+        sample_event_study_result,
+    ) -> None:
+        """The result model enforces a finite probability-like p-value."""
+        with pytest.raises(ValidationError):
+            sample_event_study_result.p_value = float("nan")
+
     def test_dashboard_save_with_events(
         self,
         sample_event_study_result,
@@ -252,7 +390,7 @@ class TestSignalDashboardEventsTab:
 
         # Verify file was created
         assert output_path.exists()
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "Event Study Analysis" in content
         assert len(content) > 10000  # Should be substantial HTML
 

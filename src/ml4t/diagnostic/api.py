@@ -22,6 +22,7 @@ from ml4t.diagnostic.evaluation.validated_cv import (
     validated_cross_val_score,
 )
 from ml4t.diagnostic.metrics import (
+    QuantileProfile,
     analyze_interactions,
     analyze_ml_importance,
     compute_h_statistic,
@@ -31,6 +32,7 @@ from ml4t.diagnostic.metrics import (
     compute_shap_importance,
     compute_shap_interactions,
     cross_sectional_ic_series,
+    quantile_profile,
 )
 from ml4t.diagnostic.signal import SignalResult, analyze_signal
 from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
@@ -58,6 +60,8 @@ __all__ = [
     "WalkForwardCV",
     "cross_sectional_ic_series",
     "compute_ic_hac_stats",
+    "QuantileProfile",
+    "quantile_profile",
     "compute_mdi_importance",
     "compute_permutation_importance",
     "compute_shap_importance",

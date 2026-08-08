@@ -14,8 +14,10 @@ The dashboard follows the BaseDashboard pattern with 5 tabs:
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING, Any, Literal
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.dashboards import (
     BaseDashboard,
     DashboardSection,
@@ -294,9 +296,31 @@ class SignalDashboard(BaseDashboard):
             ic_ir = ic.ic_ir.get(first_period, 0)
             ic_positive = ic.ic_positive_pct.get(first_period, 0)
             ic_t = ic.ic_t_stat.get(first_period, 0)
+            ic_mean_display = format_finite(ic_mean, ".4f")
+            ic_ir_display = format_finite(ic_ir, ".3f")
+            ic_positive_display = format_finite(ic_positive / 100, ".1%")
+            ic_t_display = format_finite(ic_t, ".2f")
+            ic_ir_label = (
+                "N/A"
+                if not math.isfinite(ic_ir)
+                else "Good"
+                if ic_ir > 0.5
+                else "Moderate"
+                if ic_ir > 0.2
+                else "Low"
+            )
+            ic_t_label = (
+                "N/A"
+                if not math.isfinite(ic_t)
+                else "Significant"
+                if abs(ic_t) > 2
+                else "Not significant"
+            )
 
             # Quality badge based on IC
-            if abs(ic_mean) > 0.05:
+            if not math.isfinite(ic_mean):
+                quality_badge = '<span class="badge badge-low">N/A</span>'
+            elif abs(ic_mean) > 0.05:
                 quality_badge = '<span class="badge badge-high">Strong</span>'
             elif abs(ic_mean) > 0.02:
                 quality_badge = '<span class="badge badge-medium">Moderate</span>'
@@ -308,26 +332,22 @@ class SignalDashboard(BaseDashboard):
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Mean IC</div>
-                    <div class="metric-value">{ic_mean:.4f}</div>
+                    <div class="metric-value">{ic_mean_display}</div>
                     <div class="metric-sublabel">{quality_badge}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">IC IR</div>
-                    <div class="metric-value">{ic_ir:.3f}</div>
-                    <div class="metric-sublabel">
-                        {"Good" if ic_ir > 0.5 else "Moderate" if ic_ir > 0.2 else "Low"}
-                    </div>
+                    <div class="metric-value">{ic_ir_display}</div>
+                    <div class="metric-sublabel">{ic_ir_label}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">IC Positive %</div>
-                    <div class="metric-value">{ic_positive:.1%}</div>
+                    <div class="metric-value">{ic_positive_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">t-statistic</div>
-                    <div class="metric-value">{ic_t:.2f}</div>
-                    <div class="metric-sublabel">
-                        {"Significant" if abs(ic_t) > 2 else "Not significant"}
-                    </div>
+                    <div class="metric-value">{ic_t_display}</div>
+                    <div class="metric-sublabel">{ic_t_label}</div>
                 </div>
             </div>
             """)
@@ -336,16 +356,27 @@ class SignalDashboard(BaseDashboard):
             if ic.ras_adjusted_ic is not None and ic.ras_significant is not None:
                 ras_ic = ic.ras_adjusted_ic.get(first_period, 0)
                 ras_sig = ic.ras_significant.get(first_period, False)
-                sig_icon = "✓" if ras_sig else "✗"
-                sig_color = "#10b981" if ras_sig else "#ef4444"
+                ras_ic_display = format_finite(ras_ic, ".4f")
+                if math.isfinite(ras_ic):
+                    sig_icon = "✓" if ras_sig else "✗"
+                    sig_color = "#10b981" if ras_sig else "#ef4444"
+                    sig_description = (
+                        "Signal passes multiple testing correction"
+                        if ras_sig
+                        else "Signal may be spurious"
+                    )
+                else:
+                    sig_icon = "?"
+                    sig_color = "#6b7280"
+                    sig_description = "Not available"
 
                 html_parts.append(f"""
                 <div class="insights-panel">
                     <h3>RAS-Adjusted IC (Multiple Testing Correction)</h3>
-                    <p><strong>Adjusted IC:</strong> {ras_ic:.4f}</p>
+                    <p><strong>Adjusted IC:</strong> {ras_ic_display}</p>
                     <p><strong>Significant:</strong>
                         <span style="color: {sig_color}; font-weight: bold;">{sig_icon}</span>
-                        {"Signal passes multiple testing correction" if ras_sig else "Signal may be spurious"}
+                        {sig_description}
                     </p>
                 </div>
                 """)
@@ -359,17 +390,19 @@ class SignalDashboard(BaseDashboard):
             spread = qa.spread_mean.get(first_period, 0)
             spread_t = qa.spread_t_stat.get(first_period, 0)
             monotonic = qa.is_monotonic.get(first_period, False)
+            spread_display = format_finite(spread, ".4%")
+            spread_t_display = format_finite(spread_t, ".2f")
 
             html_parts.append(f"""
             <h3>Quantile Analysis ({first_period})</h3>
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Spread (Top-Bottom)</div>
-                    <div class="metric-value">{spread:.4%}</div>
+                    <div class="metric-value">{spread_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Spread t-stat</div>
-                    <div class="metric-value">{spread_t:.2f}</div>
+                    <div class="metric-value">{spread_t_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Monotonic</div>
@@ -386,22 +419,29 @@ class SignalDashboard(BaseDashboard):
 
             turnover = ta.mean_turnover.get(first_period, 0)
             half_life = ta.half_life.get(first_period)
+            turnover_display = format_finite(turnover, ".1%")
+            turnover_label = (
+                "N/A"
+                if not math.isfinite(turnover)
+                else "High"
+                if turnover > 0.3
+                else "Moderate"
+                if turnover > 0.15
+                else "Low"
+            )
+            half_life_display = format_finite(half_life, ".1f") if half_life is not None else "N/A"
 
             html_parts.append(f"""
             <h3>Turnover ({first_period})</h3>
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Mean Turnover</div>
-                    <div class="metric-value">{turnover:.1%}</div>
-                    <div class="metric-sublabel">
-                        {"High" if turnover > 0.3 else "Moderate" if turnover > 0.15 else "Low"}
-                    </div>
+                    <div class="metric-value">{turnover_display}</div>
+                    <div class="metric-sublabel">{turnover_label}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Signal Half-Life</div>
-                    <div class="metric-value">
-                        {f"{half_life:.1f}" if half_life else "N/A"}
-                    </div>
+                    <div class="metric-value">{half_life_display}</div>
                     <div class="metric-sublabel">periods</div>
                 </div>
             </div>
@@ -416,21 +456,24 @@ class SignalDashboard(BaseDashboard):
             ir_gross = ir_tc.ir_gross.get(first_period, 0)
             ir_net = ir_tc.ir_tc.get(first_period, 0)
             cost_drag = ir_tc.cost_drag.get(first_period, 0)
+            ir_gross_display = format_finite(ir_gross, ".3f")
+            ir_net_display = format_finite(ir_net, ".3f")
+            cost_drag_display = format_finite(cost_drag, ".1%")
 
             html_parts.append(f"""
             <h3>Transaction Cost Impact ({first_period})</h3>
             <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-label">Gross IR</div>
-                    <div class="metric-value">{ir_gross:.3f}</div>
+                    <div class="metric-value">{ir_gross_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Net IR (after costs)</div>
-                    <div class="metric-value">{ir_net:.3f}</div>
+                    <div class="metric-value">{ir_net_display}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Cost Drag</div>
-                    <div class="metric-value">{cost_drag:.1%}</div>
+                    <div class="metric-value">{cost_drag_display}</div>
                 </div>
             </div>
             """)
@@ -628,15 +671,20 @@ class SignalDashboard(BaseDashboard):
             bottom_to = ta.bottom_quantile_turnover.get(period, 0)
             mean_ac = ta.mean_autocorrelation.get(period, 0)
             half_life = ta.half_life.get(period)
+            mean_to_display = format_finite(mean_to, ".1%")
+            top_to_display = format_finite(top_to, ".1%")
+            bottom_to_display = format_finite(bottom_to, ".1%")
+            mean_ac_display = format_finite(mean_ac, ".4f")
+            half_life_display = format_finite(half_life, ".1f") if half_life is not None else "N/A"
 
             rows.append(f"""
             <tr>
                 <td>{period}</td>
-                <td>{mean_to:.1%}</td>
-                <td>{top_to:.1%}</td>
-                <td>{bottom_to:.1%}</td>
-                <td>{mean_ac:.4f}</td>
-                <td>{f"{half_life:.1f}" if half_life is not None else "N/A"}</td>
+                <td>{mean_to_display}</td>
+                <td>{top_to_display}</td>
+                <td>{bottom_to_display}</td>
+                <td>{mean_ac_display}</td>
+                <td>{half_life_display}</td>
             </tr>
             """)
 
@@ -689,6 +737,12 @@ class SignalDashboard(BaseDashboard):
         # Summary metrics section
         sig_status = "Significant" if event_analysis.is_significant else "Not Significant"
         sig_color = "#10b981" if event_analysis.is_significant else "#ef4444"
+        final_caar = format_finite(event_analysis.final_caar, "+.4f")
+        final_caar_pct = format_finite(event_analysis.final_caar, "+.2%")
+        event_day_aar = format_finite(event_analysis.event_day_aar, "+.4f")
+        event_day_aar_pct = format_finite(event_analysis.event_day_aar, "+.2%")
+        test_statistic = format_finite(event_analysis.test_statistic, ".3f")
+        p_value = format_finite(event_analysis.p_value, ".4f")
 
         html_parts.append(f"""
         <div class="metric-grid">
@@ -708,8 +762,8 @@ class SignalDashboard(BaseDashboard):
             </div>
             <div class="metric-card">
                 <div class="metric-label">Final CAAR</div>
-                <div class="metric-value">{event_analysis.final_caar:+.4f}</div>
-                <div class="metric-sublabel">{event_analysis.final_caar * 100:+.2f}%</div>
+                <div class="metric-value">{final_caar}</div>
+                <div class="metric-sublabel">{final_caar_pct}</div>
             </div>
         </div>
         """)
@@ -719,8 +773,8 @@ class SignalDashboard(BaseDashboard):
         <div class="metric-grid">
             <div class="metric-card">
                 <div class="metric-label">Event Day AAR (t=0)</div>
-                <div class="metric-value">{event_analysis.event_day_aar:+.4f}</div>
-                <div class="metric-sublabel">{event_analysis.event_day_aar * 100:+.2f}%</div>
+                <div class="metric-value">{event_day_aar}</div>
+                <div class="metric-sublabel">{event_day_aar_pct}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Test</div>
@@ -728,11 +782,11 @@ class SignalDashboard(BaseDashboard):
             </div>
             <div class="metric-card">
                 <div class="metric-label">Test Statistic</div>
-                <div class="metric-value">{event_analysis.test_statistic:.3f}</div>
+                <div class="metric-value">{test_statistic}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">P-value</div>
-                <div class="metric-value">{event_analysis.p_value:.4f}</div>
+                <div class="metric-value">{p_value}</div>
                 <div class="metric-sublabel" style="color: {sig_color};">{sig_status}</div>
             </div>
         </div>
@@ -838,16 +892,22 @@ class SignalDashboard(BaseDashboard):
 
         rows = []
         for r in sorted_results[:20]:  # Limit to top 20
-            car_color = "#10b981" if r.car >= 0 else "#ef4444"
+            car_color = (
+                "#6b7280" if not math.isfinite(r.car) else "#10b981" if r.car >= 0 else "#ef4444"
+            )
             ar_day0 = r.ar_by_day.get(0, 0.0)
-            beta_str = f"{r.estimation_beta:.2f}" if r.estimation_beta is not None else "N/A"
+            beta_str = (
+                format_finite(r.estimation_beta, ".2f") if r.estimation_beta is not None else "N/A"
+            )
+            car_display = format_finite(r.car, "+.4f")
+            ar_day0_display = format_finite(ar_day0, "+.4f")
             rows.append(f"""
             <tr>
                 <td>{r.event_id}</td>
                 <td>{r.asset}</td>
                 <td>{r.event_date[:10] if len(r.event_date) >= 10 else r.event_date}</td>
-                <td style="color: {car_color};">{r.car:+.4f}</td>
-                <td>{ar_day0:+.4f}</td>
+                <td style="color: {car_color};">{car_display}</td>
+                <td>{ar_day0_display}</td>
                 <td>{beta_str}</td>
             </tr>
             """)

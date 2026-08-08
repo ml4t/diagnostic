@@ -10,6 +10,41 @@ import polars as pl
 from scipy.stats import spearmanr, ttest_ind
 
 
+def _compute_quantile_return_statistics(
+    data: pl.DataFrame,
+    period: int,
+    n_quantiles: int,
+    quantile_col: str = "quantile",
+) -> tuple[dict[int, float], dict[int, float]]:
+    return_col = f"{period}D_fwd_return"
+
+    if return_col not in data.columns:
+        missing = dict.fromkeys(range(1, n_quantiles + 1), float("nan"))
+        return missing, missing.copy()
+
+    means: dict[int, float] = {}
+    standard_deviations: dict[int, float] = {}
+    valid_data = data.filter(pl.col(return_col).is_not_null())
+
+    # Polars parallel group reductions may add floats in a different order on
+    # repeated calls. Reduce rows within each quantile in input order instead.
+    for partition in valid_data.partition_by(quantile_col, maintain_order=True):
+        quantile = partition.item(0, quantile_col)
+        returns = partition.get_column(return_col).to_numpy()
+        quantile_number = int(quantile)
+        means[quantile_number] = float(np.mean(returns))
+        standard_deviations[quantile_number] = (
+            float(np.std(returns, ddof=1)) if len(returns) > 1 else float("nan")
+        )
+
+    # Fill missing quantiles
+    for q in range(1, n_quantiles + 1):
+        means.setdefault(q, float("nan"))
+        standard_deviations.setdefault(q, float("nan"))
+
+    return dict(sorted(means.items())), dict(sorted(standard_deviations.items()))
+
+
 def compute_quantile_returns(
     data: pl.DataFrame,
     period: int,
@@ -34,29 +69,9 @@ def compute_quantile_returns(
     dict[int, float]
         Mean return by quantile (1 = lowest factor).
     """
-    return_col = f"{period}D_fwd_return"
+    means, _ = _compute_quantile_return_statistics(data, period, n_quantiles, quantile_col)
 
-    if return_col not in data.columns:
-        return dict.fromkeys(range(1, n_quantiles + 1), float("nan"))
-
-    result: dict[int, float] = {}
-
-    quantile_means = (
-        data.filter(pl.col(return_col).is_not_null())
-        .group_by(quantile_col)
-        .agg(pl.col(return_col).mean().alias("mean_return"))
-        .sort(quantile_col)
-    )
-
-    for row in quantile_means.iter_rows(named=True):
-        result[int(row[quantile_col])] = float(row["mean_return"])
-
-    # Fill missing quantiles
-    for q in range(1, n_quantiles + 1):
-        if q not in result:
-            result[q] = float("nan")
-
-    return result
+    return means
 
 
 def compute_spread(

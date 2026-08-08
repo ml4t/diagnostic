@@ -3,6 +3,8 @@
 Tests _report.py: generate_html, _generate_text_html.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from ml4t.diagnostic.signal._report import _generate_text_html, generate_html
@@ -121,7 +123,7 @@ class TestGenerateHtml:
         generate_html(minimal_result, str(output_path))
 
         assert output_path.exists()
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "<html" in content.lower()
 
     def test_html_contains_plotly(self, minimal_result, tmp_path):
@@ -129,7 +131,7 @@ class TestGenerateHtml:
         output_path = tmp_path / "report.html"
         generate_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         # Plotly includes its JS library
         assert "plotly" in content.lower()
 
@@ -138,7 +140,7 @@ class TestGenerateHtml:
         output_path = tmp_path / "report.html"
         generate_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "100" in content  # n_assets
         assert "20" in content  # n_dates
 
@@ -147,7 +149,7 @@ class TestGenerateHtml:
         output_path = tmp_path / "report.html"
         generate_html(multi_period_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert output_path.exists()
         # Should contain period labels
         assert "1D" in content
@@ -170,6 +172,27 @@ class TestGenerateHtml:
 
         assert output_path.exists()
 
+    def test_unavailable_statistics_render_as_na(self, minimal_result, monkeypatch):
+        """Plotly summary tables do not expose raw NaN values."""
+        import plotly.graph_objects as go
+
+        captured = {}
+        minimal_result.spread["1D"] = float("nan")
+        minimal_result.spread_t_stat["1D"] = float("nan")
+        minimal_result.monotonicity["1D"] = float("nan")
+
+        def capture_figure(figure, *_args, **_kwargs):
+            captured["figure"] = figure
+
+        monkeypatch.setattr(go.Figure, "write_html", capture_figure)
+
+        generate_html(minimal_result, "unused.html")
+
+        spread_table = captured["figure"].data[-1]
+        assert list(spread_table.cells.values[1]) == ["N/A"]
+        assert list(spread_table.cells.values[2]) == ["N/A"]
+        assert list(spread_table.cells.values[3]) == ["N/A"]
+
 
 # =============================================================================
 # Tests: _generate_text_html (fallback without Plotly)
@@ -191,7 +214,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "<!DOCTYPE html>" in content
 
     def test_contains_summary(self, minimal_result, tmp_path):
@@ -199,7 +222,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         # Should contain summary output
         assert "Signal Analysis" in content
         assert "100 assets" in content
@@ -210,7 +233,7 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "IC" in content
         assert "1D" in content
 
@@ -219,16 +242,43 @@ class TestGenerateTextHtml:
         output_path = tmp_path / "report.html"
         _generate_text_html(minimal_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "<style>" in content
         assert "monospace" in content
+
+    def test_unavailable_statistics_render_as_na(self, minimal_result, tmp_path):
+        """The Plotly-less report path does not expose raw NaN values."""
+        for values in (
+            minimal_result.ic,
+            minimal_result.ic_t_stat,
+            minimal_result.ic_p_value,
+            minimal_result.ic_ir,
+            minimal_result.ic_positive_pct,
+            minimal_result.spread,
+            minimal_result.spread_t_stat,
+            minimal_result.spread_p_value,
+            minimal_result.monotonicity,
+        ):
+            values["1D"] = float("nan")
+        result = replace(
+            minimal_result,
+            turnover={"1D": float("nan")},
+            half_life=float("nan"),
+        )
+        output_path = tmp_path / "report.html"
+
+        _generate_text_html(result, str(output_path))
+
+        content = output_path.read_text(encoding="utf-8")
+        assert "N/A" in content
+        assert "nan" not in content.lower()
 
     def test_multi_period(self, multi_period_result, tmp_path):
         """Test text report with multiple periods."""
         output_path = tmp_path / "report.html"
         _generate_text_html(multi_period_result, str(output_path))
 
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "1D" in content
         assert "5D" in content
         assert "21D" in content

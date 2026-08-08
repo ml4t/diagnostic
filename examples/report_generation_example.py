@@ -15,8 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
-from ml4t.diagnostic.evaluation import (
-    FeatureDiagnostics,
+from ml4t.diagnostic.evaluation import FeatureDiagnostics
+from ml4t.diagnostic.evaluation.report_generation import (
     generate_html_report,
     generate_json_report,
     generate_markdown_report,

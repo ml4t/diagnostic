@@ -17,6 +17,15 @@ from ml4t.diagnostic.evaluation.trade_dashboard.types import ReturnSummary
 logger = logging.getLogger(__name__)
 
 
+def _anderson_p_value_note(p_value: float) -> str:
+    """Describe the interpolation range represented by an Anderson p-value."""
+    if np.isclose(p_value, 0.15):
+        return "p >= 0.15 (interpolation limit)"
+    if np.isclose(p_value, 0.01):
+        return "p <= 0.01 (interpolation limit)"
+    return "interpolated from critical-value table"
+
+
 def compute_return_summary(returns: np.ndarray) -> ReturnSummary:
     """Compute summary statistics for a returns series.
 
@@ -85,6 +94,7 @@ def compute_distribution_tests(
         - test: Test name
         - statistic: Test statistic
         - p_value: P-value
+        - p_value_note: Caveat on how the p-value was obtained
         - interpretation: Human-readable interpretation
     """
     results = []
@@ -102,6 +112,7 @@ def compute_distribution_tests(
                     "test": "Shapiro-Wilk",
                     "statistic": stat,
                     "p_value": p,
+                    "p_value_note": "reported only for 3 <= n <= 5000",
                     "interpretation": "Normal" if p > 0.05 else "Non-normal",
                 }
             )
@@ -113,18 +124,16 @@ def compute_distribution_tests(
         try:
             from scipy.stats import anderson
 
-            result = anderson(returns, dist="norm")
-            # Use 5% significance level
-            critical_idx = 2  # Index for 5% level
+            result = anderson(returns, dist="norm", method="interpolate")
             stat = result.statistic
-            critical = result.critical_values[critical_idx]
-            is_normal = stat < critical
+            p_value = float(result.pvalue)
             results.append(
                 {
                     "test": "Anderson-Darling",
                     "statistic": stat,
-                    "p_value": None,  # Anderson doesn't provide p-value directly
-                    "interpretation": "Normal" if is_normal else "Non-normal",
+                    "p_value": p_value,
+                    "p_value_note": _anderson_p_value_note(p_value),
+                    "interpretation": "Normal" if p_value > 0.05 else "Non-normal",
                 }
             )
         except Exception:
@@ -141,6 +150,7 @@ def compute_distribution_tests(
                     "test": "Jarque-Bera",
                     "statistic": stat,
                     "p_value": p,
+                    "p_value_note": "asymptotic chi-squared approximation",
                     "interpretation": "Normal" if p > 0.05 else "Non-normal",
                 }
             )
@@ -148,7 +158,9 @@ def compute_distribution_tests(
             logger.debug("Jarque-Bera test failed", exc_info=True)
 
     if not results:
-        return pd.DataFrame(columns=["test", "statistic", "p_value", "interpretation"])
+        return pd.DataFrame(
+            columns=["test", "statistic", "p_value", "p_value_note", "interpretation"]
+        )
 
     return pd.DataFrame(results)
 

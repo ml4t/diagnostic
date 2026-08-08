@@ -1,182 +1,53 @@
 # Trade-SHAP Dashboard
 
-Interactive Streamlit dashboard for Trade-SHAP analysis visualization and systematic
-trade debugging.
+The Streamlit dashboard presents trade-level SHAP results, statistical checks,
+worst trades, feature effects, and recurring error patterns.
 
-## Overview
-
-The Trade-SHAP Dashboard provides real-time visualization and analysis of ML trading strategy performance, using SHAP (SHapley Additive exPlanations) to explain why individual trades succeeded or failed.
-
-## Features
-
-### 1. Statistical Validation Tab
-- DSR (Deflated Sharpe Ratio) analysis
-- PSR (Probabilistic Sharpe Ratio) metrics
-- Multiple testing correction results
-- Backtest overfitting detection
-
-### 2. Worst Trades Analysis Tab
-- Interactive table of worst-performing trades
-- Trade-by-trade SHAP explanations
-- Feature contribution breakdown
-- Export to CSV functionality
-
-### 3. SHAP Analysis Tab
-- Feature importance rankings
-- SHAP value distributions
-- Feature interaction effects
-- Waterfall plots for individual trades
-
-### 4. Error Patterns Tab
-- Clustered error patterns
-- Pattern descriptions and hypotheses
-- Confidence scores
-- Actionable improvement suggestions
-
-## Installation
+## Install
 
 ```bash
-pip install ml4t-diagnostic[dashboard]
+pip install "ml4t-diagnostic[dashboard]"
 ```
 
-Or install Streamlit separately:
+## Run the checked example
+
+Clone the repository, then run the public example:
 
 ```bash
-pip install streamlit
+streamlit run examples/trade_shap_dashboard_demo.py
 ```
 
-## Usage
+The release test suite starts this file with Streamlit's application test
+runner and fails if the app raises an exception.
 
-### Command Line
+## Load saved results
 
-```bash
-# Recommended compatibility entry point
-streamlit run -m ml4t.diagnostic.evaluation.trade_shap_dashboard
+The sidebar accepts JSON only. Pickle input is not supported because loading a
+pickle can execute code. Treat uploaded JSON as untrusted data and validate its
+contents before sharing or archiving reports.
 
-# Visualization namespace also re-exports the dashboard helpers
-python -c "from ml4t.diagnostic.visualization.trade_shap import run_diagnostics_dashboard"
-```
+The normalized result can contain:
 
-### Programmatic
+- trade identifiers, timestamps, symbols, PnL, and percentage returns
+- entry and exit prices, duration, direction, and quantity
+- feature values and aligned SHAP values
+- aggregate statistical validation results
+- clustered error patterns and their supporting trades
 
-```python
-from ml4t.diagnostic.evaluation import TradeShapAnalyzer
-from ml4t.diagnostic.visualization.trade_shap import run_diagnostics_dashboard
+The dashboard disables sections whose required data is absent.
 
-# Analyze trades
-analyzer = TradeShapAnalyzer(model, features_df, shap_values)
-result = analyzer.explain_worst_trades(worst_trades)
+## Export
 
-# Launch dashboard
-run_diagnostics_dashboard(result)
-```
+The application can export normalized trades and patterns as CSV and the full
+dashboard as HTML. CSV exports may begin with characters that spreadsheet
+applications interpret as formulas; sanitize them before opening untrusted
+exports in a spreadsheet.
 
-### From Saved Results
+## Supported import surfaces
 
-```python
-from ml4t.diagnostic.evaluation.trade_shap_dashboard import (
-    run_diagnostics_dashboard,
-    load_data_from_file
-)
-
-# Load previously saved results
-result = load_data_from_file("analysis_results.json")
-
-# Launch dashboard
-run_diagnostics_dashboard(result)
-```
-
-## Data Export
-
-### Export Trades to CSV
-
-```python
-from ml4t.diagnostic.evaluation.trade_shap_dashboard import export_trades_to_csv
-
-csv_content = export_trades_to_csv(trades_data)
-with open("trades.csv", "w") as f:
-    f.write(csv_content)
-```
-
-### Export Patterns to CSV
-
-```python
-from ml4t.diagnostic.evaluation.trade_shap_dashboard import export_patterns_to_csv
-
-csv_content = export_patterns_to_csv(patterns)
-with open("patterns.csv", "w") as f:
-    f.write(csv_content)
-```
-
-### Export Full HTML Report
-
-```python
-from ml4t.diagnostic.evaluation.trade_shap_dashboard import export_full_report_html
-
-html_content = export_full_report_html(result)
-with open("report.html", "w") as f:
-    f.write(html_content)
-```
-
-## Helper Functions
-
-### Extract Trade Returns
-
-```python
-from ml4t.diagnostic.evaluation.trade_shap_dashboard import extract_trade_returns
-
-returns = extract_trade_returns(result)
-# Returns: list of PnL values
-```
-
-### Extract Trade Data
-
-```python
-from ml4t.diagnostic.evaluation.trade_shap_dashboard import extract_trade_data
-
-trades = extract_trade_data(result)
-# Returns: list of trade dictionaries with keys:
-# - trade_id, timestamp, symbol, pnl, return_pct
-# - duration_days, entry_price, exit_price
-# - top_feature, top_feature_impact
-```
-
-## Architecture
-
-The dashboard is implemented as a modular package:
-
-```
-ml4t.diagnostic.evaluation.trade_dashboard/
-├── app.py          # Main Streamlit application
-├── tabs/           # Tab modules
-│   ├── stat_validation.py
-│   ├── worst_trades.py
-│   ├── shap_analysis.py
-│   └── patterns.py
-├── stats.py        # Statistical computations
-├── export/         # Export functionality
-│   ├── csv.py
-│   └── html.py
-├── io.py           # Data loading utilities
-└── types.py        # Type definitions
-```
-
-## Requirements
-
-- Python 3.12+
-- Streamlit >= 1.0.0
-- ml4t-diagnostic (core library)
-- SHAP (for explanations)
-
-## Notes
-
-- `ml4t.diagnostic.evaluation.trade_shap_dashboard` remains the backward-compatible
-  module path for scripts and tests.
-- `ml4t.diagnostic.visualization.trade_shap` is the cleaner import surface for
-  dashboard-related helpers.
-
-## See Also
-
-- Trade-SHAP Analysis Guide
-- Statistical Validation
-- SHAP Feature Importance
+The application implementation lives under
+`ml4t.diagnostic.evaluation.trade_dashboard`. The compatibility module
+`ml4t.diagnostic.evaluation.trade_shap_dashboard` remains available for code
+written against beta releases. New applications should start from the checked
+example script so data normalization and Streamlit state follow the supported
+path.

@@ -31,7 +31,7 @@ This library follows semantic versioning. The public API consists of all symbols
 exported in __all__. Breaking changes will only occur in major version bumps.
 """
 
-__version__ = "0.1.0b25"
+__version__ = "0.1.0"
 
 # Sub-modules for advanced usage
 from . import (
@@ -86,6 +86,9 @@ from .integration.data_contract import (
     Severity,
 )
 
+# Cross-sectional feature profiles
+from .metrics import QuantileProfile, quantile_profile
+
 # Feature selection
 from .selection import FeatureSelector, SelectionReport
 
@@ -123,6 +126,9 @@ __all__ = [
     # Signal Analysis
     "analyze_signal",
     "SignalResult",
+    # Cross-sectional feature profiles
+    "QuantileProfile",
+    "quantile_profile",
     # Barrier Analysis
     "BarrierAnalysis",
     # Look-ahead / feature causality auditor

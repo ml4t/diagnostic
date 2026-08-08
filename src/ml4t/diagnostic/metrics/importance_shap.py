@@ -11,48 +11,16 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from ml4t.diagnostic.utils.dependencies import DEPS
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-
-
-def _detect_gpu_available() -> bool:
-    """Detect if GPU acceleration is available for SHAP computations.
-
-    GPU acceleration is currently supported only for TreeExplainer with:
-    - NVIDIA GPU
-    - CUDA 11.0+
-    - cupy library installed
-
-    Returns
-    -------
-    bool
-        True if GPU is available and cupy is installed, False otherwise
-
-    Notes
-    -----
-    This function checks for cupy availability as a proxy for GPU support.
-    Even if a GPU is present, cupy must be installed for SHAP to use it.
-
-    GPU acceleration provides 10-100x speedup for large datasets (>5K samples)
-    but has overhead that makes it slower for small datasets (<5K samples).
-    """
-    try:
-        import cupy as cp
-
-        # Check if GPU is actually accessible
-        _ = cp.cuda.Device(0)
-        return True
-    except (ImportError, RuntimeError):
-        # ImportError: cupy not installed
-        # RuntimeError: CUDA not available or no GPU found
-        return False
 
 
 def _get_explainer(
     model: Any,
     X_array: "NDArray[Any]",
     explainer_type: str = "auto",
-    use_gpu: bool | str = "auto",
     background_data: Union["NDArray[Any]", None] = None,
     **explainer_kwargs: Any,
 ) -> tuple[Any, str, float]:
@@ -79,11 +47,6 @@ def _get_explainer(
         - "linear": LinearExplainer (linear models only)
         - "deep": DeepExplainer (neural networks, requires background_data)
         - "kernel": KernelExplainer (model-agnostic, slow)
-    use_gpu : bool | str, default "auto"
-        GPU acceleration mode (TreeExplainer only):
-        - "auto": Use GPU if available and dataset large enough (>5K samples)
-        - True: Force GPU usage (raises error if unavailable)
-        - False: Force CPU usage
     background_data : np.ndarray | None, default None
         Background dataset for explainers that need it (Kernel, Deep).
         If None, will be auto-sampled from X_array for Kernel.
@@ -104,15 +67,11 @@ def _get_explainer(
         If shap library not installed
     ValueError
         If explainer_type is invalid or if auto-selection fails for all explainers
-    RuntimeError
-        If GPU requested but unavailable
     """
     try:
         import shap
     except ImportError as e:
-        raise ImportError(
-            "SHAP library is not installed. Install with: pip install ml4t-diagnostic[ml] or: pip install shap>=0.41.0"
-        ) from e
+        raise ImportError(f"SHAP library is not installed. {DEPS.shap.install_guidance}") from e
 
     # Validate explainer_type
     valid_types = {"auto", "tree", "linear", "deep", "kernel"}
@@ -121,32 +80,12 @@ def _get_explainer(
             f"Invalid explainer_type '{explainer_type}'. Must be one of: {', '.join(sorted(valid_types))}"
         )
 
-    # Handle GPU detection and configuration
-    gpu_available = _detect_gpu_available()
-    use_gpu_final = False
-
-    if use_gpu == "auto":
-        # Auto-detect: Use GPU if available AND dataset large enough
-        n_samples = X_array.shape[0]
-        use_gpu_final = gpu_available and n_samples >= 5000
-    elif use_gpu is True:
-        if not gpu_available:
-            raise RuntimeError(
-                "GPU requested (use_gpu=True) but GPU not available. "
-                "Ensure NVIDIA GPU, CUDA 11.0+, and cupy are installed. "
-                "Install with: pip install ml4t-diagnostic[gpu]"
-            )
-        use_gpu_final = True
-    else:  # use_gpu is False
-        use_gpu_final = False
-
     # Explicit explainer type requested
     if explainer_type != "auto":
         return _create_explainer_by_type(
             explainer_type=explainer_type,
             model=model,
             X_array=X_array,
-            use_gpu=use_gpu_final,
             background_data=background_data,
             shap=shap,
             **explainer_kwargs,
@@ -161,9 +100,6 @@ def _get_explainer(
         tree_kwargs.update(explainer_kwargs)  # User kwargs override defaults
 
         explainer = shap.TreeExplainer(model, **tree_kwargs)
-        # GPU mode only for tree explainer
-        if use_gpu_final and hasattr(explainer, "gpu"):
-            setattr(explainer, "gpu", True)  # noqa: B010
         ms_per_sample = 5.0  # ~1-10ms typical
         return (explainer, "tree", ms_per_sample)
     except Exception as e:
@@ -213,7 +149,6 @@ def _create_explainer_by_type(
     explainer_type: str,
     model: Any,
     X_array: "NDArray[Any]",
-    use_gpu: bool,
     background_data: Union["NDArray[Any]", None],
     shap: Any,
     **explainer_kwargs: Any,
@@ -228,8 +163,6 @@ def _create_explainer_by_type(
         Fitted model
     X_array : np.ndarray
         Feature matrix
-    use_gpu : bool
-        Whether to use GPU (tree only)
     background_data : np.ndarray | None
         Background data for kernel/deep explainers
     shap : module
@@ -256,8 +189,6 @@ def _create_explainer_by_type(
             tree_kwargs.update(explainer_kwargs)  # User kwargs override defaults
 
             explainer = shap.TreeExplainer(model, **tree_kwargs)
-            if use_gpu and hasattr(explainer, "gpu"):
-                explainer.gpu = True
             ms_per_sample = 5.0
             return (explainer, "tree", ms_per_sample)
 
@@ -472,7 +403,7 @@ def compute_shap_importance(
     check_additivity: bool = True,
     max_samples: int | None = None,
     explainer_type: str = "auto",
-    use_gpu: bool | str = "auto",
+    *,
     background_data: Union["NDArray[Any]", None] = None,
     explainer_kwargs: dict | None = None,
     show_progress: bool = False,
@@ -526,8 +457,6 @@ def compute_shap_importance(
         - 'linear': Force LinearExplainer
         - 'kernel': Force KernelExplainer
         - 'deep': Force DeepExplainer
-    use_gpu : Union[bool, str], default 'auto'
-        Enable GPU acceleration for SHAP computation
     background_data : np.ndarray | None, default None
         Background dataset for KernelExplainer
     explainer_kwargs : dict | None, default None
@@ -564,9 +493,7 @@ def compute_shap_importance(
     try:
         import shap  # noqa: F401 (availability check)
     except ImportError as e:
-        raise ImportError(
-            "SHAP library is not installed. Install with: pip install ml4t-diagnostic[ml] or: pip install shap>=0.43.0"
-        ) from e
+        raise ImportError(f"SHAP library is not installed. {DEPS.shap.install_guidance}") from e
 
     # Convert X to appropriate format
     if isinstance(X, pl.DataFrame):
@@ -618,7 +545,6 @@ def compute_shap_importance(
         model=model,
         X_array=X_array,
         explainer_type=explainer_type,
-        use_gpu=use_gpu,
         background_data=background_data,
         **explainer_kwargs,
     )

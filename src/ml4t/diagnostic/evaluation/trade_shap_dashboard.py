@@ -47,9 +47,6 @@ if TYPE_CHECKING:
 
 # Import utilities for backward compatibility
 from ml4t.diagnostic.evaluation.trade_dashboard.io import (
-    PickleDisabledError,
-)
-from ml4t.diagnostic.evaluation.trade_dashboard.io import (
     load_result_from_upload as load_data_from_file,
 )
 
@@ -60,7 +57,6 @@ __all__ = [
     "export_patterns_to_csv",
     "export_trades_to_csv",
     "load_data_from_file",
-    "PickleDisabledError",
     "extract_trade_returns",
     "extract_trade_data",
 ]

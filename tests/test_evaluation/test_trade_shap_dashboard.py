@@ -140,7 +140,7 @@ def test_dashboard_documentation_exists():
     assert docs_path.exists(), f"Documentation not found: {docs_path}"
 
     # Check it's not empty
-    content = docs_path.read_text()
+    content = docs_path.read_text(encoding="utf-8")
     assert len(content) > 100, "Documentation file is too short"
     assert "Trade-SHAP" in content
     assert "Streamlit" in content
@@ -152,7 +152,7 @@ def test_pyproject_has_dashboard_dependency():
 
     assert pyproject_path.exists()
 
-    content = pyproject_path.read_text()
+    content = pyproject_path.read_text(encoding="utf-8")
 
     # Check for dashboard optional dependency group
     assert "dashboard" in content or "streamlit" in content
@@ -189,7 +189,7 @@ def test_dashboard_file_structure():
         / "evaluation"
         / "trade_shap_dashboard.py"
     )
-    wrapper_content = wrapper_path.read_text()
+    wrapper_content = wrapper_path.read_text(encoding="utf-8")
     assert '"""' in wrapper_content  # Has docstring
     assert "run_diagnostics_dashboard" in wrapper_content
 
@@ -203,7 +203,7 @@ def test_dashboard_file_structure():
         / "trade_dashboard"
         / "app.py"
     )
-    app_content = app_path.read_text()
+    app_content = app_path.read_text(encoding="utf-8")
     assert "import streamlit" in app_content or "st." in app_content
     assert "def run_dashboard" in app_content or "run_diagnostics_dashboard" in app_content
 
@@ -256,7 +256,7 @@ def test_dashboard_error_handling_structure():
     if not app_path.exists():
         pytest.skip("Dashboard modular package not created yet")
 
-    content = app_path.read_text()
+    content = app_path.read_text(encoding="utf-8")
 
     # Check for error handling
     assert "try:" in content
@@ -394,7 +394,7 @@ def test_dashboard_has_statistical_functions():
     if not stats_path.exists():
         pytest.skip("Dashboard stats module not created yet")
 
-    content = stats_path.read_text()
+    content = stats_path.read_text(encoding="utf-8")
 
     # Check for statistical functionality (computations, not specific imports)
     assert "def " in content  # Has functions defined
@@ -450,7 +450,7 @@ def test_shap_tab_implementation():
     if not shap_tab_path.exists():
         pytest.skip("SHAP tab module not created yet")
 
-    content = shap_tab_path.read_text()
+    content = shap_tab_path.read_text(encoding="utf-8")
 
     # Check for SHAP visualization components
     assert "render_tab" in content, "Missing render_tab function"
@@ -476,7 +476,7 @@ def test_patterns_tab_enhanced():
     if not patterns_tab_path.exists():
         pytest.skip("Patterns tab module not created yet")
 
-    content = patterns_tab_path.read_text()
+    content = patterns_tab_path.read_text(encoding="utf-8")
 
     # Check for pattern tab features
     assert "render_tab" in content, "Missing render_tab function"
@@ -643,7 +643,7 @@ def test_performance_optimization():
         / "app.py"
     )
 
-    content = app_path.read_text()
+    content = app_path.read_text(encoding="utf-8")
 
     # Check for performance features in modular package
     assert "_measure_load_time_start" in content
@@ -664,7 +664,7 @@ def test_professional_styling():
         / "style.py"
     )
 
-    content = style_path.read_text()
+    content = style_path.read_text(encoding="utf-8")
 
     # Check for CSS styling in modular package
     assert "STYLED_CSS" in content
@@ -686,12 +686,22 @@ def test_error_handling_implemented():
         / "app.py"
     )
 
-    content = app_path.read_text()
+    content = app_path.read_text(encoding="utf-8")
 
     # Check for error handling in modular package
     assert "try:" in content
     assert "except" in content
     assert "traceback" in content
+
+
+def test_pattern_fdr_correction_uses_package_statistics():
+    """Dashboard pattern correction reaches the authoritative FDR implementation."""
+    from ml4t.diagnostic.evaluation.trade_dashboard.tabs.patterns import _apply_fdr_correction
+
+    result = _apply_fdr_correction([("momentum", 0.4, 0.01), ("volatility", 0.2, 0.04)])
+
+    assert [item["adjusted_p"] for item in result] == pytest.approx([0.02, 0.04])
+    assert [item["significant_fdr"] for item in result] == [True, True]
 
 
 if __name__ == "__main__":

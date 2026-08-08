@@ -140,6 +140,25 @@ class TestComputeFoldShap:
                 feature_names=feature_names,
             )
 
+    @patch("ml4t.diagnostic.evaluation.trade_shap.fold_shap._shap", None)
+    def test_missing_shap_uses_supported_install_extra(
+        self, predictions_df, features_df, feature_names, mock_boosters
+    ):
+        """The optional dependency error points to the versioned package extra."""
+        from ml4t.diagnostic.evaluation.trade_shap.fold_shap import compute_fold_shap
+
+        with pytest.raises(ImportError) as exc_info:
+            compute_fold_shap(
+                boosters=mock_boosters,
+                predictions_df=predictions_df,
+                features_df=features_df,
+                feature_names=feature_names,
+            )
+
+        message = str(exc_info.value)
+        assert "pip install ml4t-diagnostic[ml]" in message
+        assert "Intel macOS with Python 3.14" in message
+
     @patch("ml4t.diagnostic.evaluation.trade_shap.fold_shap._shap")
     def test_max_samples_per_fold(
         self, mock_shap, predictions_df, features_df, feature_names, mock_boosters

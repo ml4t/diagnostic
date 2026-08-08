@@ -385,7 +385,7 @@ def _corrupt(
                 perm = np.roll(perm, 1)
             keys_rest = part.drop(list(input_cols))
             reordered_inputs = part.select(list(input_cols))[perm.tolist()]
-            shuffled_parts.append(pl.concat([keys_rest, reordered_inputs], how="horizontal"))
+            shuffled_parts.append(keys_rest.hstack(reordered_inputs))
         post_shuffled = pl.concat(shuffled_parts).select(indexed.columns)
         return (
             pl.concat([pre, post_shuffled])

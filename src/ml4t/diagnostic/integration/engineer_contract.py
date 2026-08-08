@@ -26,12 +26,12 @@ Example workflow:
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class TransformType(str, Enum):
+class TransformType(StrEnum):
     """Supported transform types matching ML4T Engineer API.
 
     These transforms align with ML4T Engineer's PreprocessingPipeline.

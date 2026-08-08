@@ -410,7 +410,7 @@ class TestDashboardRoundTrip:
             assert path.stat().st_size > 1000  # Should be substantial
 
             # Reload and verify
-            loaded_html = path.read_text()
+            loaded_html = path.read_text(encoding="utf-8")
             assert "E2E Test Dashboard" in loaded_html
         finally:
             path.unlink()  # Cleanup
@@ -440,7 +440,7 @@ class TestDashboardRoundTrip:
             )
 
             assert Path(saved_path).exists()
-            content = Path(saved_path).read_text()
+            content = Path(saved_path).read_text(encoding="utf-8")
             assert "Save Test" in content
 
     def test_dashboard_with_comparison(

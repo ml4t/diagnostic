@@ -10,7 +10,6 @@ import json
 import pytest
 
 from ml4t.diagnostic.evaluation.trade_dashboard.io import (
-    PickleDisabledError,
     _explanation_to_dict,
     _pattern_to_dict,
     coerce_result_to_dict,
@@ -61,39 +60,17 @@ class TestLoadResultFromUpload:
         assert len(result["explanations"]) == 1
         assert result["explanations"][0]["trade_id"] == "T001"
 
-    def test_pickle_disabled_by_default(self):
-        """Test that pickle files are disabled by default."""
-        import pickle
+    def test_pickle_format_is_rejected_without_reading(self):
+        """Unsafe serialized content is never read."""
 
-        data = {"test": "data"}
-        content = pickle.dumps(data)
-        uploaded = MockUploadedFile("result.pkl", content)
+        class UnreadableUpload(MockUploadedFile):
+            def read(self) -> bytes:
+                raise AssertionError("unsupported content must not be read")
 
-        with pytest.raises(PickleDisabledError, match="disabled for security"):
+        uploaded = UnreadableUpload("result.pkl", b"")
+
+        with pytest.raises(ValueError, match="Supported format: .json"):
             load_result_from_upload(uploaded)
-
-    def test_pickle_disabled_error_message(self):
-        """Test pickle disabled error message content."""
-        uploaded = MockUploadedFile("result.pickle", b"dummy")
-
-        with pytest.raises(PickleDisabledError) as exc_info:
-            load_result_from_upload(uploaded, allow_pickle=False)
-
-        assert "arbitrary code" in str(exc_info.value)
-        assert "JSON format" in str(exc_info.value)
-
-    def test_pickle_enabled_with_flag(self):
-        """Test that pickle works when explicitly enabled."""
-        import pickle
-
-        data = {"test": "data", "value": 42}
-        content = pickle.dumps(data)
-        uploaded = MockUploadedFile("result.pkl", content)
-
-        result = load_result_from_upload(uploaded, allow_pickle=True)
-
-        assert result == data
-        assert result["value"] == 42
 
     def test_unsupported_file_format(self):
         """Test error on unsupported file format."""
@@ -257,16 +234,3 @@ class TestPatternToDict:
         assert result["n_trades"] == 5
         assert result["description"] == ""  # Default
         assert result["actions"] == []  # Default
-
-
-class TestPickleDisabledError:
-    """Tests for PickleDisabledError exception."""
-
-    def test_is_exception(self):
-        """Test that PickleDisabledError is an exception."""
-        assert issubclass(PickleDisabledError, Exception)
-
-    def test_can_be_raised(self):
-        """Test that it can be raised with message."""
-        with pytest.raises(PickleDisabledError, match="test message"):
-            raise PickleDisabledError("test message")

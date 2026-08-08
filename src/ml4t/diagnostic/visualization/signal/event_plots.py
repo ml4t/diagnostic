@@ -10,11 +10,15 @@ All plots follow ML4T Diagnostic visualization standards.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from scipy import stats as sp_stats
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
 from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
@@ -85,7 +89,11 @@ def plot_caar(
     y = result.caar
 
     # Add confidence band
-    if show_confidence:
+    ci_available = any(
+        np.isfinite(lower) and np.isfinite(upper)
+        for lower, upper in zip(result.caar_ci_lower, result.caar_ci_upper, strict=False)
+    )
+    if show_confidence and ci_available:
         fig.add_trace(
             go.Scatter(
                 x=x + x[::-1],
@@ -190,9 +198,11 @@ def plot_caar(
     # Add statistical info annotation
     annotation_text = (
         f"Test: {result.test_name}<br>"
-        f"Stat: {result.test_statistic:.3f}<br>"
-        f"p-value: {result.p_value:.4f}"
+        f"Stat: {format_finite(result.test_statistic, '.3f')}<br>"
+        f"p-value: {format_finite(result.p_value, '.4f')}"
     )
+    if show_confidence and not ci_available:
+        annotation_text += "<br>CI unavailable"
     fig.add_annotation(
         xref="paper",
         yref="paper",
@@ -264,13 +274,16 @@ def plot_event_heatmap(
         row = []
         hover_row = []
         for day in sorted_days:
+            has_observation = day in r.ar_by_day
             ar = r.ar_by_day.get(day, float("nan"))
             row.append(ar)
-            hover_row.append(
-                f"Event: {r.event_id}<br>Asset: {r.asset}<br>Day: {day}<br>AR: {ar:.4f}"
-                if not (ar != ar)  # not nan check
-                else f"Day {day}: No data"
-            )
+            if has_observation:
+                hover_row.append(
+                    f"Event: {r.event_id}<br>Asset: {r.asset}<br>Day: {day}<br>"
+                    f"AR: {format_finite(ar, '.4f')}"
+                )
+            else:
+                hover_row.append(f"Day {day}: No data")
         z_matrix.append(row)
         hover_texts.append(hover_row)
         y_labels.append(f"{r.event_id} ({r.asset})")
@@ -357,8 +370,6 @@ def plot_ar_distribution(
     if not ars:
         raise ValueError(f"No AR data available for day {day}")
 
-    import numpy as np
-
     ars_array = np.array(ars)
 
     fig = go.Figure()
@@ -376,9 +387,8 @@ def plot_ar_distribution(
     )
 
     # Add KDE if requested
-    if show_kde and len(ars) >= 5:
-        from scipy import stats as sp_stats
-
+    all_finite = bool(np.isfinite(ars_array).all())
+    if show_kde and len(ars) >= 5 and all_finite:
         kde = sp_stats.gaussian_kde(ars_array)
         x_range = np.linspace(min(ars_array), max(ars_array), 100)
         kde_y = kde(x_range)
@@ -398,21 +408,29 @@ def plot_ar_distribution(
 
     # Add vertical line at mean
     mean_ar = float(np.mean(ars_array))
-    fig.add_vline(
-        x=mean_ar,
-        line_dash="dash",
-        line_color=_ML4T_COLORS["negative"],
-        annotation_text=f"Mean: {mean_ar:.4f}",
-        annotation_position="top right",
-    )
+    if np.isfinite(mean_ar):
+        fig.add_vline(
+            x=mean_ar,
+            line_dash="dash",
+            line_color=_ML4T_COLORS["negative"],
+            annotation_text=f"Mean: {format_finite(mean_ar, '.4f')}",
+            annotation_position="top right",
+        )
 
     # Add vertical line at 0
     fig.add_vline(x=0, line_dash="dot", line_color=_ML4T_COLORS["silver_muted"])
 
     # Calculate statistics
     std_ar = float(np.std(ars_array, ddof=1))
-    t_stat = mean_ar / (std_ar / np.sqrt(len(ars))) if std_ar > 0 else 0
-    p_val = 2 * (1 - sp_stats.t.cdf(abs(t_stat), df=len(ars) - 1)) if len(ars) > 1 else 1.0
+    if not np.isfinite(mean_ar) or not np.isfinite(std_ar):
+        t_stat = p_val = float("nan")
+    elif std_ar > 0:
+        t_stat = mean_ar / (std_ar / np.sqrt(len(ars)))
+        p_val = 2 * sp_stats.t.sf(abs(t_stat), df=len(ars) - 1)
+    elif mean_ar == 0:
+        t_stat, p_val = 0.0, 1.0
+    else:
+        t_stat = p_val = float("nan")
 
     day_label = "Event Day" if day == 0 else f"Day {day:+d}"
 
@@ -433,10 +451,10 @@ def plot_ar_distribution(
     # Add statistics annotation
     annotation_text = (
         f"n = {len(ars)}<br>"
-        f"Mean = {mean_ar:.4f}<br>"
-        f"Std = {std_ar:.4f}<br>"
-        f"t-stat = {t_stat:.3f}<br>"
-        f"p-value = {p_val:.4f}"
+        f"Mean = {format_finite(mean_ar, '.4f')}<br>"
+        f"Std = {format_finite(std_ar, '.4f')}<br>"
+        f"t-stat = {format_finite(t_stat, '.3f')}<br>"
+        f"p-value = {format_finite(p_val, '.4f')}"
     )
     fig.add_annotation(
         xref="paper",
@@ -496,26 +514,44 @@ def plot_car_by_event(
 
     # Sort results
     if sort_by == "car":
-        sorted_results = sorted(ar_results, key=lambda x: abs(x.car), reverse=True)
+        sorted_results = sorted(
+            ar_results,
+            key=lambda result: abs(result.car) if math.isfinite(result.car) else -math.inf,
+            reverse=True,
+        )
     else:
         sorted_results = sorted(ar_results, key=lambda x: x.event_date)
 
     # Limit to top_n if specified
     if top_n is not None:
         sorted_results = sorted_results[:top_n]
+    unavailable_count = sum(not math.isfinite(result.car) for result in sorted_results)
 
     # Prepare data
     labels = [f"{r.event_id} ({r.asset})" for r in sorted_results]
     cars = [r.car for r in sorted_results]
-    bar_colors = [_ML4T_COLORS["positive"] if c >= 0 else _ML4T_COLORS["negative"] for c in cars]
+    plotted_cars = [car if math.isfinite(car) else 0.0 for car in cars]
+    bar_colors = [
+        _ML4T_COLORS["silver_muted"]
+        if not math.isfinite(car)
+        else _ML4T_COLORS["positive"]
+        if car >= 0
+        else _ML4T_COLORS["negative"]
+        for car in cars
+    ]
+    car_labels = [format_finite(car, ".4f") for car in cars]
+    bar_text = ["" if math.isfinite(car) else "N/A" for car in cars]
 
     fig = go.Figure(
         data=go.Bar(
             y=labels,
-            x=cars,
+            x=plotted_cars,
             orientation="h",
             marker_color=bar_colors,
-            hovertemplate="Event: %{y}<br>CAR: %{x:.4f}<extra></extra>",
+            customdata=car_labels,
+            text=bar_text,
+            textposition="outside",
+            hovertemplate="Event: %{y}<br>CAR: %{customdata}<extra></extra>",
         )
     )
 
@@ -524,6 +560,8 @@ def plot_car_by_event(
     title = "Cumulative Abnormal Return by Event"
     if top_n is not None:
         title += f" (Top {top_n})"
+    if unavailable_count:
+        title += f" - {unavailable_count} unavailable"
 
     layout_updates = {
         "title": title,

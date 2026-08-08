@@ -390,8 +390,8 @@ def _sample_stats(returns: np.ndarray[Any, np.dtype[Any]], periods_per_year: int
     mean = float(np.mean(returns))
     std = float(np.std(returns, ddof=1))
     sharpe = mean / std * np.sqrt(periods_per_year) if std > 0 else 0.0
-    downside = returns[returns < 0]
-    downside_std = float(np.sqrt(np.mean(downside**2))) if downside.size else 0.0
+    downside = np.minimum(returns, 0.0)
+    downside_std = float(np.sqrt(np.mean(downside**2)))
     sortino = mean / downside_std * np.sqrt(periods_per_year) if downside_std > 0 else 0.0
     cumulative = np.cumprod(1.0 + returns)
     total_return = float(cumulative[-1] - 1.0)

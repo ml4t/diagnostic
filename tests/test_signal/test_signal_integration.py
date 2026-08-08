@@ -259,6 +259,7 @@ class TestConsistency:
         # Quantile returns should be identical
         for q in range(1, 6):
             assert result1.quantile_returns["1D"][q] == result2.quantile_returns["1D"][q]
+            assert result1.quantile_returns_std["1D"][q] == result2.quantile_returns_std["1D"][q]
 
     def test_json_round_trip_preserves_data(self, predictive_signal_data, tmp_path):
         """Test that JSON serialization preserves all data."""

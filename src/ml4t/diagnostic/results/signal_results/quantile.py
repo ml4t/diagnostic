@@ -17,6 +17,7 @@ from pydantic import Field, model_validator
 
 from ml4t.diagnostic.results.base import BaseResult
 from ml4t.diagnostic.results.signal_results.validation import _normalize_period
+from ml4t.diagnostic.utils.formatting import format_finite
 
 
 class QuantileAnalysisResult(BaseResult):
@@ -287,12 +288,17 @@ class QuantileAnalysisResult(BaseResult):
             for q in self.quantile_labels:
                 mean = self.mean_returns[period][q]
                 std = self.std_returns[period][q]
-                lines.append(f"  {q:<10} {mean:>10.4%}  {std:>10.4%}")
+                mean_display = format_finite(mean, ".4%")
+                std_display = format_finite(std, ".4%")
+                lines.append(f"  {q:<10} {mean_display:>10}  {std_display:>10}")
 
             lines.append("")
-            lines.append(f"Spread (Top-Bottom): {self.spread_mean[period]:>10.4%}")
-            lines.append(f"Spread t-stat:       {self.spread_t_stat[period]:>10.2f}")
-            lines.append(f"Spread p-value:      {self.spread_p_value[period]:>10.4f}")
+            spread_mean = format_finite(self.spread_mean[period], ".4%")
+            spread_t = format_finite(self.spread_t_stat[period], ".2f")
+            spread_p = format_finite(self.spread_p_value[period], ".4f")
+            lines.append(f"Spread (Top-Bottom): {spread_mean:>10}")
+            lines.append(f"Spread t-stat:       {spread_t:>10}")
+            lines.append(f"Spread p-value:      {spread_p:>10}")
             lines.append(
                 f"Monotonic:           {self.is_monotonic[period]} ({self.monotonicity_direction[period]})"
             )

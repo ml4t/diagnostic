@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import plotly.graph_objects as go
 
+from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.core import (
     create_base_figure,
-    format_percentage,
     get_theme_config,
     validate_theme,
 )
@@ -150,10 +150,9 @@ def plot_top_bottom_turnover(
     if half_lives:
         hl_text = "<b>Signal Half-Life:</b><br>"
         for period, hl in half_lives.items():
-            if hl is not None:
-                hl_text += f"{period}: {hl:.1f} periods<br>"
-            else:
-                hl_text += f"{period}: N/A<br>"
+            hl_display = format_finite(hl, ".1f") if hl is not None else "N/A"
+            unit = " periods" if hl is not None and np.isfinite(hl) else ""
+            hl_text += f"{period}: {hl_display}{unit}<br>"
 
         fig.add_annotation(
             text=hl_text,
@@ -282,13 +281,13 @@ def plot_autocorrelation(
     # Half-life annotation
     half_life = turnover_result.half_life.get(period)
     mean_ac = turnover_result.mean_autocorrelation.get(period, 0)
+    half_life_display = format_finite(half_life, ".1f") if half_life is not None else "N/A"
+    half_life_unit = " periods" if half_life is not None and np.isfinite(half_life) else ""
 
     summary_text = (
         f"<b>Signal Persistence:</b><br>"
-        f"Mean AC (Lag 1-5): {mean_ac:.4f}<br>"
-        f"Half-life: {half_life:.1f} periods"
-        if half_life
-        else "Half-life: N/A"
+        f"Mean AC (Lag 1-5): {format_finite(mean_ac, '.4f')}<br>"
+        f"Half-life: {half_life_display}{half_life_unit}"
     )
 
     fig.add_annotation(
@@ -392,7 +391,7 @@ def plot_turnover_heatmap(
             fig.add_annotation(
                 x=period,
                 y=q_label,
-                text=format_percentage(val),
+                text=format_finite(val, ".1%"),
                 showarrow=False,
                 font={"size": 10, "color": text_color},
             )

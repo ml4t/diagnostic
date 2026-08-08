@@ -13,7 +13,12 @@ class ValidatedCrossValidationConfig(BaseConfig):
     # CV parameters
     n_groups: int = Field(default=10, ge=2, description="Number of CV groups")
     n_test_groups: int = Field(default=2, ge=1, description="Groups per test set")
-    embargo_pct: float = Field(default=0.01, ge=0, le=0.2, description="Embargo fraction")
+    embargo_pct: float = Field(
+        default=0.01,
+        ge=0,
+        le=0.2,
+        description="Embargo fraction of total rows",
+    )
     label_horizon: int = Field(default=0, ge=0, description="Label look-ahead samples")
 
     # DSR parameters

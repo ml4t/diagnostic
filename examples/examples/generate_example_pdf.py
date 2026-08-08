@@ -13,12 +13,12 @@ fig1.add_trace(
     go.Bar(
         x=["Feature A", "Feature B", "Feature C", "Feature D", "Feature E"],
         y=[0.35, 0.28, 0.22, 0.10, 0.05],
-        marker=dict(
-            color=[0.35, 0.28, 0.22, 0.10, 0.05],
-            colorscale="Viridis",
-            showscale=True,
-            colorbar=dict(title="Importance"),
-        ),
+        marker={
+            "color": [0.35, 0.28, 0.22, 0.10, 0.05],
+            "colorscale": "Viridis",
+            "showscale": True,
+            "colorbar": {"title": "Importance"},
+        },
     )
 )
 fig1.update_layout(
@@ -35,8 +35,8 @@ fig2.add_trace(
         x=["MDI", "PFI", "SHAP"],
         y=[0.85, 0.92, 0.78],
         mode="markers+lines",
-        marker=dict(size=12, color="royalblue"),
-        line=dict(width=2, color="royalblue"),
+        marker={"size": 12, "color": "royalblue"},
+        line={"width": 2, "color": "royalblue"},
     )
 )
 fig2.update_layout(
@@ -45,7 +45,7 @@ fig2.update_layout(
     yaxis_title="Spearman Correlation",
     height=400,
     width=800,
-    yaxis=dict(range=[0, 1]),
+    yaxis={"range": [0, 1]},
 )
 
 # Export to PDF

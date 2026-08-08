@@ -570,11 +570,10 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
         for i in range(251, n):
             window = returns[i - 251 : i + 1]
             mean_r = float(np.mean(window))
-            downside = window[window < 0]
-            if len(downside) > 0:
-                downside_std = float(np.std(downside, ddof=1)) * sqrt_252
-                if downside_std > 0:
-                    sortino_252[i] = mean_r * 252 / downside_std
+            downside = np.minimum(window, 0.0)
+            downside_std = float(np.sqrt(np.mean(downside**2)))
+            if downside_std > 0:
+                sortino_252[i] = mean_r / downside_std * sqrt_252
         fig.add_trace(
             go.Scatter(
                 x=x_axis,

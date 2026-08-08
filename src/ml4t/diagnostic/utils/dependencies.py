@@ -37,6 +37,7 @@ class DependencyInfo:
         purpose: What this dependency is used for
         features: List of features requiring this dependency
         alternatives: Alternative packages that can be used instead
+        availability_note: Platform-specific availability limitation
     """
 
     name: str
@@ -45,6 +46,7 @@ class DependencyInfo:
     purpose: str
     features: list[str]
     alternatives: list[str] | None = None
+    availability_note: str | None = None
 
     def __post_init__(self) -> None:
         if self.alternatives is None:
@@ -59,6 +61,14 @@ class DependencyInfo:
         except ImportError:
             return False
 
+    @property
+    def install_guidance(self) -> str:
+        """Return installation instructions with any platform limitation."""
+        guidance = f"Install with: {self.install_cmd}"
+        if self.availability_note:
+            guidance += f". {self.availability_note}"
+        return guidance
+
     def require(self, feature: str | None = None) -> None:
         """Raise ImportError with helpful message if dependency not available.
 
@@ -72,7 +82,7 @@ class DependencyInfo:
             msg = f"{self.name} is required"
             if feature:
                 msg += f" for {feature}"
-            msg += f". Install with: {self.install_cmd}"
+            msg += f". {self.install_guidance}"
 
             if self.alternatives:
                 msg += f"\n  Alternatives: {', '.join(self.alternatives)}"
@@ -93,7 +103,7 @@ class DependencyInfo:
             msg = f"{self.name} not available - {action}"
             if feature:
                 msg += f" {feature}"
-            msg += f". Install with: {self.install_cmd}"
+            msg += f". {self.install_guidance}"
 
             if self.alternatives:
                 msg += f" (or use: {', '.join(self.alternatives)})"
@@ -142,7 +152,7 @@ class OptionalDependencies:
         self._deps["shap"] = DependencyInfo(
             name="SHAP",
             import_name="shap",
-            install_cmd="pip install shap",
+            install_cmd="pip install ml4t-diagnostic[ml]",
             purpose="Shapley value feature importance and interactions",
             features=[
                 "SHAP-based feature importance",
@@ -150,6 +160,10 @@ class OptionalDependencies:
                 "Model interpretation",
             ],
             alternatives=["Permutation importance", "MDI importance"],
+            availability_note=(
+                "SHAP is unavailable on Intel macOS with Python 3.14 because Numba does not "
+                "provide a compatible wheel"
+            ),
         )
 
         # Other optional dependencies

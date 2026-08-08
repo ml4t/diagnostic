@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from ml4t.diagnostic.results.base import BaseResult
 
 
-class ReportFormat(str, Enum):
+class ReportFormat(StrEnum):
     """Supported report formats."""
 
     HTML = "html"

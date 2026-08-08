@@ -326,7 +326,7 @@ class TestAutoDetection:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             txt_path = Path(tmpdir) / "config.txt"
-            txt_path.write_text("some content")
+            txt_path.write_text("some content", encoding="utf-8")
 
             with pytest.raises(ValueError, match="Unsupported file type"):
                 DiagnosticConfig.from_file(txt_path)

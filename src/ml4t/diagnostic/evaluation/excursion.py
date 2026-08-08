@@ -152,7 +152,7 @@ class ExcursionAnalysisResult:
 
 def _to_float64_array(
     data: pl.Series | pd.Series | NDArray | None, name: str = "data"
-) -> np.ndarray | None:
+) -> NDArray[np.float64] | None:
     """Convert input to float64 numpy array, or return None if input is None."""
     if data is None:
         return None
@@ -227,6 +227,8 @@ def compute_excursions(
     # Use high/low when provided, otherwise fall back to close
     high_array = _to_float64_array(high, "high") if high is not None else price_array
     low_array = _to_float64_array(low, "low") if low is not None else price_array
+    assert high_array is not None
+    assert low_array is not None
 
     # Validate lengths
     if len(high_array) != n:
@@ -253,8 +255,8 @@ def compute_excursions(
 
     for h in horizons:
         # Sliding window views — zero-copy, shape (n - h, h + 1)
-        high_windows = sliding_window_view(high_array, h + 1)[:output_len]  # type: ignore[no-matching-overload]
-        low_windows = sliding_window_view(low_array, h + 1)[:output_len]  # type: ignore[no-matching-overload]
+        high_windows = sliding_window_view(high_array, h + 1)[:output_len]
+        low_windows = sliding_window_view(low_array, h + 1)[:output_len]
 
         forward_max = np.max(high_windows, axis=1)
         forward_min = np.min(low_windows, axis=1)
@@ -428,5 +430,8 @@ def _compute_rolling_excursion_stats(
 
     # Combine all horizons
     if results:
-        return pl.concat(results, how="horizontal")
+        combined = results[0]
+        for result in results[1:]:
+            combined = combined.hstack(result)
+        return combined
     return pl.DataFrame()

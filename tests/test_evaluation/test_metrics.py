@@ -365,7 +365,7 @@ class TestSortinoRatio:
 
         # Calculate expected value manually
         excess_returns = returns - target
-        downside_returns = excess_returns[excess_returns < 0]
+        downside_returns = np.minimum(excess_returns, 0.0)
 
         expected_sortino = np.mean(excess_returns) / np.sqrt(
             np.mean(downside_returns**2),
@@ -780,7 +780,7 @@ class TestComputeICHACStats:
         dates = pd.date_range("2020-01-01", periods=n_periods, freq="D")
         ic_df = pl.DataFrame({"date": dates, "ic": ic_values})
 
-        result = compute_ic_hac_stats(ic_df, ic_col="ic")
+        result = compute_ic_hac_stats(ic_df, ic_col="ic", label_horizon=1)
 
         assert isinstance(result, dict)
 
@@ -789,7 +789,7 @@ class TestComputeICHACStats:
         np.random.seed(42)
         ic_values = 0.03 + np.random.randn(100) * 0.05
 
-        result = compute_ic_hac_stats(ic_values)
+        result = compute_ic_hac_stats(ic_values, label_horizon=1)
 
         assert isinstance(result, dict)
 
@@ -876,7 +876,8 @@ class TestImportanceMetrics:
     """Tests for feature importance metrics."""
 
     @pytest.fixture(scope="class")
-    def classification_data(self):
+    @classmethod
+    def classification_data(cls):
         """Create classification data for importance tests."""
         np.random.seed(42)
         n = 500
@@ -891,7 +892,8 @@ class TestImportanceMetrics:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_model(self, classification_data):
+    @classmethod
+    def trained_rf_model(cls, classification_data):
         """Train a RandomForest model once for MDI and permutation tests."""
         from sklearn.ensemble import RandomForestClassifier
 
@@ -901,7 +903,8 @@ class TestImportanceMetrics:
         return model
 
     @pytest.fixture(scope="class")
-    def trained_rf_model_oob(self, classification_data):
+    @classmethod
+    def trained_rf_model_oob(cls, classification_data):
         """Train a RandomForest model with OOB for MDA tests."""
         from sklearn.ensemble import RandomForestClassifier
 
@@ -1004,7 +1007,8 @@ class TestAnalyzeMLImportance:
         assert callable(analyze_ml_importance)
 
     @pytest.fixture(scope="class")
-    def ml_importance_data(self):
+    @classmethod
+    def ml_importance_data(cls):
         """Create data for ML importance tests."""
         np.random.seed(42)
         n = 500
@@ -1019,7 +1023,8 @@ class TestAnalyzeMLImportance:
         return X, y, feature_names
 
     @pytest.fixture(scope="class")
-    def trained_rf_model_ml(self, ml_importance_data):
+    @classmethod
+    def trained_rf_model_ml(cls, ml_importance_data):
         """Train a RandomForest model once for ML importance tests."""
         from sklearn.ensemble import RandomForestClassifier
 
@@ -1361,7 +1366,8 @@ class TestShapImportance:
     """Tests for SHAP-based feature importance."""
 
     @pytest.fixture(scope="class")
-    def shap_data(self):
+    @classmethod
+    def shap_data(cls):
         """Create data for SHAP importance tests."""
         np.random.seed(42)
         n = 200
@@ -1375,7 +1381,8 @@ class TestShapImportance:
         return X, y, feature_names
 
     @pytest.fixture(scope="class")
-    def trained_rf_model_shap(self, shap_data):
+    @classmethod
+    def trained_rf_model_shap(cls, shap_data):
         """Train a RandomForest model once for SHAP tests."""
         from sklearn.ensemble import RandomForestRegressor
 
@@ -2820,7 +2827,7 @@ class TestHACKernelWeights:
         np.random.seed(42)
         ic_series = np.random.randn(50)
 
-        result = compute_ic_hac_stats(ic_series, kernel="uniform")
+        result = compute_ic_hac_stats(ic_series, kernel="uniform", label_horizon=1)
 
         assert isinstance(result, dict)
         assert "mean_ic" in result
@@ -2831,35 +2838,30 @@ class TestHACKernelWeights:
         np.random.seed(42)
         ic_series = np.random.randn(50)
 
-        result = compute_ic_hac_stats(ic_series, kernel="parzen")
+        result = compute_ic_hac_stats(ic_series, kernel="parzen", label_horizon=1)
 
         assert isinstance(result, dict)
         assert "mean_ic" in result
         assert "hac_se" in result
 
-    def test_hac_unknown_kernel_fallback(self):
-        """Test HAC falls back to naive SE for unknown kernel."""
+    def test_hac_unknown_kernel_raises(self):
+        """An invalid kernel is rejected instead of changing the estimator."""
         np.random.seed(42)
         ic_series = np.random.randn(50)
 
-        # Unknown kernel triggers fallback to naive SE (doesn't raise)
-        result = compute_ic_hac_stats(ic_series, kernel="invalid_kernel")
+        with pytest.raises(ValueError, match="Unknown kernel"):
+            compute_ic_hac_stats(ic_series, kernel="invalid_kernel", label_horizon=1)
 
-        # Should still return valid result with naive SE
-        assert isinstance(result, dict)
-        assert "mean_ic" in result
-        assert "hac_se" in result
-
-    def test_hac_with_exception_fallback(self):
-        """Test HAC falls back to naive SE on numerical issues."""
-        # Edge case: very small series might cause HAC to fail
+    def test_hac_insufficient_sample_returns_nan_statistics(self):
+        """An undersized IC series returns the documented empty statistics."""
         ic_series = np.array([0.1, 0.1])  # Minimal series
 
-        result = compute_ic_hac_stats(ic_series, maxlags=0)
+        result = compute_ic_hac_stats(ic_series, maxlags=0, label_horizon=1)
 
-        # Should still return a valid result
         assert isinstance(result, dict)
         assert "mean_ic" in result
+        assert np.isnan(result["hac_se"])
+        assert result["used_naive_fallback"] is False
 
 
 class TestMDIEdgeCases:
@@ -3234,17 +3236,6 @@ class TestExplainerCreation:
         )
 
         assert result["explainer_type"] == "kernel"
-
-
-class TestGPUDetection:
-    """Tests for GPU detection."""
-
-    def test_gpu_detection_returns_bool(self):
-        """Test GPU detection returns a boolean."""
-        from ml4t.diagnostic.metrics.importance_shap import _detect_gpu_available
-
-        result = _detect_gpu_available()
-        assert isinstance(result, bool)
 
 
 class TestMDAImportanceVariations:
@@ -4252,29 +4243,6 @@ class TestExplainerCreationPaths:
         with pytest.raises(ValueError, match="Invalid explainer_type"):
             compute_shap_importance(model, X, explainer_type="invalid_type")
 
-    def test_use_gpu_false_explicit(self):
-        """Test explicit use_gpu=False path."""
-        from sklearn.ensemble import RandomForestRegressor
-
-        from ml4t.diagnostic.metrics import compute_shap_importance
-
-        np.random.seed(42)
-        X = pd.DataFrame(
-            {
-                "a": np.random.randn(20),
-                "b": np.random.randn(20),
-            }
-        )
-        y = X["a"] + np.random.randn(20) * 0.1
-
-        model = RandomForestRegressor(n_estimators=3, random_state=42)
-        model.fit(X, y)
-
-        result = compute_shap_importance(model, X, use_gpu=False)
-
-        assert isinstance(result, dict)
-        assert "importances" in result
-
 
 class TestAnalyzeMLImportanceEdgeCases:
     """Edge cases for analyze_ml_importance."""
@@ -5185,57 +5153,6 @@ class TestConditionalICWithoutDateCol:
         )
 
         # Should handle gracefully - may still compute with fewer quantiles
-        assert isinstance(result, dict)
-
-
-class TestGPUExplainerPaths:
-    """Test GPU-related paths in SHAP explainer creation."""
-
-    def test_gpu_requested_but_not_available(self):
-        """Test error when GPU requested but not available."""
-        from unittest.mock import patch
-
-        from sklearn.ensemble import RandomForestRegressor
-
-        from ml4t.diagnostic.metrics import compute_shap_importance
-
-        np.random.seed(42)
-        X = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
-        y = X["a"] + np.random.randn(30) * 0.1
-
-        model = RandomForestRegressor(n_estimators=2, random_state=42)
-        model.fit(X, y)
-
-        # Mock GPU as unavailable (patch at the module where it's used)
-        with patch(
-            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
-            return_value=False,
-        ):
-            with pytest.raises(RuntimeError, match="GPU requested.*but GPU not available"):
-                compute_shap_importance(model, X, use_gpu=True)
-
-    def test_gpu_auto_detection_small_dataset(self):
-        """Test that GPU auto-detection doesn't use GPU for small datasets."""
-        from unittest.mock import patch
-
-        from sklearn.ensemble import RandomForestRegressor
-
-        from ml4t.diagnostic.metrics import compute_shap_importance
-
-        np.random.seed(42)
-        X = pd.DataFrame({"a": np.random.randn(100), "b": np.random.randn(100)})
-        y = X["a"] + np.random.randn(100) * 0.1
-
-        model = RandomForestRegressor(n_estimators=2, random_state=42)
-        model.fit(X, y)
-
-        # Even if GPU is available, small dataset shouldn't use it (patch at the module where it's used)
-        with patch(
-            "ml4t.diagnostic.metrics.importance_shap._detect_gpu_available",
-            return_value=True,
-        ):
-            result = compute_shap_importance(model, X, use_gpu="auto")
-
         assert isinstance(result, dict)
 
 

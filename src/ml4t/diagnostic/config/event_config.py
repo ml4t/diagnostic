@@ -20,7 +20,8 @@ class WindowSettings(BaseConfig):
     """Settings for event study windows.
 
     Defines the estimation window (for computing normal returns) and
-    the event window (for measuring abnormal returns).
+    the event window (for measuring abnormal returns). Event windows must be
+    complete and finite so CARs cover comparable horizons.
     """
 
     estimation_start: int = Field(
@@ -126,7 +127,7 @@ class EventConfig(BaseConfig):
         default="market_model",
         description="Model for computing expected returns",
     )
-    test: Literal["t_test", "boehmer", "corrado"] = Field(
+    test: Literal["t_test", "boehmer"] = Field(
         default="boehmer",
         description="Statistical test for significance",
     )

@@ -18,15 +18,12 @@ class DashboardConfig:
 
     Attributes
     ----------
-    allow_pickle_upload : bool
-        Whether to allow uploading pickle files. Disabled by default for security.
     styled : bool
         Whether to apply professional CSS styling.
     title : str
         Dashboard title.
     """
 
-    allow_pickle_upload: bool = False  # Security: disabled by default
     styled: bool = False
     title: str = "Trade SHAP Diagnostics"
 

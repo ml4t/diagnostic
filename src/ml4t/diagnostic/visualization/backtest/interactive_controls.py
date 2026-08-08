@@ -11,7 +11,10 @@ These controls enhance the HTML tearsheet with client-side interactivity.
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import date
+from html import escape
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -34,6 +37,21 @@ DATE_RANGE_PRESETS = {
 }
 
 
+def _validate_callback_name(name: str) -> str:
+    if not isinstance(name, str) or re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", name) is None:
+        raise ValueError("on_change_callback must be a JavaScript identifier")
+    return name
+
+
+def _html(value: object) -> str:
+    return escape(str(value), quote=True)
+
+
+def _js(value: object) -> str:
+    """Serialize a value without allowing it to terminate an inline script."""
+    return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
 def get_date_range_html(
     start_date: date | str | None = None,
     end_date: date | str | None = None,
@@ -54,7 +72,7 @@ def get_date_range_html(
     default_preset : str
         Initially selected preset
     on_change_callback : str
-        JavaScript function name to call on date change
+        Name of a function assigned to ``window`` to call on date change
 
     Returns
     -------
@@ -63,6 +81,7 @@ def get_date_range_html(
     """
     if presets is None:
         presets = ["1M", "3M", "YTD", "1Y", "All"]
+    callback_json = _js(_validate_callback_name(on_change_callback))
 
     # Convert dates to strings
     if isinstance(start_date, date):
@@ -74,9 +93,16 @@ def get_date_range_html(
     preset_buttons = []
     for preset in presets:
         active = "active" if preset == default_preset else ""
+        escaped_preset = _html(preset)
         preset_buttons.append(
-            f'<button class="date-preset-btn {active}" data-preset="{preset}">{preset}</button>'
+            f'<button class="date-preset-btn {active}" '
+            f'data-preset="{escaped_preset}">{escaped_preset}</button>'
         )
+
+    start_html = _html(start_date or "")
+    end_html = _html(end_date or "")
+    start_json = _js(start_date or "")
+    end_json = _js(end_date or "")
 
     return f"""
     <div class="date-range-selector">
@@ -84,9 +110,9 @@ def get_date_range_html(
             {"".join(preset_buttons)}
         </div>
         <div class="custom-range">
-            <input type="date" id="start-date" value="{start_date or ""}" min="{start_date or ""}" max="{end_date or ""}">
+            <input type="date" id="start-date" value="{start_html}" min="{start_html}" max="{end_html}">
             <span>to</span>
-            <input type="date" id="end-date" value="{end_date or ""}" min="{start_date or ""}" max="{end_date or ""}">
+            <input type="date" id="end-date" value="{end_html}" min="{start_html}" max="{end_html}">
         </div>
     </div>
 
@@ -134,8 +160,8 @@ def get_date_range_html(
 
     <script>
         (function() {{
-            const startDate = '{start_date or ""}';
-            const endDate = '{end_date or ""}';
+            const startDate = {start_json};
+            const endDate = {end_json};
 
             document.querySelectorAll('.date-preset-btn').forEach(btn => {{
                 btn.addEventListener('click', function() {{
@@ -162,8 +188,9 @@ def get_date_range_html(
                     document.getElementById('start-date').value = newStart;
                     document.getElementById('end-date').value = newEnd;
 
-                    if (typeof {on_change_callback} === 'function') {{
-                        {on_change_callback}(newStart, newEnd);
+                    const callback = window[{callback_json}];
+                    if (typeof callback === 'function') {{
+                        callback(newStart, newEnd);
                     }}
                 }});
             }});
@@ -177,8 +204,9 @@ def get_date_range_html(
                     // Clear preset active state
                     document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
 
-                    if (typeof {on_change_callback} === 'function') {{
-                        {on_change_callback}(newStart, newEnd);
+                    const callback = window[{callback_json}];
+                    if (typeof callback === 'function') {{
+                        callback(newStart, newEnd);
                     }}
                 }});
             }});
@@ -209,7 +237,7 @@ def get_metric_filter_html(
     multi_select : bool
         Whether to allow multiple selection
     on_change_callback : str
-        JavaScript function name to call on change
+        Name of a function assigned to ``window`` to call on change
 
     Returns
     -------
@@ -218,11 +246,13 @@ def get_metric_filter_html(
     """
     if default_metric is None and metrics:
         default_metric = metrics[0]
+    callback_json = _js(_validate_callback_name(on_change_callback))
 
     options = []
     for metric in metrics:
         selected = "selected" if metric == default_metric else ""
-        options.append(f'<option value="{metric}" {selected}>{metric}</option>')
+        escaped_metric = _html(metric)
+        options.append(f'<option value="{escaped_metric}" {selected}>{escaped_metric}</option>')
 
     multiple_attr = "multiple" if multi_select else ""
 
@@ -260,8 +290,9 @@ def get_metric_filter_html(
             const selected = isMulti
                 ? Array.from(this.selectedOptions).map(o => o.value)
                 : this.value;
-            if (typeof {on_change_callback} === 'function') {{
-                {on_change_callback}(selected);
+            const callback = window[{callback_json}];
+            if (typeof callback === 'function') {{
+                callback(selected);
             }}
         }});
     </script>
@@ -293,7 +324,9 @@ def get_section_navigation_html(
     """
     nav_items = []
     for section in sections:
-        nav_items.append(f'<a href="#{section["id"]}" class="nav-item">{section["title"]}</a>')
+        section_id = _html(section["id"])
+        title = _html(section["title"])
+        nav_items.append(f'<a href="#{section_id}" class="nav-item">{title}</a>')
 
     position_style = "position: sticky; top: 20px;" if sticky else ""
 
@@ -615,7 +648,9 @@ def get_theme_switcher_html(
     for theme in themes:
         active = "active" if theme == default_theme else ""
         label = theme_labels.get(theme, theme.title())
-        buttons.append(f'<button class="theme-btn {active}" data-theme="{theme}">{label}</button>')
+        buttons.append(
+            f'<button class="theme-btn {active}" data-theme="{_html(theme)}">{_html(label)}</button>'
+        )
 
     return f"""
     <div class="theme-switcher">

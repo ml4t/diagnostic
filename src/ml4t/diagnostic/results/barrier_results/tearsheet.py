@@ -362,7 +362,7 @@ class BarrierTearSheet(BaseResult):
             plotlyjs_included = True
 
         html_parts.extend(["</body>", "</html>"])
-        path.write_text("\n".join(html_parts))
+        path.write_text("\n".join(html_parts), encoding="utf-8")
 
         return path
 

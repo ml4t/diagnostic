@@ -273,7 +273,7 @@ def _apply_fdr_correction(top_features: list[Any]) -> list[dict[str, Any]]:
     list[dict]
         Features with FDR-corrected significance.
     """
-    from ml4t.diagnostic.evaluation.trade_dashboard.stats import benjamini_hochberg_fdr
+    from ml4t.diagnostic.evaluation.stats import benjamini_hochberg_fdr
 
     # Parse features into consistent format
     parsed = []
@@ -299,7 +299,7 @@ def _apply_fdr_correction(top_features: list[Any]) -> list[dict[str, Any]]:
 
     if len(p_values) >= 2:
         # Apply BH-FDR correction
-        fdr_result = benjamini_hochberg_fdr(p_values, alpha=0.05)
+        fdr_result = benjamini_hochberg_fdr(p_values, alpha=0.05, return_details=True)
         adjusted_p_values = fdr_result["adjusted_p_values"]
         rejected = fdr_result["rejected"]
 

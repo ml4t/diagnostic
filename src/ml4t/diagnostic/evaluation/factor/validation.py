@@ -176,6 +176,6 @@ def _ljung_box(residuals: np.ndarray, max_lags: int) -> tuple[float, float]:
     # Q statistic
     denominators = np.arange(T - 1, T - max_lags - 1, -1, dtype=np.float64)
     q = T * (T + 2) * np.sum(acf**2 / denominators)
-    p_value = 1.0 - sp_stats.chi2.cdf(q, df=max_lags)
+    p_value = sp_stats.chi2.sf(q, df=max_lags)
 
     return float(q), float(p_value)

@@ -14,7 +14,7 @@ Paleologo, G. (2024). "Elements of Quantitative Investing"
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -22,14 +22,14 @@ from pydantic import Field, field_validator, model_validator
 from ml4t.diagnostic.config.base import BaseConfig
 
 
-class ICMethod(str, Enum):
+class ICMethod(StrEnum):
     """Information Coefficient calculation method."""
 
     SPEARMAN = "spearman"
     PEARSON = "pearson"
 
 
-class QuantileMethod(str, Enum):
+class QuantileMethod(StrEnum):
     """Method for assigning quantile labels."""
 
     QUANTILE = "quantile"  # pd.qcut - equal frequency

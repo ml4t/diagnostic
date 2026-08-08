@@ -393,6 +393,19 @@ class TestUtilityFunctions:
         assert isinstance(df, pd.DataFrame)
         # Should have x and y for sample data and reference line
 
+    def test_get_figure_data_pads_unequal_trace_lengths(self):
+        """Fitted reference traces can be shorter than observed traces."""
+        fig = go.Figure()
+        fig.add_scatter(name="long", x=[1, 2, 3], y=[4, 5, 6])
+        fig.add_scatter(name="short", x=[1, 2], y=[7, 8])
+
+        df = get_figure_data(fig)
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 3
+        assert pd.isna(df.loc[2, "short_x"])
+        assert pd.isna(df.loc[2, "short_y"])
+
     def test_export_static_missing_kaleido(self):
         """Test export_static handles missing kaleido gracefully."""
         data = np.random.randn(500)

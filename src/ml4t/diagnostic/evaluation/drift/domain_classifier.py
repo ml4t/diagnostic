@@ -152,6 +152,7 @@ def compute_domain_classifier_drift(
     threshold: float = 0.6,
     cv_folds: int = 5,
     random_state: int = 42,
+    n_jobs: int | None = None,
 ) -> DomainClassifierResult:
     """Detect distribution drift using domain classifier.
 
@@ -191,7 +192,9 @@ def compute_domain_classifier_drift(
         max_depth: Maximum tree depth (default: 5)
         threshold: AUC threshold for flagging drift (default: 0.6)
         cv_folds: Number of cross-validation folds (default: 5)
-        random_state: Random seed for reproducibility (default: 42)
+        random_state: Random seed for reproducibility (default: 42). LightGBM and
+            XGBoost results are reproducible when the thread count is unchanged.
+        n_jobs: Threads used by the classifier. None preserves the backend default.
 
     Returns:
         DomainClassifierResult with AUC, feature importances, drift flag, etc.
@@ -257,6 +260,7 @@ def compute_domain_classifier_drift(
         max_depth=max_depth,
         cv_folds=cv_folds,
         random_state=random_state,
+        n_jobs=n_jobs,
     )
 
     # Extract feature importances
@@ -315,6 +319,7 @@ def compute_domain_classifier_drift(
             "max_depth": max_depth,
             "cv_folds": cv_folds,
             "random_state": random_state,
+            "n_jobs": n_jobs,
         },
     )
 
@@ -409,6 +414,7 @@ def _train_domain_classifier(
     max_depth: int = 5,
     cv_folds: int = 5,
     random_state: int = 42,
+    n_jobs: int | None = None,
 ) -> tuple[Any, np.ndarray]:
     """Train binary classifier for domain classification.
 
@@ -420,6 +426,7 @@ def _train_domain_classifier(
         max_depth: Maximum tree depth
         cv_folds: Cross-validation folds
         random_state: Random seed
+        n_jobs: Threads used by the classifier
 
     Returns:
         Tuple of (trained_model, cv_auc_scores)
@@ -444,8 +451,10 @@ def _train_domain_classifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             random_state=random_state,
+            deterministic=True,
             verbose=-1,
             force_col_wise=True,  # Suppress warning
+            n_jobs=n_jobs,
         )
 
     elif model_type == "xgboost":
@@ -461,6 +470,7 @@ def _train_domain_classifier(
             max_depth=max_depth,
             random_state=random_state,
             verbosity=0,
+            n_jobs=n_jobs,
         )
 
     elif model_type == "sklearn":
@@ -470,6 +480,7 @@ def _train_domain_classifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             random_state=random_state,
+            n_jobs=n_jobs,
         )
 
     else:

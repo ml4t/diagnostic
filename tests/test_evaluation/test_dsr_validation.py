@@ -693,6 +693,22 @@ class TestMinTRLValidation:
 class TestDSRValidation:
     """Validate DSR against López de Prado et al. (2025) reference cases."""
 
+    def test_extreme_p_value_does_not_underflow(self):
+        """Representable DSR upper tails remain nonzero."""
+        result = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=0.4,
+            n_trials=1,
+            variance_trials=0.0,
+            n_samples=1000,
+            skewness=0.0,
+            excess_kurtosis=0.0,
+        )
+
+        expected = norm.sf(result.z_score)
+        assert expected > 0.0
+        assert result.p_value > 0.0
+        assert result.p_value == pytest.approx(expected, rel=1e-12)
+
     @pytest.mark.parametrize("case", [DSR_EXAMPLE_PAGE13], ids=lambda c: c.name)
     def test_dsr_paper_reference(self, case):
         """Test DSR calculation against ACTUAL paper values.

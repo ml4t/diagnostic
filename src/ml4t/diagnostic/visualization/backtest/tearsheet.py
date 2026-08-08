@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import html as html_mod
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -43,6 +44,8 @@ from .template_system import (
     TearsheetTemplate,
     get_template,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -922,7 +925,7 @@ def generate_backtest_tearsheet(
     if output_path:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html)
+        output_path.write_text(html, encoding="utf-8")
 
     return html
 
@@ -948,6 +951,12 @@ def _enrich_validation_metrics(
         metrics["n_periods"] = n_obs
     if metrics.get("n_observations") is None:
         metrics["n_observations"] = n_obs
+    if n_obs < 5:
+        metrics["validation_status"] = "insufficient_data"
+        metrics["validation_message"] = (
+            "At least 5 return observations are required for statistical validation"
+        )
+        return metrics
 
     # Compute DSR / PSR
     if not has_dsr:
@@ -967,8 +976,14 @@ def _enrich_validation_metrics(
                 metrics["expected_max_sharpe"] = dsr_result.expected_max_sharpe
             if dsr_result.min_trl is not None:
                 metrics["_dsr_min_trl"] = dsr_result.min_trl
-        except Exception:
-            pass
+        except Exception as exc:
+            from ml4t.diagnostic.errors import ReportGenerationError
+
+            raise ReportGenerationError(
+                "Failed to compute DSR metrics for the tearsheet",
+                context={"phase": "validation_metrics", "metric": "dsr"},
+                cause=exc,
+            ) from exc
 
     # Compute MinTRL (reuse DSR result if available, else compute separately)
     if not has_min_trl:
@@ -982,8 +997,14 @@ def _enrich_validation_metrics(
                 trl_result = compute_min_trl(ret_arr)
                 if trl_result.min_trl != float("inf"):
                     metrics["min_trl"] = trl_result.min_trl
-        except Exception:
-            pass
+        except Exception as exc:
+            from ml4t.diagnostic.errors import ReportGenerationError
+
+            raise ReportGenerationError(
+                "Failed to compute minimum track record length for the tearsheet",
+                context={"phase": "validation_metrics", "metric": "min_trl"},
+                cause=exc,
+            ) from exc
         metrics.pop("_dsr_min_trl", None)
 
     # Compute confidence intervals via bootstrap
@@ -1006,8 +1027,14 @@ def _enrich_validation_metrics(
             if max_dd is not None:
                 metrics["max_drawdown_lower_95"] = float(max_dd) * 1.5
                 metrics["max_drawdown_upper_95"] = float(max_dd) * 0.5
-        except Exception:
-            pass
+        except Exception as exc:
+            from ml4t.diagnostic.errors import ReportGenerationError
+
+            raise ReportGenerationError(
+                "Failed to compute confidence intervals for the tearsheet",
+                context={"phase": "validation_metrics", "metric": "confidence_intervals"},
+                cause=exc,
+            ) from exc
 
     # Compute return statistics for Sharpe validity assessment
     try:
@@ -1032,10 +1059,16 @@ def _enrich_validation_metrics(
             metrics.setdefault("sharpe_se", se_corrected)
             if se_corrected > 0:
                 z_stat = sr_f / se_corrected
-                p_value = float(2 * (1 - norm.cdf(abs(z_stat))))
+                p_value = float(2 * norm.sf(abs(z_stat)))
                 metrics.setdefault("sharpe_pvalue", p_value)
-    except Exception:
-        pass
+    except Exception as exc:
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        raise ReportGenerationError(
+            "Failed to compute return statistics for the tearsheet",
+            context={"phase": "validation_metrics", "metric": "return_statistics"},
+            cause=exc,
+        ) from exc
 
     return metrics
 
@@ -1203,8 +1236,14 @@ def _generate_section(
             f"{title_html}{body_html}{footnote_html}{provenance_html}</div>"
         )
 
-    except Exception:
-        return None
+    except Exception as exc:
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        raise ReportGenerationError(
+            "Failed to render tearsheet section",
+            context={"section": section_name},
+            cause=exc,
+        ) from exc
 
 
 def _build_portfolio_analysis(
@@ -1242,7 +1281,11 @@ def _build_portfolio_analysis(
             if date_col in daily_frame.columns and daily_frame.height == len(ret_series):
                 analysis_dates = daily_frame[date_col]
         except Exception:
-            pass
+            logger.warning(
+                "Could not resolve portfolio dates from the backtest profile; "
+                "using the equity-curve fallback",
+                exc_info=True,
+            )
 
     if analysis_dates is None and equity_curve is not None and not equity_curve.is_empty():
         for _dc in ("timestamp", "date", "session_date"):
@@ -1429,11 +1472,10 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
                 if bvar > 0:
                     roll_fourth[i] = float(np.cov(w, bw)[0, 1]) / bvar
         else:
-            downside = w[w < 0]
-            if len(downside) > 0:
-                ds = float(np.std(downside, ddof=1)) * sqrt_252
-                if ds > 0:
-                    roll_fourth[i] = mu * 252 / ds
+            downside = np.minimum(w, 0.0)
+            ds = float(np.sqrt(np.mean(downside**2)))
+            if ds > 0:
+                roll_fourth[i] = mu / ds * sqrt_252
 
     theme = validate_theme(ctx.theme)
     theme_config = get_theme_config(theme)
@@ -1648,16 +1690,13 @@ def _build_position_count_from_trades(ctx: _SectionContext) -> go.Figure | None:
 
 def _build_drawdown_anatomy_from_returns(ctx: _SectionContext) -> str | None:
     """Compute top 5 drawdown episodes from raw returns and render as HTML table."""
-    from ml4t.diagnostic.evaluation.portfolio import PortfolioAnalysis
+    from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
 
     ret = ctx.returns
     ret_arr = ret if isinstance(ret, np.ndarray) else ret.to_numpy()
     pa = PortfolioAnalysis(ret_arr)
-    try:
-        dd_result = pa.compute_drawdown_analysis(top_n=5)
-    except Exception:
-        return None
-    if dd_result.top_drawdowns.is_empty():
+    dd_result = pa.compute_drawdown_analysis(top_n=5)
+    if not dd_result.top_drawdowns:
         return None
 
     from .html_tables import create_top_drawdowns_table_html
@@ -1747,7 +1786,7 @@ def _render_sharpe_bootstrap(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_mfe_mae(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or not {"mfe", "mae"}.issubset(ctx.trades.columns):
         return None
     from .trade_plots import plot_mfe_mae_scatter
 
@@ -1755,20 +1794,19 @@ def _render_mfe_mae(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_exit_reasons(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or not {"exit_reason", "pnl"}.issubset(ctx.trades.columns):
         return None
     # Skip if fewer than 3 distinct exit reasons (not informative)
-    if "exit_reason" in ctx.trades.columns:
-        n_reasons = ctx.trades["exit_reason"].n_unique()
-        if n_reasons < 3:
-            return None
+    n_reasons = ctx.trades["exit_reason"].n_unique()
+    if n_reasons < 3:
+        return None
     from .trade_plots import plot_exit_reason_breakdown
 
     return plot_exit_reason_breakdown(ctx.trades, chart_type="bar", theme=ctx.theme)
 
 
 def _render_trade_waterfall(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or "pnl" not in ctx.trades.columns:
         return None
     from .trade_plots import plot_trade_waterfall
 
@@ -1776,7 +1814,7 @@ def _render_trade_waterfall(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_duration(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None:
+    if ctx.trades is None or "bars_held" not in ctx.trades.columns:
         return None
     from .trade_plots import plot_trade_duration_distribution
 
@@ -1928,19 +1966,26 @@ def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
                     if not daily_ic.is_empty():
                         ic_arr = daily_ic["ic"].to_numpy()
                         ml_metrics["mean_ic"] = float(np.mean(ic_arr))
-                        std_ic = float(np.std(ic_arr, ddof=1))
-                        if std_ic > 0:
-                            ml_metrics["ic_tstat"] = float(
-                                np.mean(ic_arr) / std_ic * np.sqrt(len(ic_arr))
-                            )
+                        if len(ic_arr) > 1:
+                            std_ic = float(np.std(ic_arr, ddof=1))
+                            if std_ic > 0:
+                                ml_metrics["ic_tstat"] = float(
+                                    np.mean(ic_arr) / std_ic * np.sqrt(len(ic_arr))
+                                )
                     # Hit rate
                     if not frame.is_empty():
                         correct = ((frame["score"] > 0) & (frame["outcome"] > 0)) | (
                             (frame["score"] <= 0) & (frame["outcome"] <= 0)
                         )
                         ml_metrics["hit_rate"] = float(correct.mean())
-            except Exception:
-                pass
+            except Exception as exc:
+                from ml4t.diagnostic.errors import ReportGenerationError
+
+                raise ReportGenerationError(
+                    "Failed to compute model summary metrics",
+                    context={"section": "ml_summary_strip"},
+                    cause=exc,
+                ) from exc
 
     if not any(k in ml_metrics for k in ("mean_ic", "ic_tstat", "hit_rate")):
         return None
@@ -2897,6 +2942,6 @@ class BacktestTearsheet:
         if output_path:
             path = Path(output_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(html)
+            path.write_text(html, encoding="utf-8")
 
         return html

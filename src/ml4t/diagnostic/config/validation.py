@@ -6,7 +6,7 @@ helpers used across the configuration system.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Annotated
 
 from pydantic import Field
@@ -28,7 +28,7 @@ class SignificanceLevel(float, Enum):
     LEVEL_10 = 0.10
 
 
-class CorrelationMethod(str, Enum):
+class CorrelationMethod(StrEnum):
     """Correlation calculation methods."""
 
     PEARSON = "pearson"
@@ -36,7 +36,7 @@ class CorrelationMethod(str, Enum):
     KENDALL = "kendall"
 
 
-class StationarityTest(str, Enum):
+class StationarityTest(StrEnum):
     """Stationarity test types."""
 
     ADF = "adf"  # Augmented Dickey-Fuller
@@ -44,7 +44,7 @@ class StationarityTest(str, Enum):
     PP = "pp"  # Phillips-Perron
 
 
-class RegressionType(str, Enum):
+class RegressionType(StrEnum):
     """Regression types for stationarity tests."""
 
     CONSTANT = "c"  # Constant only
@@ -53,7 +53,7 @@ class RegressionType(str, Enum):
     NONE = "n"  # No constant or trend
 
 
-class ClusteringMethod(str, Enum):
+class ClusteringMethod(StrEnum):
     """Clustering algorithm types."""
 
     HIERARCHICAL = "hierarchical"
@@ -61,7 +61,7 @@ class ClusteringMethod(str, Enum):
     DBSCAN = "dbscan"
 
 
-class LinkageMethod(str, Enum):
+class LinkageMethod(StrEnum):
     """Linkage methods for hierarchical clustering."""
 
     WARD = "ward"
@@ -70,7 +70,7 @@ class LinkageMethod(str, Enum):
     SINGLE = "single"
 
 
-class DistanceMetric(str, Enum):
+class DistanceMetric(StrEnum):
     """Distance metrics for clustering."""
 
     EUCLIDEAN = "euclidean"
@@ -79,7 +79,7 @@ class DistanceMetric(str, Enum):
     COSINE = "cosine"
 
 
-class NormalityTest(str, Enum):
+class NormalityTest(StrEnum):
     """Normality test types."""
 
     JARQUE_BERA = "jarque_bera"
@@ -88,7 +88,7 @@ class NormalityTest(str, Enum):
     ANDERSON = "anderson"
 
 
-class OutlierMethod(str, Enum):
+class OutlierMethod(StrEnum):
     """Outlier detection methods."""
 
     ZSCORE = "zscore"
@@ -96,14 +96,14 @@ class OutlierMethod(str, Enum):
     ISOLATION_FOREST = "isolation_forest"
 
 
-class VolatilityClusterMethod(str, Enum):
+class VolatilityClusterMethod(StrEnum):
     """Methods for detecting volatility clustering."""
 
     LJUNG_BOX = "ljung_box"
     ENGLE_ARCH = "engle_arch"
 
 
-class ThresholdOptimizationTarget(str, Enum):
+class ThresholdOptimizationTarget(StrEnum):
     """Optimization targets for threshold analysis."""
 
     SHARPE = "sharpe"
@@ -113,7 +113,7 @@ class ThresholdOptimizationTarget(str, Enum):
     INFORMATION_COEFFICIENT = "ic"
 
 
-class DriftDetectionMethod(str, Enum):
+class DriftDetectionMethod(StrEnum):
     """Feature drift detection methods."""
 
     KOLMOGOROV_SMIRNOV = "ks"
@@ -121,7 +121,7 @@ class DriftDetectionMethod(str, Enum):
     PSI = "psi"  # Population Stability Index
 
 
-class PortfolioMetric(str, Enum):
+class PortfolioMetric(StrEnum):
     """Portfolio performance metrics."""
 
     SHARPE = "sharpe"
@@ -133,7 +133,7 @@ class PortfolioMetric(str, Enum):
     OMEGA = "omega"
 
 
-class TimeFrequency(str, Enum):
+class TimeFrequency(StrEnum):
     """Time aggregation frequencies."""
 
     DAILY = "daily"
@@ -143,7 +143,7 @@ class TimeFrequency(str, Enum):
     ANNUAL = "annual"
 
 
-class FDRMethod(str, Enum):
+class FDRMethod(StrEnum):
     """False Discovery Rate control methods."""
 
     BONFERRONI = "bonferroni"
@@ -152,7 +152,7 @@ class FDRMethod(str, Enum):
     BENJAMINI_YEKUTIELI = "by"
 
 
-class BayesianPriorDistribution(str, Enum):
+class BayesianPriorDistribution(StrEnum):
     """Prior distributions for Bayesian analysis."""
 
     NORMAL = "normal"
@@ -160,7 +160,7 @@ class BayesianPriorDistribution(str, Enum):
     UNIFORM = "uniform"
 
 
-class ReportFormat(str, Enum):
+class ReportFormat(StrEnum):
     """Report output formats."""
 
     HTML = "html"
@@ -168,7 +168,7 @@ class ReportFormat(str, Enum):
     PDF = "pdf"
 
 
-class ReportTemplate(str, Enum):
+class ReportTemplate(StrEnum):
     """Report templates."""
 
     FULL = "full"
@@ -176,7 +176,7 @@ class ReportTemplate(str, Enum):
     DIAGNOSTIC = "diagnostic"
 
 
-class ReportTheme(str, Enum):
+class ReportTheme(StrEnum):
     """Report visual themes."""
 
     LIGHT = "light"
@@ -184,7 +184,7 @@ class ReportTheme(str, Enum):
     PROFESSIONAL = "professional"
 
 
-class TableFormat(str, Enum):
+class TableFormat(StrEnum):
     """Table formatting styles."""
 
     STYLED = "styled"
@@ -192,7 +192,7 @@ class TableFormat(str, Enum):
     DATATABLES = "datatables"
 
 
-class DataFrameExportFormat(str, Enum):
+class DataFrameExportFormat(StrEnum):
     """DataFrame serialization formats for JSON."""
 
     RECORDS = "records"  # list of dicts

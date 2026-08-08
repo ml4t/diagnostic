@@ -109,9 +109,10 @@ class TimestampAligner:
         # For duplicates, keep FIRST occurrence (standard behavior)
         index_by_ts: dict[datetime, int] = {}
         for i, ts in enumerate(timestamps):
-            if hasattr(ts, "to_pydatetime"):
+            to_pydatetime = getattr(ts, "to_pydatetime", None)
+            if callable(to_pydatetime):
                 # pandas Timestamp
-                dt = ts.to_pydatetime()
+                dt = to_pydatetime()
             elif isinstance(ts, np.datetime64):
                 # numpy datetime64
                 dt = ts.astype("datetime64[us]").astype(datetime)

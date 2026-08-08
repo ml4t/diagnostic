@@ -10,6 +10,7 @@ import polars as pl
 import pytest
 
 from ml4t.diagnostic.signal.quantile import (
+    _compute_quantile_return_statistics,
     compute_quantile_returns,
     compute_spread,
     monotonicity_score,
@@ -148,6 +149,45 @@ class TestComputeQuantileReturns:
         assert q_returns[1] == 0.01
         assert q_returns[2] == 0.02
         assert q_returns[3] == 0.03
+
+    def test_repeated_calls_are_exactly_deterministic(self):
+        """Parallel execution cannot change floating-point reduction order."""
+        rng = np.random.default_rng(42)
+        quantiles = np.tile(np.arange(1, 6), 1_000)
+        returns = rng.normal(size=5_000)
+        data = pl.DataFrame(
+            {
+                "quantile": quantiles,
+                "1D_fwd_return": returns,
+            }
+        )
+        expected = {
+            quantile: float(np.mean(returns[quantiles == quantile])) for quantile in range(1, 6)
+        }
+
+        for _ in range(20):
+            assert compute_quantile_returns(data, period=1, n_quantiles=5) == expected
+
+    def test_statistics_match_numpy_and_cover_sparse_quantiles(self):
+        """Means and sample deviations use ordered NumPy reductions with complete keys."""
+        data = pl.DataFrame(
+            {
+                "quantile": [1, 1, 2, 2, 3, 4],
+                "1D_fwd_return": [1.0, 3.0, 2.0, 6.0, 5.0, None],
+            }
+        )
+
+        means, standard_deviations = _compute_quantile_return_statistics(data, 1, 5)
+
+        assert list(means) == [1, 2, 3, 4, 5]
+        assert list(standard_deviations) == [1, 2, 3, 4, 5]
+        assert means[1] == float(np.mean([1.0, 3.0]))
+        assert means[2] == float(np.mean([2.0, 6.0]))
+        assert standard_deviations[1] == float(np.std([1.0, 3.0], ddof=1))
+        assert standard_deviations[2] == float(np.std([2.0, 6.0], ddof=1))
+        assert np.isnan(standard_deviations[3])
+        assert np.isnan(means[4]) and np.isnan(standard_deviations[4])
+        assert np.isnan(means[5]) and np.isnan(standard_deviations[5])
 
 
 # =============================================================================

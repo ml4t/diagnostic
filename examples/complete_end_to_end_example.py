@@ -33,7 +33,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 # ML4T Evaluation imports
-from ml4t.diagnostic.evaluation import analyze_ml_importance, compute_shap_interactions
+from ml4t.diagnostic.metrics import analyze_ml_importance, compute_shap_interactions
 from ml4t.diagnostic.visualization import (
     generate_combined_report,
     generate_importance_report,
@@ -188,17 +188,13 @@ for feat_i, feat_j, strength in interaction_results["top_interactions"][:3]:
 # - < 0.05: Weak interaction (may be noise)
 
 # ============================================================================
-# Step 4: Generate Reports (HTML + PDF)
+# Step 4: Generate Interactive HTML Reports
 # ============================================================================
 # ML4T Evaluation can generate three types of reports:
 #
 # 1. Importance Report: Feature rankings, method comparison, consensus
 # 2. Interaction Report: Heatmap, network graph, top interactions
 # 3. Combined Report: Both importance and interactions in one document
-#
-# Each report comes in two formats:
-# - HTML: Interactive, zoomable, hover tooltips (open in browser)
-# - PDF: Static, high-quality, shareable (for presentations/emails)
 #
 # Available themes: "default", "dark", "presentation" (large fonts)
 
@@ -208,17 +204,15 @@ print("=" * 70)
 
 # Option A: Importance-only report
 # Best for: Quick analysis, presentations focusing on feature selection
-print("\n📊 Generating importance report (HTML + PDF)...")
+print("\n📊 Generating importance report...")
 importance_html = generate_importance_report(
     importance_results=importance_results,
     output_file="importance_report.html",
     title="Feature Importance Analysis",
     theme="dark",  # Options: "default", "dark", "presentation"
-    export_pdf=True,  # Also creates importance_report.pdf
-    pdf_scale=2.0,  # Higher = better quality but larger file (1.0-3.0)
+    export_pdf=False,
 )
 print(f"   ✅ Saved: {importance_html}")
-print("   ✅ Saved: importance_report.pdf")
 
 # Option B: Interaction-only report
 # Best for: Deep-dive into feature synergies
@@ -228,32 +222,28 @@ print("   ✅ Saved: importance_report.pdf")
 # See: tests/test_visualization/test_report_generation.py (TASK-171)
 #
 # Uncomment this when the bug is fixed:
-# print("\n📊 Generating interaction report (HTML + PDF)...")
+# print("\n📊 Generating interaction report...")
 # interaction_html = generate_interaction_report(
 #     interaction_results=interaction_results,
 #     output_file="interaction_report.html",
 #     title="Feature Interaction Analysis",
 #     theme="default",  # Use "default" to avoid network plot bug
-#     export_pdf=True,
-#     pdf_scale=2.0,
+#     export_pdf=False,
 # )
 # print(f"   ✅ Saved: {interaction_html}")
-# print(f"   ✅ Saved: interaction_report.pdf")
 
 # Option C: Combined comprehensive report
 # Best for: Complete analysis, sharing with stakeholders
-print("\n📊 Generating combined report (HTML + PDF)...")
+print("\n📊 Generating combined report...")
 combined_html = generate_combined_report(
     importance_results=importance_results,
     interaction_results=None,  # Set to interaction_results when bug fixed
     output_file="complete_analysis.html",
     title="Complete Feature Analysis Report",
     theme="presentation",  # Large fonts perfect for presentations!
-    export_pdf=True,
-    pdf_scale=2.5,  # Very high quality for stakeholder review
+    export_pdf=False,
 )
 print(f"   ✅ Saved: {combined_html}")
-print("   ✅ Saved: complete_analysis.pdf")
 
 # ============================================================================
 # Summary
@@ -265,8 +255,8 @@ print("=" * 70)
 
 print("""
 Generated Files:
-  - importance_report.html & importance_report.pdf
-  - complete_analysis.html & complete_analysis.pdf
+  - importance_report.html
+  - complete_analysis.html
 
 Next Steps:
   1. Open HTML files in your browser for interactive exploration

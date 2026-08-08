@@ -6,6 +6,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ml4t.diagnostic.core.numba_utils import (
+    _block_bootstrap_numpy,
     _rank_data_numba,
     block_bootstrap_numba,
     calculate_drawdown_numba,
@@ -148,6 +149,35 @@ class TestBlockBootstrapNumba:
         result1 = block_bootstrap_numba(indices, 50, 5, 42)
         result2 = block_bootstrap_numba(indices, 50, 5, 43)
         assert not np.array_equal(result1, result2)
+
+    def test_numpy_fallback_preserves_global_random_state(self):
+        """The no-Numba implementation cannot reseed application randomness."""
+        indices = np.arange(100)
+        np.random.seed(123)
+        expected = np.random.random(3)
+
+        np.random.seed(123)
+        _block_bootstrap_numpy(indices, 50, 5, 42)
+        actual = np.random.random(3)
+
+        np.testing.assert_array_equal(actual, expected)
+
+    def test_dispatch_uses_isolated_numpy_fallback(self, monkeypatch):
+        """The public dispatcher covers no-Numba installs without global RNG changes."""
+        import ml4t.diagnostic.core.numba_utils as module
+
+        indices = np.arange(100)
+        expected = module._block_bootstrap_numpy(indices, 50, 5, 42)
+        monkeypatch.setattr(module, "NUMBA_AVAILABLE", False)
+        np.random.seed(123)
+        expected_random = np.random.random(3)
+
+        np.random.seed(123)
+        actual = module.block_bootstrap_numba(indices, 50, 5, 42)
+        actual_random = np.random.random(3)
+
+        np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_array_equal(actual_random, expected_random)
 
 
 class TestRollingSharpeNumba:

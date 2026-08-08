@@ -11,6 +11,7 @@ Paleologo, G. (2024). "Elements of Quantitative Investing"
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,6 +23,7 @@ from ml4t.diagnostic.results.signal_results.validation import (
     _normalize_period,
     _validate_dict_keys_match,
 )
+from ml4t.diagnostic.utils.formatting import format_finite
 
 
 @dataclass
@@ -240,16 +242,25 @@ class SignalICResult(BaseResult):
 
         for period in self.ic_mean:
             lines.append(f"Period: {period}")
-            lines.append(f"  Mean IC:      {self.ic_mean[period]:>8.4f}")
-            lines.append(f"  Std IC:       {self.ic_std[period]:>8.4f}")
-            lines.append(f"  IR:           {self.ic_ir[period]:>8.4f}")
-            lines.append(f"  t-stat:       {self.ic_t_stat[period]:>8.2f}")
-            lines.append(f"  p-value:      {self.ic_p_value[period]:>8.4f}")
-            lines.append(f"  Positive %:   {self.ic_positive_pct[period]:>8.1%}")
+            lines.append(f"  Mean IC:      {format_finite(self.ic_mean[period], '.4f'):>8}")
+            lines.append(f"  Std IC:       {format_finite(self.ic_std[period], '.4f'):>8}")
+            lines.append(f"  IR:           {format_finite(self.ic_ir[period], '.4f'):>8}")
+            lines.append(f"  t-stat:       {format_finite(self.ic_t_stat[period], '.2f'):>8}")
+            lines.append(f"  p-value:      {format_finite(self.ic_p_value[period], '.4f'):>8}")
+            positive_pct = format_finite(self.ic_positive_pct[period] / 100, ".1%")
+            lines.append(f"  Positive %:   {positive_pct:>8}")
 
             if self.ras_adjusted_ic is not None and self.ras_significant is not None:
-                lines.append(f"  RAS IC:       {self.ras_adjusted_ic[period]:>8.4f}")
-                sig = "Y" if self.ras_significant[period] else "X"
+                ras_value = self.ras_adjusted_ic[period]
+                ras_ic = format_finite(ras_value, ".4f")
+                lines.append(f"  RAS IC:       {ras_ic:>8}")
+                sig = (
+                    "N/A"
+                    if not math.isfinite(ras_value)
+                    else "Y"
+                    if self.ras_significant[period]
+                    else "X"
+                )
                 lines.append(f"  RAS Signif:   {sig:>8}")
             lines.append("")
 

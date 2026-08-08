@@ -314,8 +314,7 @@ class TestToQuantileResult:
             quantiles=3,
         )
         qr = result.to_quantile_result()
-        # std_returns should be 0.0 when not available
-        assert qr.std_returns["1D"]["Q1"] == 0.0
+        assert np.isnan(qr.std_returns["1D"]["Q1"])
 
 
 # =============================================================================
@@ -386,6 +385,40 @@ class TestVizRoundtrip:
         fig = plot_quantile_returns_bar(qr)
         assert fig is not None
         assert len(fig.data) > 0
+
+    def test_quantile_plots_handle_single_observation(self, signal_result):
+        """Unavailable sample deviation does not produce NaN plot data."""
+        from ml4t.diagnostic.visualization.signal.quantile_plots import (
+            plot_quantile_returns_bar,
+            plot_quantile_returns_violin,
+        )
+
+        result = signal_result.to_quantile_result()
+        result.std_returns["1D"]["Q1"] = float("nan")
+        result.count_by_quantile["Q1"] = 1
+        result.spread_mean["1D"] = float("nan")
+        result.spread_t_stat["1D"] = float("nan")
+        result.spread_p_value["1D"] = float("nan")
+
+        bar = plot_quantile_returns_bar(result, period="1D")
+        violin = plot_quantile_returns_violin(result, period="1D")
+
+        assert bar.data[0].error_y.array[0] == 0.0
+        assert len(violin.data[0].y) == 1
+        assert np.isfinite(np.asarray(violin.data[0].y)).all()
+        assert "N/A" in bar.layout.annotations[-1].text
+        assert "nan" not in bar.layout.annotations[-1].text.lower()
+
+        missing_mean = result.model_copy(deep=True)
+        missing_mean.mean_returns["1D"]["Q1"] = float("nan")
+        empty_for_mean = plot_quantile_returns_violin(missing_mean, period="1D")
+        assert len(empty_for_mean.data[0].y) == 0
+
+        zero_count = result.model_copy(deep=True)
+        zero_count.std_returns["1D"]["Q1"] = 0.01
+        zero_count.count_by_quantile["Q1"] = 0
+        empty_for_count = plot_quantile_returns_violin(zero_count, period="1D")
+        assert len(empty_for_count.data[0].y) == 0
 
     def test_ic_single_period_roundtrip(self, signal_result):
         """Single-period IC result works with plot_ic_ts."""

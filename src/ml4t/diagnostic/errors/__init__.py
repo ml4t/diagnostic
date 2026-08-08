@@ -194,6 +194,12 @@ class IntegrationError(DiagnosticError):
     pass
 
 
+class ReportGenerationError(DiagnosticError):
+    """A requested report could not be generated completely."""
+
+    pass
+
+
 # Public API
 __all__ = [
     "DiagnosticError",
@@ -202,4 +208,5 @@ __all__ = [
     "ComputationError",
     "DataError",
     "IntegrationError",
+    "ReportGenerationError",
 ]

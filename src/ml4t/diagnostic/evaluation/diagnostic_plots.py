@@ -1022,7 +1022,8 @@ def get_figure_data(fig: go.Figure) -> pd.DataFrame:
 
     Notes
     -----
-    The DataFrame structure depends on the plot type.
+    The DataFrame structure depends on the plot type. Traces with different
+    lengths are aligned by position and shorter traces are padded with NaN.
     Inspect df.columns to understand available data.
     """
     data_dict = {}
@@ -1031,9 +1032,9 @@ def get_figure_data(fig: go.Figure) -> pd.DataFrame:
         trace_name = trace.name or f"trace_{i}"
 
         if hasattr(trace, "x") and trace.x is not None:
-            data_dict[f"{trace_name}_x"] = trace.x
+            data_dict[f"{trace_name}_x"] = pd.Series(trace.x)
 
         if hasattr(trace, "y") and trace.y is not None:
-            data_dict[f"{trace_name}_y"] = trace.y
+            data_dict[f"{trace_name}_y"] = pd.Series(trace.y)
 
     return pd.DataFrame(data_dict)

@@ -15,13 +15,13 @@ MacKinlay, A.C. (1997). "Event Studies in Economics and Finance",
     Journal of Economic Literature, 35(1), 13-39.
 Boehmer, E., Musumeci, J., Poulsen, A.B. (1991). "Event-study methodology
     under conditions of event-induced variance", Journal of Financial Economics.
-Corrado, C.J. (1989). "A nonparametric test for abnormal security-price
-    performance in event studies", Journal of Financial Economics.
 """
 
 from __future__ import annotations
 
 import warnings
+from collections import Counter
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -36,6 +36,24 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
+class EventRejectionReason(StrEnum):
+    """Reason an event cannot enter fixed-horizon inference."""
+
+    UNKNOWN_EVENT_DATE = "unknown event date"
+    UNKNOWN_ASSET = "unknown asset"
+    UNKNOWN_ASSET_AND_DATE = "unknown asset and event date"
+    ESTIMATION_HISTORY = "insufficient estimation history"
+    ASSET_ESTIMATION = "insufficient finite asset estimation returns"
+    BENCHMARK_ESTIMATION = "insufficient finite benchmark estimation returns"
+    ASSET_AND_BENCHMARK_ESTIMATION = "insufficient finite asset and benchmark estimation returns"
+    ALIGNED_ESTIMATION = "insufficient aligned finite asset/benchmark estimation returns"
+    MARKET_MODEL_ESTIMATION = "market model estimation failed numerically"
+    EVENT_WINDOW_HISTORY = "event window extends beyond returns history"
+    ASSET_EVENT_WINDOW = "incomplete or non-finite asset event window"
+    BENCHMARK_EVENT_WINDOW = "incomplete or non-finite benchmark event window"
+    ASSET_AND_BENCHMARK_EVENT_WINDOW = "incomplete or non-finite asset and benchmark event window"
+
+
 class EventStudyAnalysis:
     """Event study analysis for measuring abnormal returns around events.
 
@@ -47,7 +65,6 @@ class EventStudyAnalysis:
     And statistical tests:
     - Standard t-test
     - BMP test (Boehmer et al. 1991, robust to event-induced variance)
-    - Corrado rank test (non-parametric)
 
     Parameters
     ----------
@@ -60,7 +77,8 @@ class EventStudyAnalysis:
     benchmark : pl.DataFrame
         Market/benchmark returns with columns: [date, return].
     config : EventConfig, optional
-        Configuration for the analysis.
+        Configuration for the analysis. Event windows must be complete and
+        finite so every CAR covers the configured horizon.
 
     Examples
     --------
@@ -160,6 +178,7 @@ class EventStudyAnalysis:
         # Get unique dates for index mapping
         self._all_dates = sorted(self._returns["date"].unique().to_list())
         self._date_to_idx = {d: i for i, d in enumerate(self._all_dates)}
+        self._return_assets = set(self._returns["asset"].unique().to_list())
 
         # Add event_id if not present
         if "event_id" not in self._events.columns:
@@ -169,20 +188,21 @@ class EventStudyAnalysis:
 
     def _get_estimation_window_data(
         self, asset: str, event_date: Any
-    ) -> tuple[np.ndarray, np.ndarray] | None:
+    ) -> tuple[
+        tuple[np.ndarray, np.ndarray | None] | None,
+        EventRejectionReason | None,
+    ]:
         """Get returns for estimation window.
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray] | None
-            (asset_returns, market_returns) for estimation window,
-            or None if insufficient data.
+        tuple[tuple[np.ndarray, np.ndarray | None] | None, EventRejectionReason | None]
+            Estimation data and no rejection reason, or no data and the specific
+            reason the configured minimum could not be met.
         """
         est_start, est_end = self.config.window.estimation_window
 
-        # Find event date index
-        if event_date not in self._date_to_idx:
-            return None
+        assert event_date in self._date_to_idx
         event_idx = self._date_to_idx[event_date]
 
         # Calculate estimation window indices
@@ -190,35 +210,60 @@ class EventStudyAnalysis:
         end_idx = event_idx + est_end
 
         if start_idx < 0:
-            return None
+            return None, EventRejectionReason.ESTIMATION_HISTORY
 
         # Get dates in estimation window
         est_dates = self._all_dates[start_idx : end_idx + 1]
 
         if len(est_dates) < self.config.min_estimation_obs:
-            return None
+            return None, EventRejectionReason.ESTIMATION_HISTORY
 
         # Get asset returns
         asset_data = self._returns.filter(
             (pl.col("asset") == asset) & (pl.col("date").is_in(est_dates))
         ).sort("date")
 
-        if len(asset_data) < self.config.min_estimation_obs:
-            return None
-
-        # Get benchmark returns
-        asset_returns = []
-        market_returns = []
+        asset_returns_by_date: dict[Any, float] = {}
         for row in asset_data.iter_rows(named=True):
-            date = row["date"]
-            if date in self._benchmark_dict:
-                asset_returns.append(row["return"])
-                market_returns.append(self._benchmark_dict[date])
+            asset_return = row["return"]
+            if asset_return is not None and np.isfinite(asset_return):
+                asset_returns_by_date[row["date"]] = asset_return
 
-        if len(asset_returns) < self.config.min_estimation_obs:
-            return None
+        if self.config.model == "mean_adjusted":
+            if len(asset_returns_by_date) < self.config.min_estimation_obs:
+                return None, EventRejectionReason.ASSET_ESTIMATION
+            return (np.array(list(asset_returns_by_date.values())), None), None
 
-        return np.array(asset_returns), np.array(market_returns)
+        benchmark_returns_by_date = {
+            date: benchmark_return
+            for date in est_dates
+            if (benchmark_return := self._benchmark_dict.get(date)) is not None
+            and np.isfinite(benchmark_return)
+        }
+        missing_asset = len(asset_returns_by_date) < self.config.min_estimation_obs
+        missing_benchmark = len(benchmark_returns_by_date) < self.config.min_estimation_obs
+        if missing_asset and missing_benchmark:
+            return None, EventRejectionReason.ASSET_AND_BENCHMARK_ESTIMATION
+        if missing_asset:
+            return None, EventRejectionReason.ASSET_ESTIMATION
+        if missing_benchmark:
+            return None, EventRejectionReason.BENCHMARK_ESTIMATION
+
+        paired_dates = [
+            date
+            for date in est_dates
+            if date in asset_returns_by_date and date in benchmark_returns_by_date
+        ]
+        if len(paired_dates) < self.config.min_estimation_obs:
+            return None, EventRejectionReason.ALIGNED_ESTIMATION
+
+        return (
+            (
+                np.array([asset_returns_by_date[date] for date in paired_dates]),
+                np.array([benchmark_returns_by_date[date] for date in paired_dates]),
+            ),
+            None,
+        )
 
     def _estimate_market_model(
         self, asset_returns: np.ndarray, market_returns: np.ndarray
@@ -236,71 +281,112 @@ class EventStudyAnalysis:
         X = np.column_stack([np.ones(len(market_returns)), market_returns])
         y = asset_returns
 
-        # Solve normal equations
-        try:
-            coeffs, residuals, _, _ = np.linalg.lstsq(X, y, rcond=None)
-            alpha, beta = coeffs[0], coeffs[1]
+        coeffs, _, rank, _ = np.linalg.lstsq(X, y, rcond=None)
+        if rank < X.shape[1]:
+            raise np.linalg.LinAlgError("Market-model design matrix is rank-deficient")
+        alpha, beta = coeffs[0], coeffs[1]
 
-            # Calculate R-squared
-            y_pred = alpha + beta * market_returns
-            ss_res = np.sum((y - y_pred) ** 2)
-            ss_tot = np.sum((y - np.mean(y)) ** 2)
-            r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+        # Calculate R-squared
+        y_pred = alpha + beta * market_returns
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
 
-            # Residual standard deviation
-            residual_std = np.std(y - y_pred, ddof=2)
+        # Residual standard deviation
+        residual_std = np.std(y - y_pred, ddof=2)
+        if not np.all(np.isfinite([alpha, beta, r_squared, residual_std])):
+            raise np.linalg.LinAlgError("Market-model parameters are non-finite")
 
-            return alpha, beta, r_squared, residual_std
-        except Exception:
-            return 0.0, 1.0, 0.0, np.std(asset_returns)
+        return alpha, beta, r_squared, residual_std
 
     def _get_event_window_data(
         self, asset: str, event_date: Any
-    ) -> dict[int, tuple[float, float]] | None:
-        """Get returns for event window.
+    ) -> tuple[
+        dict[int, tuple[float, float | None]] | None,
+        EventRejectionReason | None,
+    ]:
+        """Get finite returns for an event window.
+
+        Incomplete windows are rejected so every CAR covers the same horizon.
 
         Returns
         -------
-        dict[int, tuple[float, float]] | None
-            {relative_day: (asset_return, market_return)}
+        tuple[dict[int, tuple[float, float | None]] | None, EventRejectionReason | None]
+            Complete event-window data and no rejection reason, or no data and
+            the specific incomplete input.
         """
         evt_start, evt_end = self.config.window.event_window
 
-        if event_date not in self._date_to_idx:
-            return None
+        assert event_date in self._date_to_idx
         event_idx = self._date_to_idx[event_date]
 
-        result = {}
+        required_dates: dict[int, Any] = {}
         for rel_day in range(evt_start, evt_end + 1):
             day_idx = event_idx + rel_day
-            if 0 <= day_idx < len(self._all_dates):
-                date = self._all_dates[day_idx]
+            if not 0 <= day_idx < len(self._all_dates):
+                return None, EventRejectionReason.EVENT_WINDOW_HISTORY
+            required_dates[rel_day] = self._all_dates[day_idx]
 
-                # Get asset return
-                asset_ret = self._returns.filter(
-                    (pl.col("asset") == asset) & (pl.col("date") == date)
-                )
+        window_dates = list(required_dates.values())
+        asset_data = self._returns.filter(
+            (pl.col("asset") == asset) & (pl.col("date").is_in(window_dates))
+        )
+        asset_returns_by_date = {
+            row["date"]: row["return"]
+            for row in asset_data.iter_rows(named=True)
+            if row["return"] is not None and np.isfinite(row["return"])
+        }
+        missing_asset = len(asset_returns_by_date) != self.config.window.event_length
 
-                if len(asset_ret) > 0 and date in self._benchmark_dict:
-                    result[rel_day] = (
-                        asset_ret["return"][0],
-                        self._benchmark_dict[date],
-                    )
+        if self.config.model == "mean_adjusted":
+            if missing_asset:
+                return None, EventRejectionReason.ASSET_EVENT_WINDOW
+            return {
+                rel_day: (asset_returns_by_date[date], None)
+                for rel_day, date in required_dates.items()
+            }, None
 
-        return result if result else None
+        benchmark_returns_by_date = {
+            date: benchmark_return
+            for date in window_dates
+            if (benchmark_return := self._benchmark_dict.get(date)) is not None
+            and np.isfinite(benchmark_return)
+        }
+        missing_benchmark = len(benchmark_returns_by_date) != self.config.window.event_length
+        if missing_asset and missing_benchmark:
+            return None, EventRejectionReason.ASSET_AND_BENCHMARK_EVENT_WINDOW
+        if missing_asset:
+            return None, EventRejectionReason.ASSET_EVENT_WINDOW
+        if missing_benchmark:
+            return None, EventRejectionReason.BENCHMARK_EVENT_WINDOW
+
+        return {
+            rel_day: (asset_returns_by_date[date], benchmark_returns_by_date[date])
+            for rel_day, date in required_dates.items()
+        }, None
 
     def _compute_abnormal_return_single(
         self, event_row: dict[str, Any]
-    ) -> AbnormalReturnResult | None:
+    ) -> tuple[AbnormalReturnResult | None, EventRejectionReason | None]:
         """Compute abnormal returns for a single event."""
         asset = event_row["asset"]
         event_date = event_row["date"]
         event_id = str(event_row.get("event_id", f"{asset}_{event_date}"))
 
+        unknown_event_date = event_date not in self._date_to_idx
+        unknown_asset = asset not in self._return_assets
+        if unknown_event_date and unknown_asset:
+            return None, EventRejectionReason.UNKNOWN_ASSET_AND_DATE
+        if unknown_event_date:
+            return None, EventRejectionReason.UNKNOWN_EVENT_DATE
+        if unknown_asset:
+            return None, EventRejectionReason.UNKNOWN_ASSET
         # Get estimation window data
-        est_data = self._get_estimation_window_data(asset, event_date)
+        est_data, rejection_reason = self._get_estimation_window_data(asset, event_date)
         if est_data is None:
-            return None
+            if rejection_reason is None:
+                raise RuntimeError("Missing rejection reason for unavailable estimation data")
+            return None, rejection_reason
 
         asset_est_returns, market_est_returns = est_data
 
@@ -308,31 +394,44 @@ class EventStudyAnalysis:
         alpha, beta, r2, residual_std = 0.0, 1.0, 0.0, 0.0
 
         if self.config.model == "market_model":
-            alpha, beta, r2, residual_std = self._estimate_market_model(
-                asset_est_returns, market_est_returns
+            assert market_est_returns is not None, (
+                "market_model requires benchmark estimation returns"
             )
+            try:
+                alpha, beta, r2, residual_std = self._estimate_market_model(
+                    asset_est_returns, market_est_returns
+                )
+            except np.linalg.LinAlgError:
+                return None, EventRejectionReason.MARKET_MODEL_ESTIMATION
         elif self.config.model == "mean_adjusted":
             alpha = float(np.mean(asset_est_returns))
             beta = 0.0
             residual_std = float(np.std(asset_est_returns, ddof=1))
         elif self.config.model == "market_adjusted":
+            assert market_est_returns is not None, (
+                "market_adjusted requires benchmark estimation returns"
+            )
             alpha = 0.0
             beta = 1.0
             residual_std = float(np.std(asset_est_returns - market_est_returns, ddof=1))
 
         # Get event window data
-        event_data = self._get_event_window_data(asset, event_date)
+        event_data, rejection_reason = self._get_event_window_data(asset, event_date)
         if event_data is None:
-            return None
+            if rejection_reason is None:
+                raise RuntimeError("Missing rejection reason for unavailable event-window data")
+            return None, rejection_reason
 
         # Compute abnormal returns
         ar_by_day: dict[int, float] = {}
         for rel_day, (asset_ret, market_ret) in event_data.items():
             if self.config.model == "market_model":
+                assert market_ret is not None, "market_model requires benchmark event returns"
                 expected_ret = alpha + beta * market_ret
             elif self.config.model == "mean_adjusted":
                 expected_ret = alpha
-            else:  # market_adjusted
+            else:
+                assert market_ret is not None, "market_adjusted requires benchmark event returns"
                 expected_ret = market_ret
 
             ar_by_day[rel_day] = asset_ret - expected_ret
@@ -340,16 +439,19 @@ class EventStudyAnalysis:
         # Compute CAR
         car = sum(ar_by_day.values())
 
-        return AbnormalReturnResult(
-            event_id=event_id,
-            asset=asset,
-            event_date=str(event_date),
-            ar_by_day=ar_by_day,
-            car=car,
-            estimation_alpha=alpha if self.config.model == "market_model" else None,
-            estimation_beta=beta if self.config.model == "market_model" else None,
-            estimation_r2=r2 if self.config.model == "market_model" else None,
-            estimation_residual_std=residual_std,
+        return (
+            AbnormalReturnResult(
+                event_id=event_id,
+                asset=asset,
+                event_date=str(event_date),
+                ar_by_day=ar_by_day,
+                car=car,
+                estimation_alpha=alpha if self.config.model == "market_model" else None,
+                estimation_beta=beta if self.config.model == "market_model" else None,
+                estimation_r2=r2 if self.config.model == "market_model" else None,
+                estimation_residual_std=residual_std,
+            ),
+            None,
         )
 
     def compute_abnormal_returns(self) -> list[AbnormalReturnResult]:
@@ -364,18 +466,27 @@ class EventStudyAnalysis:
             return self._ar_results
 
         results = []
-        n_skipped = 0
+        rejected: Counter[EventRejectionReason] = Counter()
 
         for row in self._events.iter_rows(named=True):
-            result = self._compute_abnormal_return_single(row)
+            result, reason = self._compute_abnormal_return_single(row)
             if result is not None:
                 results.append(result)
             else:
-                n_skipped += 1
+                if reason is None:
+                    raise RuntimeError("Rejected event did not include a rejection reason")
+                rejected[reason] += 1
 
+        n_skipped = sum(rejected.values())
         if n_skipped > 0:
+            details = ", ".join(
+                f"{rejected[reason]}: {reason.value}"
+                for reason in EventRejectionReason
+                if rejected[reason]
+            )
+            event_label = "event" if n_skipped == 1 else "events"
             warnings.warn(
-                f"Skipped {n_skipped} events due to insufficient data",
+                f"Skipped {n_skipped} {event_label} ({details})",
                 stacklevel=2,
             )
 
@@ -432,10 +543,10 @@ class EventStudyAnalysis:
             caar_values.append(cumsum)
 
             # Cross-sectional standard deviation at this day
-            if ar_matrix[day]:
+            if len(ar_matrix[day]) >= 2:
                 caar_std.append(float(np.std(ar_matrix[day], ddof=1)))
             else:
-                caar_std.append(0.0)
+                caar_std.append(float("nan"))
 
         # Compute confidence intervals
         n_events = len(ar_results)
@@ -449,7 +560,7 @@ class EventStudyAnalysis:
             caar_ci_upper.append(caar + z_score * se)
 
         # Run statistical test
-        test_stat, p_value = self._run_statistical_test(ar_results, ar_matrix)
+        test_stat, p_value = self._run_statistical_test(ar_results)
 
         result = EventStudyResult(
             aar_by_day=aar_by_day,
@@ -474,7 +585,6 @@ class EventStudyAnalysis:
     def _run_statistical_test(
         self,
         ar_results: list[AbnormalReturnResult],
-        ar_matrix: dict[int, list[float]],
     ) -> tuple[float, float]:
         """Run statistical significance test.
 
@@ -484,18 +594,12 @@ class EventStudyAnalysis:
             (test_statistic, p_value)
         """
         if self.config.test == "t_test":
-            return self._t_test(ar_results, ar_matrix)
-        elif self.config.test == "boehmer":
-            return self._bmp_test(ar_results)
-        elif self.config.test == "corrado":
-            return self._corrado_test(ar_results, ar_matrix)
-        else:
-            return self._t_test(ar_results, ar_matrix)
+            return self._t_test(ar_results)
+        return self._bmp_test(ar_results)
 
     def _t_test(
         self,
         ar_results: list[AbnormalReturnResult],
-        ar_matrix: dict[int, list[float]],
     ) -> tuple[float, float]:
         """Standard parametric t-test on CAAR.
 
@@ -517,7 +621,7 @@ class EventStudyAnalysis:
             return 0.0, 1.0
 
         t_stat = mean_car / se_car
-        p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df=n - 1))
+        p_value = 2 * stats.t.sf(abs(t_stat), df=n - 1)
 
         return float(t_stat), float(p_value)
 
@@ -551,48 +655,7 @@ class EventStudyAnalysis:
             return 0.0, 1.0
 
         z_stat = mean_sar / se_sar
-        p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))
-
-        return float(z_stat), float(p_value)
-
-    def _corrado_test(
-        self,
-        ar_results: list[AbnormalReturnResult],
-        ar_matrix: dict[int, list[float]],
-    ) -> tuple[float, float]:
-        """Corrado (1989) non-parametric rank test.
-
-        Robust to non-normality in returns. Uses ranks instead of
-        raw abnormal returns.
-        """
-        n_events = len(ar_results)
-        if n_events < 2:
-            return 0.0, 1.0
-
-        # For simplicity, test at t=0 (event day)
-        if 0 not in ar_matrix or len(ar_matrix[0]) < 2:
-            # Fallback to t-test
-            return self._t_test(ar_results, ar_matrix)
-
-        event_day_ars = np.array(ar_matrix[0])
-
-        # Rank the ARs
-        ranks = stats.rankdata(event_day_ars)
-        expected_rank = (n_events + 1) / 2
-
-        # Compute test statistic
-        rank_deviations = ranks - expected_rank
-        mean_deviation = np.mean(rank_deviations)
-
-        # Standard deviation of ranks under null
-        std_rank = np.std(rank_deviations, ddof=1)
-        se_rank = std_rank / np.sqrt(n_events)
-
-        if se_rank == 0:
-            return 0.0, 1.0
-
-        z_stat = mean_deviation / se_rank
-        p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+        p_value = 2 * stats.norm.sf(abs(z_stat))
 
         return float(z_stat), float(p_value)
 

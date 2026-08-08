@@ -1,114 +1,92 @@
 # Quickstart
 
-Get started with ML4T Diagnostic in 5 minutes.
+This tutorial analyzes a synthetic cross-sectional signal and then corrects a
+strategy comparison for multiple testing. It runs without external data.
 
-## Basic Usage
+## Analyze a signal
 
-### 1. Validated Cross-Validation
-
-The simplest way to validate a strategy with proper statistical testing:
-
-```python
-from ml4t.diagnostic import ValidatedCrossValidation
-from ml4t.diagnostic.config import ValidatedCrossValidationConfig
-
-# Create validator with CPCV and DSR
-config = ValidatedCrossValidationConfig(
-    n_groups=10,
-    n_test_groups=2,
-    embargo_pct=0.01,
-    label_horizon=5,
-)
-vcv = ValidatedCrossValidation(config=config)
-
-# Fit and validate in one step
-result = vcv.fit_evaluate(X, y, model, times=times)
-
-# Check significance
-if result.is_significant:
-    print(f"Strategy is statistically significant!")
-    print(f"  Mean Sharpe: {result.mean_sharpe:.2f}")
-    print(f"  DSR probability: {result.dsr:.4f}")
-else:
-    print(f"Strategy may be overfit (DSR={result.dsr:.4f})")
-```
-
-### 2. Signal Analysis
-
-Analyze factor/signal quality:
+Create 40 daily observations for 20 assets. The synthetic factor affects the
+next price change, so the analysis has a known relation to detect.
 
 ```python
+import numpy as np
+import polars as pl
+
 from ml4t.diagnostic import analyze_signal
 
-# Analyze signal predictive power
+rng = np.random.default_rng(7)
+dates = pl.date_range(pl.date(2025, 1, 1), pl.date(2025, 2, 28), eager=True)[:40]
+assets = [f"asset_{index:02d}" for index in range(20)]
+
+factor_rows = []
+price_rows = []
+prices = np.full(len(assets), 100.0)
+for date in dates:
+    scores = rng.normal(size=len(assets))
+    factor_rows.extend(
+        {"date": date, "asset": asset, "factor": score}
+        for asset, score in zip(assets, scores, strict=True)
+    )
+    price_rows.extend(
+        {"date": date, "asset": asset, "price": price}
+        for asset, price in zip(assets, prices, strict=True)
+    )
+    prices *= 1 + 0.002 * scores + rng.normal(scale=0.005, size=len(assets))
+
 result = analyze_signal(
-    factor=factor_df,      # columns: date, asset, factor
-    prices=prices_df,      # columns: date, asset, price
-    periods=(1, 5, 21),
+    factor=pl.DataFrame(factor_rows),
+    prices=pl.DataFrame(price_rows),
+    periods=(1, 5),
 )
 
-# Key metrics
-print(f"IC Mean (1D): {result.ic['1D']:.4f}")
-print(f"IC IR (1D): {result.ic_ir['1D']:.2f}")
-print(f"IC t-stat (1D): {result.ic_t_stat['1D']:.2f}")
+assert result.ic["1D"] > 0.1
+
+print(f"1-day IC: {result.ic['1D']:.4f}")
+print(f"1-day IC t-stat: {result.ic_t_stat['1D']:.2f}")
+print(f"1-day top-minus-bottom spread: {result.spread['1D']:.2%}")
 ```
 
-### 3. Feature Diagnostics
+`analyze_signal` expects one row per date and asset. The factor table needs
+`date`, `asset`, and `factor` columns. The price table needs `date`, `asset`,
+and `price` columns.
 
-Analyze feature importance and interactions:
+## Correct for multiple testing
+
+Use Deflated Sharpe Ratio when you selected the best result from several
+strategy variants. Passing a two-dimensional array treats each column as one
+tested strategy.
 
 ```python
-from ml4t.diagnostic.config import DiagnosticConfig
-from ml4t.diagnostic.evaluation import FeatureDiagnostics
+import numpy as np
 
-config = DiagnosticConfig()
-fd = FeatureDiagnostics(config=config)
-result = fd.run_diagnostics(features_df["feature_1"], name="feature_1")
-print(result.summary())
+from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+rng = np.random.default_rng(42)
+strategy_returns = rng.normal(
+    loc=[0.0003, 0.0005, 0.0002],
+    scale=0.01,
+    size=(252, 3),
+)
+
+dsr = deflated_sharpe_ratio(
+    strategy_returns,
+    frequency="daily",
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
+)
+
+print(f"Observed Sharpe: {dsr.sharpe_ratio_annualized:.2f}")
+print(f"Probability after correction: {dsr.probability:.3f}")
+print(f"Effective trials: {dsr.n_trials_effective:.2f}")
+print(f"Significant: {dsr.is_significant}")
 ```
 
-### 4. Trade Error Analysis
+## Continue with a focused guide
 
-Identify why trades fail using SHAP:
-
-```python
-from ml4t.diagnostic.evaluation import TradeAnalysis, TradeShapAnalyzer
-
-# Find worst trades
-analyzer = TradeAnalysis(trade_records)
-worst_trades = analyzer.worst_trades(n=20)
-
-# Explain with SHAP
-shap_analyzer = TradeShapAnalyzer(model, features_df, shap_values)
-result = shap_analyzer.explain_worst_trades(worst_trades)
-
-# Get actionable insights
-for pattern in result.error_patterns:
-    print(f"Error Pattern: {pattern.hypothesis}")
-    print(f"  Suggested Action: {pattern.actions}")
-```
-
-## Configuration Presets
-
-Use presets for common scenarios:
-
-```python
-from ml4t.diagnostic.config import DiagnosticConfig
-
-# Quick exploratory analysis
-config = DiagnosticConfig.for_quick_analysis()
-
-# Thorough research
-config = DiagnosticConfig.for_research()
-
-# Production validation
-config = DiagnosticConfig.for_production()
-```
-
-## Next Steps
-
-- [Cross-Validation Guide](../user-guide/cross-validation.md) - CPCV and walk-forward details
-- [Backtest Tearsheets](../user-guide/backtest-tearsheets.md) - Reporting from results and run artifacts
-- [Statistical Tests](../user-guide/statistical-tests.md) - DSR, RAS, FDR explained
-- [Book Guide](../book-guide/index.md) - Exact chapter and case-study entry points
-- [Examples](https://github.com/ml4t/diagnostic/tree/main/examples) - Repository examples
+- [Cross-validation](../user-guide/cross-validation.md) covers purged
+  walk-forward validation and combinatorial purged cross-validation.
+- [Statistical tests](../user-guide/statistical-tests.md) covers DSR, HAC IC,
+  false discovery rate control, and PBO.
+- [Backtest tearsheets](../user-guide/backtest-tearsheets.md) creates an HTML
+  report from synthetic trades and returns.
+- [API reference](../api/index.md) lists the supported import surfaces.

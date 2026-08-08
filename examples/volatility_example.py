@@ -16,15 +16,6 @@ Usage:
 
 import numpy as np
 
-try:
-    from arch import arch_model
-
-    HAS_ARCH = True
-except ImportError:
-    HAS_ARCH = False
-    print("Warning: arch package not installed. Some examples will be skipped.")
-    print("Install with: pip install arch")
-
 from ml4t.diagnostic.evaluation.volatility import analyze_volatility, arch_lm_test, fit_garch
 
 
@@ -308,12 +299,6 @@ def _compute_kurtosis(data: np.ndarray) -> float:
 
 def example_garch_fitting():
     """Example 7: GARCH model fitting and parameter recovery."""
-    if not HAS_ARCH:
-        print("\n" + "=" * 70)
-        print("Example 7: GARCH Model Fitting [SKIPPED - arch not installed]")
-        print("=" * 70)
-        return
-
     print("\n" + "=" * 70)
     print("Example 7: GARCH(1,1) Model Fitting")
     print("=" * 70)
@@ -394,12 +379,6 @@ def example_garch_fitting():
 
 def example_garch_conditional_volatility():
     """Example 8: Extracting and analyzing conditional volatility."""
-    if not HAS_ARCH:
-        print("\n" + "=" * 70)
-        print("Example 8: Conditional Volatility [SKIPPED - arch not installed]")
-        print("=" * 70)
-        return
-
     print("\n" + "=" * 70)
     print("Example 8: Conditional Volatility Analysis")
     print("=" * 70)
@@ -469,12 +448,6 @@ def example_garch_conditional_volatility():
 
 def example_garch_persistence():
     """Example 9: Understanding persistence and stationarity."""
-    if not HAS_ARCH:
-        print("\n" + "=" * 70)
-        print("Example 9: Persistence Analysis [SKIPPED - arch not installed]")
-        print("=" * 70)
-        return
-
     print("\n" + "=" * 70)
     print("Example 9: Persistence and Stationarity")
     print("=" * 70)
@@ -552,12 +525,6 @@ def example_garch_persistence():
 
 def example_garch_forecasting():
     """Example 10: Using GARCH for volatility forecasting."""
-    if not HAS_ARCH:
-        print("\n" + "=" * 70)
-        print("Example 10: Volatility Forecasting [SKIPPED - arch not installed]")
-        print("=" * 70)
-        return
-
     print("\n" + "=" * 70)
     print("Example 10: GARCH Volatility Forecasting")
     print("=" * 70)
@@ -641,12 +608,6 @@ def example_garch_forecasting():
 
 def example_comprehensive_analysis():
     """Example 11: Comprehensive volatility analysis (unified function)."""
-    if not HAS_ARCH:
-        print("\n" + "=" * 70)
-        print("Example 11: Comprehensive Analysis [SKIPPED - arch not installed]")
-        print("=" * 70)
-        return
-
     print("\n" + "=" * 70)
     print("Example 11: Comprehensive Volatility Analysis")
     print("=" * 70)

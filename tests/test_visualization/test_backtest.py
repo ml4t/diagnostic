@@ -433,6 +433,17 @@ class TestTradePlots:
         if fig.data:
             assert len(fig.data[0].x) <= 11  # 10 trades + total
 
+    @pytest.mark.parametrize("theme", ["default", "dark", "print", "presentation"])
+    def test_public_trade_plots_accept_every_theme(self, sample_trades, theme):
+        """Theme defaults cannot collide with explicit Plotly layout values."""
+        from ml4t.diagnostic.visualization.backtest import (
+            plot_consecutive_analysis,
+            plot_trade_waterfall,
+        )
+
+        assert isinstance(plot_trade_waterfall(sample_trades, theme=theme), go.Figure)
+        assert isinstance(plot_consecutive_analysis(sample_trades, theme=theme), go.Figure)
+
     def test_plot_trade_duration_distribution(self, sample_trades):
         """Test trade duration histogram."""
         from ml4t.diagnostic.visualization.backtest import plot_trade_duration_distribution
@@ -719,6 +730,74 @@ class TestTearsheetGeneration:
 
         assert isinstance(html, str)
         assert len(html) > 0
+
+    def test_section_failure_is_actionable(self, monkeypatch):
+        """A renderer error names the omitted section instead of returning None."""
+        import ml4t.diagnostic.visualization.backtest.tearsheet as module
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        def fail_renderer(*args, **kwargs):
+            raise ValueError("injected renderer failure")
+
+        monkeypatch.setattr(module, "_create_section_figure", fail_renderer)
+
+        with pytest.raises(ReportGenerationError, match="Failed to render") as exc_info:
+            module._generate_section("equity_curve")
+
+        assert exc_info.value.context == {"section": "equity_curve"}
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
+    def test_validation_enrichment_failure_is_actionable(self, monkeypatch):
+        """A failed statistical enrichment cannot produce an incomplete report."""
+        import importlib
+
+        import ml4t.diagnostic.visualization.backtest.tearsheet as module
+        from ml4t.diagnostic.errors import ReportGenerationError
+
+        dsr_module = importlib.import_module(
+            "ml4t.diagnostic.evaluation.stats.deflated_sharpe_ratio"
+        )
+
+        def fail_dsr(*args, **kwargs):
+            raise ValueError("injected DSR failure")
+
+        monkeypatch.setattr(dsr_module, "deflated_sharpe_ratio", fail_dsr)
+
+        with pytest.raises(ReportGenerationError, match="DSR metrics") as exc_info:
+            module._enrich_validation_metrics({}, np.ones(100), n_trials=2)
+
+        assert exc_info.value.context["metric"] == "dsr"
+
+    def test_optional_trade_sections_skip_missing_columns(self):
+        """Ordinary trade frames can omit section-specific optional columns."""
+        from ml4t.diagnostic.visualization.backtest.tearsheet import _generate_section
+
+        trades = pl.DataFrame({"asset": ["A"], "return": [0.01]})
+
+        assert _generate_section("mfe_mae", trades=trades) is None
+        assert _generate_section("exit_reasons", trades=trades) is None
+        assert _generate_section("trade_waterfall", trades=trades) is None
+        assert _generate_section("duration", trades=trades) is None
+
+    def test_insufficient_validation_data_is_visible(self):
+        """A short return history explains why validation metrics are absent."""
+        import ml4t.diagnostic.visualization.backtest.tearsheet as module
+
+        metrics = module._enrich_validation_metrics({}, np.array([0.01, 0.02]), n_trials=2)
+        html = module._generate_section("validity_card", metrics=metrics)
+
+        assert html is not None
+        assert "At least 5 return observations" in html
+
+    def test_raw_return_drawdown_anatomy_uses_supported_import(self):
+        """Raw returns render through the public portfolio analysis package."""
+        from ml4t.diagnostic.visualization.backtest.tearsheet import _generate_section
+
+        returns = np.array([0.01, -0.02, 0.015, -0.01, 0.02] * 30)
+        html = _generate_section("drawdown_anatomy", returns=returns)
+
+        assert html is not None
+        assert "drawdown" in html.lower()
 
     def test_generate_backtest_tearsheet_from_profile(self, sample_backtest_profile):
         """Test tearsheet generation directly from BacktestProfile."""
@@ -1034,6 +1113,33 @@ class TestInteractiveControls:
         assert isinstance(html, str)
         assert "date" in html.lower()
 
+    def test_date_range_html_rejects_script_callback(self):
+        """Callback names cannot inject JavaScript."""
+        from ml4t.diagnostic.visualization.backtest import get_date_range_html
+
+        with pytest.raises(ValueError, match="JavaScript identifier"):
+            get_date_range_html(on_change_callback="alert(document.domain)//")
+
+    def test_date_range_html_escapes_preset_labels(self):
+        """Preset labels are inert in text and attribute contexts."""
+        from ml4t.diagnostic.visualization.backtest import get_date_range_html
+
+        payload = '<img src=x onerror="alert(1)">'
+        html = get_date_range_html(presets=[payload])
+
+        assert payload not in html
+        assert "&lt;img" in html
+
+    def test_date_range_html_escapes_inline_script_terminator(self):
+        """Date strings cannot terminate the generated inline script."""
+        from ml4t.diagnostic.visualization.backtest import get_date_range_html
+
+        payload = "</script><img src=x onerror=alert(1)>"
+        html = get_date_range_html(start_date=payload)
+
+        assert payload not in html
+        assert "\\u003c/script\\u003e" in html
+
     def test_get_theme_switcher_html(self):
         """Test theme switcher HTML generation."""
         from ml4t.diagnostic.visualization.backtest import get_theme_switcher_html
@@ -1254,6 +1360,15 @@ class TestTailRisk:
 
         fig = plot_tail_risk_analysis(returns)
         assert isinstance(fig, go.Figure)
+
+    def test_plot_tail_risk_positive_returns_have_infinite_sortino(self):
+        """No downside risk is not reported as a zero Sortino ratio."""
+        from ml4t.diagnostic.visualization.backtest import plot_tail_risk_analysis
+
+        fig = plot_tail_risk_analysis(np.linspace(0.001, 0.01, 20))
+        table_values = fig.data[-1].cells.values
+
+        assert "inf" in table_values[1]
 
     def test_plot_tail_risk_insufficient_data(self):
         """Test with insufficient data returns placeholder."""

@@ -8,9 +8,16 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  validate:
+    uses: ./.github/workflows/test-matrix.yml
+
+  security:
+    uses: ./.github/workflows/security.yml
+
   build:
     name: Build Package
     runs-on: ubuntu-latest
+    needs: [validate, security]
     steps:
       - uses: actions/checkout@v6.0.3
         with:
@@ -19,13 +26,20 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Build package
         run: uv build
+
+      - name: Check release artifacts
+        run: uv run --isolated --no-project python scripts/verify_release_artifacts.py dist
+
+      - name: Import installed wheel
+        shell: bash
+        run: uv run --isolated --no-project --with "$(find dist -name '*.whl' -print -quit)" python scripts/import_smoke.py
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7.0.1

@@ -14,6 +14,7 @@ import polars as pl
 from pydantic import Field
 
 from ml4t.diagnostic.results.base import BaseResult
+from ml4t.diagnostic.utils.formatting import format_finite
 
 
 class IRtcResult(BaseResult):
@@ -90,21 +91,24 @@ class IRtcResult(BaseResult):
 
     def summary(self) -> str:
         """Get human-readable summary of IR_tc results."""
+        cost_per_trade = format_finite(self.cost_per_trade, ".4f")
+        cost_bps = format_finite(self.cost_per_trade * 10000, ".0f")
         lines = [
             "=" * 60,
             "Transaction-Cost Adjusted IR Summary",
             "=" * 60,
             "",
-            f"Cost per Trade: {self.cost_per_trade:.4f} ({self.cost_per_trade * 10000:.0f} bps)",
+            f"Cost per Trade: {cost_per_trade} ({cost_bps} bps)",
             "",
             "Period       IR_gross    IR_tc    Cost Drag   Breakeven",
             "-" * 60,
         ]
 
         for period in self.ir_gross:
-            lines.append(
-                f"{period:<12} {self.ir_gross[period]:>8.4f}  {self.ir_tc[period]:>8.4f}  "
-                f"{self.cost_drag[period]:>8.1%}  {self.breakeven_cost[period]:>8.4f}"
-            )
+            ir_gross = format_finite(self.ir_gross[period], ".4f")
+            ir_tc = format_finite(self.ir_tc[period], ".4f")
+            cost_drag = format_finite(self.cost_drag[period], ".1%")
+            breakeven = format_finite(self.breakeven_cost[period], ".4f")
+            lines.append(f"{period:<12} {ir_gross:>8}  {ir_tc:>8}  {cost_drag:>8}  {breakeven:>8}")
 
         return "\n".join(lines)

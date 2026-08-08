@@ -4,21 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import pickle
 from collections import OrderedDict
 from datetime import UTC, datetime
-from enum import Enum
-from pathlib import Path
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class CacheBackend(str, Enum):
+class CacheBackend(StrEnum):
     """Cache storage backend options."""
 
     MEMORY = "memory"
-    DISK = "disk"
     DISABLED = "disabled"
 
 
@@ -30,19 +27,12 @@ class CacheConfig(BaseModel):
         backend: Storage backend to use
         ttl_seconds: Time-to-live for cache entries (None = no expiration)
         max_memory_items: Max items in memory cache (LRU eviction)
-        disk_path: Path for disk cache storage
-        compression: Whether to compress disk cache entries
     """
 
     enabled: bool = True
     backend: CacheBackend = CacheBackend.MEMORY
     ttl_seconds: int | None = Field(default=3600, description="Cache TTL in seconds")
     max_memory_items: int = Field(default=100, description="Max memory cache size")
-    disk_path: Path = Field(
-        default_factory=lambda: Path(".ml4t_diagnostic_cache"),
-        description="Disk cache directory",
-    )
-    compression: bool = Field(default=False, description="Compress disk cache")
 
 
 class CacheKey:
@@ -155,9 +145,9 @@ class CacheEntry:
 
 
 class Cache:
-    """Multi-backend cache for expensive computations.
+    """In-memory cache for expensive computations.
 
-    Supports memory and disk backends with automatic expiration and LRU eviction.
+    Supports automatic expiration, LRU eviction, and explicit disabling.
 
     Examples:
         >>> cache = Cache(CacheConfig(enabled=True, backend=CacheBackend.MEMORY))
@@ -180,10 +170,6 @@ class Cache:
         """
         self.config = config
         self._memory_cache: OrderedDict[CacheKey, CacheEntry] = OrderedDict()
-
-        # Create disk cache directory if needed
-        if config.backend == CacheBackend.DISK and config.enabled:
-            config.disk_path.mkdir(parents=True, exist_ok=True)
 
     def generate_key(self, **kwargs: Any) -> CacheKey:
         """Generate cache key from data and configuration.
@@ -211,12 +197,9 @@ class Cache:
         if not self.config.enabled:
             return None
 
-        if self.config.backend == CacheBackend.MEMORY:
-            return self._get_memory(key)
-        elif self.config.backend == CacheBackend.DISK:
-            return self._get_disk(key)
-        else:
+        if self.config.backend != CacheBackend.MEMORY:
             return None
+        return self._get_memory(key)
 
     def set(self, key: CacheKey, value: Any) -> None:
         """Store value in cache.
@@ -230,8 +213,6 @@ class Cache:
 
         if self.config.backend == CacheBackend.MEMORY:
             self._set_memory(key, value)
-        elif self.config.backend == CacheBackend.DISK:
-            self._set_disk(key, value)
 
     def invalidate(self, key: CacheKey) -> None:
         """Invalidate specific cache entry.
@@ -239,20 +220,11 @@ class Cache:
         Args:
             key: Cache key to invalidate
         """
-        if self.config.backend == CacheBackend.MEMORY:
-            self._memory_cache.pop(key, None)
-        elif self.config.backend == CacheBackend.DISK:
-            cache_file = self._get_disk_path(key)
-            if cache_file.exists():
-                cache_file.unlink()
+        self._memory_cache.pop(key, None)
 
     def clear(self) -> None:
         """Clear all cache entries."""
-        if self.config.backend == CacheBackend.MEMORY:
-            self._memory_cache.clear()
-        elif self.config.backend == CacheBackend.DISK and self.config.disk_path.exists():
-            for cache_file in self.config.disk_path.glob("*.pkl"):
-                cache_file.unlink()
+        self._memory_cache.clear()
 
     def _get_memory(self, key: CacheKey) -> Any | None:
         """Get from memory cache with LRU update."""
@@ -285,47 +257,3 @@ class Cache:
             ttl_seconds=self.config.ttl_seconds,
         )
         self._memory_cache[key] = entry
-
-    def _get_disk(self, key: CacheKey) -> Any | None:
-        """Get from disk cache."""
-        cache_file = self._get_disk_path(key)
-
-        if not cache_file.exists():
-            return None
-
-        try:
-            with open(cache_file, "rb") as f:
-                entry = pickle.load(f)
-
-            # Check expiration
-            if entry.is_expired():
-                cache_file.unlink()
-                return None
-
-            return entry.value
-        except Exception:
-            # Corrupted cache file - remove it
-            if cache_file.exists():
-                cache_file.unlink()
-            return None
-
-    def _set_disk(self, key: CacheKey, value: Any) -> None:
-        """Set in disk cache."""
-        cache_file = self._get_disk_path(key)
-
-        entry = CacheEntry(
-            value=value,
-            created_at=datetime.now(UTC),
-            ttl_seconds=self.config.ttl_seconds,
-        )
-
-        try:
-            with open(cache_file, "wb") as f:
-                pickle.dump(entry, f)
-        except Exception:
-            # Failed to cache - not critical
-            pass
-
-    def _get_disk_path(self, key: CacheKey) -> Path:
-        """Get disk path for cache key."""
-        return self.config.disk_path / f"{key.hash_value}.pkl"

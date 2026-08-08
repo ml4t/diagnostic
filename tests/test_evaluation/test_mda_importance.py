@@ -19,7 +19,8 @@ class TestMDABasicFunctionality:
     """Test basic MDA computation."""
 
     @pytest.fixture(scope="class")
-    def classification_data_10f(self):
+    @classmethod
+    def classification_data_10f(cls):
         """Create classification dataset with 10 features (shared across class)."""
         X, y = make_classification(
             n_samples=500,
@@ -32,7 +33,8 @@ class TestMDABasicFunctionality:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_classifier_10f(self, classification_data_10f):
+    @classmethod
+    def trained_rf_classifier_10f(cls, classification_data_10f):
         """Train RF classifier once for class."""
         X, y = classification_data_10f
         model = RandomForestClassifier(n_estimators=50, random_state=42, max_depth=5)
@@ -40,7 +42,8 @@ class TestMDABasicFunctionality:
         return model
 
     @pytest.fixture(scope="class")
-    def regression_data_10f(self):
+    @classmethod
+    def regression_data_10f(cls):
         """Create regression dataset with 10 features."""
         X, y = make_regression(
             n_samples=500,
@@ -52,7 +55,8 @@ class TestMDABasicFunctionality:
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_regressor_10f(self, regression_data_10f):
+    @classmethod
+    def trained_rf_regressor_10f(cls, regression_data_10f):
         """Train RF regressor once for class."""
         X, y = regression_data_10f
         model = RandomForestRegressor(n_estimators=50, random_state=42, max_depth=5)
@@ -123,13 +127,15 @@ class TestMDARemovalMethods:
     """Test different removal methods."""
 
     @pytest.fixture(scope="class")
-    def classification_data_5f(self):
+    @classmethod
+    def classification_data_5f(cls):
         """Create classification dataset with 5 features (shared across class)."""
         X, y = make_classification(n_samples=200, n_features=5, n_informative=2, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_5f(self, classification_data_5f):
+    @classmethod
+    def trained_rf_5f(cls, classification_data_5f):
         """Train RF classifier once for class (5 features)."""
         X, y = classification_data_5f
         model = RandomForestClassifier(n_estimators=20, random_state=42)
@@ -137,7 +143,8 @@ class TestMDARemovalMethods:
         return model
 
     @pytest.fixture(scope="class")
-    def outlier_data_and_model(self):
+    @classmethod
+    def outlier_data_and_model(cls):
         """Create data with outliers and train model (for removal method comparison)."""
         X, y = make_classification(
             n_samples=300, n_features=5, n_informative=2, n_redundant=0, random_state=42
@@ -202,13 +209,15 @@ class TestMDAFeatureGroups:
     """Test feature group functionality."""
 
     @pytest.fixture(scope="class")
-    def classification_data_6f(self):
+    @classmethod
+    def classification_data_6f(cls):
         """Create classification dataset with 6 features (for group tests)."""
         X, y = make_classification(n_samples=300, n_features=6, n_informative=3, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_6f(self, classification_data_6f):
+    @classmethod
+    def trained_rf_6f(cls, classification_data_6f):
         """Train RF classifier once for class (6 features)."""
         X, y = classification_data_6f
         model = RandomForestClassifier(n_estimators=30, random_state=42)
@@ -216,7 +225,8 @@ class TestMDAFeatureGroups:
         return model
 
     @pytest.fixture(scope="class")
-    def df_data_and_model_6f(self, classification_data_6f):
+    @classmethod
+    def df_data_and_model_6f(cls, classification_data_6f):
         """Create DataFrame version and train model."""
         X, y = classification_data_6f
         X_df = pd.DataFrame(X, columns=[f"feature_{i}" for i in range(6)])
@@ -225,7 +235,8 @@ class TestMDAFeatureGroups:
         return X_df, y, model
 
     @pytest.fixture(scope="class")
-    def correlated_data_and_model(self):
+    @classmethod
+    def correlated_data_and_model(cls):
         """Create data with correlated features and train model."""
         np.random.seed(42)
         n_samples = 500
@@ -310,13 +321,15 @@ class TestMDAInputFormats:
     """Test different input formats (pandas, polars, numpy)."""
 
     @pytest.fixture(scope="class")
-    def base_data_5f(self):
+    @classmethod
+    def base_data_5f(cls):
         """Create base classification dataset with 5 features."""
         X, y = make_classification(n_samples=200, n_features=5, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def numpy_model(self, base_data_5f):
+    @classmethod
+    def numpy_model(cls, base_data_5f):
         """Train model on numpy arrays."""
         X, y = base_data_5f
         model = RandomForestClassifier(n_estimators=20, random_state=42)
@@ -324,7 +337,8 @@ class TestMDAInputFormats:
         return model
 
     @pytest.fixture(scope="class")
-    def pandas_data_and_model(self, base_data_5f):
+    @classmethod
+    def pandas_data_and_model(cls, base_data_5f):
         """Create pandas data and train model."""
         X, y = base_data_5f
         X_df = pd.DataFrame(X, columns=[f"feat_{i}" for i in range(5)])
@@ -334,7 +348,8 @@ class TestMDAInputFormats:
         return X_df, y_series, model
 
     @pytest.fixture(scope="class")
-    def polars_data_and_model(self, base_data_5f):
+    @classmethod
+    def polars_data_and_model(cls, base_data_5f):
         """Create polars data and train model."""
         X, y = base_data_5f
         X_pl = pl.DataFrame(X, schema=[f"col_{i}" for i in range(5)])
@@ -344,7 +359,8 @@ class TestMDAInputFormats:
         return X_pl, y_pl, model
 
     @pytest.fixture(scope="class")
-    def custom_names_data_and_model(self):
+    @classmethod
+    def custom_names_data_and_model(cls):
         """Create 3-feature data with custom names and train model."""
         X, y = make_classification(
             n_samples=200, n_features=3, n_informative=2, n_redundant=0, random_state=42
@@ -393,13 +409,15 @@ class TestMDAScoring:
     """Test different scoring functions."""
 
     @pytest.fixture(scope="class")
-    def classification_data_5f(self):
+    @classmethod
+    def classification_data_5f(cls):
         """Create classification dataset with 5 features."""
         X, y = make_classification(n_samples=200, n_features=5, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def trained_rf_classifier(self, classification_data_5f):
+    @classmethod
+    def trained_rf_classifier(cls, classification_data_5f):
         """Train RF classifier once for class."""
         X, y = classification_data_5f
         model = RandomForestClassifier(n_estimators=20, random_state=42)
@@ -407,7 +425,8 @@ class TestMDAScoring:
         return model
 
     @pytest.fixture(scope="class")
-    def regression_data_and_model(self):
+    @classmethod
+    def regression_data_and_model(cls):
         """Create regression data and train model."""
         X, y = make_regression(n_samples=200, n_features=5, random_state=42)
         model = RandomForestRegressor(n_estimators=20, random_state=42)
@@ -456,7 +475,8 @@ class TestMDAEdgeCases:
     """Test edge cases and error handling."""
 
     @pytest.fixture(scope="class")
-    def single_feature_data_and_model(self):
+    @classmethod
+    def single_feature_data_and_model(cls):
         """Create single-feature data and train model."""
         X, y = make_classification(
             n_samples=200,
@@ -472,7 +492,8 @@ class TestMDAEdgeCases:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def mismatch_data_and_model(self):
+    @classmethod
+    def mismatch_data_and_model(cls):
         """Create data for mismatch test."""
         X, y = make_classification(n_samples=200, n_features=5, random_state=42)
         model = RandomForestClassifier(n_estimators=10, random_state=42)
@@ -480,7 +501,8 @@ class TestMDAEdgeCases:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def perfect_prediction_data_and_model(self):
+    @classmethod
+    def perfect_prediction_data_and_model(cls):
         """Create perfectly separable data and train model."""
         np.random.seed(42)
         X = np.random.randn(100, 2)
@@ -490,7 +512,8 @@ class TestMDAEdgeCases:
         return X, y, model
 
     @pytest.fixture(scope="class")
-    def uninformative_data_and_model(self):
+    @classmethod
+    def uninformative_data_and_model(cls):
         """Create random data with no relationship and train model."""
         np.random.seed(42)
         X = np.random.randn(200, 5)
@@ -536,7 +559,8 @@ class TestMDAComparison:
     """Test MDA comparison with other importance methods."""
 
     @pytest.fixture(scope="class")
-    def comparison_data_and_model(self):
+    @classmethod
+    def comparison_data_and_model(cls):
         """Create data and train model for comparison tests."""
         X, y = make_classification(n_samples=500, n_features=10, n_informative=3, random_state=42)
         model = RandomForestClassifier(n_estimators=50, random_state=42, max_depth=5)
@@ -582,19 +606,22 @@ class TestMDADifferentModels:
     """Test MDA with different model types."""
 
     @pytest.fixture(scope="class")
-    def classification_data_5f(self):
+    @classmethod
+    def classification_data_5f(cls):
         """Create classification dataset with 5 features."""
         X, y = make_classification(n_samples=200, n_features=5, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def regression_data_5f(self):
+    @classmethod
+    def regression_data_5f(cls):
         """Create regression dataset with 5 features."""
         X, y = make_regression(n_samples=200, n_features=5, random_state=42)
         return X, y
 
     @pytest.fixture(scope="class")
-    def logistic_model(self, classification_data_5f):
+    @classmethod
+    def logistic_model(cls, classification_data_5f):
         """Train logistic regression model."""
         X, y = classification_data_5f
         model = LogisticRegression(random_state=42, max_iter=1000)
@@ -602,7 +629,8 @@ class TestMDADifferentModels:
         return model
 
     @pytest.fixture(scope="class")
-    def linear_model(self, regression_data_5f):
+    @classmethod
+    def linear_model(cls, regression_data_5f):
         """Train linear regression model."""
         X, y = regression_data_5f
         model = LinearRegression()
@@ -610,7 +638,8 @@ class TestMDADifferentModels:
         return model
 
     @pytest.fixture(scope="class")
-    def gradient_boosting_model(self, classification_data_5f):
+    @classmethod
+    def gradient_boosting_model(cls, classification_data_5f):
         """Train gradient boosting model."""
         X, y = classification_data_5f
         model = GradientBoostingClassifier(n_estimators=20, random_state=42)

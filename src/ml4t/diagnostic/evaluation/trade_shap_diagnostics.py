@@ -75,7 +75,6 @@ class TradeShapAnalyzer:
     This class wraps TradeShapPipeline with additional features:
     - On-demand SHAP value computation from a model
     - Pandas/Polars DataFrame conversion
-    - GPU acceleration support
 
     For simpler use cases with pre-computed SHAP values, use TradeShapPipeline
     directly.
@@ -92,7 +91,7 @@ class TradeShapAnalyzer:
         shap_values: NDArray[np.floating[Any]] | None = None,
         config: TradeConfig | None = None,
         explainer_type: str = "auto",
-        use_gpu: bool | str = "auto",
+        *,
         background_data: NDArray[Any] | None = None,
         explainer_kwargs: dict | None = None,
         show_progress: bool = False,
@@ -106,7 +105,6 @@ class TradeShapAnalyzer:
             shap_values: Pre-computed SHAP values (optional, computed if None)
             config: TradeConfig for analysis parameters
             explainer_type: SHAP explainer type ('auto', 'tree', 'kernel', etc.)
-            use_gpu: Whether to use GPU acceleration
             background_data: Background data for SHAP computation
             explainer_kwargs: Additional kwargs for SHAP explainer
             show_progress: Show progress bars during computation
@@ -119,7 +117,6 @@ class TradeShapAnalyzer:
 
         # Store API parameters for on-demand SHAP computation
         self._explainer_type = explainer_type
-        self._use_gpu = use_gpu
         self._background_data = background_data
         self._explainer_kwargs = explainer_kwargs or {}
         self._show_progress = show_progress
@@ -194,7 +191,6 @@ class TradeShapAnalyzer:
             X=features_df,
             feature_names=feature_cols,
             explainer_type=self._explainer_type,
-            use_gpu=self._use_gpu,
             background_data=self._background_data,
             show_progress=self._show_progress,
             explainer_kwargs=self._explainer_kwargs,

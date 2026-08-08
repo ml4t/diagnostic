@@ -6,7 +6,7 @@ Tests the EventStudyAnalysis class including:
 - Mean-adjusted and market-adjusted models
 - Abnormal return computation
 - CAAR aggregation
-- Statistical tests (t-test, BMP, Corrado)
+- Statistical tests (t-test and BMP)
 - Configuration options
 - Edge cases and error handling
 
@@ -14,12 +14,13 @@ References
 ----------
 MacKinlay, A.C. (1997). "Event Studies in Economics and Finance"
 Boehmer, E., Musumeci, J., Poulsen, A.B. (1991). BMP test
-Corrado, C.J. (1989). Non-parametric rank test
 """
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime, timedelta
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -328,6 +329,31 @@ class TestMarketModel:
             assert result.estimation_alpha is not None
             assert result.estimation_beta is not None
 
+    def test_constant_benchmark_rejects_rank_deficient_model(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A constant estimation benchmark cannot identify alpha and beta."""
+        event = sample_events_data.select("date", "asset").head(1)
+        benchmark = sample_benchmark_data.with_columns(pl.lit(0.0).alias("return"))
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: market model estimation failed numerically\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
 
 # =============================================================================
 # Alternative Model Tests
@@ -535,35 +561,6 @@ class TestStatisticalTests:
         assert np.isfinite(result.test_statistic)
         assert 0 <= result.p_value <= 1
 
-    def test_corrado_test_produces_valid_statistics(
-        self,
-        sample_returns_data: pl.DataFrame,
-        sample_events_data: pl.DataFrame,
-        sample_benchmark_data: pl.DataFrame,
-    ) -> None:
-        """Test Corrado rank test produces valid test statistic and p-value."""
-        config = EventConfig(
-            window=WindowSettings(
-                estimation_start=-252, estimation_end=-20, event_start=-5, event_end=5
-            ),
-            model="market_model",
-            test="corrado",
-            min_estimation_obs=100,
-        )
-
-        analysis = EventStudyAnalysis(
-            returns=sample_returns_data,
-            events=sample_events_data,
-            benchmark=sample_benchmark_data,
-            config=config,
-        )
-
-        result = analysis.run()
-
-        assert result.test_name == "corrado"
-        assert np.isfinite(result.test_statistic)
-        assert 0 <= result.p_value <= 1
-
     def test_t_test_significant_with_large_effect(
         self,
         trading_dates: list[datetime],
@@ -609,6 +606,7 @@ class TestStatisticalTests:
         # With such large effect, should have large positive CAAR
         assert result.final_caar > 0.1  # > 10% cumulative
         # Note: With only 1 event, p-value may not be significant due to lack of cross-section
+        assert all(np.isnan(value) for value in result.caar_std)
 
 
 # =============================================================================
@@ -700,6 +698,79 @@ class TestResultProperties:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
+    @pytest.mark.parametrize("test_name", ["t_test", "boehmer"])
+    @pytest.mark.parametrize("invalid_return", [float("nan"), None], ids=["nan", "null"])
+    def test_non_finite_event_return_is_skipped_before_inference(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+        test_name: str,
+        invalid_return: float | None,
+    ) -> None:
+        """An invalid event return cannot produce an invalid p-value."""
+        invalid_event = sample_events_data.row(0, named=True)
+        returns_with_nan = sample_returns_data.with_columns(
+            pl.when(
+                (pl.col("asset") == invalid_event["asset"])
+                & (pl.col("date") == invalid_event["date"])
+            )
+            .then(pl.lit(invalid_return, dtype=pl.Float64))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        analysis = EventStudyAnalysis(
+            returns=returns_with_nan,
+            events=sample_events_data,
+            benchmark=sample_benchmark_data,
+            config=default_config.model_copy(update={"test": test_name}),
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: incomplete or non-finite asset event window\)",
+        ):
+            result = analysis.run()
+
+        assert result.n_events == 2
+        assert np.isfinite(result.test_statistic)
+        assert 0.0 <= result.p_value <= 1.0
+        assert result.individual_results is not None
+        assert all(np.isfinite(event.car) for event in result.individual_results)
+
+    def test_incomplete_event_window_is_skipped(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """An event with a missing day cannot enter fixed-horizon inference."""
+        incomplete_event = sample_events_data.row(0, named=True)
+        incomplete_returns = sample_returns_data.filter(
+            ~(
+                (pl.col("asset") == incomplete_event["asset"])
+                & (pl.col("date") == incomplete_event["date"])
+            )
+        )
+        analysis = EventStudyAnalysis(
+            returns=incomplete_returns,
+            events=sample_events_data,
+            benchmark=sample_benchmark_data,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: incomplete or non-finite asset event window\)",
+        ):
+            result = analysis.run()
+
+        assert result.n_events == 2
+        assert result.individual_results is not None
+        assert all(event.asset != incomplete_event["asset"] for event in result.individual_results)
+
     def test_insufficient_estimation_data_warning(
         self,
         trading_dates: list[datetime],
@@ -729,7 +800,10 @@ class TestEdgeCases:
             returns=returns_df, events=events_df, benchmark=benchmark_df, config=config
         )
 
-        with pytest.warns(UserWarning, match="Skipped .* events"):
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: insufficient estimation history\)",
+        ):
             ar_results = analysis.compute_abnormal_returns()
 
         assert len(ar_results) == 0  # Event should be skipped
@@ -757,7 +831,10 @@ class TestEdgeCases:
             returns=returns_df, events=events_df, benchmark=benchmark_df, config=config
         )
 
-        with pytest.raises(ValueError, match="No valid events"):
+        with (
+            pytest.warns(UserWarning, match="Skipped 1 event"),
+            pytest.raises(ValueError, match="No valid events"),
+        ):
             analysis.aggregate()
 
     def test_missing_asset_in_returns(
@@ -775,7 +852,7 @@ class TestEdgeCases:
             benchmark=sample_benchmark_data,
         )
 
-        with pytest.warns(UserWarning, match="Skipped"):
+        with pytest.warns(UserWarning, match=r"1: unknown asset"):
             ar_results = analysis.compute_abnormal_returns()
 
         assert len(ar_results) == 0
@@ -797,10 +874,371 @@ class TestEdgeCases:
             benchmark=sample_benchmark_data,
         )
 
-        with pytest.warns(UserWarning, match="Skipped"):
+        with pytest.warns(UserWarning, match=r"1: unknown event date"):
             ar_results = analysis.compute_abnormal_returns()
 
         assert len(ar_results) == 0
+
+    def test_rejection_warning_reports_mixed_causes(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A single warning reports each event rejection cause separately."""
+        source_events = sample_events_data.select("date", "asset").to_dicts()
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        events = pl.DataFrame(
+            {
+                "date": [
+                    source_events[0]["date"],
+                    source_events[1]["date"],
+                    source_events[2]["date"],
+                    datetime(2025, 1, 1),
+                    datetime(2025, 1, 2),
+                    all_dates[10],
+                ],
+                "asset": [
+                    source_events[0]["asset"],
+                    "UNKNOWN_ASSET",
+                    source_events[2]["asset"],
+                    "ASSET_03",
+                    "UNKNOWN_ASSET",
+                    "ASSET_06",
+                ],
+            }
+        )
+        returns_with_nan = sample_returns_data.with_columns(
+            pl.when(
+                (pl.col("asset") == source_events[0]["asset"])
+                & (pl.col("date") == source_events[0]["date"])
+            )
+            .then(float("nan"))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        benchmark_with_gap = sample_benchmark_data.filter(
+            pl.col("date") != source_events[2]["date"]
+        )
+        analysis = EventStudyAnalysis(
+            returns=returns_with_nan,
+            events=events,
+            benchmark=benchmark_with_gap,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 6 events \(1: unknown event date, 1: unknown asset, "
+                r"1: unknown asset and event date, 1: insufficient estimation history, "
+                r"1: incomplete or non-finite asset event window, "
+                r"1: incomplete or non-finite benchmark event window\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_missing_benchmark_estimation_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A short benchmark is not reported as missing asset data."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        benchmark = sample_benchmark_data.filter(pl.col("date") >= event_date - timedelta(days=30))
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: insufficient finite benchmark estimation returns\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_missing_benchmark_event_window_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A benchmark event-window gap is reported as benchmark data."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        event_idx = sample_benchmark_data["date"].to_list().index(event_date)
+        missing_date = sample_benchmark_data["date"][event_idx + 1]
+        benchmark = sample_benchmark_data.filter(pl.col("date") != missing_date)
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: incomplete or non-finite benchmark event window\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_mean_adjusted_model_does_not_require_benchmark_coverage(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Mean-adjusted returns depend only on the asset series."""
+        event = sample_events_data.select("date", "asset").head(1)
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=sample_benchmark_data.head(1),
+            config=default_config.model_copy(update={"model": "mean_adjusted"}),
+        )
+
+        results = analysis.compute_abnormal_returns()
+
+        assert len(results) == 1
+
+    def test_event_window_beyond_history_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """An event too close to the panel end reports the history boundary."""
+        event = pl.DataFrame(
+            {
+                "date": [sample_returns_data["date"].max()],
+                "asset": ["ASSET_00"],
+            }
+        )
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=sample_benchmark_data,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: event window extends beyond returns history\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_disjoint_estimation_coverage_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Individually sufficient but disjoint series report alignment failure."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        event_idx = all_dates.index(event_date)
+        estimation_dates = all_dates[event_idx - 252 : event_idx - 19]
+        asset_dates = estimation_dates[:120]
+        benchmark_dates = estimation_dates[120:]
+        asset = event["asset"][0]
+        returns = sample_returns_data.with_columns(
+            pl.when((pl.col("asset") == asset) & pl.col("date").is_in(benchmark_dates))
+            .then(float("nan"))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        benchmark = sample_benchmark_data.with_columns(
+            pl.when(pl.col("date").is_in(asset_dates))
+            .then(float("nan"))
+            .otherwise(pl.col("return"))
+            .alias("return")
+        )
+        analysis = EventStudyAnalysis(
+            returns=returns,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 1 event "
+                r"\(1: insufficient aligned finite asset/benchmark estimation returns\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_missing_asset_and_benchmark_estimation_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Concurrent estimation shortages report both inputs."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        cutoff = event_date - timedelta(days=30)
+        asset = event["asset"][0]
+        returns = sample_returns_data.filter(
+            (pl.col("asset") != asset) | (pl.col("date") >= cutoff)
+        )
+        benchmark = sample_benchmark_data.filter(pl.col("date") >= cutoff)
+        analysis = EventStudyAnalysis(
+            returns=returns,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 1 event "
+                r"\(1: insufficient finite asset and benchmark estimation returns\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_missing_asset_and_benchmark_event_window_data_is_identified(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """Concurrent event-window gaps report both inputs."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        missing_date = all_dates[all_dates.index(event_date) + 1]
+        asset = event["asset"][0]
+        returns = sample_returns_data.filter(
+            ~((pl.col("asset") == asset) & (pl.col("date") == missing_date))
+        )
+        benchmark = sample_benchmark_data.filter(pl.col("date") != missing_date)
+        analysis = EventStudyAnalysis(
+            returns=returns,
+            events=event,
+            benchmark=benchmark,
+            config=default_config,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"Skipped 1 event "
+                r"\(1: incomplete or non-finite asset and benchmark event window\)"
+            ),
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert results == []
+
+    def test_benchmark_event_date_is_not_required_outside_configured_windows(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+    ) -> None:
+        """A benchmark t=0 gap is irrelevant when neither window consumes t=0."""
+        event = sample_events_data.select("date", "asset").head(1)
+        event_date = event["date"][0]
+        benchmark = sample_benchmark_data.filter(pl.col("date") != event_date)
+        window = WindowSettings(
+            estimation_start=-252,
+            estimation_end=-20,
+            event_start=1,
+            event_end=5,
+            gap=5,
+        )
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=event,
+            benchmark=benchmark,
+            config=default_config.model_copy(update={"window": window}),
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            results = analysis.compute_abnormal_returns()
+
+        assert len(results) == 1
+        result = results[0]
+        assert result.estimation_alpha is not None
+        assert result.estimation_beta is not None
+        all_dates = sample_returns_data["date"].unique().sort().to_list()
+        resolved_date = all_dates[all_dates.index(event_date) + 1]
+        asset_return = sample_returns_data.filter(
+            (pl.col("asset") == event["asset"][0]) & (pl.col("date") == resolved_date)
+        )["return"][0]
+        benchmark_return = benchmark.filter(pl.col("date") == resolved_date)["return"][0]
+        expected_ar = asset_return - (
+            result.estimation_alpha + result.estimation_beta * benchmark_return
+        )
+        assert result.ar_by_day[1] == pytest.approx(expected_ar)
+
+    def test_market_model_numerical_failure_skips_only_affected_event(
+        self,
+        sample_returns_data: pl.DataFrame,
+        sample_events_data: pl.DataFrame,
+        sample_benchmark_data: pl.DataFrame,
+        default_config: EventConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failed least-squares solve follows the per-event rejection path."""
+        events = sample_events_data.select("date", "asset").head(2)
+        analysis = EventStudyAnalysis(
+            returns=sample_returns_data,
+            events=events,
+            benchmark=sample_benchmark_data,
+            config=default_config,
+        )
+
+        lstsq = np.linalg.lstsq
+        calls = 0
+
+        def fail_first_lstsq(*args: Any, **kwargs: Any) -> Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise np.linalg.LinAlgError("SVD did not converge")
+            return lstsq(*args, **kwargs)
+
+        monkeypatch.setattr(np.linalg, "lstsq", fail_first_lstsq)
+
+        with pytest.warns(
+            UserWarning,
+            match=r"Skipped 1 event \(1: market model estimation failed numerically\)",
+        ):
+            results = analysis.compute_abnormal_returns()
+
+        assert len(results) == 1
+        assert results[0].asset == events["asset"][1]
 
 
 # =============================================================================
@@ -873,6 +1311,11 @@ class TestEventConfig:
         assert config.min_estimation_obs == 100
         assert config.window.estimation_window == (-252, -20)
         assert config.window.event_window == (-5, 5)
+
+    def test_unvalidated_corrado_method_is_rejected(self) -> None:
+        """Corrado is unavailable until estimation-window ranks are retained."""
+        with pytest.raises(ValueError, match="t_test.*boehmer"):
+            EventConfig(test="corrado")  # type: ignore[arg-type]
 
     def test_alpha_property(self) -> None:
         """Test alpha property calculation."""

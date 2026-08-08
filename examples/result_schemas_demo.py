@@ -9,14 +9,14 @@ import json
 from ml4t.diagnostic.results import (
     ACFResult,
     BayesianComparisonResult,
-    DSRResult,
+    DSRResultSchema,
     FeatureDiagnosticsResultSchema,
     FeatureOutcomeResultSchema,
     ICAnalysisResult,
-    MinTRLResult,
+    MinTRLResultSchema,
     PortfolioEvaluationResult,
-    PortfolioMetrics,
-    PSRResult,
+    PortfolioMetricsResultSchema,
+    PSRResultSchema,
     SharpeFrameworkResult,
     StationarityTestResult,
     ThresholdAnalysisResult,
@@ -133,7 +133,7 @@ def demo_portfolio_evaluation():
     print("=" * 60)
 
     # Portfolio metrics
-    metrics = PortfolioMetrics(
+    metrics = PortfolioMetricsResultSchema(
         total_return=0.65,
         annualized_return=0.18,
         annualized_volatility=0.22,
@@ -189,7 +189,7 @@ def demo_sharpe_framework():
     print("=" * 60)
 
     # PSR
-    psr = PSRResult(
+    psr = PSRResultSchema(
         observed_sharpe=0.82,
         target_sharpe=0.50,
         psr_value=0.96,
@@ -202,7 +202,7 @@ def demo_sharpe_framework():
     print("\n" + psr.summary())
 
     # MinTRL
-    min_trl = MinTRLResult(
+    min_trl = MinTRLResultSchema(
         observed_sharpe=0.82,
         target_sharpe=0.50,
         min_trl_days=450,
@@ -216,7 +216,7 @@ def demo_sharpe_framework():
     print("\n" + min_trl.summary())
 
     # DSR
-    dsr = DSRResult(
+    dsr = DSRResultSchema(
         observed_sharpe=0.82,
         dsr_value=0.71,
         adjusted_pvalue=0.015,
@@ -251,7 +251,7 @@ def demo_json_round_trip():
     print("=" * 60)
 
     # Create a result
-    original = PortfolioMetrics(
+    original = PortfolioMetricsResultSchema(
         total_return=0.65,
         annualized_return=0.18,
         annualized_volatility=0.22,
@@ -273,7 +273,7 @@ def demo_json_round_trip():
 
     # Deserialize
     data = json.loads(json_str)
-    reconstructed = PortfolioMetrics(**data)
+    reconstructed = PortfolioMetricsResultSchema(**data)
 
     # Verify round-trip
     print(f"Sharpe ratio matches: {reconstructed.sharpe_ratio == original.sharpe_ratio}")

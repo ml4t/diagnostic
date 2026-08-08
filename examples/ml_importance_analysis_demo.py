@@ -7,7 +7,7 @@ multiple methods (MDI, PFI, MDA, SHAP) and generates consensus rankings.
 from sklearn.datasets import make_classification
 from sklearn.ensemble import RandomForestClassifier
 
-from ml4t.diagnostic.evaluation import analyze_ml_importance
+from ml4t.diagnostic.metrics import analyze_ml_importance
 
 
 def main():

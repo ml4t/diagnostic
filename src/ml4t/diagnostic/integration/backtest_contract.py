@@ -42,13 +42,13 @@ Example workflow - Live vs Backtest comparison:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-class EnvironmentType(str, Enum):
+class EnvironmentType(StrEnum):
     """Strategy execution environment.
 
     - BACKTEST: Historical simulation
@@ -61,7 +61,7 @@ class EnvironmentType(str, Enum):
     LIVE = "live"
 
 
-class ComparisonType(str, Enum):
+class ComparisonType(StrEnum):
     """Type of performance comparison.
 
     - BAYESIAN: Bayesian hypothesis testing (recommended)

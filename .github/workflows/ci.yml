@@ -19,13 +19,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --frozen --dev
 
       - name: Run ruff check
         run: uv run ruff check src/ tests/
@@ -42,42 +42,22 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --frozen --dev
 
       - name: Run ty check
         run: uv run ty check
 
   test:
-    name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+    uses: ./.github/workflows/test-matrix.yml
 
-    steps:
-      - uses: actions/checkout@v6.0.3
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          version: "latest"
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: uv sync --dev --extra ml --extra viz
-
-      - name: Run tests
-        run: |
-          uv run pytest tests/ -v --tb=short -x
+  security:
+    uses: ./.github/workflows/security.yml
 
   coverage:
     name: Coverage
@@ -88,13 +68,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev --extra ml --extra viz
+        run: uv sync --frozen --dev --extra ml --extra viz
 
       - name: Run tests with coverage
         run: |
@@ -117,18 +97,18 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev --extra viz
+        run: uv sync --frozen --dev --extra viz
 
       - name: Run visualization tests with coverage gate
         run: |
           uv run pytest tests/test_visualization/ -q -n 0 \
-            --cov=ml4t.diagnostic.visualization \
+            --cov=src/ml4t/diagnostic/visualization \
             --cov-report=term-missing \
             --cov-fail-under=45
 
@@ -141,13 +121,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --frozen --dev
 
       - name: Run property-based tests
         run: uv run pytest tests/test_property/ -v --hypothesis-seed=42 --hypothesis-profile=ci
@@ -161,13 +141,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --frozen --dev
 
       - name: Run benchmarks
         run: |
@@ -193,24 +173,30 @@ jobs:
   build:
     name: Build Package
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, security, coverage, viz-coverage, property-tests]
     steps:
       - uses: actions/checkout@v6.0.3
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          version: "latest"
+          version: "0.10.9"
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
+      - name: Install dependencies
+        run: uv sync --frozen --dev
+
       - name: Build package
         run: uv build
 
-      - name: Check package metadata
-        run: |
-          uv run python -c "import ml4t.diagnostic; print(f'Version: {ml4t.diagnostic.__version__}')"
+      - name: Check release artifacts
+        run: uv run --isolated --no-project python scripts/verify_release_artifacts.py dist
+
+      - name: Import installed wheel
+        shell: bash
+        run: uv run --isolated --no-project --with "$(find dist -name '*.whl' -print -quit)" python scripts/import_smoke.py
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7.0.1

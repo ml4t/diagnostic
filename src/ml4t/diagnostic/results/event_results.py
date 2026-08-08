@@ -20,6 +20,7 @@ import polars as pl
 from pydantic import Field
 
 from ml4t.diagnostic.results.base import BaseResult
+from ml4t.diagnostic.utils.formatting import format_finite
 
 
 class AbnormalReturnResult(BaseResult):
@@ -111,10 +112,10 @@ class AbnormalReturnResult(BaseResult):
             f"Event: {self.event_id}",
             f"Asset: {self.asset}",
             f"Date: {self.event_date}",
-            f"CAR: {self.car:.4f} ({self.car * 100:.2f}%)",
+            f"CAR: {format_finite(self.car, '.4f')} ({format_finite(self.car, '.2%')})",
         ]
         if self.estimation_beta is not None:
-            lines.append(f"Beta: {self.estimation_beta:.3f}")
+            lines.append(f"Beta: {format_finite(self.estimation_beta, '.3f')}")
         return "\n".join(lines)
 
 
@@ -140,7 +141,7 @@ class EventStudyResult(BaseResult):
     caar_ci_upper : list[float]
         Upper confidence interval bound
     test_statistic : float
-        Test statistic value (t-stat, BMP, or Corrado)
+        Test statistic value (t-stat or BMP)
     p_value : float
         P-value for the test
     test_name : str
@@ -215,7 +216,7 @@ class EventStudyResult(BaseResult):
     )
     test_name: str = Field(
         ...,
-        description="Name of statistical test (t_test, boehmer, corrado)",
+        description="Name of statistical test (t_test or boehmer)",
     )
 
     # Metadata
@@ -324,13 +325,16 @@ class EventStudyResult(BaseResult):
             f"Model: {self.model_name}",
             "",
             "CUMULATIVE AVERAGE ABNORMAL RETURN (CAAR)",
-            f"  Event day AAR (t=0): {self.event_day_aar:+.4f} ({self.event_day_aar * 100:+.2f}%)",
-            f"  Final CAAR: {self.final_caar:+.4f} ({self.final_caar * 100:+.2f}%)",
-            f"  95% CI: [{self.caar_ci_lower[-1]:.4f}, {self.caar_ci_upper[-1]:.4f}]",
+            f"  Event day AAR (t=0): {format_finite(self.event_day_aar, '+.4f')} "
+            f"({format_finite(self.event_day_aar, '+.2%')})",
+            f"  Final CAAR: {format_finite(self.final_caar, '+.4f')} "
+            f"({format_finite(self.final_caar, '+.2%')})",
+            f"  95% CI: [{format_finite(self.caar_ci_lower[-1], '.4f')}, "
+            f"{format_finite(self.caar_ci_upper[-1], '.4f')}]",
             "",
             "STATISTICAL TEST",
             f"  Test: {self.test_name}",
-            f"  Test statistic: {self.test_statistic:.4f}",
+            f"  Test statistic: {format_finite(self.test_statistic, '.4f')}",
             f"  P-value: {self.p_value:.4f}",
             f"  Result: {significance} at α={alpha:.2f}",
             "=" * 50,

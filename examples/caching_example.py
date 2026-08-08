@@ -5,16 +5,17 @@ Demonstrates various caching strategies and use cases for ML4T Evaluation.
 This example shows:
 1. Basic caching with decorator
 2. Manual cache control
-3. Memory vs disk caching
-4. TTL and expiration
-5. LRU eviction
+3. LRU caching
+4. Explicit invalidation
+5. TTL and expiration
 6. Performance benchmarking
 7. Custom key functions
-8. Integration patterns
+8. Cache invalidation
+9. Disabled caching
+10. Integration patterns
 """
 
 import time
-from pathlib import Path
 
 import polars as pl
 
@@ -109,31 +110,16 @@ def example_3_memory_cache_with_lru():
         print(f"  item_{i}: {status}")
 
 
-def example_4_disk_cache_persistence():
-    """Example 4: Disk cache that persists across runs."""
-    print("\n=== Example 4: Disk Cache Persistence ===")
+def example_4_explicit_invalidation():
+    """Example 4: Explicit invalidation of one cached result."""
+    print("\n=== Example 4: Explicit Invalidation ===")
 
-    cache_dir = Path("example_cache")
-
-    # First cache instance
-    print("Creating first cache instance...")
-    cache1 = Cache(CacheConfig(backend=CacheBackend.DISK, disk_path=cache_dir))
-
-    key = cache1.generate_key(data="persistent_data")
-    cache1.set(key, {"message": "This persists!"})
-    print("Stored in disk cache")
-
-    # Second cache instance (simulates restart)
-    print("Creating second cache instance (simulating restart)...")
-    cache2 = Cache(CacheConfig(backend=CacheBackend.DISK, disk_path=cache_dir))
-
-    result = cache2.get(key)
-    print(f"Retrieved from disk: {result}")
-
-    # Cleanup
-    cache2.clear()
-    if cache_dir.exists():
-        cache_dir.rmdir()
+    cache = Cache(CacheConfig(backend=CacheBackend.MEMORY))
+    key = cache.generate_key(data="temporary_data")
+    cache.set(key, {"message": "cached"})
+    print(f"Before invalidation: {cache.get(key)}")
+    cache.invalidate(key)
+    print(f"After invalidation: {cache.get(key)}")
 
 
 def example_5_ttl_expiration():
@@ -271,12 +257,10 @@ def example_10_integration_pattern():
     """Example 10: Real-world integration pattern."""
     print("\n=== Example 10: Integration Pattern ===")
 
-    # Set up persistent cache for analysis
-    cache_dir = Path(".ml4t_diagnostic_cache")
+    # Set up an in-process cache for analysis
     cache = Cache(
         CacheConfig(
-            backend=CacheBackend.DISK,
-            disk_path=cache_dir,
+            backend=CacheBackend.MEMORY,
             ttl_seconds=86400,  # 24 hours
         )
     )
@@ -311,8 +295,6 @@ def example_10_integration_pattern():
 
     # Cleanup
     cache.clear()
-    if cache_dir.exists():
-        cache_dir.rmdir()
 
 
 def main():
@@ -325,7 +307,7 @@ def main():
         example_1_basic_decorator_caching,
         example_2_manual_cache_control,
         example_3_memory_cache_with_lru,
-        example_4_disk_cache_persistence,
+        example_4_explicit_invalidation,
         example_5_ttl_expiration,
         example_6_performance_benchmark,
         example_7_custom_key_function,

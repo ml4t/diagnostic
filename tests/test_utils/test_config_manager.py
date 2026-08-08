@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
 import yaml
@@ -129,23 +128,6 @@ class TestLoggingConfig:
         config = LoggingConfig()
 
         assert config.level == "INFO"
-        assert config.use_wandb is False
-
-    def test_wandb_requires_project(self):
-        """Test that W&B requires project name."""
-        with pytest.raises(ValueError, match="wandb_project is required"):
-            LoggingConfig(use_wandb=True)  # No project specified
-
-    def test_valid_wandb_config(self):
-        """Test valid W&B configuration."""
-        config = LoggingConfig(
-            use_wandb=True,
-            wandb_project="test_project",
-            wandb_entity="test_entity",
-        )
-
-        assert config.use_wandb is True
-        assert config.wandb_project == "test_project"
 
 
 class TestEvaluatorConfig:
@@ -229,7 +211,7 @@ class TestEvaluationConfigManager:
         result = manager.get("nonexistent.key", default="default_value")
         assert result == "default_value"
 
-    def test_load_from_yaml(self):
+    def test_load_from_yaml(self, tmp_path):
         """Test loading configuration from YAML file."""
         yaml_content = """
 evaluation:
@@ -241,54 +223,41 @@ splitter:
   params:
     n_splits: 10
 """
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            f.flush()
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content, encoding="utf-8")
 
-            try:
-                manager = EvaluationConfigManager(f.name)
+        manager = EvaluationConfigManager(config_path)
 
-                assert manager.config.evaluation.tier == 3
-                assert manager.config.evaluation.confidence_level == 0.01
-                assert manager.config.splitter.params["n_splits"] == 10
-            finally:
-                os.unlink(f.name)
+        assert manager.config.evaluation.tier == 3
+        assert manager.config.evaluation.confidence_level == 0.01
+        assert manager.config.splitter.params["n_splits"] == 10
 
     def test_load_missing_file(self):
         """Test error when loading missing file."""
         with pytest.raises(ConfigError, match="not found"):
             EvaluationConfigManager("/nonexistent/path.yaml")
 
-    def test_load_invalid_yaml(self):
+    def test_load_invalid_yaml(self, tmp_path):
         """Test error for invalid YAML content."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write("invalid: yaml: content: [")
-            f.flush()
+        config_path = tmp_path / "invalid.yaml"
+        config_path.write_text("invalid: yaml: content: [", encoding="utf-8")
 
-            try:
-                with pytest.raises(ConfigError, match="Invalid YAML"):
-                    EvaluationConfigManager(f.name)
-            finally:
-                os.unlink(f.name)
+        with pytest.raises(ConfigError, match="Invalid YAML"):
+            EvaluationConfigManager(config_path)
 
-    def test_save_to_yaml(self):
+    def test_save_to_yaml(self, tmp_path):
         """Test saving configuration to YAML file."""
         manager = EvaluationConfigManager()
+        output_path = tmp_path / "saved.yaml"
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            output_path = f.name
+        manager.save_to_yaml(output_path)
 
-        try:
-            manager.save_to_yaml(output_path)
+        # Verify file was created and contains valid YAML
+        with open(output_path, encoding="utf-8") as f:
+            loaded = yaml.safe_load(f)
 
-            # Verify file was created and contains valid YAML
-            with open(output_path) as f:
-                loaded = yaml.safe_load(f)
-
-            assert "evaluation" in loaded
-            assert "splitter" in loaded
-        finally:
-            os.unlink(output_path)
+        assert "evaluation" in loaded
+        assert "splitter" in loaded
 
     def test_repr(self):
         """Test string representation."""
@@ -322,21 +291,17 @@ splitter:
 class TestLoadConfig:
     """Tests for load_config function."""
 
-    def test_load_with_path(self):
+    def test_load_with_path(self, tmp_path):
         """Test loading with explicit path."""
         yaml_content = """
 splitter:
   type: WalkForwardCV
 """
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            f.flush()
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content, encoding="utf-8")
 
-            try:
-                manager = load_config(f.name)
-                assert manager.config.splitter.type == "WalkForwardCV"
-            finally:
-                os.unlink(f.name)
+        manager = load_config(config_path)
+        assert manager.config.splitter.type == "WalkForwardCV"
 
     def test_load_without_path(self):
         """Test loading without path (uses defaults)."""
@@ -354,20 +319,15 @@ splitter:
 class TestCreateExampleConfig:
     """Tests for create_example_config function."""
 
-    def test_create_example(self):
+    def test_create_example(self, tmp_path):
         """Test creating example configuration file."""
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
-            output_path = f.name
+        output_path = tmp_path / "example.yaml"
+        create_example_config(output_path)
 
-        try:
-            create_example_config(output_path)
+        # Verify file exists and is valid YAML
+        with open(output_path, encoding="utf-8") as f:
+            content = yaml.safe_load(f)
 
-            # Verify file exists and is valid YAML
-            with open(output_path) as f:
-                content = yaml.safe_load(f)
-
-            assert "evaluation" in content
-            assert "splitter" in content
-            assert "metrics" in content
-        finally:
-            os.unlink(output_path)
+        assert "evaluation" in content
+        assert "splitter" in content
+        assert "metrics" in content

@@ -1,192 +1,97 @@
 # Feature Diagnostics
 
-Analyze feature quality, importance, and interactions before modeling.
+Run feature diagnostics before fitting a model. The default analysis checks
+stationarity, autocorrelation, volatility, and distribution properties.
 
-!!! info "See it in the book"
-    Ch08 `code/08_feature_engineering/06_robustness_sensitivity.py` shows HAC-aware
-    robustness checks, while Ch09 `code/09_model_based_features/01_visual_diagnostics.py`,
-    `07_arima_features.py`, `08_garch_volatility.py`, and `12_wasserstein_regimes.py`
-    connect the diagnostic primitives here to model-based features and regime analysis.
-    Case-study evaluation notebooks under `code/case_studies/*/05_evaluation.py` apply the
-    same ideas to real cross-sectional datasets.
-
-## Quick Start
+## Diagnose one feature
 
 ```python
-from ml4t.diagnostic.evaluation import FeatureDiagnostics
-from ml4t.diagnostic.config import DiagnosticConfig
+import numpy as np
 
-config = DiagnosticConfig.for_research()
-fd = FeatureDiagnostics(config=config)
-result = fd.run_diagnostics(features_df["feature_1"], name="feature_1")
-```
-
-## Information Coefficient (IC)
-
-Measure predictive power via rank correlation:
-
-```python
-from ml4t.diagnostic.metrics import cross_sectional_ic_series
-
-ic_result = cross_sectional_ic_series(
-    predictions=pred_df,          # date, symbol, prediction
-    returns=ret_df,               # date, symbol, forward_return
-    pred_col="prediction",
-    ret_col="forward_return",
-    date_col="date",
-    entity_col="symbol",
-    method="spearman",
-)
-
-print(ic_result.head())
-```
-
-### IC Metrics
-
-| Metric | Formula | Interpretation |
-|--------|---------|----------------|
-| IC Mean | mean(IC) | Average predictive power |
-| IC Std | std(IC) | Consistency |
-| IC IR | mean/std | Risk-adjusted IC |
-| IC t-stat | mean / (std/√n) | Statistical significance |
-
-## Feature Importance
-
-Seven methods with consensus ranking:
-
-### Mean Decrease Impurity (MDI)
-
-```python
-from ml4t.diagnostic.metrics import compute_mdi_importance
-
-importance = compute_mdi_importance(
-    model=trained_tree_model,
-    feature_names=feature_names
-)
-```
-
-### Permutation Feature Importance (PFI)
-
-```python
-from ml4t.diagnostic.metrics import compute_permutation_importance
-
-importance = compute_permutation_importance(
-    model=model,
-    X=X_test,
-    y=y_test,
-    n_repeats=10
-)
-```
-
-### SHAP Importance
-
-```python
-from ml4t.diagnostic.metrics import compute_shap_importance
-
-importance = compute_shap_importance(
-    model=model,
-    X=X_background,
-    n_samples=100
-)
-```
-
-### Consensus Ranking
-
-Run a combined tear-sheet style comparison:
-
-```python
-from ml4t.diagnostic.metrics import analyze_ml_importance
-
-analysis = analyze_ml_importance(
-    model=model,
-    X=X_train,
-    y=y_train,
-    methods=["mdi", "pfi", "shap"],
-)
-
-print(analysis["top_features_consensus"])
-```
-
-## Feature Interactions
-
-Detect non-linear interactions using H-statistic:
-
-```python
-from ml4t.diagnostic.metrics import compute_h_statistic
-
-h_stat = compute_h_statistic(
-    model=model,
-    X=X,
-    features=['momentum', 'volatility']
-)
-
-print(f"Interaction strength: {h_stat:.3f}")
-# > 0.1 indicates meaningful interaction
-```
-
-## Stationarity Tests
-
-Ensure features are stationary:
-
-```python
-from ml4t.diagnostic.evaluation.stationarity import analyze_stationarity
-
-result = analyze_stationarity(
-    series=feature_series,
-    tests=['adf', 'kpss', 'pp']
-)
-
-print(f"ADF p-value: {result.adf_pvalue:.4f}")
-print(f"Is stationary: {result.is_stationary}")
-```
-
-## Distribution Analysis
-
-Check for heavy tails and normality:
-
-```python
-from ml4t.diagnostic.evaluation.distribution import analyze_distribution
-
-result = analyze_distribution(feature_series)
-
-print(f"Skewness: {result.moments_result.skewness:.2f}")
-print(f"Excess Kurtosis: {result.moments_result.excess_kurtosis:.2f}")  # Fisher convention (normal=0)
-print(f"Jarque-Bera p-value: {result.jarque_bera_result.p_value:.4f}")
-print(f"Is normal: {result.is_normal}")
-print(f"Recommendation: {result.recommended_distribution}")
-```
-
-## Drift Detection
-
-Monitor feature distribution changes:
-
-```python
-from ml4t.diagnostic.evaluation.drift import analyze_drift
-
-result = analyze_drift(
-    train_features=X_train,
-    test_features=X_test
-)
-
-print(f"PSI: {result.psi:.4f}")
-# > 0.25 indicates significant drift
-```
-
-## Complete Workflow
-
-```python
 from ml4t.diagnostic.evaluation import FeatureDiagnostics
 
-fd = FeatureDiagnostics()
-result = fd.run_diagnostics(features_df["feature_1"], name="feature_1")
+rng = np.random.default_rng(42)
+feature = np.empty(500)
+innovations = rng.normal(size=500)
+feature[0] = innovations[0]
+for index in range(1, len(feature)):
+    feature[index] = 0.6 * feature[index - 1] + innovations[index]
 
-# Review all diagnostics
+diagnostics = FeatureDiagnostics()
+result = diagnostics.run_diagnostics(feature, name="momentum_score")
+
 print(result.summary())
-
-# Get warnings
-for warning in result.warnings:
-    print(f"⚠️ {warning}")
-
-# Export report
-result.to_html("feature_diagnostics.html")
+print(f"Health score: {result.health_score:.2f}")
+print(f"Stationarity: {result.stationarity.consensus}")
+print(f"Flags: {result.flags}")
 ```
+
+## Read the result
+
+`run_diagnostics` returns one result object with these sections:
+
+| Attribute | Contents |
+|-----------|----------|
+| `stationarity` | Unit-root tests and consensus |
+| `autocorrelation` | ACF, PACF, and suggested ARIMA order |
+| `volatility` | Conditional heteroskedasticity and persistence |
+| `distribution` | Moments, normality, and tail analysis |
+| `health_score` | Aggregate score from enabled checks |
+| `flags` | Conditions that need review |
+
+Run `FeatureDiagnostics.run_batch_diagnostics` for a pandas DataFrame. Configure
+individual sections with `DiagnosticConfig` and the settings classes in
+`ml4t.diagnostic.config`.
+
+Feature quality does not establish predictive value. Use the
+[quickstart](../getting-started/quickstart.md) to measure cross-sectional IC and
+the [HAC IC method](../methods/hac-ic.md) for time-series inference.
+
+## Profile labels by feature quantile
+
+`quantile_profile` assigns quantiles within each timestamp by default. Pass
+`by=None` only when pooled quantiles match the research question.
+
+```python
+from datetime import date, timedelta
+
+import polars as pl
+
+from ml4t.diagnostic import quantile_profile
+
+panel = pl.DataFrame(
+    {
+        "timestamp": [
+            date(2024, 1, 2) + timedelta(days=day)
+            for day in range(3)
+            for _ in range(10)
+        ],
+        "asset": [f"asset_{asset}" for _ in range(3) for asset in range(10)],
+        "feature": [float(asset) for _ in range(3) for asset in range(10)],
+        "label": [0.01 * asset + 0.001 * day for day in range(3) for asset in range(10)],
+    }
+)
+
+profile = quantile_profile(
+    panel,
+    feature="feature",
+    label="label",
+    n_quantiles=5,
+    by="timestamp",
+    keys=["timestamp", "asset"],
+    min_per_bucket=6,
+)
+
+print(profile.means)
+print(profile.counts)
+print(f"Monotonicity: {profile.monotonicity:.2f}")
+```
+
+Rows with null or non-finite feature or label values, and rows with a null group,
+are excluded. A group with fewer valid rows than quantiles is excluded. The call
+raises `ValueError` when no finite pairs remain, no group is large enough, or
+pooled input has fewer valid rows than quantiles. Equal feature values share an
+average rank, so their bucket does not depend on input order. Monotonicity is
+`NaN` when a bucket has fewer than `min_per_bucket` observations, a bucket is
+empty, or all bucket means are equal. The example lowers `min_per_bucket` from
+its default of 20 to 6 because the toy panel contains only 30 rows.

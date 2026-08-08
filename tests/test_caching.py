@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 from ml4t.diagnostic.caching import Cache, CacheBackend, CacheConfig, CacheKey, cached
 from ml4t.diagnostic.caching.decorators import cache_key
 
@@ -156,15 +158,20 @@ class TestCacheConfig:
         """Test custom configuration."""
         config = CacheConfig(
             enabled=True,
-            backend=CacheBackend.DISK,
+            backend=CacheBackend.MEMORY,
             ttl_seconds=7200,
             max_memory_items=50,
         )
 
         assert config.enabled is True
-        assert config.backend == CacheBackend.DISK
+        assert config.backend == CacheBackend.MEMORY
         assert config.ttl_seconds == 7200
         assert config.max_memory_items == 50
+
+    def test_disk_backend_is_not_accepted(self):
+        """Persistent pickle caching is not part of the safe public contract."""
+        with pytest.raises(ValueError, match="backend"):
+            CacheConfig(backend="disk")  # type: ignore[arg-type]
 
     def test_disabled_cache(self):
         """Test disabled cache configuration."""
@@ -290,88 +297,6 @@ class TestMemoryCache:
     def test_clear(self):
         """Test clearing all cache entries."""
         cache = Cache(CacheConfig(backend=CacheBackend.MEMORY))
-
-        key1 = cache.generate_key(data="1")
-        key2 = cache.generate_key(data="2")
-
-        cache.set(key1, "value1")
-        cache.set(key2, "value2")
-
-        cache.clear()
-
-        assert cache.get(key1) is None
-        assert cache.get(key2) is None
-
-
-class TestDiskCache:
-    """Test disk-based caching."""
-
-    def test_basic_get_set(self, tmp_path):
-        """Test basic disk cache operations."""
-        config = CacheConfig(backend=CacheBackend.DISK, disk_path=tmp_path / "cache")
-        cache = Cache(config)
-
-        key = cache.generate_key(data="test")
-        value = {"result": 42}
-
-        cache.set(key, value)
-        assert cache.get(key) == value
-
-    def test_persistence_across_instances(self, tmp_path):
-        """Test that disk cache persists across cache instances."""
-        cache_dir = tmp_path / "cache"
-        config = CacheConfig(backend=CacheBackend.DISK, disk_path=cache_dir)
-
-        # First cache instance
-        cache1 = Cache(config)
-        key = cache1.generate_key(data="test")
-        cache1.set(key, "value1")
-
-        # Second cache instance (same directory)
-        cache2 = Cache(config)
-        assert cache2.get(key) == "value1"
-
-    def test_ttl_expiration_disk(self, tmp_path):
-        """Test TTL expiration for disk cache."""
-        config = CacheConfig(
-            backend=CacheBackend.DISK,
-            disk_path=tmp_path / "cache",
-            ttl_seconds=1,
-        )
-        cache = Cache(config)
-
-        key = cache.generate_key(data="test")
-        cache.set(key, "value")
-
-        # Should be present
-        assert cache.get(key) == "value"
-
-        # Wait for expiration
-        time.sleep(1.1)
-
-        # Should be expired and file deleted
-        assert cache.get(key) is None
-
-    def test_corrupted_cache_file(self, tmp_path):
-        """Test handling of corrupted cache files."""
-        config = CacheConfig(backend=CacheBackend.DISK, disk_path=tmp_path / "cache")
-        cache = Cache(config)
-
-        key = cache.generate_key(data="test")
-
-        # Write corrupted cache file
-        cache_file = config.disk_path / f"{key.hash_value}.pkl"
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text("corrupted data")
-
-        # Should return None and clean up
-        assert cache.get(key) is None
-        assert not cache_file.exists()
-
-    def test_clear_disk_cache(self, tmp_path):
-        """Test clearing disk cache."""
-        config = CacheConfig(backend=CacheBackend.DISK, disk_path=tmp_path / "cache")
-        cache = Cache(config)
 
         key1 = cache.generate_key(data="1")
         key2 = cache.generate_key(data="2")
@@ -623,23 +548,6 @@ class TestCachePerformance:
         # Cached call should be much faster
         assert result1 == result2
         assert second_time < first_time * 0.5  # At least 2x speedup
-
-
-class TestIntegration:
-    """Integration tests for caching framework."""
-
-    def test_memory_and_disk_cache_independent(self, tmp_path):
-        """Test that memory and disk caches are independent."""
-        mem_cache = Cache(CacheConfig(backend=CacheBackend.MEMORY))
-        disk_cache = Cache(CacheConfig(backend=CacheBackend.DISK, disk_path=tmp_path / "cache"))
-
-        key = CacheKey.generate(data="test")
-
-        mem_cache.set(key, "memory_value")
-        disk_cache.set(key, "disk_value")
-
-        assert mem_cache.get(key) == "memory_value"
-        assert disk_cache.get(key) == "disk_value"
 
 
 # SmartCache tests - for Polars DataFrame fingerprinting cache

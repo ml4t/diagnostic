@@ -5,7 +5,7 @@ characteristics of financial data while reducing computational load
 or balancing classes.
 """
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -55,6 +55,12 @@ def block_bootstrap(
     >>> bootstrap_idx = block_bootstrap(indices, n_samples=80, sample_length=5)
     >>> len(bootstrap_idx)
     80
+
+    Notes
+    -----
+    A fixed seed is reproducible within the active backend. Installing the
+    ``perf`` extra selects Numba, whose random number generator does not produce
+    the same draws as the NumPy fallback for an identical seed.
     """
     # Import here to avoid circular dependency
     from ml4t.diagnostic.core.numba_utils import block_bootstrap_numba
@@ -177,8 +183,8 @@ def stratified_sample_time_series(
         result_pd = result.to_pandas()
         assert index_col is not None
         result_pd = result_pd.set_index(index_col)
-        result_pd.index.name = cast(pd.DataFrame, data).index.name
-        return result_pd[cast(pd.DataFrame, data).columns]
+        result_pd.index.name = data.index.name
+        return result_pd[data.columns]
     return result
 
 
@@ -453,6 +459,6 @@ def event_based_sample(
         result_pd = result.to_pandas()
         assert index_col is not None
         result_pd = result_pd.set_index(index_col)
-        result_pd.index.name = cast(pd.DataFrame, data).index.name
-        return result_pd[cast(pd.DataFrame, data).columns]
+        result_pd.index.name = data.index.name
+        return result_pd[data.columns]
     return result

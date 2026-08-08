@@ -36,6 +36,8 @@ class TestDependencyInfo:
         assert dep.purpose == "Testing purposes"
         assert dep.features == ["feature1", "feature2"]
         assert dep.alternatives == []
+        assert dep.availability_note is None
+        assert dep.install_guidance == "Install with: pip install testpkg"
 
     def test_creation_with_alternatives(self):
         """Test creating DependencyInfo with alternatives."""
@@ -49,6 +51,21 @@ class TestDependencyInfo:
         )
 
         assert dep.alternatives == ["alt1", "alt2"]
+
+    def test_install_guidance_includes_availability_note(self):
+        """Platform limitations are included with the install command."""
+        dep = DependencyInfo(
+            name="TestPackage",
+            import_name="testpkg",
+            install_cmd="pip install testpkg",
+            purpose="Testing",
+            features=["test"],
+            availability_note="Unavailable on ExampleOS",
+        )
+
+        assert dep.install_guidance == (
+            "Install with: pip install testpkg. Unavailable on ExampleOS"
+        )
 
     def test_is_available_true(self):
         """Test is_available for installed package (numpy)."""
@@ -169,7 +186,7 @@ class TestOptionalDependencies:
         shap = DEPS.shap
         assert shap.name == "SHAP"
         assert shap.import_name == "shap"
-        assert "pip install shap" in shap.install_cmd
+        assert shap.install_cmd == "pip install ml4t-diagnostic[ml]"
         assert len(shap.features) > 0
 
     def test_attribute_access(self):
