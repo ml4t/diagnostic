@@ -179,13 +179,15 @@ class TestLoggerFunctions:
 class TestPerformanceTracker:
     """Tests for PerformanceTracker class."""
 
-    def test_basic_timing(self):
+    def test_basic_timing(self, monkeypatch: pytest.MonkeyPatch):
         """Test basic timing functionality."""
-        with PerformanceTracker("test_op") as tracker:
-            time.sleep(0.05)
+        clock = iter((100.0, 100.05))
+        monkeypatch.setattr("ml4t.diagnostic.logging.performance.time.time", lambda: next(clock))
 
-        assert tracker.elapsed >= 0.05
-        assert tracker.elapsed < 0.2
+        with PerformanceTracker("test_op") as tracker:
+            pass
+
+        assert tracker.elapsed == pytest.approx(0.05)
 
     def test_elapsed_before_complete(self):
         """Test elapsed returns current time while running."""
