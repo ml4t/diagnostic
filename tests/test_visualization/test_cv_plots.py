@@ -627,6 +627,67 @@ class TestPlotCvFoldsXAxis:
         fig = plot_cv_folds(walk_forward_cv, sample_data_numpy)
         assert fig.layout.title.text == "Cross-Validation Fold Structure"
 
+    def test_xaxis_type_is_declared_as_date(
+        self,
+        walk_forward_cv: WalkForwardCV,
+        sample_data_pandas: pd.DataFrame,
+    ) -> None:
+        """The axis type is set, not left to inference.
+
+        Every bar is a base plus a width in milliseconds. With no declared type
+        Plotly reads that as linear and draws the axis as 0, 50B, 100B ... with
+        every fold starting at the origin, which reads as all folds sharing a
+        start date.
+        """
+        fig = plot_cv_folds(walk_forward_cv, sample_data_pandas)
+        assert fig.layout.xaxis.type == "date"
+
+    def test_xaxis_type_is_left_alone_without_timestamps(
+        self,
+        walk_forward_cv: WalkForwardCV,
+        sample_data_numpy: np.ndarray,
+    ) -> None:
+        """Sample indices are not dates, so nothing is declared for them."""
+        fig = plot_cv_folds(walk_forward_cv, sample_data_numpy)
+        assert fig.layout.xaxis.type != "date"
+
+
+class TestPlotCvFoldsSerialization:
+    """The figure has to survive a static export, not only a Plotly round-trip."""
+
+    def test_bar_bases_carry_no_pandas_objects(
+        self,
+        walk_forward_cv: WalkForwardCV,
+        sample_data_pandas: pd.DataFrame,
+    ) -> None:
+        """A `pd.Timestamp` base is what made static export impossible.
+
+        Plotly's own encoder accepts one, so `plotly.io.to_json` always worked and
+        hid this. Kaleido serializes with `orjson`, which does not.
+        """
+        fig = plot_cv_folds(walk_forward_cv, sample_data_pandas)
+        bases = [value for trace in fig.data for value in (trace.base or ())]
+        assert bases, "the fixture drew no bars, so this asserts nothing"
+        for base in bases:
+            assert not isinstance(base, pd.Timestamp | pd.Timedelta)
+            assert isinstance(base, str)
+
+    def test_figure_serializes_with_a_strict_json_encoder(
+        self,
+        walk_forward_cv: WalkForwardCV,
+        sample_data_pandas: pd.DataFrame,
+    ) -> None:
+        """The check that matches what Kaleido does on `fig.to_image()`.
+
+        Asserted through `json.dumps` rather than by exporting an image, so it
+        holds on a machine with no Chrome for Kaleido to drive.
+        """
+        import json
+
+        fig = plot_cv_folds(walk_forward_cv, sample_data_pandas)
+        for trace in fig.data:
+            json.dumps({"base": list(trace.base or ()), "x": list(trace.x or ())})
+
 
 class TestPlotCvFoldsWithYAndGroups:
     """Tests with y and groups parameters."""
