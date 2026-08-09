@@ -30,6 +30,7 @@ def robust_ic(
     returns: Union[pl.Series, pd.Series, "NDArray[Any]"],
     n_samples: int = 1000,
     return_details: bool = False,
+    seed: int | np.random.Generator | None = 0,
 ) -> dict[str, float] | float:
     """Calculate Information Coefficient with robust standard errors.
 
@@ -51,6 +52,11 @@ def robust_ic(
         Number of bootstrap samples
     return_details : bool, default False
         Whether to return detailed statistics
+    seed : int or np.random.Generator or None, default 0
+        Source of randomness for the bootstrap, forwarded to
+        ``stationary_bootstrap_ic``. The default makes a repeated call on the
+        same data return the same p-value, so a Benjamini-Hochberg count taken
+        from those p-values reproduces.
 
     Returns
     -------
@@ -72,7 +78,7 @@ def robust_ic(
            Journal of the American Statistical Association 89:1303-1313.
     """
     bootstrap_result = stationary_bootstrap_ic(
-        predictions, returns, n_samples=n_samples, return_details=True
+        predictions, returns, n_samples=n_samples, return_details=True, seed=seed
     )
     assert isinstance(bootstrap_result, dict)
 
