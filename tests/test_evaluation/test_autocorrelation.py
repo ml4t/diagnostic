@@ -324,6 +324,37 @@ class TestComputeACF:
         result = compute_acf(data, nlags=10, missing="conservative")
         assert result.n_obs == 95
 
+    def test_conservative_keeps_the_gap_where_drop_closes_it(self):
+        """'conservative' has to reach statsmodels with the gaps still in place.
+
+        The NaN used to be stripped before the call, which made 'conservative' a
+        synonym for 'drop': the pair that straddles a missing observation was
+        counted one lag too early instead of being removed at the lag it affects.
+        """
+        from statsmodels.tsa.stattools import acf as sm_acf
+
+        values = np.sin(np.arange(200, dtype=float) / 2)
+        holed = values.copy()
+        holed[70] = np.nan
+
+        conservative = compute_acf(holed, nlags=5, fft=False, missing="conservative")
+        dropped = compute_acf(holed, nlags=5, fft=False, missing="drop")
+
+        np.testing.assert_allclose(
+            conservative.values,
+            sm_acf(holed, nlags=5, fft=False, missing="conservative"),
+            rtol=1e-12,
+        )
+        np.testing.assert_allclose(
+            dropped.values,
+            sm_acf(values[~np.isnan(holed)], nlags=5, fft=False),
+            rtol=1e-12,
+        )
+        assert not np.allclose(conservative.values, dropped.values), (
+            "'conservative' and 'drop' returned the same curve, so the gap was closed "
+            "before statsmodels saw it"
+        )
+
 
 class TestACFValidation:
     """Tests for ACF input validation."""

@@ -417,6 +417,72 @@ class TestCalendarSessionsEdgeCases:
         assert list(sessions.index) == list(timestamps)
 
 
+class TestUnorderedTimestamps:
+    """A shuffled index must return the same sessions as a sorted one.
+
+    The exchange schedule used to be built from `timestamps[0]` and
+    `timestamps[-1]`, so anything outside that span was mapped into the wrong
+    part of the calendar: unsorted, 2000-07-04 came back as session 2001-09-04.
+    Nothing raised, and the mapping of a timestamp inside the span was correct,
+    which is why a spot check did not find it.
+    """
+
+    # Spans two calendar years and includes a holiday, a session, and 9/11.
+    DATES = [
+        "2001-09-11",
+        "2001-09-12",
+        "2001-09-17",
+        "2000-07-04",  # Independence Day, not a session
+        "2000-07-05",  # is itself a session
+        "2015-12-31",
+    ]
+
+    def _index(self, dates: list[str]) -> pd.DatetimeIndex:
+        return pd.DatetimeIndex(dates, tz="UTC")
+
+    def test_get_sessions_is_order_independent(self):
+        cal = TradingCalendar("NYSE")
+
+        shuffled = cal.get_sessions(self._index(self.DATES))
+        ordered = cal.get_sessions(self._index(sorted(self.DATES)))
+
+        assert shuffled.sort_index().to_list() == ordered.to_list()
+
+    def test_get_sessions_maps_a_holiday_to_the_next_session(self):
+        """The value the endpoint-derived schedule got wrong, stated directly."""
+        cal = TradingCalendar("NYSE")
+
+        sessions = cal.get_sessions(self._index(self.DATES))
+
+        assert sessions[pd.Timestamp("2000-07-04", tz="UTC")] == pd.Timestamp("2000-07-05")
+        assert sessions[pd.Timestamp("2000-07-05", tz="UTC")] == pd.Timestamp("2000-07-05")
+        assert sessions[pd.Timestamp("2001-09-11", tz="UTC")] == pd.Timestamp("2001-09-17")
+
+    def test_get_sessions_and_mask_is_order_independent(self):
+        cal = TradingCalendar("NYSE")
+
+        shuffled_sessions, shuffled_mask = cal.get_sessions_and_mask(self._index(self.DATES))
+        ordered_sessions, ordered_mask = cal.get_sessions_and_mask(self._index(sorted(self.DATES)))
+
+        order = shuffled_sessions.index.argsort()
+        assert shuffled_sessions.sort_index().to_list() == ordered_sessions.to_list()
+        assert list(shuffled_mask[order]) == list(ordered_mask)
+
+    def test_get_sessions_and_mask_finds_the_trading_day(self):
+        cal = TradingCalendar("NYSE")
+
+        sessions, mask = cal.get_sessions_and_mask(self._index(self.DATES))
+
+        assert mask[self.DATES.index("2000-07-05")]  # a session, unsorted said it was not
+        assert not mask[self.DATES.index("2000-07-04")]  # a holiday
+
+    def test_empty_index_is_rejected(self):
+        cal = TradingCalendar("NYSE")
+
+        with pytest.raises(ValueError, match="at least one valid timestamp"):
+            cal.get_sessions(pd.DatetimeIndex([], tz="UTC"))
+
+
 class TestGetSessionsAndMask:
     """Tests for TradingCalendar.get_sessions_and_mask()."""
 

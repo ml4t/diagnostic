@@ -175,7 +175,7 @@ def _validate_and_prepare(
             "Data contains NaN values",
             context={"nan_count": nan_count, "total_count": len(values)},
         )
-    elif missing in ["conservative", "drop"] and np.any(np.isnan(values)):
+    elif missing == "drop" and np.any(np.isnan(values)):
         original_length = len(values)
         values = values[~np.isnan(values)]
         logger.info(
@@ -184,19 +184,25 @@ def _validate_and_prepare(
             clean_length=len(values),
         )
 
+    # 'conservative' means statsmodels removes each NaN pairwise, at the lag it
+    # affects, and keeps the gap in place. Dropping the NaN here instead would
+    # close the gap and make it a synonym for 'drop': the pair that straddles a
+    # missing period would be counted one lag too early.
+    n_valid = int(np.count_nonzero(~np.isnan(values)))
+
     # Check all NaN
-    if len(values) == 0:
+    if n_valid == 0:
         raise ValidationError("All data is NaN after missing value handling")
 
     # Minimum observations
     min_obs = 5 if kind == "pacf" else 3
-    if len(values) < min_obs:
+    if n_valid < min_obs:
         raise ValidationError(
             f"Insufficient data for {kind.upper()} computation (need at least {min_obs} observations)",
-            context={"n_obs": len(values)},
+            context={"n_obs": n_valid},
         )
 
-    n_obs = len(values)
+    n_obs = n_valid
 
     # Determine nlags
     if nlags is None:
@@ -260,7 +266,8 @@ def compute_acf(
     logger.debug("Computing ACF", fft=fft, missing_handling=missing)
 
     values, nlags = _validate_and_prepare(data, nlags, "acf", missing)
-    n_obs = len(values)
+    # Under 'conservative' the gaps are still in `values`; they are not observations.
+    n_obs = int(np.count_nonzero(~np.isnan(values)))
 
     try:
         acf_values, conf_int = acf(values, nlags=nlags, alpha=alpha, fft=fft, missing=missing)
