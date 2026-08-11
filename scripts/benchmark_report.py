@@ -117,7 +117,9 @@ def generate_report(
     else:
         lines.append("## Baseline Comparison")
         lines.append("")
-        lines.append("Baseline JSON not found; current benchmark report generated without comparison.")
+        lines.append(
+            "Baseline JSON not found; current benchmark report generated without comparison."
+        )
         lines.append("")
 
     output_md.parent.mkdir(parents=True, exist_ok=True)

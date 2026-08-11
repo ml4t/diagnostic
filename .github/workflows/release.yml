@@ -8,6 +8,15 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  ecosystem-qualification:
+    name: Ecosystem Qualification
+    permissions:
+      contents: read
+    uses: ml4t/ecosystem/.github/workflows/qualify-library.yml@457678d8860d0c816b1dc376e7e2691daa93af4d # v0.1.0
+    with:
+      import-package: ml4t.diagnostic
+      prerelease-exception: python-315-scipy
+
   validate:
     uses: ./.github/workflows/test-matrix.yml
 
@@ -17,7 +26,7 @@ jobs:
   build:
     name: Build Package
     runs-on: ubuntu-latest
-    needs: [validate, security]
+    needs: [ecosystem-qualification, validate, security]
     steps:
       - uses: actions/checkout@v6.0.3
         with:

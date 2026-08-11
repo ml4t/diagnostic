@@ -4,6 +4,8 @@ This test suite verifies that the dependency checking system works correctly
 and provides clear error messages when dependencies are missing.
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from ml4t.diagnostic.utils.dependencies import (
@@ -90,6 +92,19 @@ class TestDependencyInfo:
         )
 
         assert dep.is_available is False
+
+    def test_is_available_false_when_binary_dependency_cannot_load(self):
+        """Installed packages with missing shared libraries are unavailable."""
+        dep = DependencyInfo(
+            name="BrokenBinary",
+            import_name="broken_binary",
+            install_cmd="pip install broken-binary",
+            purpose="Testing",
+            features=["test"],
+        )
+
+        with patch("importlib.import_module", side_effect=OSError("missing shared library")):
+            assert dep.is_available is False
 
     def test_require_success(self):
         """Test require() with installed package."""
