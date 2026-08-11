@@ -310,8 +310,20 @@ def _format_range_label(
 def _get_x_value(
     value: int | pd.Timestamp,
     has_timestamps: bool,
-) -> int | pd.Timestamp:
+) -> int | str:
     """Get x-axis value for plotting.
+
+    A ``pd.Timestamp`` is returned as an ISO 8601 string rather than as itself.
+    Plotly's own encoder accepts a ``Timestamp``, so the figure could always be
+    converted with ``plotly.io.to_json``, but static export goes through Kaleido,
+    which serializes with ``orjson`` and rejects it outright::
+
+        TypeError: Type is not JSON serializable: Timestamp
+
+    So ``fig.to_image()`` raised, and a notebook executed with ``nbconvert``
+    errored on the cell instead of emitting the PNG that GitHub renders. The
+    matching bar widths already come back from :func:`_compute_bar_width` as
+    milliseconds for the same reason.
 
     Parameters
     ----------
@@ -322,9 +334,11 @@ def _get_x_value(
 
     Returns
     -------
-    x_value : int or pd.Timestamp
-        Value suitable for x-axis.
+    x_value : int or str
+        Value suitable for x-axis, and serializable by any JSON encoder.
     """
+    if has_timestamps and isinstance(value, pd.Timestamp):
+        return value.isoformat()
     return value
 
 
@@ -658,6 +672,15 @@ def plot_cv_folds(
             "x": 1,
         },
     )
+
+    if has_timestamps:
+        # Declared, not inferred. Every bar is now an ISO 8601 string base and a width
+        # in milliseconds, and with no explicit type Plotly reads that pair as a linear
+        # axis: it came out labelled 0, 50B, 100B ... with every fold starting at the
+        # origin, which a reader sees as all folds sharing a start date. Inference gave
+        # a date axis only while the base was a Timestamp object, so the change that
+        # makes the figure exportable is exactly the one that would break its axis.
+        fig.update_xaxes(type="date")
 
     # Apply responsive layout
     apply_responsive_layout(fig)

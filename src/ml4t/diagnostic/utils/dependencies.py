@@ -58,7 +58,7 @@ class DependencyInfo:
         try:
             importlib.import_module(self.import_name)
             return True
-        except ImportError:
+        except (ImportError, OSError):
             return False
 
     @property

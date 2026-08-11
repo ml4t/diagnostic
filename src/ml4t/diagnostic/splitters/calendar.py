@@ -125,6 +125,26 @@ class TradingCalendar:
             # Tz-aware data - convert to calendar timezone
             return timestamps.tz_convert(self.tz)
 
+    @staticmethod
+    def _schedule_span(timestamps: pd.DatetimeIndex) -> tuple[pd.Timestamp, pd.Timestamp]:
+        """Return the dates the exchange schedule has to cover, with a week of buffer.
+
+        Taken from the minimum and maximum, not from the first and last element: a
+        caller that hands over an unordered index would otherwise get a schedule
+        spanning only ``[timestamps[0], timestamps[-1]]``, and every timestamp outside
+        that span would be mapped into the wrong part of the calendar with nothing
+        raised.
+
+        Raises
+        ------
+        ValueError
+            If the index is empty or holds no valid timestamp, so there is no span.
+        """
+        first, last = timestamps.min(), timestamps.max()
+        if pd.isna(first) or pd.isna(last):
+            raise ValueError("timestamps must contain at least one valid timestamp")
+        return first.normalize() - pd.Timedelta(days=7), last.normalize() + pd.Timedelta(days=7)
+
     def get_sessions(
         self,
         timestamps: pd.DatetimeIndex,
@@ -135,6 +155,9 @@ class TradingCalendar:
         For stocks, it's the standard trading day.
 
         Uses vectorized pandas operations for efficiency - handles 1M+ timestamps quickly.
+
+        The result does not depend on the order of the input: the same timestamps
+        shuffled return the same sessions, in the caller's order.
 
         Parameters
         ----------
@@ -150,8 +173,7 @@ class TradingCalendar:
         timestamps_tz = self._ensure_timezone_aware(timestamps)
 
         # Get schedule for the data period (with buffer for edge cases)
-        start_date = timestamps_tz[0].normalize() - pd.Timedelta(days=7)
-        end_date = timestamps_tz[-1].normalize() + pd.Timedelta(days=7)
+        start_date, end_date = self._schedule_span(timestamps_tz)
 
         # Get schedule (~250 sessions/year, very small)
         schedule = self._schedule(start_date=start_date, end_date=end_date)
@@ -210,6 +232,8 @@ class TradingCalendar:
         Unlike get_sessions(), this method does NOT forward-fill non-trading timestamps.
         Non-trading rows (weekends, holidays) get NaT session and False mask.
 
+        The result does not depend on the order of the input.
+
         Parameters
         ----------
         timestamps : pd.DatetimeIndex
@@ -226,8 +250,7 @@ class TradingCalendar:
         timestamps_tz = self._ensure_timezone_aware(timestamps)
 
         # Get schedule for the data period (with buffer for edge cases)
-        start_date = timestamps_tz[0].normalize() - pd.Timedelta(days=7)
-        end_date = timestamps_tz[-1].normalize() + pd.Timedelta(days=7)
+        start_date, end_date = self._schedule_span(timestamps_tz)
 
         valid_days = self.calendar.valid_days(start_date=start_date, end_date=end_date, tz="UTC")
         trading_dates = set(valid_days.tz_localize(None).normalize())
