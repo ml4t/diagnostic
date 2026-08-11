@@ -49,7 +49,7 @@ keywords = [
     "polars",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Financial and Insurance Industry",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
@@ -188,35 +188,34 @@ all = [
 
 [project.urls]
 Homepage = "https://ml4trading.io/"
-Documentation = "https://ml4trading.io/docs/diagnostic/"
+Documentation = "https://www.ml4trading.io/docs/diagnostic/"
 Repository = "https://github.com/ml4t/diagnostic"
 Issues = "https://github.com/ml4t/diagnostic/issues"
 Changelog = "https://github.com/ml4t/diagnostic/blob/main/CHANGELOG.md"
 
 [dependency-groups]
-dev = [
+test = [
     "pytest>=9.0.3",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.3.0",
     "pytest-timeout>=2.1.0",
     "pytest-benchmark>=4.0.0",
     "hypothesis>=6.80.0",
-    "ruff>=0.8.0",
-    "ty",
-    "pre-commit>=3.3.0",
-    "twine>=6.0.0",
-    "pip-audit>=2.10.1",
-    # Viz deps needed for running full test suite
     "plotly>=5.15.0",
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "kaleido>=0.2.0",
     "pypdf>=6.14.2",
     "ml4t-backtest>=0.1.0b10",
-    # ML backends needed for SHAP/importance test coverage
-    "lightgbm>=4.0.0",
-    "xgboost>=2.0.0",
-    "numba>=0.62.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
+]
+dev = [
+    { include-group = "test" },
+    "ruff>=0.8.0",
+    "ty",
+    "pre-commit>=3.3.0",
+    "twine>=6.0.0",
+    "pip-audit>=2.10.1",
+    "shap>=0.52.0,<0.53.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
     "streamlit>=1.28.0",
 ]
 
