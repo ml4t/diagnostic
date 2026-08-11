@@ -261,22 +261,17 @@ def compute_paired_uncertainty(
     information_ratios = np.empty(n_boot)
     wins = 0
 
-    np_state = np.random.get_state()
-    np.random.seed(int(rng.integers(0, 2**31 - 1)))
-    try:
-        for i in range(n_boot):
-            idx = _stationary_bootstrap_indices(challenger_arr.size, float(block))
-            cs = _sample_stats(challenger_arr[idx], periods_per_year)
-            bs = _sample_stats(baseline_arr[idx], periods_per_year)
-            sharpe_diffs[i] = cs.sharpe - bs.sharpe
-            return_diffs[i] = cs.annualized_return - bs.annualized_return
-            max_drawdown_diffs[i] = cs.max_drawdown - bs.max_drawdown
-            information_ratios[i] = _information_ratio(
-                challenger_arr[idx] - baseline_arr[idx], periods_per_year
-            )
-            wins += int(cs.sharpe > bs.sharpe)
-    finally:
-        np.random.set_state(np_state)
+    for i in range(n_boot):
+        idx = _stationary_bootstrap_indices(challenger_arr.size, float(block), rng)
+        cs = _sample_stats(challenger_arr[idx], periods_per_year)
+        bs = _sample_stats(baseline_arr[idx], periods_per_year)
+        sharpe_diffs[i] = cs.sharpe - bs.sharpe
+        return_diffs[i] = cs.annualized_return - bs.annualized_return
+        max_drawdown_diffs[i] = cs.max_drawdown - bs.max_drawdown
+        information_ratios[i] = _information_ratio(
+            challenger_arr[idx] - baseline_arr[idx], periods_per_year
+        )
+        wins += int(cs.sharpe > bs.sharpe)
 
     sharpe_lo, sharpe_hi = _percentile_ci(sharpe_diffs, alpha)
     return_lo, return_hi = _percentile_ci(return_diffs, alpha)
@@ -428,19 +423,14 @@ def _stationary_bootstrap_metrics(
         "calmar": np.empty(n_boot),
     }
 
-    np_state = np.random.get_state()
-    np.random.seed(int(rng.integers(0, 2**31 - 1)))
-    try:
-        for i in range(n_boot):
-            sample = returns[_stationary_bootstrap_indices(returns.size, float(block_length))]
-            stats = _sample_stats(sample, periods_per_year)
-            metrics["sharpe"][i] = stats.sharpe
-            metrics["sortino"][i] = stats.sortino
-            metrics["annualized_return"][i] = stats.annualized_return
-            metrics["max_drawdown"][i] = stats.max_drawdown
-            metrics["calmar"][i] = stats.calmar
-    finally:
-        np.random.set_state(np_state)
+    for i in range(n_boot):
+        sample = returns[_stationary_bootstrap_indices(returns.size, float(block_length), rng)]
+        stats = _sample_stats(sample, periods_per_year)
+        metrics["sharpe"][i] = stats.sharpe
+        metrics["sortino"][i] = stats.sortino
+        metrics["annualized_return"][i] = stats.annualized_return
+        metrics["max_drawdown"][i] = stats.max_drawdown
+        metrics["calmar"][i] = stats.calmar
 
     return metrics
 

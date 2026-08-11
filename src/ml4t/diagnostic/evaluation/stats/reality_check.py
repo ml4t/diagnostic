@@ -102,9 +102,10 @@ def whites_reality_check(
     test_statistic = np.max(mean_relative_returns)
     best_strategy_idx = np.argmax(mean_relative_returns)
 
-    # Bootstrap null distribution
-    if random_state is not None:
-        np.random.seed(random_state)
+    # Bootstrap null distribution. The generator is local: seeding numpy's global
+    # state would reach every other draw in the process, and leave the caller's
+    # stream advanced by however many blocks this happened to need.
+    rng = np.random.default_rng(random_state)
 
     # Optimal block size for stationary bootstrap (rule of thumb)
     if block_size is None:
@@ -114,7 +115,7 @@ def whites_reality_check(
 
     for _ in range(bootstrap_samples):
         # Stationary bootstrap resampling
-        bootstrap_indices = _stationary_bootstrap_indices(n_periods, float(block_size))
+        bootstrap_indices = _stationary_bootstrap_indices(n_periods, float(block_size), rng)
 
         # Resample relative returns
         bootstrap_relative = relative_returns[bootstrap_indices]
