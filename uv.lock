@@ -1840,11 +1840,8 @@ viz = [
 dev = [
     { name = "hypothesis" },
     { name = "kaleido" },
-    { name = "lightgbm" },
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
-    { name = "numba", version = "0.62.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
-    { name = "numba", version = "0.66.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "pip-audit" },
     { name = "plotly" },
     { name = "pre-commit" },
@@ -1860,7 +1857,6 @@ dev = [
     { name = "streamlit" },
     { name = "twine" },
     { name = "ty" },
-    { name = "xgboost" },
 ]
 test = [
     { name = "hypothesis" },
@@ -1943,10 +1939,8 @@ provides-extras = ["all", "backtest", "dashboard", "data", "dev", "docs", "facto
 dev = [
     { name = "hypothesis", specifier = ">=6.80.0" },
     { name = "kaleido", specifier = ">=0.2.0" },
-    { name = "lightgbm", specifier = ">=4.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "ml4t-backtest", specifier = ">=0.1.0b10" },
-    { name = "numba", marker = "python_full_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'", specifier = ">=0.62.0" },
     { name = "pip-audit", specifier = ">=2.10.1" },
     { name = "plotly", specifier = ">=5.15.0" },
     { name = "pre-commit", specifier = ">=3.3.0" },
@@ -1962,7 +1956,6 @@ dev = [
     { name = "streamlit", specifier = ">=1.28.0" },
     { name = "twine", specifier = ">=6.0.0" },
     { name = "ty" },
-    { name = "xgboost", specifier = ">=2.0.0" },
 ]
 test = [
     { name = "hypothesis", specifier = ">=6.80.0" },
