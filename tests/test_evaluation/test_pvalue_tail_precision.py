@@ -128,7 +128,7 @@ def _offenders(path: Path, rel: str | None = None) -> list[str]:
     Known limit: a CDF value reached through a subscript or attribute rather
     than a bare name (``1 - result["psr"]``) is not tracked.
     """
-    source = path.read_text()
+    source = path.read_text(encoding="utf-8")
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -170,7 +170,7 @@ def _offenders(path: Path, rel: str | None = None) -> list[str]:
 def test_detector_finds_every_layout(tmp_path: Path, label: str, source: str) -> None:
     """Every way of writing it, including the ones no regex sees."""
     path = tmp_path / "sample.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
 
     assert _offenders(path, "sample.py"), f"missed the {label} layout"
 
@@ -189,7 +189,7 @@ def test_detector_finds_every_layout(tmp_path: Path, label: str, source: str) ->
 )
 def test_detector_does_not_fire_on_correct_code(tmp_path: Path, label: str, source: str) -> None:
     path = tmp_path / "sample.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
 
     assert not _offenders(path, "sample.py"), f"false positive on {label}"
 
