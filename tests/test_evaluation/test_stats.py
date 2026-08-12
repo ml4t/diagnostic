@@ -1219,7 +1219,7 @@ class TestStationaryBootstrapIndices:
         from ml4t.diagnostic.evaluation.stats import _stationary_bootstrap_indices
 
         np.random.seed(42)
-        indices = _stationary_bootstrap_indices(100, 10.0)
+        indices = _stationary_bootstrap_indices(100, 10.0, np.random.default_rng(0))
 
         assert len(indices) == 100
         assert all(0 <= idx < 100 for idx in indices)
@@ -1229,7 +1229,7 @@ class TestStationaryBootstrapIndices:
         from ml4t.diagnostic.evaluation.stats import _stationary_bootstrap_indices
 
         np.random.seed(42)
-        indices = _stationary_bootstrap_indices(50, 2.0)
+        indices = _stationary_bootstrap_indices(50, 2.0, np.random.default_rng(0))
 
         assert len(indices) == 50
 
