@@ -30,6 +30,7 @@ def stationary_bootstrap_ic(
     block_size: float | None = None,
     confidence_level: float = 0.95,
     return_details: bool = True,
+    seed: int | np.random.Generator | None = 0,
 ) -> float | dict[str, Any]:
     """Calculate p-value and confidence intervals for IC using stationary bootstrap.
 
@@ -57,6 +58,11 @@ def stationary_bootstrap_ic(
         Confidence level for the confidence interval
     return_details : bool, default=True
         If True, returns detailed results including CI and p-value
+    seed : int or np.random.Generator or None, default=0
+        Source of randomness for the resampling. The default makes a repeated
+        call on the same data return the same p-value and the same interval,
+        which is what a reader re-running a notebook needs. Pass a Generator to
+        supply your own stream, or None for a fresh unpredictable one.
 
     Returns
     -------
@@ -64,11 +70,22 @@ def stationary_bootstrap_ic(
         If return_details=False: p-value for the null hypothesis (IC=0)
         If return_details=True: Dictionary containing IC, p_value, CI, etc.
 
+    Notes
+    -----
+    Before the ``seed`` parameter existed this drew from numpy's legacy global
+    generator, so the p-value moved on every call and any decision taken against
+    a threshold moved with it. Measured on ``etfs/04_model_based_features``: two
+    consecutive production runs of identical code on identical data retained 7
+    and then 8 of 14 features under Benjamini-Hochberg at 5%, because ``ffd_lqd``
+    went p = 0.029 to p = 0.023 across the threshold.
+
     References
     ----------
     Politis, D. N., & Romano, J. P. (1994). The stationary bootstrap.
     Journal of the American Statistical Association, 89(428), 1303-1313.
     """
+    rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
+
     # Convert to numpy arrays
     pred_array = DataFrameAdapter.to_numpy(predictions).flatten()
     ret_array = DataFrameAdapter.to_numpy(returns).flatten()
@@ -122,9 +139,9 @@ def stationary_bootstrap_ic(
 
     for i in range(n_samples):
         # Generate stationary bootstrap sample
-        boot_indices = _stationary_bootstrap_indices(n, block_size)
+        boot_indices = _stationary_bootstrap_indices(n, block_size, rng)
         # Break relationship by independently bootstrapping predictions
-        boot_pred_null = pred_clean[_stationary_bootstrap_indices(n, block_size)]
+        boot_pred_null = pred_clean[_stationary_bootstrap_indices(n, block_size, rng)]
         boot_ret = ret_clean[boot_indices]
 
         # Calculate IC on bootstrap sample
@@ -137,7 +154,7 @@ def stationary_bootstrap_ic(
     # Calculate confidence interval using percentile method
     bootstrap_ics_actual = np.zeros(n_samples)
     for i in range(n_samples):
-        boot_indices = _stationary_bootstrap_indices(n, block_size)
+        boot_indices = _stationary_bootstrap_indices(n, block_size, rng)
         boot_pred = pred_clean[boot_indices]
         boot_ret = ret_clean[boot_indices]
         ic_boot, _ = spearmanr(boot_pred, boot_ret)
@@ -160,7 +177,11 @@ def stationary_bootstrap_ic(
     }
 
 
-def _stationary_bootstrap_indices(n: int, block_size: float) -> "NDArray[np.int_]":
+def _stationary_bootstrap_indices(
+    n: int,
+    block_size: float,
+    rng: np.random.Generator,
+) -> "NDArray[np.int_]":
     """Generate indices for one stationary bootstrap sample.
 
     Parameters
@@ -169,6 +190,9 @@ def _stationary_bootstrap_indices(n: int, block_size: float) -> "NDArray[np.int_
         Sample size
     block_size : float
         Expected block size (1/p where p is the probability of ending a block)
+    rng : np.random.Generator
+        Source of randomness. Passed in rather than drawn from the module-level
+        legacy generator so a caller's result reproduces.
 
     Returns
     -------
@@ -180,9 +204,9 @@ def _stationary_bootstrap_indices(n: int, block_size: float) -> "NDArray[np.int_
 
     while len(indices) < n:
         # Start a new block at a random position
-        start_idx = np.random.randint(0, n)
+        start_idx = rng.integers(0, n)
         # Generate block length from geometric distribution
-        block_length = np.random.geometric(p)
+        block_length = rng.geometric(p)
         # Add indices from this block (with wrapping)
         for j in range(block_length):
             if len(indices) >= n:
