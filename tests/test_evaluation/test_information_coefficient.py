@@ -435,6 +435,82 @@ class TestComputeICSeries:
         ic_values = result["ic"].to_numpy()
         assert all(np.isnan(ic_values))
 
+    @staticmethod
+    def _panel_with_one_tied_date(tied_col: str) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """Three dates of 12 symbols where the middle date ties `tied_col`."""
+        rng = np.random.default_rng(0)
+        dates = ["2024-01-01", "2024-01-02", "2024-01-03"]
+        symbols = [f"S{i:02d}" for i in range(12)]
+
+        rows = []
+        for d in dates:
+            tied = d == "2024-01-02"
+            preds = np.full(12, 0.5) if tied and tied_col == "prediction" else rng.normal(size=12)
+            rets = (
+                np.zeros(12)
+                if tied and tied_col == "forward_return"
+                else rng.normal(size=12) * 0.02
+            )
+            for symbol, pred, ret in zip(symbols, preds, rets):
+                rows.append(
+                    {
+                        "date": d,
+                        "symbol": symbol,
+                        "prediction": float(pred),
+                        "forward_return": float(ret),
+                    }
+                )
+
+        df = pl.DataFrame(rows)
+        return df.select(["date", "symbol", "prediction"]), df.select(
+            ["date", "symbol", "forward_return"]
+        )
+
+    @pytest.mark.parametrize("tied_col", ["prediction", "forward_return"])
+    @pytest.mark.parametrize("method", ["spearman", "pearson"])
+    def test_undefined_date_is_null_not_nan(self, tied_col, method):
+        """A date whose correlation is undefined gets null, so means stay finite.
+
+        Spearman and Pearson are both undefined when one side has zero variance.
+        Polars distinguishes NaN from null, so a NaN here survives drop_nulls and
+        turns every downstream mean into NaN (issue #493).
+        """
+        pred_df, ret_df = self._panel_with_one_tied_date(tied_col)
+
+        result = cross_sectional_ic_series(
+            pred_df,
+            ret_df,
+            pred_col="prediction",
+            ret_col="forward_return",
+            entity_col="symbol",
+            method=method,
+            min_obs=10,
+        )
+
+        assert result["ic"].null_count() == 1
+        assert result["ic"].is_nan().sum() == 0
+        assert result["n_obs"].to_list() == [12, 12, 12]
+
+        mean_ic = result.drop_nulls("ic")["ic"].mean()
+        assert mean_ic is not None
+        assert np.isfinite(mean_ic)
+
+    def test_undefined_date_excluded_from_aggregate(self):
+        """The aggregate wrapper counts a tied date as missing, not as zero IC."""
+        pred_df, ret_df = self._panel_with_one_tied_date("prediction")
+
+        summary = cross_sectional_ic(
+            pred_df,
+            ret_df,
+            pred_col="prediction",
+            ret_col="forward_return",
+            entity_col="symbol",
+            min_obs=10,
+        )
+
+        assert summary["n_periods"] == 2
+        assert np.isfinite(summary["ic_mean"])
+
     def test_ic_series_pearson_method(self, sample_data_polars):
         """Test IC series with Pearson correlation."""
         pred_df, ret_df = sample_data_polars
