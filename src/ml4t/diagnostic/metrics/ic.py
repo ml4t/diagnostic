@@ -210,7 +210,10 @@ def cross_sectional_ic_series(
     Returns
     -------
     Union[pl.DataFrame, pd.DataFrame]
-        Time series of IC values with columns: [date_col, 'ic', 'n_obs']
+        Time series of IC values with columns: [date_col, 'ic', 'n_obs'].
+        A date whose IC is undefined - fewer than ``min_obs`` valid
+        observations, or all predictions or all returns tied so the
+        correlation denominator is zero - carries a null `ic`, never a NaN.
 
     Examples
     --------
@@ -283,8 +286,7 @@ def cross_sectional_ic_series(
         p_col, r_col = "__pred_valid", "__ret_valid"
 
     # Preserve every date present in the join, even those where all rows
-    # were invalid (matches the old per-group behavior of emitting a row
-    # with n_obs=0 and ic=NaN).
+    # were invalid; such a date gets n_obs=0 and a null IC.
     all_dates = df.select(date_col).unique().sort(date_col)
     grouped = df_valid.group_by(date_col, maintain_order=False).agg(
         [
@@ -292,12 +294,20 @@ def cross_sectional_ic_series(
             pl.corr(pl.col(p_col), pl.col(r_col)).alias("ic"),
         ]
     )
+    # A date the correlation is undefined for - all predictions or all returns
+    # tied, so the denominator is zero - comes back from pl.corr as NaN. Report
+    # it as null, the same as a date below min_obs: polars treats NaN and null
+    # as different values, and a NaN that survives drop_nulls poisons every
+    # downstream mean.
     ic_series_pl = (
         all_dates.join(grouped, on=date_col, how="left")
         .with_columns(
             [
                 pl.col("n_obs").fill_null(0),
-                pl.when(pl.col("n_obs") >= min_obs).then(pl.col("ic")).otherwise(None).alias("ic"),
+                pl.when((pl.col("n_obs") >= min_obs) & pl.col("ic").is_finite())
+                .then(pl.col("ic"))
+                .otherwise(None)
+                .alias("ic"),
             ]
         )
         .sort(date_col)
