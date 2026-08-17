@@ -5,6 +5,22 @@ All notable changes to ml4t-diagnostic will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-08-17
+
+### Fixed
+- **Undefined cross-sectional IC is null, not NaN**: `cross_sectional_ic_series()`
+  returned NaN for a date where all predictions or all returns are tied and the
+  correlation is therefore undefined. Polars treats NaN and null as different
+  values, so `drop_nulls("ic").mean()` kept the NaN and the mean came back NaN.
+  Such a date now carries null, matching what the `min_obs` gate already did and
+  what `cross_sectional_ic()` already reported in `n_periods`.
+
+## [0.1.1] - 2026-08-11
+
+### Fixed
+- **Session grid for unordered timestamps** and a **gap-preserving
+  `missing="conservative"` ACF**.
+
 ## [0.1.0b21] - 2026-05-15
 
 ### Fixed
