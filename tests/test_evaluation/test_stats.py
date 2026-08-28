@@ -1456,6 +1456,112 @@ class TestWhitesRealityCheck:
         assert result["critical_values"]["90%"] <= result["critical_values"]["95%"]
         assert result["critical_values"]["95%"] <= result["critical_values"]["99%"]
 
+    def test_whites_reality_check_null_distribution_is_not_degenerate(self):
+        """The null must be resampled around the sample means, not around itself.
+
+        Recentring each bootstrap draw on its OWN column means sets every column mean
+        to exactly zero, so the null collapses onto machine epsilon and carries no
+        information about sampling variability.
+        """
+        from ml4t.diagnostic.evaluation.stats import whites_reality_check
+
+        rng = np.random.default_rng(0)
+        n_periods = 252
+        returns = rng.normal(0.0, 0.02, n_periods)
+
+        result = whites_reality_check(
+            returns_benchmark=np.zeros(n_periods),
+            returns_strategies=returns.reshape(-1, 1),
+            bootstrap_samples=500,
+            random_state=42,
+        )
+
+        # The null is a sampling distribution of a mean, so its spread must be a
+        # meaningful fraction of that mean's standard error rather than float noise.
+        standard_error = returns.std(ddof=1) / np.sqrt(n_periods)
+        assert result["null_distribution"].std() > 0.1 * standard_error
+
+    def test_whites_reality_check_pvalue_is_not_the_sign_of_the_mean(self):
+        """A single strategy inside the noise must not come back certain either way.
+
+        With a degenerate null every draw ties at zero, so the p-value is 1.0 when the
+        test statistic is negative and 0.0 the moment it turns positive -- the sign of
+        the sample mean wearing a p-value's name.
+        """
+        from ml4t.diagnostic.evaluation.stats import whites_reality_check
+
+        rng = np.random.default_rng(7)
+        n_periods = 252
+        returns = rng.normal(0.0, 0.02, n_periods)
+        # Nudge the sample mean positive by a fraction of its own standard error.
+        returns = returns - returns.mean() + 0.2 * returns.std(ddof=1) / np.sqrt(n_periods)
+        assert returns.mean() > 0
+
+        result = whites_reality_check(
+            returns_benchmark=np.zeros(n_periods),
+            returns_strategies=returns.reshape(-1, 1),
+            bootstrap_samples=1000,
+            random_state=42,
+        )
+
+        assert 0.05 < result["p_value"] < 0.95
+
+    def test_whites_reality_check_size_with_many_strategies(self):
+        """The test must not reject on strategies that have no edge at all.
+
+        This is the property the Reality Check exists for, and the one a single
+        strategy cannot exercise: with the null recentred on each bootstrap draw
+        instead of on the sample means, 30 pure-noise strategies are declared
+        significant on essentially every draw.
+        """
+        from ml4t.diagnostic.evaluation.stats import whites_reality_check
+
+        rng = np.random.default_rng(11)
+        n_trials, n_periods, n_strategies = 150, 252, 30
+
+        rejections = 0
+        for _ in range(n_trials):
+            benchmark = rng.normal(0.0, 0.02, n_periods)
+            strategies = rng.normal(0.0, 0.02, (n_periods, n_strategies))
+            result = whites_reality_check(
+                returns_benchmark=benchmark,
+                returns_strategies=strategies,
+                bootstrap_samples=200,
+                random_state=int(rng.integers(1_000_000_000)),
+            )
+            rejections += result["p_value"] < 0.05
+
+        # Nominal is 7.5 of 150. The bound is deliberately loose -- it is here to
+        # catch a broken null, not to pin the bootstrap's finite-sample size.
+        assert rejections <= 20
+
+    def test_whites_reality_check_finds_a_real_edge_among_many_strategies(self):
+        """The other half of the size test: a null that is too wide sees nothing.
+
+        Recentring on a single summary of the sample means rather than on each
+        column's own mean passes the size test by never rejecting at all, so the
+        two are only meaningful together.
+        """
+        from ml4t.diagnostic.evaluation.stats import whites_reality_check
+
+        rng = np.random.default_rng(23)
+        n_trials, n_periods, n_strategies = 60, 252, 30
+
+        detections = 0
+        for _ in range(n_trials):
+            benchmark = rng.normal(0.0, 0.02, n_periods)
+            strategies = rng.normal(0.0, 0.02, (n_periods, n_strategies))
+            strategies[:, 0] += 0.01  # ~0.63 standard errors per period
+            result = whites_reality_check(
+                returns_benchmark=benchmark,
+                returns_strategies=strategies,
+                bootstrap_samples=200,
+                random_state=int(rng.integers(1_000_000_000)),
+            )
+            detections += result["p_value"] < 0.05
+
+        assert detections >= 45
+
 
 class TestMultipleTestingSummary:
     """Tests for multiple_testing_summary function."""
