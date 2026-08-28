@@ -118,13 +118,13 @@ def whites_reality_check(
         bootstrap_indices = _stationary_bootstrap_indices(n_periods, float(block_size), rng)
 
         # Resample relative returns
-        bootstrap_relative = relative_returns[bootstrap_indices]
+        bootstrap_means = np.mean(relative_returns[bootstrap_indices], axis=0)
 
-        # Center the bootstrap sample (impose null hypothesis)
-        bootstrap_relative = bootstrap_relative - np.mean(bootstrap_relative, axis=0)
-
-        # Calculate maximum mean for this bootstrap sample
-        bootstrap_max = np.max(np.mean(bootstrap_relative, axis=0))
+        # Impose the null by recentring on the ORIGINAL sample means, as in White
+        # (2000), p. 1105: V*_l = max_k n^(1/2) (f*_k - f_k). Subtracting the bootstrap
+        # sample's own means instead drives every column mean to zero, so the null
+        # collapses onto float error and the test rejects for any positive statistic.
+        bootstrap_max = np.max(bootstrap_means - mean_relative_returns)
         null_dist_list.append(float(bootstrap_max))
 
     null_distribution = np.array(null_dist_list)
