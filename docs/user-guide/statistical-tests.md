@@ -48,6 +48,7 @@ trial ledger. Its first column is the observation timestamp and each remaining
 column is one immutable strategy variant:
 
 ```python
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -57,8 +58,12 @@ from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
 ledger_path = Path("research/strategy-returns.parquet")
 
-# `timestamps`, `lookback_20_returns`, and `lookback_40_returns` are the
-# results from the current research session.
+# Replace these generated series with the aligned results from the current
+# research session.
+session_rng = np.random.default_rng(7)
+timestamps = pl.date_range(date(2025, 1, 1), date(2025, 9, 9), interval="1d", eager=True)
+lookback_20_returns = session_rng.normal(0.0004, 0.01, len(timestamps))
+lookback_40_returns = session_rng.normal(0.0002, 0.01, len(timestamps))
 current = pl.DataFrame(
     {
         "timestamp": timestamps,
