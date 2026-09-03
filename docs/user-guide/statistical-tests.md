@@ -36,6 +36,87 @@ print(f"Effective trials: {dsr.n_trials_effective:.2f}")
 Include every strategy variant considered during selection. Omitting failed or
 discarded variants understates the multiple-testing penalty.
 
+### Keep trial history across research sessions
+
+The candidate set belongs to the selection exercise, not to one Python process.
+Persist a stable strategy identifier and the evidence produced for every variant,
+including variants that failed or were discarded. Do not reuse an identifier for a
+different configuration.
+
+When every variant uses the same observations, a wide Parquet file is a minimal
+trial ledger. Its first column is the observation timestamp and each remaining
+column is one immutable strategy variant:
+
+```python
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+
+from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+ledger_path = Path("research/strategy-returns.parquet")
+
+# `timestamps`, `lookback_20_returns`, and `lookback_40_returns` are the
+# results from the current research session.
+current = pl.DataFrame(
+    {
+        "timestamp": timestamps,
+        "session_2026_09_02__lookback_20": lookback_20_returns,
+        "session_2026_09_02__lookback_40": lookback_40_returns,
+    }
+)
+
+# WRONG: this forgets variants evaluated in earlier sessions.
+current_only = deflated_sharpe_ratio(current.drop("timestamp").to_numpy())
+
+if ledger_path.exists():
+    history = pl.read_parquet(ledger_path)
+    if not history["timestamp"].equals(current["timestamp"]):
+        raise ValueError("all variants in this ledger must use the same observations")
+else:
+    history = current.select("timestamp")
+
+for strategy_id in current.columns[1:]:
+    if strategy_id in history.columns:
+        raise ValueError(f"strategy identifier already exists: {strategy_id}")
+    history = history.with_columns(current[strategy_id])
+
+ledger_path.parent.mkdir(parents=True, exist_ok=True)
+history.write_parquet(ledger_path)
+
+# CORRECT: the correction sees every variant accumulated for this selection exercise.
+all_returns = history.drop("timestamp").to_numpy()
+accumulated = deflated_sharpe_ratio(
+    all_returns,
+    frequency="daily",
+    correlation_method="effective_rank",
+    min_k_eff=2.0,
+)
+
+print(f"Current-session trials: {current_only.n_trials_raw}")
+print(f"Accumulated trials: {accumulated.n_trials_raw}")
+```
+
+Start a separate ledger when the target, evaluation window, data revision, or
+selection decision changes. Store those values next to the file in the research
+record. Appending a newly recomputed history to an older ledger without recording
+the changed inputs mixes different experiments.
+
+If retaining each return series is impractical, persist one row per trial with its
+native-frequency Sharpe ratio and the selected strategy's sample count, skewness,
+excess kurtosis, and autocorrelation. Compute the cross-sectional Sharpe variance
+over all ledger rows, then call `deflated_sharpe_ratio_from_statistics()` with the
+accumulated `n_trials` and `variance_trials`. This is the supported route for a
+single selected strategy whose trial count is maintained outside the library.
+
+PBO and Rademacher complexity cannot be reconstructed from a trial count alone.
+For PBO, persist one row per fold and strategy with both in-sample and out-of-sample
+performance, then load identically ordered `(n_folds, n_strategies)` matrices. For
+Rademacher complexity, retain the aligned `(n_observations, n_strategies)` return or
+IC matrix. In both cases, add new strategy columns across sessions and preserve the
+same row index.
+
 ## False discovery rate control
 
 Use Benjamini-Hochberg when testing many hypotheses and you want to control the
