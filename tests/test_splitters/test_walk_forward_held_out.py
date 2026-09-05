@@ -151,8 +151,8 @@ class TestHeldOutTestPeriod:
 class TestBackwardValidationFolds:
     """Test backward-stepping validation fold generation."""
 
-    def test_backward_folds_step_backward_from_test(self):
-        """Test that backward folds step backward from held-out test boundary."""
+    def test_backward_folds_are_emitted_in_chronological_order(self):
+        """Backward construction should not expose reverse chronological ordering."""
         n_samples = 200
         X = np.arange(n_samples).reshape(n_samples, 1)
 
@@ -167,15 +167,24 @@ class TestBackwardValidationFolds:
         splits = list(cv.split(X))
         test_start_idx = 170  # n_samples - test_period
 
-        # Validation folds should step backward from test_start_idx
-        val_ends = [val_idx.max() + 1 for _, val_idx in splits]
+        validation_windows = [(int(val_idx[0]), int(val_idx[-1]) + 1) for _, val_idx in splits]
 
-        # First fold's validation should end at test boundary
-        assert val_ends[0] == test_start_idx
+        assert validation_windows == [(110, 130), (130, 150), (150, test_start_idx)]
 
-        # Each subsequent fold should be further back
-        for i in range(1, len(val_ends)):
-            assert val_ends[i] < val_ends[i - 1]
+    def test_backward_folds_reverse_only_the_splits_that_fit(self):
+        """Chronological ordering should use the number of folds actually constructed."""
+        X = np.arange(100).reshape(100, 1)
+        cv = WalkForwardCV(
+            n_splits=5,
+            test_period=20,
+            test_size=30,
+            fold_direction="backward",
+        )
+
+        splits = list(cv.split(X))
+        validation_windows = [(int(val_idx[0]), int(val_idx[-1]) + 1) for _, val_idx in splits]
+
+        assert validation_windows == [(20, 50), (50, 80)]
 
     def test_backward_folds_no_overlap_with_test(self):
         """Test that backward validation folds don't overlap with held-out test."""

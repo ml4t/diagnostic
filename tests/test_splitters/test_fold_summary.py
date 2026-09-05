@@ -183,7 +183,7 @@ class TestFoldSummary:
         assert len(cv.fold_summary_) == 3  # Still 3 folds, but from new data
 
     def test_fold_summary_held_out_test(self):
-        """Fold summary works with held-out test configuration."""
+        """Fold summary identifiers match chronological backward-fold emission."""
         dates = pd.date_range("2020-01-01", periods=500, freq="B", tz="UTC")
         df = pd.DataFrame({"value": np.random.randn(500)}, index=dates)
 
@@ -193,11 +193,13 @@ class TestFoldSummary:
             fold_direction="backward",
             label_horizon=5,
         )
-        for _ in cv.split(df):
-            pass
+        splits = list(cv.split(df))
 
         summary = cv.fold_summary_
         assert len(summary) <= 3
+        assert summary["fold"].tolist() == list(range(len(splits)))
+        assert summary["val_start"].is_monotonic_increasing
+        assert summary["val_start"].tolist() == [df.index[val_idx[0]] for _, val_idx in splits]
         # All validation should be before the held-out test start
         for _, row in summary.iterrows():
             assert row["val_end"] < pd.Timestamp("2021-06-01", tz="UTC")

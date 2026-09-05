@@ -711,8 +711,9 @@ class WalkForwardCV(BaseSplitter):
                 ←     ←     ←     ←     ←     ←     test_start
         ```
 
-        Validation folds step backward from the test boundary, ensuring that
-        all validation is done on data chronologically before the held-out test.
+        Validation folds are constructed backward from the test boundary, then
+        yielded in chronological order. This keeps all validation before the
+        held-out test while fold numbers increase with time.
         """
         # Validate inputs and get sample count
         n_samples = self._validate_data(X, y, groups)
@@ -1328,8 +1329,9 @@ class WalkForwardCV(BaseSplitter):
     ) -> Generator[tuple[NDArray[np.intp], NDArray[np.intp]], None, None]:
         """Generate splits stepping backward from held-out test boundary.
 
-        Validation folds step backward in time from the held-out test start,
-        ensuring all validation data is chronologically before the final test.
+        Validation folds are constructed backward in time from the held-out
+        test start, then yielded in chronological order. This ensures all
+        validation data is chronologically before the final test.
 
         ```
         [train1][val1][train2][val2][train3][val3] | [HELD-OUT TEST]
@@ -1372,10 +1374,9 @@ class WalkForwardCV(BaseSplitter):
         else:
             step_size = val_size  # Non-overlapping validation folds
 
-        # Generate splits stepping backward from test_start_idx
-        # Fold 0 has validation ending at test_start_idx
-        # Fold 1 has validation ending at test_start_idx - step_size
-        # etc.
+        # Construct splits backward from test_start_idx, then emit only the
+        # successfully constructed folds in chronological order.
+        backward_folds: list[tuple[NDArray[np.intp], NDArray[np.intp]]] = []
         for i in range(self.n_splits):
             # Validation fold boundaries (stepping backward)
             val_end = test_start_idx - i * step_size
@@ -1431,7 +1432,9 @@ class WalkForwardCV(BaseSplitter):
                     clean_train_indices, val_indices, groups
                 )
 
-            yield clean_train_indices, val_indices
+            backward_folds.append((clean_train_indices, val_indices))
+
+        yield from reversed(backward_folds)
 
     def _split_forward_with_test(
         self,
