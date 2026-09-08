@@ -137,6 +137,7 @@ test_output.txt
 # Agent config, not for distribution (Claude Code + Codex)
 .claude/
 .codex/
+.workspace/
 CLAUDE.md
 repomix.config.json
 repomix-output.xml
