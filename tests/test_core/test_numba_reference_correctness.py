@@ -34,11 +34,15 @@ class TestDrawdownReferenceCorrectness:
         if len(cum_returns) == 0:
             return np.nan, -1, -1, -1
 
-        # Running maximum
-        running_max = np.maximum.accumulate(cum_returns)
+        # Wealth, including the 1.0 that precedes the first return, so a first-period loss is
+        # a drawdown rather than a new peak.
+        wealth = 1.0 + cum_returns
+        running_max = np.maximum.accumulate(np.maximum(wealth, 1.0))
 
-        # Drawdown at each point
-        drawdowns = cum_returns - running_max
+        # Fractional drawdown at each point. This used to be `cum_returns - running_max`, the
+        # same absolute subtraction the kernel made, so the test agreed with the bug instead of
+        # catching it.
+        drawdowns = wealth / running_max - 1.0
 
         # Find max drawdown
         max_dd = drawdowns.min()
@@ -50,7 +54,7 @@ class TestDrawdownReferenceCorrectness:
         trough_idx = int(np.argmin(drawdowns))
 
         # Find peak (running max at trough point)
-        peak_idx = int(np.argmax(cum_returns[: trough_idx + 1]))
+        peak_idx = int(np.argmax(np.maximum(wealth, 1.0)[: trough_idx + 1]))
 
         # Duration
         duration = trough_idx - peak_idx
@@ -91,14 +95,19 @@ class TestDrawdownReferenceCorrectness:
         assert numba_dd == ref_dd == 0.0
 
     def test_drawdown_formula_exact(self):
-        """Verify drawdown = trough_value - peak_value."""
+        """Verify drawdown = trough_wealth / peak_wealth - 1.
+
+        This asserted `trough_value - peak_value`, which is the defect it was meant to guard:
+        an absolute distance below the high-water mark rather than a fractional decline.
+        """
         cum_returns = np.array([0.0, 0.1, 0.05, 0.15, 0.08, 0.2])
 
         max_dd, duration, peak_idx, trough_idx = calculate_drawdown_numba(cum_returns)
 
-        # Verify the formula
-        expected_dd = cum_returns[trough_idx] - cum_returns[peak_idx]
+        expected_dd = (1.0 + cum_returns[trough_idx]) / (1.0 + cum_returns[peak_idx]) - 1.0
         assert max_dd == pytest.approx(expected_dd, rel=1e-10)
+        # 1.08 / 1.15 - 1, stated as a number so this cannot drift with the implementation.
+        assert max_dd == pytest.approx(-0.0608695652, abs=1e-9)
 
 
 class TestRollingSharpeReferenceCorrectness:
@@ -453,3 +462,44 @@ class TestNumericalStability:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestDrawdownAgainstKnownTruth:
+    """Values computed by hand, so the kernel is checked against arithmetic rather than against
+    a second implementation of itself. The reference in this module reimplemented the kernel's
+    own `cum_returns - running_max` subtraction, so it agreed with the bug for as long as the
+    bug existed."""
+
+    def test_a_compounding_series_reports_a_fractional_drawdown(self):
+        from ml4t.diagnostic.core.numba_utils import calculate_drawdown_numba
+
+        # 24 gains of 10% take wealth to 1.1**24, then a 30% loss. The drawdown is the 30% loss,
+        # whatever the level. The absolute subtraction reported -295%.
+        returns = np.array([0.10] * 24 + [-0.30])
+        cum = np.cumprod(1.0 + returns) - 1.0
+        dd, _, peak, trough = calculate_drawdown_numba(cum)
+        assert dd == pytest.approx(-0.30, abs=1e-12)
+        assert (peak, trough) == (23, 24)
+
+    def test_a_first_period_loss_is_a_drawdown(self):
+        from ml4t.diagnostic.core.numba_utils import calculate_drawdown_numba
+
+        # Wealth starts at 1.0, so a 50% first-period loss is a 50% drawdown. Seeding the peak
+        # from cum_returns[0] made it the peak and reported 0.0.
+        cum = np.cumprod(1.0 + np.array([-0.5, 0.1])) - 1.0
+        dd, _, _, trough = calculate_drawdown_numba(cum)
+        assert dd == pytest.approx(-0.5, abs=1e-12)
+        assert trough == 0
+
+    def test_the_public_metric_matches_its_own_docstring(self):
+        from ml4t.diagnostic.metrics.risk_adjusted import maximum_drawdown
+
+        # Wealth peaks at 1.1286 and troughs at 0.99317, one -12% return apart.
+        returns = np.array([0.10, -0.05, 0.08, -0.12, 0.03])
+        assert maximum_drawdown(returns)["max_drawdown"] == pytest.approx(-0.120, abs=1e-9)
+
+    def test_a_monotonically_rising_series_has_no_drawdown(self):
+        from ml4t.diagnostic.core.numba_utils import calculate_drawdown_numba
+
+        cum = np.cumprod(1.0 + np.array([0.01] * 10)) - 1.0
+        assert calculate_drawdown_numba(cum)[0] == 0.0

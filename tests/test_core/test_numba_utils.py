@@ -31,7 +31,9 @@ class TestDrawdownNumba:
         """Test case with single drawdown period."""
         cum_returns = np.array([0.0, 0.1, 0.05, -0.02, 0.08])
         max_dd, duration, peak_idx, trough_idx = calculate_drawdown_numba(cum_returns)
-        assert max_dd == pytest.approx(-0.12, rel=1e-6)
+        # Wealth peaks at 1.10 and troughs at 0.98: 0.98 / 1.10 - 1. This asserted -0.12, the
+        # absolute distance 0.10 - (-0.02), which is the defect rather than the drawdown.
+        assert max_dd == pytest.approx(-0.109090909, rel=1e-6)
         assert peak_idx == 1
         assert trough_idx == 3
         assert duration == 2
@@ -40,7 +42,9 @@ class TestDrawdownNumba:
         """Test case with multiple drawdown periods."""
         cum_returns = np.array([0.0, 0.1, 0.05, 0.15, 0.08, 0.02, 0.12])
         max_dd, duration, peak_idx, trough_idx = calculate_drawdown_numba(cum_returns)
-        assert max_dd == pytest.approx(-0.13, rel=1e-6)
+        # Wealth peaks at 1.15 and troughs at 1.02: 1.02 / 1.15 - 1. This asserted -0.13, the
+        # absolute distance 0.15 - 0.02.
+        assert max_dd == pytest.approx(-0.113043478, rel=1e-6)
         assert peak_idx == 3
         assert trough_idx == 5
 
@@ -357,7 +361,9 @@ class TestNumbaEdgeCases:
         cum_returns = np.array([-0.1, 0.0, -0.2, 0.1, -0.3])
         max_dd, duration, peak_idx, trough_idx = calculate_drawdown_numba(cum_returns)
         # Max drawdown from peak at 0.1 to trough at -0.3
-        assert max_dd == pytest.approx(-0.4, rel=1e-6)
+        # Wealth runs 0.9, 1.0, 0.8, 1.1, 0.7 against a peak seeded at 1.0: the worst is
+        # 0.7 / 1.1 - 1. This asserted -0.4, the absolute distance 0.1 - (-0.3).
+        assert max_dd == pytest.approx(-0.363636364, rel=1e-6)
 
     def test_bootstrap_more_samples_than_indices(self):
         """Test bootstrap when requesting more samples than available indices with large block."""

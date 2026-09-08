@@ -50,17 +50,25 @@ def calculate_drawdown_numba(
     max_duration = 0
     peak_idx = 0
     trough_idx = 0
-    current_peak = cum_returns[0]
+    # Wealth is 1.0 before the first return, i.e. a cumulative return of zero. Seeding the peak
+    # from cum_returns[0] and starting the loop at 1 made a first-period loss invisible:
+    # [-0.5, 0.1] reported a drawdown of 0.0 rather than -0.5.
+    current_peak = 1.0
     current_peak_idx = 0
 
-    for i in range(1, n):
+    for i in range(n):
+        wealth = 1.0 + cum_returns[i]
+
         # Update peak if necessary
-        if cum_returns[i] > current_peak:
-            current_peak = cum_returns[i]
+        if wealth > current_peak:
+            current_peak = wealth
             current_peak_idx = i
 
-        # Calculate current drawdown
-        drawdown = cum_returns[i] - current_peak
+        # Fractional decline from the high-water mark. `cum_returns[i] - current_peak` measured
+        # an absolute distance instead, which only coincides with the drawdown while the series
+        # stays near zero: 24 compounding 10% gains followed by a 30% loss reported -295%.
+        # current_peak is a running max seeded at 1.0, so it can never reach zero.
+        drawdown = wealth / current_peak - 1.0
 
         # Update max drawdown if necessary
         if drawdown < max_drawdown:

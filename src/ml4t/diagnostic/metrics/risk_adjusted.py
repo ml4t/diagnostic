@@ -230,7 +230,7 @@ def maximum_drawdown(
     >>> returns = np.array([0.10, -0.05, 0.08, -0.12, 0.03])
     >>> dd = maximum_drawdown(returns)
     >>> print(f"Max Drawdown: {dd['max_drawdown']:.3f}")
-    Max Drawdown: -0.102
+    Max Drawdown: -0.120
     """
     # Import here to avoid circular dependency
     from ml4t.diagnostic.core.numba_utils import calculate_drawdown_numba
