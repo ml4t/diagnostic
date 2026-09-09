@@ -26,6 +26,6 @@ This package holds the main research and validation workflows.
 - User-facing wrappers for Trade SHAP live in `trade_shap_diagnostics.py`.
 - Signal analysis has its own facade in `src/ml4t/diagnostic/signal/`.
 - The public docs for these workflows live under `docs/user-guide/` and `docs/methods/`.
-- DSR work now includes `effective_number_of_trials()` and
+- `evaluation.stats` exposes `effective_number_of_trials()` and
   `deflated_sharpe_ratio(..., correlation_method=..., min_k_eff=...)` for
   correlated strategy cohorts.

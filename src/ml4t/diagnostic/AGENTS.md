@@ -26,7 +26,7 @@
 ## Notes
 
 - Public API is defined by `__all__` exports in package modules.
-- Recent reporting work is centered in `integration/` and `visualization/backtest/`.
+- Reporting and tearsheet entry points are in `integration/` and `visualization/backtest/`.
 - Correlation-adjusted DSR now lives in `evaluation.stats` via
   `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.
 - For book and case-study workflows, set `periods_per_year` from the return

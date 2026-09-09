@@ -3,6 +3,9 @@ name: Dependency security
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   audit:
     name: Audit (${{ matrix.os }}, Python ${{ matrix.python-version }})
@@ -19,30 +22,26 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v7.0.1
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
       - name: Set up Python
         run: uv python install ${{ matrix.python-version }}
-
       - name: Install audit tooling
         run: uv sync --frozen --dev
-
       - name: Export release dependency graph
         run: >-
           uv export --quiet --frozen --all-extras --no-dev --no-emit-project
           --output-file requirements-audit.txt
-
       - name: Validate hashes and audit PyPI advisories
         id: pypi-audit
         run: >-
           uv run pip-audit --strict --require-hashes --disable-pip
           --vulnerability-service pypi -r requirements-audit.txt
-
       - name: Advisory OSV audit
         if: >-
           ${{ !cancelled() && matrix.osv == true &&
@@ -57,10 +56,9 @@ jobs:
           {
             echo "### Advisory OSV audit"
             echo '```text'
-            cat osv-audit.txt
+            sed -n '1,200p' osv-audit.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if (( audit_status != 0 )); then
             echo "::warning title=OSV advisory audit::Review the OSV findings in the job summary"
           fi
-          exit "$audit_status"

@@ -134,7 +134,7 @@ qeval_reports/
 # Test output
 test_output.txt
 
-# Agent config, not for distribution (Claude Code + Codex)
+# Local agent configuration, not for distribution
 .claude/
 .codex/
 .workspace/

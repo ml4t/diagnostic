@@ -9,7 +9,7 @@ Core Components:
     - TradeStatistics: Aggregate statistics across trades
     - TradeAnalysisResult: Result schema with serialization
 
-Integration with ml4t-diagnostics workflow:
+Integration with the ml4t-diagnostic workflow:
     1. Load backtest results → Extract trades (TradeRecord instances)
     2. Analyze trades → Identify worst performers (TradeAnalysis)
     3. Compute statistics → Understand trade distribution (TradeStatistics)

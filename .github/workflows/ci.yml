@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: "3.12"
 
@@ -18,44 +21,30 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: uv sync --frozen --dev
-
-      - name: Run ruff check
-        run: uv run ruff check src/ tests/
-
-      - name: Run ruff format check
-        run: uv run ruff format --check src/ tests/
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev
+      - run: uv run ruff check src/ tests/ scripts/
+      - run: uv run ruff format --check src/ tests/ scripts/
 
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: uv sync --frozen --dev
-
-      - name: Run ty check
-        run: uv run ty check
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev
+      - run: uv run ty check
 
   test:
     uses: ./.github/workflows/test-matrix.yml
@@ -63,30 +52,73 @@ jobs:
   security:
     uses: ./.github/workflows/security.yml
 
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@fddeee1a7ece751b577e409a89057319e3172939 # v4
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@fddeee1a7ece751b577e409a89057319e3172939 # v4
+
+  docs:
+    name: Strict Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.10.9"
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev --extra docs
+      - name: Record documentation identity
+        shell: bash
+        run: |
+          echo "ML4T_DOCS_VERSION=$(uv run python -c 'from ml4t.diagnostic import __version__; print(__version__)')" >> "$GITHUB_ENV"
+          echo "ML4T_DOCS_COMMIT=${GITHUB_SHA}" >> "$GITHUB_ENV"
+      - run: uv run mkdocs build --strict
+      - name: Verify rendered identity
+        run: >-
+          uv run --no-project python scripts/verify_documentation_identity.py
+          --site site
+          --expected-library diagnostic
+          --expected-version "$ML4T_DOCS_VERSION"
+          --expected-commit "$ML4T_DOCS_COMMIT"
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: uv sync --frozen --dev --extra ml --extra viz
-
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev --extra ml --extra viz
       - name: Run tests with coverage
-        run: |
-          uv run pytest tests/ \
-            --cov=ml4t.diagnostic --cov-report=xml --cov-report=term-missing
-
+        run: >-
+          uv run pytest tests/
+          --cov=ml4t.diagnostic --cov-report=xml --cov-report=term-missing
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7.0.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
@@ -96,63 +128,47 @@ jobs:
     name: Visualization Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: uv sync --frozen --dev --extra viz
-
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev --extra viz
       - name: Run visualization tests with coverage gate
-        run: |
-          uv run pytest tests/test_visualization/ -q -n 0 \
-            --cov=src/ml4t/diagnostic/visualization \
-            --cov-report=term-missing \
-            --cov-fail-under=45
+        run: >-
+          uv run pytest tests/test_visualization/ -q -n 0
+          --cov=src/ml4t/diagnostic/visualization
+          --cov-report=term-missing
+          --cov-fail-under=45
 
   property-tests:
     name: Property-Based Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: uv sync --frozen --dev
-
-      - name: Run property-based tests
-        run: uv run pytest tests/test_property/ -v --hypothesis-seed=42 --hypothesis-profile=ci
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev
+      - run: uv run pytest tests/test_property/ -v --hypothesis-seed=42 --hypothesis-profile=ci
 
   benchmarks:
     name: Benchmarks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: uv sync --frozen --dev
-
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev
       - name: Run benchmarks
         run: |
           mkdir -p artifacts/benchmarks
@@ -160,16 +176,13 @@ jobs:
             --benchmark-only \
             --benchmark-autosave \
             --benchmark-json artifacts/benchmarks/pytest-benchmark.json
-
       - name: Generate benchmark report
-        run: |
-          uv run python scripts/benchmark_report.py \
-            --input artifacts/benchmarks/pytest-benchmark.json \
-            --output artifacts/benchmarks/benchmark-report.md \
-            --baseline tests/benchmarks/baseline.json
-
-      - name: Upload benchmark artifacts
-        uses: actions/upload-artifact@v7.0.1
+        run: >-
+          uv run python scripts/benchmark_report.py
+          --input artifacts/benchmarks/pytest-benchmark.json
+          --output artifacts/benchmarks/benchmark-report.md
+          --baseline tests/benchmarks/baseline.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-results
           path: artifacts/benchmarks/
@@ -177,33 +190,49 @@ jobs:
   build:
     name: Build Package
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, security, coverage, viz-coverage, property-tests]
+    needs:
+      - lint
+      - typecheck
+      - test
+      - security
+      - dependency-review
+      - codeql
+      - docs
+      - coverage
+      - viz-coverage
+      - property-tests
+      - benchmarks
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: uv sync --frozen --dev
-
-      - name: Build package
-        run: uv build
-
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev
+      - run: uv build
+      - name: Record package version
+        run: echo "PACKAGE_VERSION=$(uv run python -c 'from ml4t.diagnostic import __version__; print(__version__)')" >> "$GITHUB_ENV"
       - name: Check release artifacts
-        run: uv run --isolated --no-project python scripts/verify_release_artifacts.py dist
-
+        run: >-
+          uv run --isolated --no-project --with packaging
+          python scripts/verify_release_artifacts.py dist
+          --expected-version "$PACKAGE_VERSION"
       - name: Import installed wheel
         shell: bash
-        run: uv run --isolated --no-project --with "$(find dist -name '*.whl' -print -quit)" python scripts/import_smoke.py
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7.0.1
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          python -I scripts/import_smoke.py
+      - name: Run README quick start from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          python -I scripts/run_readme_quickstart.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
           path: dist/
+          if-no-files-found: error

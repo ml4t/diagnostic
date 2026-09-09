@@ -2,57 +2,43 @@
 
 [![Python 3.12-3.14](https://img.shields.io/badge/python-3.12--3.14-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/ml4t-diagnostic)](https://pypi.org/project/ml4t-diagnostic/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Statistical validation and diagnostics for quantitative trading strategies: signal analysis, backtest evaluation, and overfitting detection.
+Signal diagnostics, statistical validation, and backtest evaluation for quantitative trading workflows.
 
-Documentation: https://ml4trading.io/docs/diagnostic/
+Use `ml4t-diagnostic` to evaluate cross-sectional signals, construct purged
+time-series validation folds, correct strategy statistics for selection bias,
+analyze feature and trade behavior, and produce backtest reports.
 
-## Part of the ML4T Library Ecosystem
+## ML4T Library Ecosystem
 
-This library is one of six interconnected libraries supporting the machine learning for trading workflow described in [Machine Learning for Trading](https://ml4trading.io):
+`ml4t-diagnostic` is one of seven libraries supporting the workflow described
+in [Machine Learning for Trading](https://www.ml4trading.io/).
 
-![ML4T Library Ecosystem](docs/images/ml4t_ecosystem_workflow_color.png)
+![ML4T library ecosystem](docs/images/ml4t_ecosystem_workflow_color.png)
 
-Together they cover data infrastructure, feature engineering, modeling, signal evaluation, strategy backtesting, and live deployment.
+It accepts engineered features, predictions, and backtest results from the
+other ML4T libraries, but the primary signal-analysis workflow below has no
+external service or special hardware requirement.
 
-## What This Library Does
+## Installation and Support
 
-Evaluating whether a signal or strategy has genuine predictive power requires statistical rigor. ml4t-diagnostic provides:
-
-- Information coefficient (IC) analysis with HAC-adjusted standard errors
-- Deflated Sharpe Ratio (DSR) with correlation-adjusted K_eff plus other multiple-testing corrections (RAS, PBO, FDR)
-- Combinatorial purged cross-validation (CPCV) with calendar-aware splitting
-- Feature importance analysis (MDI, PFI, MDA, SHAP) with consensus ranking
-- Trade-level diagnostics with SHAP-based error pattern discovery
-- Backtest reporting: `BacktestProfile`, report metadata, and template-based HTML tearsheets
-- Portfolio analysis: 16 performance metrics (Sharpe, Sortino, Calmar, VaR, CVaR, ...)
-- Systematic feature selection with IC, importance, correlation, and drift filtering
-- 65+ Plotly visualizations with 4 themes (default, dark, print, presentation)
-
-The library implements methods from the academic finance literature, particularly those addressing backtest overfitting and false discovery in strategy research.
-
-![ml4t-diagnostic Architecture](docs/images/ml4t_diagnostic_architecture_print.jpeg)
-
-## Installation
+The supported Python versions are 3.12, 3.13, and 3.14 on Linux, macOS, and
+Windows.
 
 ```bash
-pip install ml4t-diagnostic
+uv add ml4t-diagnostic
 ```
 
-Optional dependencies:
-
-```bash
-pip install ml4t-diagnostic[ml]   # SHAP, importance analysis
-pip install ml4t-diagnostic[viz]  # Plotly visualizations
-pip install ml4t-diagnostic[backtest]  # ml4t-backtest bridge
-pip install ml4t-diagnostic[dashboard]  # Streamlit dashboard
-pip install ml4t-diagnostic[all]  # Everything
-```
+Python 3.15 is not currently supported because required dependency wheels are
+still being qualified. Progress is tracked in
+[issue #45](https://github.com/ml4t/diagnostic/issues/45).
 
 ## Quick Start
 
-### Signal Analysis
+This example creates a synthetic cross-sectional factor whose score affects
+the next price change, then measures its information coefficient and quantile
+spread.
 
 ```python
 import numpy as np
@@ -86,183 +72,90 @@ result = analyze_signal(
 )
 
 assert result.ic["1D"] > 0.1
-
 print(f"IC (1D): {result.ic['1D']:.4f}")
 print(f"IC t-stat (1D): {result.ic_t_stat['1D']:.2f}")
 print(f"Q5-Q1 spread (1D): {result.spread['1D']:.2%}")
 ```
 
-### Deflated Sharpe Ratio
+`analyze_signal` returns information coefficients, significance statistics,
+quantile returns, spreads, turnover, and related diagnostics for each requested
+forward period. See the executable
+[quickstart tutorial](docs/getting-started/quickstart.md) for the input schema
+and a multiple-testing example.
 
-```python
-import numpy as np
+## Main Capabilities
 
-from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+| Area | Public workflows |
+|------|------------------|
+| Signal analysis | `analyze_signal`, HAC-adjusted IC, quantile profiles, turnover |
+| Cross-validation | `WalkForwardCV`, `CombinatorialCV`, `ValidatedCrossValidation` |
+| Selection bias | Deflated Sharpe Ratio, PBO, RAS, FDR control, White's Reality Check |
+| Feature analysis | `FeatureDiagnostics`, importance, interactions, drift, causality audit |
+| Backtest analysis | `BacktestProfile`, portfolio metrics, factor attribution, trade diagnostics |
+| Reporting | Plotly charts, dashboards, HTML tearsheets, static export |
 
-rng = np.random.default_rng(42)
-strategy_returns = rng.normal(
-    loc=[0.0003, 0.0005, 0.0002],
-    scale=0.01,
-    size=(252, 3),
-)
+## Optional Features
 
-dsr_result = deflated_sharpe_ratio(
-    returns=strategy_returns,
-    benchmark_sharpe=0.0,
-    correlation_method="effective_rank",
-    min_k_eff=2.0,
-    periods_per_year=252,
-)
+Install only the integrations needed by your workflow:
 
-print(f"Sharpe: {dsr_result.sharpe_ratio:.2f}")
-print(f"Deflated Sharpe: {dsr_result.deflated_sharpe:.2f}")
-print(f"Raw trials: {dsr_result.n_trials_raw}")
-print(f"Effective trials: {dsr_result.n_trials_effective:.2f}")
-print(f"Significant: {dsr_result.is_significant}")
+```bash
+uv add 'ml4t-diagnostic[viz]'       # Plotly charts and static export
+uv add 'ml4t-diagnostic[ml]'        # LightGBM, XGBoost, and supported SHAP builds
+uv add 'ml4t-diagnostic[perf]'      # Optional Numba acceleration
+uv add 'ml4t-diagnostic[backtest]'  # ml4t-backtest result bridge
+uv add 'ml4t-diagnostic[data]'      # ml4t-data integration
+uv add 'ml4t-diagnostic[factors]'   # Factor-data sourcing through ml4t-data
+uv add 'ml4t-diagnostic[dashboard]' # Streamlit dashboard
+uv add 'ml4t-diagnostic[all]'       # All supported optional features
 ```
 
-## Diagnostic Framework
-
-```
-Tier 1: Feature Analysis (Pre-Modeling)
-├── Time series diagnostics (stationarity, ACF, volatility)
-├── Distribution analysis (moments, normality, tails)
-├── Feature importance (MDI, PFI, MDA, SHAP)
-└── Feature interactions (conditional IC, H-stat)
-
-Tier 2: Signal Analysis (Model Outputs)
-├── IC analysis (time series, histogram, decay)
-├── Quantile returns (spreads, monotonicity)
-├── Turnover analysis
-└── Multi-signal comparison
-
-Tier 3: Backtest Analysis (Post-Modeling)
-├── Trade analysis (win/loss, holding periods)
-├── Statistical validity (DSR, RAS, PBO)
-├── Trade-SHAP diagnostics
-└── Excursion analysis (TP/SL optimization)
-
-Tier 4: Portfolio Analysis (Production)
-├── Performance metrics (Sharpe, Sortino, Calmar)
-├── Drawdown analysis
-├── Rolling metrics
-└── Risk metrics (VaR, CVaR)
-```
-
-## Statistical Methods
-
-| Method | Purpose |
-|--------|---------|
-| DSR (Deflated Sharpe) | Corrects for multiple testing bias |
-| CPCV (Combinatorial Purged CV) | Leak-free time series validation |
-| RAS (Rademacher Anti-Serum) | Backtest overfitting detection |
-| PBO | Probability of backtest overfitting |
-| HAC-adjusted IC | Autocorrelation-robust information coefficient |
-| FDR Control | Multiple comparisons (Benjamini-Hochberg) |
-
-## Cross-Validation
-
-See the executable [cross-validation guide](docs/user-guide/cross-validation.md) for
-walk-forward and combinatorial purged cross-validation examples.
-
-## Backtest Tear Sheets
-
-The tearsheet pipeline supports direct rendering from normalized surfaces,
-`BacktestResult`, or saved run artifacts.
-
-Four presets covering different analysis needs:
-
-| Template | Focus | Sections |
-|----------|-------|----------|
-| `quant_trader` | Trade-level analysis | overview, trading, performance, validation, ML, factors |
-| `hedge_fund` | Performance and costs | overview, performance, trading, validation, factors, ML |
-| `risk_manager` | Statistical credibility | overview, validation, performance, trading, factors, ML |
-| `full` | Comprehensive presentation | overview, performance, trading, validation, factors, ML |
-
-The [backtest tearsheet guide](docs/user-guide/backtest-tearsheets.md) contains a
-complete example with synthetic trades and returns.
-
-## Portfolio Analysis
-
-```python
-import numpy as np
-
-from ml4t.diagnostic.evaluation import PortfolioAnalysis
-
-rng = np.random.default_rng(42)
-daily_returns = rng.normal(loc=0.0004, scale=0.01, size=252)
-pa = PortfolioAnalysis(daily_returns)
-metrics = pa.compute_summary_stats()
-
-print(f"Sharpe: {metrics.sharpe_ratio:.2f}")
-print(f"Sortino: {metrics.sortino_ratio:.2f}")
-print(f"Max Drawdown: {metrics.max_drawdown:.2%}")
-print(f"VaR (95%): {metrics.var_95:.2%}")
-```
-
-`PortfolioMetrics` exposes `total_return`, `annual_return`, `annual_volatility`,
-`sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `omega_ratio`, `tail_ratio`,
-`max_drawdown`, `skewness`, `kurtosis`, `var_95`, `cvar_95`, `stability`,
-`win_rate`, `profit_factor`, `avg_win`, and `avg_loss`. When a benchmark is
-provided, it also exposes `alpha`, `beta`, `information_ratio`, `up_capture`,
-and `down_capture`.
-
-## Feature and Trade Diagnostics
-
-The user guides contain executable workflows for [feature selection](docs/user-guide/feature-selection.md),
-[feature diagnostics](docs/user-guide/feature-diagnostics.md), and
-[trade analysis](docs/user-guide/trade-analysis.md).
+LightGBM requires an OpenMP runtime on macOS. SHAP and Numba are excluded on
+Intel macOS with Python 3.14 because compatible wheels are unavailable. Static
+Plotly image and PDF export through current Kaleido releases may require a
+local Chrome or Chromium installation. Core signal analysis does not require
+these optional runtimes.
 
 ## Documentation
 
-- [Docs Site](https://ml4trading.io/docs/diagnostic/) - deployed documentation
-- [Backtest Tearsheets](docs/user-guide/backtest-tearsheets.md) - `BacktestResult`, artifact, and profile-driven reporting
-- [Book Guide](docs/book-guide/index.md) - chapter and case-study map
-- [Workflows](docs/user-guide/workflows.md) - end-to-end analysis patterns
-- [Validation Tiers](docs/user-guide/validation-tiers.md) - four-tier diagnostic framework
-- [Cross-Validation](docs/user-guide/cross-validation.md) - CPCV and walk-forward splitting
-- [CV Configuration](docs/user-guide/cv-configuration.md) - JSON/YAML config and fold persistence
-- [Feature Diagnostics](docs/user-guide/feature-diagnostics.md) - importance and interaction analysis
-- [Feature Selection](docs/user-guide/feature-selection.md) - systematic multi-criteria selection
-- [Statistical Tests](docs/user-guide/statistical-tests.md) - DSR, RAS, PBO, HAC
-- [Trade Analysis](docs/user-guide/trade-analysis.md) - trade-level diagnostics and SHAP
-
-## Technical Characteristics
-
-- **Polars-based**: Native Polars DataFrames throughout
-- **HAC standard errors**: Newey-West adjustment for autocorrelated data
-- **Time-aware validation**: Purged and embargoed cross-validation splits
-- **Calendar-aware**: NYSE, CME, crypto calendars for trading-day gaps
-- **65+ visualizations**: Plotly-based with 4 themes (default, dark, print, presentation)
-- **PDF/HTML export**: Institutional-grade tear sheets
-- **Type-safe**: 0 type diagnostics (ty/Astral), full type annotations
-- **Release-blocking examples**: public scripts and documentation execute in CI
+- [Documentation](https://www.ml4trading.io/docs/diagnostic/)
+- [Installation and optional dependencies](docs/getting-started/installation.md)
+- [Cross-validation](docs/user-guide/cross-validation.md)
+- [Statistical tests](docs/user-guide/statistical-tests.md)
+- [Feature diagnostics](docs/user-guide/feature-diagnostics.md)
+- [Feature selection](docs/user-guide/feature-selection.md)
+- [Backtest tearsheets](docs/user-guide/backtest-tearsheets.md)
+- [Trade analysis](docs/user-guide/trade-analysis.md)
+- [API reference](docs/api/index.md)
+- [Book guide](docs/book-guide/index.md)
+- [Issue tracker](https://github.com/ml4t/diagnostic/issues)
+- [Release notes](https://github.com/ml4t/diagnostic/releases)
 
 ## Related Libraries
 
-- **ml4t-data**: Market data acquisition and storage
-- **ml4t-engineer**: Feature engineering and technical indicators
-- **ml4t-backtest**: Event-driven backtesting
-- **ml4t-live**: Live trading with broker integration
+- [ml4t-data](https://github.com/ml4t/data) provides market and factor data.
+- [ml4t-engineer](https://github.com/ml4t/engineer) creates model features.
+- [ml4t-models](https://github.com/ml4t/models) trains and evaluates models.
+- [ml4t-backtest](https://github.com/ml4t/backtest) produces backtest results.
+- [ml4t-live](https://github.com/ml4t/live) runs qualified strategies live.
+- [ml4t-specs](https://github.com/ml4t/specs) defines shared artifact contracts.
 
 ## Development
 
 ```bash
 git clone https://github.com/ml4t/diagnostic.git
-cd ml4t-diagnostic
-uv sync
-uv run pytest tests/ -q -n auto
+cd diagnostic
+uv sync --all-extras --dev
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
 uv run ty check
+uv run pytest tests/ -q -n auto --timeout 120
+uv run mkdocs build --strict
+pre-commit run --all-files
 ```
 
-## References
-
-- Lopez de Prado, M. (2018). *Advances in Financial Machine Learning*. Wiley.
-- Bailey, D., & Lopez de Prado, M. (2012). "The Sharpe Ratio Efficient Frontier."
-- Bailey, D., et al. (2014). "The Deflated Sharpe Ratio."
-- Bailey, D., et al. (2016). "The Probability of Backtest Overfitting."
-- Lopez de Prado, M. (2020). "Combinatorial Purged Cross-Validation."
+Pull requests should identify an owning issue and state any compatibility or
+release impact.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+[MIT License](LICENSE)

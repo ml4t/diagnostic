@@ -80,7 +80,7 @@ class TradeRecord(BaseModel):
     """Individual trade record for trade-level SHAP diagnostics.
 
     This schema represents a single completed trade from a backtest or live trading.
-    Used by ml4t-diagnostics for trade-level analysis, SHAP attribution, and
+    Used by ml4t-diagnostic for trade-level analysis, SHAP attribution, and
     error pattern clustering.
 
     The schema supports both simple (single-leg) and complex (multi-leg) trades,

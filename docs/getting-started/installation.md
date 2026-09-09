@@ -77,8 +77,8 @@ For contributing to ML4T Diagnostic:
 
 ```bash
 git clone https://github.com/ml4t/diagnostic.git
-cd ml4t-diagnostic
-pip install -e ".[all,dev]"
+cd diagnostic
+uv sync --all-extras --dev
 ```
 
 ## Using The Book Code Locally
@@ -131,6 +131,11 @@ print(diag.__version__)
 | numba | perf | JIT acceleration (not installed on Intel macOS with Python 3.14) |
 | plotly | viz | Interactive charts |
 | matplotlib | viz | Static charts |
+
+Core signal analysis requires no external service or special hardware.
+LightGBM requires an OpenMP runtime on macOS. Static Plotly image and PDF
+export through current Kaleido releases may require a local Chrome or Chromium
+installation.
 
 ### Migrating from beta releases
 

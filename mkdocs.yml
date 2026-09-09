@@ -2,10 +2,12 @@
 # MkDocs Material configuration with Picasso Blue palette
 
 site_name: ML4T Diagnostic
-site_description: Statistical validation and diagnostics for ML-based quantitative trading
+site_description: Signal diagnostics, statistical validation, and backtest evaluation for quantitative trading workflows.
 site_url: https://www.ml4trading.io/docs/diagnostic/
 repo_url: https://github.com/ml4t/diagnostic
 repo_name: ml4t/diagnostic
+exclude_docs: |
+  overrides/
 
 # Theme configuration
 theme:
@@ -129,6 +131,9 @@ nav:
 
 # Extra configuration
 extra:
+  ml4t_library: diagnostic
+  ml4t_version: !ENV [ML4T_DOCS_VERSION, development]
+  ml4t_commit: !ENV [ML4T_DOCS_COMMIT, 0000000000000000000000000000000000000000]
   ml4t_docs_hub_url: /docs/
   ml4t_libraries_url: /libraries/
   ml4t_chapters_url: /chapters/

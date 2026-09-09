@@ -22,5 +22,5 @@ Integration points for `ml4t-data`, `ml4t-engineer`, and `ml4t-backtest`.
 
 ## Notes
 
-- This package is where the recent tearsheet/reporting bridge lives.
+- This package contains the tearsheet and reporting bridges.
 - Rendering itself happens in `visualization/backtest/`.

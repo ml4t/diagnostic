@@ -1,5 +1,4 @@
-# ML4T Diagnostic - Mathematical rigor in quantitative finance validation
-# Independent package configuration for standalone distribution
+# ML4T Diagnostic package configuration
 
 [build-system]
 requires = ["hatchling"]
@@ -11,6 +10,7 @@ path = "src/ml4t/diagnostic/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ml4t"]
 namespaces = true
+exclude = ["**/AGENTS.md"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -18,17 +18,21 @@ include = [
     "/tests",
     "/docs",
     "/examples",
+    "/scripts",
     "/README.md",
     "/LICENSE",
     "/CHANGELOG.md",
+    "/pyproject.toml",
 ]
+exclude = ["**/AGENTS.md"]
 
 [project]
 name = "ml4t-diagnostic"
 dynamic = ["version"]
 description = "Signal diagnostics, statistical validation, and backtest evaluation for quantitative trading workflows."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Stefan Jansen", email = "stefan@applied-ai.com" },
 ]
@@ -188,7 +192,7 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://ml4trading.io/"
+Homepage = "https://www.ml4trading.io/docs/diagnostic/"
 Documentation = "https://www.ml4trading.io/docs/diagnostic/"
 Repository = "https://github.com/ml4t/diagnostic"
 Issues = "https://github.com/ml4t/diagnostic/issues"
@@ -211,6 +215,7 @@ test = [
 ]
 dev = [
     { include-group = "test" },
+    "packaging==26.3",
     "ruff>=0.8.0",
     "ty",
     "pre-commit>=3.3.0",

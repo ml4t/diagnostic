@@ -592,12 +592,7 @@ class TestCombinatorialCV:
 
 
 class TestBaseSplitterRegressions:
-    """Regression tests for bugs found in code review (Jan 2026).
-
-    These tests verify fixes for bugs identified in:
-    - .claude/code_review/260109/combinatorial_review.md
-    - .claude/code_review/260109/combinatorial_review_02.md
-    """
+    """Regression tests for previously incorrect splitter behavior."""
 
     def test_validate_data_polars_series_no_type_error(self):
         """Bug: isinstance(y, pl.Series | pd.Series) raises TypeError on Python <3.10.
@@ -844,12 +839,7 @@ class TestSessionAlignmentRegressions:
 
 
 class TestCPCVInvariants:
-    """Pre-refactor tests that lock in expected behavior.
-
-    These tests verify invariants that must hold before and after any
-    refactoring of the CPCV implementation. Based on code review
-    recommendations from .claude/code_review/260112/combinatorial-01.md
-    """
+    """Tests that lock in CPCV behavior across implementation changes."""
 
     def test_contiguous_single_asset_purging(self):
         """Test purging correctness for contiguous single-asset data.

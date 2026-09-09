@@ -1,8 +1,10 @@
 # ML4T Diagnostic
 
+Signal diagnostics, statistical validation, and backtest evaluation for
+quantitative trading workflows.
+
 `ml4t.diagnostic` tests signals, models, and backtest results for leakage,
-overfitting, and multiple-testing bias. It is the statistical validation
-library in the ML4T package suite.
+overfitting, and multiple-testing bias within the ML4T package suite.
 
 ## Start with an executable check
 

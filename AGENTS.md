@@ -15,7 +15,7 @@ Statistical validation and diagnostics for ML-based quantitative trading workflo
 | Signal analysis and IC workflows | `src/ml4t/diagnostic/signal/` |
 | Purged CV, held-out tests, fold persistence | `src/ml4t/diagnostic/splitters/` |
 | Statistical tests and inference | `src/ml4t/diagnostic/evaluation/stats/` |
-| Feature metrics and importance | `src/ml4t/diagnostic/evaluation/metrics/` |
+| Feature metrics and importance | `src/ml4t/diagnostic/metrics/` |
 | Trade SHAP diagnostics | `src/ml4t/diagnostic/evaluation/trade_shap/` |
 | Factor attribution and exposures | `src/ml4t/diagnostic/evaluation/factor/` |
 | Backtest bridges and tearsheet entry points | `src/ml4t/diagnostic/integration/` |
@@ -33,8 +33,18 @@ from ml4t.diagnostic.selection import FeatureSelector
 from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
 ```
 
+## Quality Commands
+
+```bash
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run ty check
+uv run pytest tests/ -q -n auto --timeout 120
+uv run mkdocs build --strict
+pre-commit run --all-files
+```
+
 ## Notes
 
 - `ml4t.diagnostic` sits between `ml4t-engineer` and `ml4t-backtest` in the ML4T stack.
-- The docs and book guide are current and should be treated as part of the package surface.
-- Module-level agent guides now use the canonical `AGENTS.md` filename throughout the repo.
+- Treat the documentation and book guide as part of the public package surface.

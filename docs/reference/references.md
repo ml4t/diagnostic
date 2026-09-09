@@ -1,6 +1,7 @@
 # ML4T Diagnostic: Academic Foundations & Implementation Guide
 
-This document provides comprehensive educational documentation linking our implementations to their academic foundations. Each section explains **what** the algorithm does, **why** it matters, **how** we implemented it, and cites the **source** material.
+This reference links implemented methods to their academic foundations and
+describes their purpose, implementation, and source material.
 
 ---
 
@@ -399,7 +400,9 @@ Where w_j = 1 - |j|/(L+1) (Bartlett kernel).
 
 **Implementation**: `ml4t.diagnostic.evaluation.stats.stationary_bootstrap_ic()`
 
-More rigorous than HAC for rank correlations. The **stationary bootstrap** (Politis & Romano, 1994) preserves temporal dependence through random block lengths.
+The **stationary bootstrap** (Politis & Romano, 1994) preserves temporal
+dependence through random block lengths and provides a resampling alternative
+to HAC inference.
 
 **References**:
 

@@ -1,15 +1,56 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: New stable package version without the v prefix
+        required: true
+        type: string
+      candidate-sha:
+        description: Exact current main commit to publish
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  preflight:
+    name: Validate unpublished main candidate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.candidate-sha }}
+      - run: git fetch --no-tags origin main
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.10.9"
+      - name: Check main identity and public version absence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          uv run --no-project --with packaging
+          python scripts/check_release_preflight.py
+          --version "${{ inputs.version }}"
+          --candidate-sha "${{ inputs.candidate-sha }}"
+          --workflow-sha "${{ github.sha }}"
+          --repository "${{ github.repository }}"
+
   ecosystem-qualification:
     name: Ecosystem Qualification
+    needs: preflight
     permissions:
       contents: read
     uses: ml4t/ecosystem/.github/workflows/qualify-library.yml@457678d8860d0c816b1dc376e7e2691daa93af4d # v0.1.0
@@ -18,71 +59,267 @@ jobs:
       prerelease-exception: python-315-scipy
 
   validate:
+    needs: preflight
     uses: ./.github/workflows/test-matrix.yml
 
   security:
+    needs: preflight
     uses: ./.github/workflows/security.yml
 
-  build:
-    name: Build Package
+  source-quality:
+    name: Source and documentation qualification
     runs-on: ubuntu-latest
-    needs: [ecosystem-qualification, validate, security]
+    needs: preflight
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+          persist-credentials: false
+          ref: ${{ inputs.candidate-sha }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.10.9"
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev --extra docs
+      - run: uv run ruff check src/ tests/ scripts/
+      - run: uv run ruff format --check src/ tests/ scripts/
+      - run: uv run ty check
+      - name: Build and verify documentation
+        env:
+          ML4T_DOCS_VERSION: ${{ inputs.version }}
+          ML4T_DOCS_COMMIT: ${{ inputs.candidate-sha }}
+        run: |
+          uv run mkdocs build --strict
+          uv run --no-project python scripts/verify_documentation_identity.py \
+            --site site \
+            --expected-library diagnostic \
+            --expected-version "$ML4T_DOCS_VERSION" \
+            --expected-commit "$ML4T_DOCS_COMMIT"
 
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Build package
-        run: uv build
-
-      - name: Check release artifacts
-        run: uv run --isolated --no-project python scripts/verify_release_artifacts.py dist
-
-      - name: Import installed wheel
-        shell: bash
-        run: uv run --isolated --no-project --with "$(find dist -name '*.whl' -print -quit)" python scripts/import_smoke.py
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7.0.1
+  build:
+    name: Build package and documentation once
+    runs-on: ubuntu-latest
+    needs: [ecosystem-qualification, validate, security, source-quality]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: dist
+          persist-credentials: false
+          ref: ${{ inputs.candidate-sha }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.10.9"
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen --dev --extra docs
+      - run: uv build
+      - name: Check release artifacts
+        run: >-
+          uv run --isolated --no-project --with packaging
+          python scripts/verify_release_artifacts.py dist
+          --expected-version "${{ inputs.version }}"
+      - name: Import and exercise the installed wheel
+        shell: bash
+        run: |
+          wheel=$(find dist -name '*.whl' -print -quit)
+          uv run --isolated --no-project --with "$wheel" python -I scripts/import_smoke.py
+          uv run --isolated --no-project --with "$wheel" python -I scripts/run_readme_quickstart.py
+      - name: Build verified documentation artifact
+        env:
+          ML4T_DOCS_VERSION: ${{ inputs.version }}
+          ML4T_DOCS_COMMIT: ${{ inputs.candidate-sha }}
+        run: |
+          uv run mkdocs build --strict
+          uv run --no-project python scripts/verify_documentation_identity.py \
+            --site site \
+            --expected-library diagnostic \
+            --expected-version "$ML4T_DOCS_VERSION" \
+            --expected-commit "$ML4T_DOCS_COMMIT"
+      - name: Write release manifest
+        run: >-
+          uv run --no-project python scripts/write_release_manifest.py
+          --dist dist
+          --version "${{ inputs.version }}"
+          --commit "${{ inputs.candidate-sha }}"
+          --output release-manifest.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ inputs.candidate-sha }}
           path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-${{ inputs.candidate-sha }}
+          path: site/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest-${{ inputs.candidate-sha }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 90
 
-  publish:
-    name: Publish to PyPI
+  documentation:
+    name: Deploy and verify qualified documentation
     runs-on: ubuntu-latest
     needs: build
+    environment: documentation
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.candidate-sha }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: docs-${{ inputs.candidate-sha }}
+          path: site/
+      - name: Require the documentation deploy credential
+        env:
+          DOCS_DEPLOY_KEY: ${{ secrets.DOCS_DEPLOY_KEY }}
+        run: test -n "$DOCS_DEPLOY_KEY"
+      - name: Verify documentation before deployment
+        run: >-
+          python scripts/verify_documentation_identity.py
+          --site site
+          --expected-library diagnostic
+          --expected-version "${{ inputs.version }}"
+          --expected-commit "${{ inputs.candidate-sha }}"
+      - name: Deploy the qualified documentation artifact
+        uses: cpina/github-action-push-to-another-repository@55306faa4ed53b815ae49e564af8cfb359d32ae2 # v1.7.3
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.DOCS_DEPLOY_KEY }}
+        with:
+          source-directory: site/
+          destination-github-username: ml4t
+          destination-repository-name: website
+          target-directory: static/docs/diagnostic/
+          target-branch: main
+          commit-message: "docs(diagnostic): release ${{ inputs.version }} from ${{ inputs.candidate-sha }}"
+          user-name: ml4t-bot
+          user-email: bot@ml4trading.io
+      - name: Verify deployed documentation identity
+        run: >-
+          python scripts/verify_documentation_identity.py
+          --url https://www.ml4trading.io/docs/diagnostic/
+          --expected-library diagnostic
+          --expected-version "${{ inputs.version }}"
+          --expected-commit "${{ inputs.candidate-sha }}"
+          --attempts 12
+          --delay 10
+
+  publish:
+    name: Publish exact candidate to PyPI
+    runs-on: ubuntu-latest
+    needs: documentation
     environment: pypi
     permissions:
+      actions: read
+      contents: read
       id-token: write
     steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: dist
+          name: dist-${{ inputs.candidate-sha }}
           path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.14.2
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/
+          verify-metadata: true
+          print-hash: true
+          attestations: true
 
   github-release:
-    name: Create GitHub Release
+    name: Create tag and GitHub release
     runs-on: ubuntu-latest
     needs: publish
     permissions:
+      actions: read
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Create GitHub Release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist-${{ inputs.candidate-sha }}
+          path: dist/
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-manifest-${{ inputs.candidate-sha }}
+      - name: Create release from the published candidate
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --generate-notes
+        run: >-
+          gh release create "v${{ inputs.version }}"
+          dist/* release-manifest.json
+          --generate-notes
+          --repo "${{ github.repository }}"
+          --target "${{ inputs.candidate-sha }}"
+
+  post-publication:
+    name: Verify package, release, and documentation
+    runs-on: ubuntu-latest
+    needs: github-release
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.candidate-sha }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.10.9"
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-manifest-${{ inputs.candidate-sha }}
+      - name: Verify PyPI metadata and GitHub release digests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          uv run --no-project --with packaging
+          python scripts/verify_published_release.py
+          --manifest release-manifest.json
+          --repository "${{ github.repository }}"
+      - name: Install and exercise the published wheel
+        shell: bash
+        run: |
+          uv venv --clear --python "${{ env.PYTHON_VERSION }}" "${RUNNER_TEMP}/published-venv"
+          uv pip install \
+            --python "${RUNNER_TEMP}/published-venv/bin/python" \
+            --no-cache \
+            --index-url https://pypi.org/simple \
+            "ml4t-diagnostic==${{ inputs.version }}"
+          "${RUNNER_TEMP}/published-venv/bin/python" -I scripts/import_smoke.py
+          "${RUNNER_TEMP}/published-venv/bin/python" -I scripts/run_readme_quickstart.py
+      - name: Verify deployed documentation again
+        run: >-
+          python scripts/verify_documentation_identity.py
+          --url https://www.ml4trading.io/docs/diagnostic/
+          --expected-library diagnostic
+          --expected-version "${{ inputs.version }}"
+          --expected-commit "${{ inputs.candidate-sha }}"
+          --attempts 6
+          --delay 10
+
+  recovery:
+    name: Record a post-publication recovery issue
+    runs-on: ubuntu-latest
+    needs: [publish, github-release, post-publication]
+    if: >-
+      ${{ always() && needs.publish.result == 'success' &&
+      (needs.github-release.result != 'success' || needs.post-publication.result != 'success') }}
+    permissions:
+      issues: write
+    steps:
+      - name: Record the failed release stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh issue create
+          --repo "${{ github.repository }}"
+          --title "Recover release v${{ inputs.version }}"
+          --body "Publication of v${{ inputs.version }} from ${{ inputs.candidate-sha }} crossed the PyPI boundary, but GitHub release or post-publication verification failed. Inspect workflow run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Do not reuse this version for different artifacts."

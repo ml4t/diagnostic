@@ -7,21 +7,6 @@ labels:
   - "status: needs-triage"
   - "compatibility: none"
 body:
-  - type: dropdown
-    id: library
-    attributes:
-      label: Affected library
-      options:
-        - data
-        - engineer
-        - backtest
-        - specs
-        - live
-        - diagnostic
-        - models
-        - ecosystem
-    validations:
-      required: true
   - type: input
     id: version
     attributes:
