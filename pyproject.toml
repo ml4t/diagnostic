@@ -26,16 +26,17 @@ include = [
 [project]
 name = "ml4t-diagnostic"
 dynamic = ["version"]
-description = "Comprehensive diagnostic and evaluation framework for quantitative finance ML workflows"
+description = "Signal diagnostics, statistical validation, and backtest evaluation for quantitative trading workflows."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "QuantLab Team", email = "info@quantlab.io" },
+    { name = "Stefan Jansen", email = "stefan@applied-ai.com" },
 ]
 maintainers = [
-    { name = "QuantLab Contributors", email = "dev@quantlab.io" },
+    { name = "Stefan Jansen", email = "pm@ml4trading.io" },
 ]
 keywords = [
+    "algorithmic-trading",
     "finance",
     "validation",
     "backtesting",
@@ -191,7 +192,7 @@ Homepage = "https://ml4trading.io/"
 Documentation = "https://www.ml4trading.io/docs/diagnostic/"
 Repository = "https://github.com/ml4t/diagnostic"
 Issues = "https://github.com/ml4t/diagnostic/issues"
-Changelog = "https://github.com/ml4t/diagnostic/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/ml4t/diagnostic/releases"
 
 [dependency-groups]
 test = [
