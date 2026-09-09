@@ -36,6 +36,12 @@ print(path.read_text())
 Use `to_yaml` and `from_yaml` for YAML. Both formats preserve the validated
 configuration values.
 
+`label_horizon` accepts an integer number of observations or a fixed duration
+such as `5D` or `1W`. Monthly research configurations may use `1M` or the ISO
+form `P1M`; each month is deliberately normalized to 30 calendar days because
+purging requires a fixed duration. Use `30D` directly when you want that
+approximation to be explicit.
+
 ## Persist generated folds
 
 Persist the actual train/test indices when an audit or later model run must use

@@ -53,6 +53,37 @@ def _assign_quantile_labels(values: np.ndarray, n_quantiles: int) -> np.ndarray:
     return labels
 
 
+def _per_date_ic_samples(
+    feature: np.ndarray,
+    returns: np.ndarray,
+    dates: np.ndarray,
+    quantile_ids: np.ndarray,
+    *,
+    n_quantiles: int,
+    method: str,
+    min_periods: int,
+) -> list[list[float]]:
+    """Compute matched per-date IC observations for each quantile."""
+    observations: list[list[float]] = []
+    for date_value in np.unique(dates):
+        date_mask = dates == date_value
+        row: list[float] = []
+        for quantile in range(1, n_quantiles + 1):
+            mask = date_mask & (quantile_ids == quantile)
+            if int(np.sum(mask)) < min_periods:
+                break
+            result = pooled_ic(feature[mask], returns[mask], method=method)
+            value = float(result.get("ic", np.nan)) if isinstance(result, dict) else float(result)
+            if not np.isfinite(value):
+                break
+            row.append(value)
+        if len(row) == n_quantiles:
+            observations.append(row)
+    if not observations:
+        return [[] for _ in range(n_quantiles)]
+    return [list(sample) for sample in zip(*observations, strict=True)]
+
+
 def compute_conditional_ic(
     feature_a: Union[pl.DataFrame, pd.DataFrame, pl.Series, pd.Series, "NDArray[Any]"],
     feature_b: Union[pl.DataFrame, pd.DataFrame, pl.Series, pd.Series, "NDArray[Any]"],
@@ -106,8 +137,9 @@ def compute_conditional_ic(
         - quantile_bounds: Mean value of feature_b in each quantile (dict)
         - ic_variation: Std dev of ICs across quantiles (float)
         - ic_range: Max - min IC (float)
-        - significance_pvalue: Statistical test p-value (float)
-        - test_statistic: Kruskal-Wallis H statistic (float)
+        - significance_pvalue: Friedman-test p-value for repeated per-date ICs,
+          or None when the input cannot support inference
+        - test_statistic: Friedman chi-squared statistic, or None
         - n_quantiles: Number of quantiles (int)
         - n_obs_per_quantile: Observations in each quantile (dict)
         - interpretation: Automated insight generation (str)
@@ -128,11 +160,11 @@ def compute_conditional_ic(
     >>>
     >>> result = compute_conditional_ic(momentum, volatility, returns)
     >>> print(f"IC Range: {result['ic_range']:.3f}")
-    >>> print(f"P-value: {result['significance_pvalue']:.3f}")
+    >>> print(result["significance_pvalue"])
     >>> print(result['interpretation'])
     IC Range: 0.234
-    P-value: 0.001
-    Strong interaction detected: IC ranges from 0.012 to 0.246 across feature_b quantiles (p=0.001)
+    None
+    Descriptive interaction signal: IC varies across quantiles with range=0.234 and std=0.091. Statistical significance requires panel data with repeated per-date IC observations.
 
     Notes
     -----
@@ -147,9 +179,9 @@ def compute_conditional_ic(
     (date) to avoid lookahead bias. This ensures quantile bins are time-consistent.
 
     **Statistical Significance**:
-    Uses Kruskal-Wallis test (non-parametric one-way ANOVA) to test if IC
-    variation across quantiles is statistically significant. This is more robust
-    than parametric ANOVA when ICs may not be normally distributed.
+    Panel inputs with ``date_col`` use a Friedman test across matched per-date
+    IC observations in each conditioning quantile. Ungrouped inputs provide one
+    aggregate IC per quantile and therefore return no p-value.
 
     **Comparison to SHAP Interactions**:
     - Conditional IC: Fast, interpretable, requires no model, pairwise only
@@ -165,6 +197,7 @@ def compute_conditional_ic(
     """
     adapter = DataFrameAdapter()
     quantile_labels = [f"Q{i + 1}" for i in range(n_quantiles)]
+    ic_samples_by_quantile: list[list[float]] | None = None
 
     # Handle Series/array inputs
     if isinstance(feature_a, pl.Series | pd.Series | np.ndarray):
@@ -208,8 +241,6 @@ def compute_conditional_ic(
         ic_by_quantile: list[float] = []
         quantile_bounds: dict[Any, float] = {}
         n_obs_per_quantile: dict[Any, int] = {}
-        ic_series_list: list[float] = []
-
         for i, q_label in enumerate(quantile_labels, start=1):
             mask = quantile_ids == i
             n_obs = int(np.sum(mask))
@@ -229,10 +260,6 @@ def compute_conditional_ic(
             ic_by_quantile.append(ic_val)
             quantile_bounds[q_label] = float(np.mean(feat_b_clean[mask]))
             n_obs_per_quantile[q_label] = n_obs
-
-            # Store individual IC values for statistical test
-            # (approximation: use bootstrap or treat IC as single observation)
-            ic_series_list.append(ic_val)
 
     else:
         # DataFrame input with Polars-first internal path
@@ -318,8 +345,6 @@ def compute_conditional_ic(
         ic_by_quantile = []
         quantile_bounds = {}
         n_obs_per_quantile = {}
-        ic_series_list = []
-
         for i, q_label in enumerate(quantile_labels, start=1):
             mask = quantile_ids == i
             n_obs = int(np.sum(mask))
@@ -337,7 +362,16 @@ def compute_conditional_ic(
             ic_by_quantile.append(ic_val)
             quantile_bounds[q_label] = float(np.mean(feat_b_quant[mask]))
             n_obs_per_quantile[q_label] = n_obs
-            ic_series_list.append(ic_val)
+        if date_col is not None:
+            ic_samples_by_quantile = _per_date_ic_samples(
+                feat_a_quant,
+                ret_quant,
+                date_arr[valid_quantile_mask],
+                quantile_ids,
+                n_quantiles=n_quantiles,
+                method=method,
+                min_periods=min_periods,
+            )
 
     # Convert to arrays
     ic_array = np.array(ic_by_quantile)
@@ -356,43 +390,31 @@ def compute_conditional_ic(
         ic_variation = float(np.std(valid_ics))
         ic_range = float(np.max(valid_ics) - np.min(valid_ics))
 
-        # Statistical significance test: Kruskal-Wallis
-        # Test if ICs differ significantly across quantiles
-        # Note: We're testing a single IC per quantile, which is a limitation
-        # In practice, this is an approximation - ideally we'd bootstrap or
-        # compute IC time series per quantile for more robust testing
-        if len(valid_ics) >= 3:
-            # For Kruskal-Wallis, we need at least 3 groups
-            # Create dummy groups (each IC is one observation)
-            # This is a conservative approximation
+        if (
+            ic_samples_by_quantile is not None
+            and len(ic_samples_by_quantile) >= 3
+            and all(len(samples) >= 2 for samples in ic_samples_by_quantile)
+        ):
+            from scipy.stats import friedmanchisquare
+
             try:
-                # Simple approach: treat each quantile's IC as a single sample
-                # This understates significance but is conservative
-                # Better approach would be bootstrap IC distributions per quantile
-
-                # Create groups for Kruskal-Wallis
-                # Since we only have one IC per quantile, we'll use a simpler test
-                # Check if variance is significant using randomization
-                # For now, use a heuristic based on IC range and number of quantiles
-                test_statistic = ic_range / (ic_variation + 1e-10)
-                # Conservative: assume independence, use t-test approximation
-                # This is a placeholder for proper bootstrap testing
-                from scipy.stats import t
-
-                df_test = len(valid_ics) - 1
-                pvalue = 2 * t.sf(abs(test_statistic), df_test)
-            except Exception:
-                test_statistic = np.nan
-                pvalue = np.nan
+                result = friedmanchisquare(*ic_samples_by_quantile)
+                test_statistic = float(result.statistic)
+                pvalue = float(result.pvalue)
+            except ValueError:
+                test_statistic = None
+                pvalue = None
         else:
-            test_statistic = np.nan
-            pvalue = np.nan
+            test_statistic = None
+            pvalue = None
 
         # Generate interpretation
-        if np.isnan(pvalue):
+        if pvalue is None or not np.isfinite(pvalue):
             interpretation = (
-                f"IC varies across quantiles: range={ic_range:.3f}, std={ic_variation:.3f}. "
-                "Statistical significance could not be determined."
+                "Descriptive interaction signal: IC varies across quantiles with "
+                f"range={ic_range:.3f} and std={ic_variation:.3f}. "
+                "Statistical significance requires panel data with repeated per-date IC "
+                "observations."
             )
         elif ic_range > 0.1 and pvalue < 0.05:
             ic_min = float(np.min(valid_ics))
