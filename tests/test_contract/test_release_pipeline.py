@@ -190,3 +190,11 @@ def test_external_workflow_actions_use_full_commit_pins() -> None:
             if not re.fullmatch(r"[0-9a-f]{40}", revision):
                 failures.append(f"{workflow.name}: {name}@{revision}")
     assert failures == []
+
+
+def test_release_workflow_allows_reusable_jobs_to_read_checkout() -> None:
+    release_workflow = (REPOSITORY_ROOT / ".github/workflows/release.yml").read_text(
+        encoding="utf-8"
+    )
+    workflow_permissions = release_workflow.split("\nconcurrency:", maxsplit=1)[0]
+    assert re.search(r"^permissions:\n  contents: read$", workflow_permissions, re.MULTILINE)
