@@ -82,6 +82,20 @@ class TestConditionalIC:
         if result["significance_pvalue"] is not None and result["significance_pvalue"] > 0.05:
             assert "no significant interaction" in result["interpretation"].lower()
 
+    def test_ungrouped_inputs_do_not_report_invalid_significance(self):
+        """One pooled IC per quantile cannot support an inferential p-value."""
+        rng = np.random.default_rng(7)
+
+        result = compute_conditional_ic(
+            rng.normal(size=1000),
+            rng.normal(size=1000),
+            rng.normal(size=1000),
+        )
+
+        assert result["significance_pvalue"] is None
+        assert result["test_statistic"] is None
+        assert "requires panel data" in result["interpretation"].lower()
+
     def test_inverted_interaction_low_regime(self):
         """Test detection when feature A works only in low B regime."""
         np.random.seed(42)
@@ -379,6 +393,41 @@ class TestConditionalICPanelData:
 
         # Should detect interaction
         assert result["ic_range"] > 0.1, f"IC range too small: {result['ic_range']}"
+
+    def test_panel_inference_uses_repeated_per_date_ic_samples(self):
+        """Repeated cross-sectional ICs support an omnibus quantile comparison."""
+        rng = np.random.default_rng(42)
+        rows = []
+        for date in pd.date_range("2024-01-01", periods=30):
+            conditioning = rng.normal(size=100)
+            feature = rng.normal(size=100)
+            top_quantile = conditioning >= np.quantile(conditioning, 0.8)
+            returns = rng.normal(scale=0.5, size=100)
+            returns[top_quantile] += feature[top_quantile]
+            rows.extend(
+                {
+                    "date": date,
+                    "asset": f"asset_{asset:03d}",
+                    "feature": feature[asset],
+                    "conditioning": conditioning[asset],
+                    "return": returns[asset],
+                }
+                for asset in range(100)
+            )
+        frame = pd.DataFrame(rows)
+
+        result = compute_conditional_ic(
+            frame[["date", "asset", "feature"]],
+            frame[["date", "asset", "conditioning"]],
+            frame[["date", "asset", "return"]],
+            date_col="date",
+            group_col="asset",
+            min_periods=10,
+        )
+
+        assert result["significance_pvalue"] is not None
+        assert result["significance_pvalue"] < 0.01
+        assert result["test_statistic"] is not None
 
     def test_error_on_series_with_date_col(self):
         """Test that using Series with date_col raises error."""
