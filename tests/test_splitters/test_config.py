@@ -3,6 +3,7 @@
 import tempfile
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from ml4t.diagnostic.splitters.config import (
@@ -56,6 +57,18 @@ class TestSplitterConfig:
         """Test that label_horizon must be non-negative."""
         with pytest.raises(ValueError, match="greater than or equal to 0"):
             SplitterConfig(label_horizon=-1)
+
+    @pytest.mark.parametrize(("value", "days"), [("1M", 30), ("P1M", 30), ("2M", 60)])
+    def test_calendar_month_label_horizon_uses_documented_approximation(
+        self, value: str, days: int
+    ):
+        config = SplitterConfig(label_horizon=value)
+
+        assert config.label_horizon == pd.Timedelta(days=days)
+
+    def test_invalid_label_horizon_suggests_fixed_duration(self):
+        with pytest.raises(ValueError, match="Use '30D'"):
+            SplitterConfig(label_horizon="monthly")
 
     def test_validation_embargo_td_non_negative(self):
         """Test that embargo_td must be non-negative when specified."""

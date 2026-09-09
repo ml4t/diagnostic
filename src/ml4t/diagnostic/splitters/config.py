@@ -39,6 +39,7 @@ Examples
 
 from __future__ import annotations
 
+import re
 import warnings
 from datetime import date
 from typing import Any, Literal
@@ -46,6 +47,8 @@ from typing import Any, Literal
 from pydantic import Field, field_validator, model_validator
 
 from ml4t.diagnostic.config.base import BaseConfig
+
+MONTH_HORIZON_PATTERN = re.compile(r"(?:P)?([0-9]+)M")
 
 
 class SplitterConfig(BaseConfig):
@@ -181,12 +184,16 @@ class SplitterConfig(BaseConfig):
         if isinstance(v, str):
             import pandas as pd
 
+            if match := MONTH_HORIZON_PATTERN.fullmatch(v):
+                return pd.Timedelta(days=int(match.group(1)) * 30)
             try:
                 return pd.Timedelta(v)
             except Exception as e:
                 raise ValueError(  # noqa: B904
                     f"Could not parse label_horizon/label_buffer string '{v}' as Timedelta. "
-                    f"Expected formats: '5D', '21D', '1W', '8h'. Error: {e}"
+                    "Expected fixed durations such as '5D', '1W', or '8h', or the "
+                    "30-day calendar-month approximation '1M'/'P1M'. "
+                    f"Use '30D' when an explicit fixed duration is clearer. Error: {e}"
                 )
         raise ValueError(f"label_horizon must be int >= 0 or timedelta-like object, got {type(v)}")
 
