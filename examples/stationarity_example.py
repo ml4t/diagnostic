@@ -31,7 +31,7 @@ try:
 except ImportError:
     HAS_PP = False
     print("Warning: arch package not installed - PP test examples will be skipped")
-    print("Install with: pip install arch or pip install ml4t-evaluation[advanced]\n")
+    print("Install with: pip install arch\n")
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -601,7 +601,7 @@ def main() -> None:
     else:
         print_section("Phillips-Perron Examples Skipped")
         print("The arch package is not installed. PP test examples are skipped.")
-        print("Install with: pip install arch or pip install ml4t-evaluation[advanced]")
+        print("Install with: pip install arch")
 
     # Summary
     print_section("Summary")
