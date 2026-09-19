@@ -1,5 +1,5 @@
 """
-ML4T Evaluation Error Handling Examples
+ML4T Diagnostic Error Handling Examples
 
 Demonstrates all error types, context preservation, error chaining,
 and practical error handling patterns.
@@ -294,7 +294,7 @@ def main():
     """Run all examples."""
     print("\n")
     print("╔" + "=" * 68 + "╗")
-    print("║" + " " * 18 + "ML4T Evaluation Error Handling Examples" + " " * 20 + "║")
+    print("║" + " " * 18 + "ML4T Diagnostic Error Handling Examples" + " " * 20 + "║")
     print("╚" + "=" * 68 + "╝")
     print("\n")
 

@@ -9,8 +9,6 @@ Examples:
 4. ML4T Backtest storage workflow
 5. Export to multiple formats
 
-Author: ML4T Evaluation Team
-Date: 2025-11-03
 """
 
 import polars as pl

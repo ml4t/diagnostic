@@ -570,7 +570,7 @@ def example_pp_vs_adf_comparison() -> None:
 def main() -> None:
     """Run all examples."""
     print("\n" + "=" * 80)
-    print(" ML4T Evaluation Stationarity Testing Examples")
+    print(" ML4T Diagnostic Stationarity Testing Examples")
     print(" ADF, KPSS, and Phillips-Perron Tests")
     print("=" * 80)
 

@@ -1,6 +1,6 @@
 """Complete End-to-End Example: From Model Training to PDF Reports.
 
-ML4T Evaluation provides rigorous statistical evaluation and visualization for ML models,
+ML4T Diagnostic provides rigorous statistical evaluation and visualization for ML models,
 with a focus on feature analysis and preventing overfitting through proper
 statistical testing.
 
@@ -11,7 +11,7 @@ This example demonstrates the complete workflow:
 4. Generate interactive HTML visualizations
 5. Export high-quality PDF reports for stakeholders
 
-Why use ML4T Evaluation?
+Why use ML4T Diagnostic?
 --------------
 - Multi-method importance analysis catches method-specific biases
 - SHAP interactions reveal feature synergies often missed by univariate importance
@@ -32,7 +32,7 @@ from sklearn.datasets import make_classification
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
-# ML4T Evaluation imports
+# ML4T Diagnostic imports
 from ml4t.diagnostic.metrics import analyze_ml_importance, compute_shap_interactions
 from ml4t.diagnostic.visualization import (
     generate_combined_report,
@@ -77,7 +77,7 @@ feature_names = [
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
 # Train a Random Forest
-# ML4T Evaluation works with any sklearn-compatible model (RandomForest, XGBoost, LightGBM, etc.)
+# ML4T Diagnostic works with any sklearn-compatible model (RandomForest, XGBoost, LightGBM, etc.)
 print(f"Training Random Forest on {len(X_train)} samples...")
 model = RandomForestClassifier(
     n_estimators=100,  # More trees = more stable importance
@@ -99,7 +99,7 @@ if test_score < 0.6:
 # ============================================================================
 # Step 2: Analyze Feature Importance
 # ============================================================================
-# ML4T Evaluation supports three importance methods:
+# ML4T Diagnostic supports three importance methods:
 #
 # - MDI (Mean Decrease Impurity): Fast, built into tree models, but biased
 #   toward high-cardinality features. Good for quick exploration.
@@ -190,7 +190,7 @@ for feat_i, feat_j, strength in interaction_results["top_interactions"][:3]:
 # ============================================================================
 # Step 4: Generate Interactive HTML Reports
 # ============================================================================
-# ML4T Evaluation can generate three types of reports:
+# ML4T Diagnostic can generate three types of reports:
 #
 # 1. Importance Report: Feature rankings, method comparison, consensus
 # 2. Interaction Report: Heatmap, network graph, top interactions

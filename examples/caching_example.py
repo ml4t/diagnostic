@@ -1,6 +1,6 @@
 """Caching Framework Examples
 
-Demonstrates various caching strategies and use cases for ML4T Evaluation.
+Demonstrates various caching strategies and use cases for ML4T Diagnostic.
 
 This example shows:
 1. Basic caching with decorator
@@ -300,7 +300,7 @@ def example_10_integration_pattern():
 def main():
     """Run all examples."""
     print("=" * 60)
-    print("ML4T Evaluation Caching Framework Examples")
+    print("ML4T Diagnostic Caching Framework Examples")
     print("=" * 60)
 
     examples = [

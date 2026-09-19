@@ -3,9 +3,6 @@
 Tests replicate simulation results from Paleologo (2024), Section 8.4.
 Validates against Tables 8.3 and 8.4 for null and alternative hypotheses.
 
-Author: ML4T evaluation library
-Date: 2025-11-16
-
 Tests run optimized Monte Carlo simulations and complete quickly (<1s).
 """
 

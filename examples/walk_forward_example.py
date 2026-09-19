@@ -1,7 +1,7 @@
 """
 Example: Walk-Forward Cross-Validation with ML4T Engineer Output
 
-This example demonstrates how to use ML4T Evaluation's WalkForwardCV splitter
+This example demonstrates how to use ML4T Diagnostic's WalkForwardCV splitter
 with output from ML4T Engineer, showcasing proper data leakage prevention
 through label_horizon (removing training samples whose labels overlap with
 validation data).
@@ -353,7 +353,7 @@ def main():
     print("\n" + "=" * 60)
     print("PURGED WALK-FORWARD CROSS-VALIDATION EXAMPLES")
     print("=" * 60)
-    print("\nThis example demonstrates ML4T Evaluation's WalkForwardCV splitter")
+    print("\nThis example demonstrates ML4T Diagnostic's WalkForwardCV splitter")
     print("for time-series cross-validation with data leakage prevention.")
 
     # Run demonstrations

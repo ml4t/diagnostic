@@ -1,7 +1,7 @@
 """Example: ML4T Backtest Integration - Complete Workflow
 
 This example demonstrates the complete strategy lifecycle from backtest
-to paper to live, using ML4T Evaluation's ML4T Backtest integration contract.
+to paper to live, using ML4T Diagnostic's ML4T Backtest integration contract.
 
 Workflow:
 1. Evaluate backtest results
@@ -10,8 +10,6 @@ Workflow:
 4. Evaluate promotion criteria
 5. Monitor live performance
 
-Author: ML4T Evaluation Team
-Date: 2025-11-03
 """
 
 from datetime import datetime
