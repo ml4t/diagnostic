@@ -17,12 +17,41 @@ EXPECTED_DESCRIPTION = (
     "trading workflows."
 )
 EXPECTED_URLS = {
-    "Homepage": "https://www.ml4trading.io/docs/diagnostic/",
+    "Homepage": "https://www.ml4trading.io/",
     "Documentation": "https://www.ml4trading.io/docs/diagnostic/",
     "Repository": "https://github.com/ml4t/diagnostic",
     "Issues": "https://github.com/ml4t/diagnostic/issues",
     "Changelog": "https://github.com/ml4t/diagnostic/releases",
 }
+
+
+def artifact_metadata(dist: Path) -> dict[str, Message]:
+    """Read package metadata from the single sdist and wheel in *dist*."""
+    sdists = list(dist.glob("*.tar.gz"))
+    wheels = list(dist.glob("*.whl"))
+    if len(sdists) != 1 or len(wheels) != 1:
+        raise RuntimeError("expected exactly one source distribution and one wheel")
+
+    with tarfile.open(sdists[0], "r:gz") as archive:
+        metadata_members = [
+            member for member in archive.getmembers() if member.name.endswith("/PKG-INFO")
+        ]
+        if len(metadata_members) != 1:
+            raise RuntimeError("source distribution must contain exactly one PKG-INFO")
+        metadata_file = archive.extractfile(metadata_members[0])
+        if metadata_file is None:
+            raise RuntimeError("could not read source distribution PKG-INFO")
+        sdist_metadata = BytesParser().parsebytes(metadata_file.read())
+
+    with zipfile.ZipFile(wheels[0]) as archive:
+        metadata_names = [
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_names) != 1:
+            raise RuntimeError("wheel must contain exactly one dist-info/METADATA")
+        wheel_metadata = BytesParser().parsebytes(archive.read(metadata_names[0]))
+
+    return {"source distribution": sdist_metadata, "wheel": wheel_metadata}
 
 
 def metadata_failures(metadata: Message, *, expected_version: str) -> list[str]:
@@ -65,10 +94,9 @@ def main() -> None:
     parser.add_argument("--expected-version", required=True)
     args = parser.parse_args()
 
+    artifacts = artifact_metadata(args.dist)
     sdists = list(args.dist.glob("*.tar.gz"))
     wheels = list(args.dist.glob("*.whl"))
-    if len(sdists) != 1 or len(wheels) != 1:
-        raise RuntimeError("expected exactly one source distribution and one wheel")
 
     with tarfile.open(sdists[0], "r:gz") as archive:
         names = archive.getnames()
@@ -85,13 +113,14 @@ def main() -> None:
     if missing:
         raise RuntimeError(f"source distribution is missing required files: {missing}")
 
+    for artifact, metadata in artifacts.items():
+        failures = metadata_failures(metadata, expected_version=args.expected_version)
+        if failures:
+            raise RuntimeError(f"{artifact} metadata validation failed: {failures}")
+
     with zipfile.ZipFile(wheels[0]) as archive:
         wheel_names = archive.namelist()
-        metadata_name = next(name for name in wheel_names if name.endswith(".dist-info/METADATA"))
-        metadata = BytesParser().parsebytes(archive.read(metadata_name))
-    failures = metadata_failures(metadata, expected_version=args.expected_version)
-    if failures:
-        raise RuntimeError(f"wheel metadata validation failed: {failures}")
+    metadata = artifacts["wheel"]
     requirements = metadata.get_all("Requires-Dist", [])
     requirement_names = {
         match.group(0).lower().replace("_", "-")

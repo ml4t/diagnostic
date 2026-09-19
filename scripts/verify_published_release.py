@@ -21,7 +21,7 @@ EXPECTED_DESCRIPTION = (
     "trading workflows."
 )
 EXPECTED_URLS = {
-    "Homepage": "https://www.ml4trading.io/docs/diagnostic/",
+    "Homepage": "https://www.ml4trading.io/",
     "Documentation": "https://www.ml4trading.io/docs/diagnostic/",
     "Repository": "https://github.com/ml4t/diagnostic",
     "Issues": "https://github.com/ml4t/diagnostic/issues",

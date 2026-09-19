@@ -7,6 +7,7 @@ import re
 import tarfile
 import zipfile
 from copy import deepcopy
+from email import policy
 from email.message import Message
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from scripts.verify_published_release import (
     EXPECTED_URLS,
     published_release_failures,
 )
-from scripts.verify_release_artifacts import metadata_failures
+from scripts.verify_release_artifacts import artifact_metadata, metadata_failures
 from scripts.write_release_manifest import release_manifest
 
 COMMIT = "a" * 40
@@ -110,6 +111,25 @@ def test_wheel_metadata_validation_detects_identity_drift() -> None:
     metadata.replace_header("Summary", "Different package")
     assert any(
         "Summary" in failure for failure in metadata_failures(metadata, expected_version=VERSION)
+    )
+
+
+def test_sdist_and_wheel_metadata_are_both_read_from_built_archives(tmp_path: Path) -> None:
+    canonical = canonical_metadata().as_bytes(policy=policy.default.clone(max_line_length=0))
+    sdist = tmp_path / "ml4t_diagnostic-1.2.3.tar.gz"
+    with tarfile.open(sdist, "w:gz") as archive:
+        info = tarfile.TarInfo("ml4t_diagnostic-1.2.3/PKG-INFO")
+        info.size = len(canonical)
+        archive.addfile(info, io.BytesIO(canonical))
+    wheel = tmp_path / "ml4t_diagnostic-1.2.3-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("ml4t_diagnostic-1.2.3.dist-info/METADATA", canonical)
+
+    metadata = artifact_metadata(tmp_path)
+
+    assert set(metadata) == {"source distribution", "wheel"}
+    assert all(
+        metadata_failures(item, expected_version=VERSION) == [] for item in metadata.values()
     )
 
 
@@ -198,3 +218,13 @@ def test_release_workflow_allows_reusable_jobs_to_read_checkout() -> None:
     )
     workflow_permissions = release_workflow.split("\nconcurrency:", maxsplit=1)[0]
     assert re.search(r"^permissions:\n  contents: read$", workflow_permissions, re.MULTILINE)
+
+
+def test_only_release_workflow_can_deploy_public_documentation() -> None:
+    deploy_action = "cpina/github-action-push-to-another-repository@"
+    deployers = [
+        workflow.name
+        for workflow in sorted((REPOSITORY_ROOT / ".github/workflows").glob("*.yml"))
+        if deploy_action in workflow.read_text(encoding="utf-8")
+    ]
+    assert deployers == ["release.yml"]

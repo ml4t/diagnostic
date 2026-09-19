@@ -209,7 +209,7 @@ jobs:
           --expected-library diagnostic
           --expected-version "${{ inputs.version }}"
           --expected-commit "${{ inputs.candidate-sha }}"
-          --attempts 12
+          --attempts 24
           --delay 10
 
   publish:
