@@ -10,6 +10,7 @@ correctness with real-world data characteristics:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -27,9 +28,14 @@ from ml4t.diagnostic.metrics.ic import (
 )
 from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardCV
 
-# Path to test fixture data
-FIXTURES_PATH = Path("~/ml4t/third-edition/tests/fixtures/data").expanduser()
-WIKI_PRICES_PATH = FIXTURES_PATH / "equities" / "wiki_prices.parquet"
+# Path to test fixture data. The ml4t/third-edition-test-data checkout carries the
+# NASDAQ Data Link US equities panel (1962-2018) that used to sit in the deleted
+# ml4t/third-edition repo as `wiki_prices.parquet`; the columns are unchanged.
+# ML4T_DATA_PATH overrides, matching how the book's own tests resolve it.
+FIXTURES_PATH = Path(
+    os.environ.get("ML4T_DATA_PATH", Path.home() / "ml4t" / "test-data" / "data")
+).expanduser()
+WIKI_PRICES_PATH = FIXTURES_PATH / "equities" / "market" / "us_equities" / "us_equities.parquet"
 
 
 @pytest.fixture(scope="module")
