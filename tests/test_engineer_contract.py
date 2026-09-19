@@ -343,6 +343,58 @@ class TestFeatureDiagnosticsIntegration:
         feature_names = {r.feature_name for r in config.recommendations}
         assert feature_names == {"f1", "f2", "f3"}
 
+    def test_distribution_recommendations_are_feature_keyed_and_unambiguous(self):
+        """Distribution diagnostics produce one executable recommendation per feature."""
+        diagnostics = FeatureDiagnosticsResultSchema(
+            stationarity_tests=[
+                StationarityTestResult(
+                    feature_name="right_skewed",
+                    adf_is_stationary=True,
+                    kpss_is_stationary=True,
+                )
+            ],
+            distribution_stats={
+                "right_skewed": {"skewness": 3.2, "has_outliers": False},
+                "outlier_heavy": {"skewness": 0.4, "has_outliers": True},
+                "left_skewed": {"skewness": -3.1, "has_outliers": False},
+            },
+        )
+
+        config = diagnostics.to_engineer_config()
+        recommendations = {item.feature_name: item for item in config.recommendations}
+
+        assert len(config.recommendations) == 3
+        assert recommendations["right_skewed"].transform == TransformType.LOG
+        assert recommendations["outlier_heavy"].transform == TransformType.WINSORIZE
+        assert recommendations["left_skewed"].transform == TransformType.NONE
+
+    def test_flat_distribution_statistics_remain_compatible_for_one_feature(self):
+        """Legacy flat statistics use the sole stationarity feature name."""
+        diagnostics = FeatureDiagnosticsResultSchema(
+            stationarity_tests=[
+                StationarityTestResult(
+                    feature_name="momentum",
+                    adf_is_stationary=True,
+                    kpss_is_stationary=True,
+                )
+            ],
+            distribution_stats={"skewness": 3.2, "kurtosis": 3.5},
+        )
+
+        config = diagnostics.to_engineer_config()
+
+        assert len(config.recommendations) == 1
+        assert config.recommendations[0].feature_name == "momentum"
+        assert config.recommendations[0].transform == TransformType.LOG
+
+    def test_ambiguous_flat_distribution_statistics_raise_clear_error(self):
+        """Flat statistics without one feature fail with an actionable message."""
+        diagnostics = FeatureDiagnosticsResultSchema(
+            distribution_stats={"skewness": -0.2, "kurtosis": 3.5}
+        )
+        with pytest.raises(ValueError, match="key statistics by feature name"):
+            diagnostics.to_engineer_config()
+
     def test_export_to_dict(self):
         """Test full workflow: diagnostics → config → QFeatures dict."""
         stationarity = StationarityTestResult(

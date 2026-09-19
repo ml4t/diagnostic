@@ -231,7 +231,7 @@ class FeatureDiagnosticsResultSchema(BaseResult):
         default_factory=dict, description="GARCH detection results"
     )
     distribution_stats: dict[str, Any] = Field(
-        default_factory=dict, description="Distribution characteristics"
+        default_factory=dict, description="Distribution characteristics keyed by feature name"
     )
 
     def get_stationarity_dataframe(self) -> pl.DataFrame:
@@ -330,7 +330,7 @@ class FeatureDiagnosticsResultSchema(BaseResult):
             TransformType,
         )
 
-        recommendations = []
+        recommendations = {}
 
         # Process stationarity tests
         for stationarity in self.stationarity_tests:
@@ -359,14 +359,12 @@ class FeatureDiagnosticsResultSchema(BaseResult):
                 if stationarity.kpss_pvalue is not None:
                     diagnostics_dict["kpss_pvalue"] = stationarity.kpss_pvalue
 
-                recommendations.append(
-                    PreprocessingRecommendation(
-                        feature_name=feature_name,
-                        transform=TransformType.DIFF,
-                        reason=f"Feature is non-stationary ({non_stationary_count}/3 tests)",
-                        confidence=confidence,
-                        diagnostics=diagnostics_dict if diagnostics_dict else None,
-                    )
+                recommendations[feature_name] = PreprocessingRecommendation(
+                    feature_name=feature_name,
+                    transform=TransformType.DIFF,
+                    reason=f"Feature is non-stationary ({non_stationary_count}/3 tests)",
+                    confidence=confidence,
+                    diagnostics=diagnostics_dict if diagnostics_dict else None,
                 )
             elif non_stationary_count == 1:
                 # Only 1 test indicates non-stationarity - lower confidence
@@ -375,77 +373,90 @@ class FeatureDiagnosticsResultSchema(BaseResult):
                 single_test_diagnostics: dict[str, float] | None = (
                     {f"{test_name.lower()}_pvalue": pvalue} if pvalue is not None else None
                 )
-                recommendations.append(
-                    PreprocessingRecommendation(
-                        feature_name=feature_name,
-                        transform=TransformType.DIFF,
-                        reason=f"Possible non-stationarity ({test_name} test)",
-                        confidence=0.6,
-                        diagnostics=single_test_diagnostics,
-                    )
+                recommendations[feature_name] = PreprocessingRecommendation(
+                    feature_name=feature_name,
+                    transform=TransformType.DIFF,
+                    reason=f"Possible non-stationarity ({test_name} test)",
+                    confidence=0.6,
+                    diagnostics=single_test_diagnostics,
                 )
             else:
                 # Stationary - no transform needed
-                recommendations.append(
-                    PreprocessingRecommendation(
-                        feature_name=feature_name,
-                        transform=TransformType.NONE,
-                        reason="Feature is stationary (all tests)",
-                        confidence=0.9,
-                    )
+                recommendations[feature_name] = PreprocessingRecommendation(
+                    feature_name=feature_name,
+                    transform=TransformType.NONE,
+                    reason="Feature is stationary (all tests)",
+                    confidence=0.9,
                 )
 
-        # Check distribution stats for skewness/outliers
-        # (This is a placeholder - actual implementation depends on what's in distribution_stats)
+        distribution_stats: dict[str, dict[str, Any]] = {}
         if self.distribution_stats:
-            for feature_name, stats in self.distribution_stats.items():
-                # Skip if already recommended differencing
-                if any(
-                    r.feature_name == feature_name and r.transform == TransformType.DIFF
-                    for r in recommendations
-                ):
-                    continue
+            if all(isinstance(stats, dict) for stats in self.distribution_stats.values()):
+                distribution_stats = {
+                    feature_name: stats
+                    for feature_name, stats in self.distribution_stats.items()
+                    if isinstance(stats, dict)
+                }
+            elif len(self.stationarity_tests) == 1:
+                distribution_stats = {
+                    self.stationarity_tests[0].feature_name: self.distribution_stats
+                }
+            else:
+                raise ValueError(
+                    "Flat distribution_stats require exactly one stationarity feature; "
+                    "otherwise key statistics by feature name"
+                )
 
-                # Check for high skewness
-                skewness = stats.get("skewness")
-                if skewness is not None and abs(skewness) > 2:
-                    # High positive skew → log transform
-                    if skewness > 2:
-                        recommendations.append(
-                            PreprocessingRecommendation(
-                                feature_name=feature_name,
-                                transform=TransformType.LOG,
-                                reason=f"High right skew (skewness={skewness:.2f})",
-                                confidence=0.85,
-                                diagnostics={"skewness": skewness},
-                            )
-                        )
-                    # High negative skew → reflect and log (but we'll use sqrt as milder)
-                    else:
-                        recommendations.append(
-                            PreprocessingRecommendation(
-                                feature_name=feature_name,
-                                transform=TransformType.SQRT,
-                                reason=f"High left skew (skewness={skewness:.2f})",
-                                confidence=0.75,
-                                diagnostics={"skewness": skewness},
-                            )
-                        )
+        # Distribution recommendations replace a no-op stationarity recommendation,
+        # but differencing remains the higher-priority time-series correction.
+        for feature_name, stats in distribution_stats.items():
+            existing = recommendations.get(feature_name)
+            if existing is not None and existing.transform == TransformType.DIFF:
+                continue
 
-                # Check for outliers
-                has_outliers = stats.get("has_outliers", False)
-                if has_outliers:
-                    recommendations.append(
-                        PreprocessingRecommendation(
-                            feature_name=feature_name,
-                            transform=TransformType.WINSORIZE,
-                            reason="Outliers detected at tail percentiles",
-                            confidence=0.8,
-                        )
-                    )
+            skewness = stats.get("skewness")
+            diagnostics = {"skewness": float(skewness)} if skewness is not None else None
+            if stats.get("has_outliers", False):
+                recommendation = PreprocessingRecommendation(
+                    feature_name=feature_name,
+                    transform=TransformType.WINSORIZE,
+                    reason="Outliers detected at tail percentiles",
+                    confidence=0.8,
+                    diagnostics=diagnostics,
+                )
+            elif skewness is not None and skewness > 2:
+                recommendation = PreprocessingRecommendation(
+                    feature_name=feature_name,
+                    transform=TransformType.LOG,
+                    reason=f"High right skew (skewness={skewness:.2f})",
+                    confidence=0.85,
+                    diagnostics=diagnostics,
+                )
+            elif skewness is not None and skewness < -2:
+                recommendation = PreprocessingRecommendation(
+                    feature_name=feature_name,
+                    transform=TransformType.NONE,
+                    reason=(
+                        f"High left skew (skewness={skewness:.2f}); no supported automatic "
+                        "transform is safe without feature-domain bounds"
+                    ),
+                    confidence=0.9,
+                    diagnostics=diagnostics,
+                )
+            elif existing is None:
+                recommendation = PreprocessingRecommendation(
+                    feature_name=feature_name,
+                    transform=TransformType.NONE,
+                    reason="No supported distribution transform needed",
+                    confidence=0.9,
+                    diagnostics=diagnostics,
+                )
+            else:
+                continue
+            recommendations[feature_name] = recommendation
 
         return EngineerConfig(
-            recommendations=recommendations,
+            recommendations=list(recommendations.values()),
             metadata={
                 "created_at": self.created_at,
                 "diagnostic_version": self.version,

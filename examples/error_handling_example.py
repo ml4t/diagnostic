@@ -7,6 +7,8 @@ and practical error handling patterns.
 
 from typing import Any
 
+import numpy as np
+
 from ml4t.diagnostic.errors import (
     ComputationError,
     ConfigurationError,
@@ -15,6 +17,29 @@ from ml4t.diagnostic.errors import (
     IntegrationError,
     ValidationError,
 )
+from ml4t.diagnostic.metrics import sharpe_ratio
+
+
+def compute_metrics_safe(data: dict[str, Any]) -> dict[str, float | None]:
+    """Compute required metrics and degrade gracefully when Sharpe is unavailable."""
+    metrics = {}
+
+    try:
+        metrics["mean"] = sum(data["returns"]) / len(data["returns"])
+    except (KeyError, ZeroDivisionError) as e:
+        raise ComputationError(
+            "Failed to compute mean return", context={"data_keys": list(data.keys())}, cause=e
+        ) from e
+
+    try:
+        if len(data["returns"]) < 30:
+            raise ComputationError("Insufficient data for Sharpe ratio")
+        metrics["sharpe"] = float(sharpe_ratio(np.asarray(data["returns"], dtype=float)))
+    except ComputationError as e:
+        print(f"  ⚠️  Optional metric failed: {e.message}")
+        metrics["sharpe"] = None
+
+    return metrics
 
 
 def example_1_basic_error():
@@ -45,7 +70,7 @@ def example_2_error_chaining():
     try:
         try:
             # Simulate low-level error
-            pass
+            raise ZeroDivisionError("simulated zero volatility")
         except ZeroDivisionError as e:
             # Wrap with high-level error
             raise ComputationError(
@@ -255,29 +280,6 @@ def example_10_error_recovery():
     print("=" * 70)
     print("Example 10: Error Recovery with Fallback")
     print("=" * 70)
-
-    def compute_metrics_safe(data: dict[str, Any]) -> dict[str, float | None]:
-        """Compute metrics with graceful degradation."""
-        metrics = {}
-
-        # Required metric - propagate error
-        try:
-            metrics["mean"] = sum(data["returns"]) / len(data["returns"])
-        except (KeyError, ZeroDivisionError) as e:
-            raise ComputationError(
-                "Failed to compute mean return", context={"data_keys": list(data.keys())}, cause=e
-            ) from e
-
-        # Optional metric - use fallback
-        try:
-            if len(data["returns"]) < 30:
-                raise ComputationError("Insufficient data for Sharpe ratio")
-            metrics["sharpe"] = 1.5  # Placeholder calculation
-        except ComputationError as e:
-            print(f"  ⚠️  Optional metric failed: {e.message}")
-            metrics["sharpe"] = None  # Fallback value
-
-        return metrics
 
     # Test with minimal data
     data = {"returns": [0.01, 0.02, 0.015]}

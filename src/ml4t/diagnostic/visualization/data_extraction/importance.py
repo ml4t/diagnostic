@@ -21,6 +21,29 @@ from .types import (
 from .validation import _validate_lengths_match
 
 
+def _pfi_repeat_matrix(
+    method_result: dict[str, Any], feature_names: list[str]
+) -> np.ndarray | None:
+    """Return validated PFI values with shape ``(n_features, n_repeats)``."""
+    raw_values = method_result.get("importances_raw")
+    if raw_values is None:
+        return None
+
+    matrix = np.asarray(raw_values, dtype=float)
+    if matrix.size == 0:
+        return None
+    if matrix.ndim != 2 or matrix.shape[0] != len(feature_names):
+        raise ValueError(
+            "PFI importances_raw must have shape (n_features, n_repeats); "
+            f"got {matrix.shape} for {len(feature_names)} features"
+        )
+
+    n_repeats = method_result.get("n_repeats")
+    if n_repeats is not None and matrix.shape[1] != n_repeats:
+        raise ValueError(f"PFI importances_raw has {matrix.shape[1]} repeats, expected {n_repeats}")
+    return matrix
+
+
 def extract_importance_viz_data(
     importance_results: dict[str, Any],
     include_uncertainty: bool = True,
@@ -214,7 +237,7 @@ def _extract_per_method_data(
         if method_name == "pfi":
             importances_mean = method_result.get("importances_mean", [])
             importances_std = method_result.get("importances_std", [])
-            importances_raw = method_result.get("importances_raw", [])
+            repeat_matrix = _pfi_repeat_matrix(method_result, feature_names)
 
             # Validate length consistency for PFI data
             _validate_lengths_match(
@@ -246,10 +269,11 @@ def _extract_per_method_data(
 
             # Get raw values per repeat
             raw_list = None
-            if include_distributions and importances_raw is not None and len(importances_raw) > 0:
-                raw_list = []
-                for repeat_values in importances_raw:
-                    raw_list.append(dict(zip(feature_names, repeat_values, strict=False)))
+            if include_distributions and repeat_matrix is not None:
+                raw_list = [
+                    dict(zip(feature_names, map(float, repeat_values), strict=True))
+                    for repeat_values in repeat_matrix.T
+                ]
 
             per_method[method_name] = MethodImportanceData(
                 importances=importances_dict,
@@ -433,10 +457,13 @@ def _compute_uncertainty_metrics(
             ci_dict[feat] = (float(mean - 1.96 * se), float(mean + 1.96 * se))
         confidence_intervals["pfi"] = ci_dict
 
-        # Rank stability (if we had bootstrap data, we'd track rank distributions)
-        # For now, mark as placeholder
-        for feat in consensus_ranking:
-            rank_stability[feat] = []  # Placeholder for bootstrap ranks
+        repeat_matrix = _pfi_repeat_matrix(pfi_result, feature_names)
+        if repeat_matrix is not None:
+            rank_stability = {feature: [] for feature in feature_names}
+            for repeat_values in repeat_matrix.T:
+                order = np.argsort(-repeat_values, kind="stable")
+                for rank, feature_index in enumerate(order, start=1):
+                    rank_stability[feature_names[int(feature_index)]].append(rank)
 
     return UncertaintyData(
         method_stability=method_stability,
@@ -451,7 +478,6 @@ def _build_method_comparison(
 ) -> MethodComparisonData:
     """Build method comparison metrics."""
     # Build correlation matrix
-    len(methods_run)
     correlation_matrix = []
 
     for method1 in methods_run:

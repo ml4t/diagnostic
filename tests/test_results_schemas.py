@@ -187,7 +187,7 @@ def test_feature_diagnostics_result():
         stationarity_tests=[stat_test],
         acf_results=[acf],
         volatility_clustering={"garch_detected": True},
-        distribution_stats={"skewness": -0.2, "kurtosis": 3.5},
+        distribution_stats={"returns": {"skewness": -0.2, "kurtosis": 3.5}},
     )
 
     assert len(result.stationarity_tests) == 1

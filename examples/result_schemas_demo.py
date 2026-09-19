@@ -62,9 +62,11 @@ def demo_feature_diagnostics():
         acf_results=[acf_result],
         volatility_clustering={"garch_detected": True, "p": 1, "q": 1},
         distribution_stats={
-            "skewness": -0.3,
-            "kurtosis": 4.2,
-            "jarque_bera_pvalue": 0.001,
+            "momentum": {
+                "skewness": -0.3,
+                "kurtosis": 4.2,
+                "jarque_bera_pvalue": 0.001,
+            }
         },
     )
 

@@ -97,7 +97,13 @@ def mock_importance_results():
             "pfi": {
                 "importances_mean": [0.28, 0.27, 0.2, 0.15, 0.1],
                 "importances_std": [0.02, 0.03, 0.02, 0.01, 0.01],
-                "importances_raw": [[0.28, 0.27, 0.2, 0.15, 0.1]] * 10,
+                "importances_raw": [
+                    [0.28] * 10,
+                    [0.27] * 10,
+                    [0.2] * 10,
+                    [0.15] * 10,
+                    [0.1] * 10,
+                ],
                 "feature_names": feature_names,
                 "baseline_score": 0.85,
                 "n_repeats": 10,

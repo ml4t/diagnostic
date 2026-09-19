@@ -5,6 +5,9 @@ Validates that all Phase 1 infrastructure components work together correctly.
 Tests configuration, validation, caching, reporting, logging, and error handling.
 """
 
+import math
+import runpy
+import statistics
 import sys
 from pathlib import Path
 
@@ -53,6 +56,19 @@ class TestModuleStructure:
         for example in required_examples:
             example_file = examples_path / example
             assert example_file.exists(), f"Missing example: {example}"
+
+    def test_error_handling_example_executes_real_error_and_metric_paths(self, capsys):
+        """The error example demonstrates chaining and computes a nonconstant Sharpe ratio."""
+        example_path = Path(__file__).parents[2] / "examples" / "error_handling_example.py"
+        namespace = runpy.run_path(str(example_path))
+
+        namespace["example_2_error_chaining"]()
+        assert "Original cause: ZeroDivisionError" in capsys.readouterr().out
+
+        returns = [0.01, -0.005] * 15
+        metrics = namespace["compute_metrics_safe"]({"returns": returns})
+        expected_sharpe = statistics.mean(returns) / statistics.stdev(returns) * math.sqrt(252)
+        assert metrics["sharpe"] == pytest.approx(expected_sharpe)
 
 
 class TestComponentQuality:
