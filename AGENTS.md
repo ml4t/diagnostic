@@ -48,3 +48,6 @@ pre-commit run --all-files
 
 - `ml4t.diagnostic` sits between `ml4t-engineer` and `ml4t-backtest` in the ML4T stack.
 - Treat the documentation and book guide as part of the public package surface.
+- Update this guide when public entry points, subsystem ownership, authoritative documentation
+  paths, or quality commands change. Keep current issue state and private workspace references out
+  of public guides.
