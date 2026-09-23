@@ -5,7 +5,7 @@ including autocorrelation-robust significance tests and decay analysis.
 """
 
 import warnings
-from typing import TYPE_CHECKING, Any, Union, cast
+from typing import TYPE_CHECKING, Any, TypedDict, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -18,6 +18,22 @@ from ml4t.diagnostic.metrics.ic import compute_ic_by_horizon
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+
+class ICHACStats(TypedDict):
+    """HAC inference statistics and the settings used to compute them."""
+
+    mean_ic: float
+    hac_se: float
+    t_stat: float
+    p_value: float
+    n_periods: int
+    effective_lags: int
+    naive_se: float
+    naive_t_stat: float
+    used_naive_fallback: bool
+    kernel: str
+    use_correction: bool
 
 
 def compute_ic_summary_stats(
@@ -74,7 +90,7 @@ def compute_ic_hac_stats(
     kernel: str = "bartlett",
     use_correction: bool = True,
     allow_naive_fallback: bool = False,
-) -> dict[str, float | int | bool]:
+) -> ICHACStats:
     """Compute HAC-adjusted significance statistics for IC time series.
 
     Uses Newey-West HAC (Heteroskedasticity and Autocorrelation Consistent)
@@ -110,7 +126,10 @@ def compute_ic_hac_stats(
         - "uniform": Equal weights
         - "parzen": Parzen kernel
     use_correction : bool, default True
-        Apply small-sample correction to standard errors
+        Apply statsmodels' finite-sample degrees-of-freedom correction. The
+        HAC covariance matrix is multiplied by ``n / (n - k)``, where ``n``
+        is the number of observations and ``k`` is the number of regression
+        parameters. This intercept-only mean test has ``k = 1``.
     allow_naive_fallback : bool, default False
         Return the naive standard error if HAC covariance computation fails.
         The fallback emits a RuntimeWarning and sets ``used_naive_fallback``.
@@ -118,7 +137,7 @@ def compute_ic_hac_stats(
 
     Returns
     -------
-    dict[str, float | int | bool]
+    dict[str, float | int | bool | str]
         Dictionary with HAC-adjusted statistics:
         - mean_ic: Mean IC across time series
         - hac_se: HAC-adjusted standard error
@@ -130,6 +149,10 @@ def compute_ic_hac_stats(
         - naive_t_stat: Naive t-statistic without HAC adjustment
         - used_naive_fallback: Whether HAC failure caused substitution of the
           naive standard error
+        - kernel: Kernel used for lag weighting
+        - use_correction: Whether the finite-sample correction was requested
+          for the HAC estimate. When ``used_naive_fallback`` is true, no HAC
+          covariance estimate was returned.
 
     Raises
     ------
@@ -217,6 +240,8 @@ def compute_ic_hac_stats(
             "naive_se": np.nan,
             "naive_t_stat": np.nan,
             "used_naive_fallback": False,
+            "kernel": kernel,
+            "use_correction": use_correction,
         }
 
     # Compute mean IC
@@ -292,6 +317,8 @@ def compute_ic_hac_stats(
         "naive_se": float(naive_se),
         "naive_t_stat": float(naive_t_stat),
         "used_naive_fallback": used_naive_fallback,
+        "kernel": kernel,
+        "use_correction": use_correction,
     }
 
 
