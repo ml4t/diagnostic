@@ -14,10 +14,10 @@ Key properties tested:
 import numpy as np
 import pytest
 
+from ml4t.diagnostic.metrics import compute_ic_hac_stats
 from ml4t.diagnostic.metrics.ic_inference import (
     _get_kernel_weights,
     _newey_west_lag,
-    compute_ic_hac_stats,
 )
 
 
@@ -125,6 +125,31 @@ class TestHACMathematicalCorrectness:
         with pytest.warns(UserWarning, match="overlapping forward-return labels"):
             compute_ic_hac_stats(np.arange(10, dtype=float))
 
+    def test_result_reports_kernel_and_small_sample_correction(self):
+        """Returned statistics retain the settings needed to reproduce them."""
+        ic_series = np.linspace(-0.03, 0.07, 60)
+
+        corrected = compute_ic_hac_stats(
+            ic_series,
+            label_horizon=1,
+            kernel="parzen",
+            use_correction=True,
+        )
+        uncorrected = compute_ic_hac_stats(
+            ic_series,
+            label_horizon=1,
+            kernel="parzen",
+            use_correction=False,
+        )
+
+        assert corrected["kernel"] == "parzen"
+        assert corrected["use_correction"] is True
+        assert uncorrected["kernel"] == "parzen"
+        assert uncorrected["use_correction"] is False
+        assert corrected["hac_se"] ** 2 / uncorrected["hac_se"] ** 2 == pytest.approx(
+            len(ic_series) / (len(ic_series) - 1)
+        )
+
     def test_invalid_kernel_is_rejected_for_undersized_input(self):
         """Argument validation does not depend on the sample size."""
         with pytest.raises(ValueError, match="Unknown kernel"):
@@ -176,6 +201,8 @@ class TestHACMathematicalCorrectness:
 
         assert result["used_naive_fallback"] is True
         assert result["hac_se"] == result["naive_se"]
+        assert result["kernel"] == "bartlett"
+        assert result["use_correction"] is True
 
 
 class TestKernelWeights:
@@ -241,6 +268,8 @@ class TestEdgeCases:
         assert np.isnan(result["t_stat"])
         assert np.isnan(result["p_value"])
         assert result["n_periods"] == 2
+        assert result["kernel"] == "bartlett"
+        assert result["use_correction"] is True
 
     def test_single_value(self):
         """Should handle single value gracefully."""
