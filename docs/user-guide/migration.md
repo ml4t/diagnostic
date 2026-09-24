@@ -17,12 +17,16 @@ not an input substitute. Preserve the original point-in-time prices.
 See the [Alphalens input contract](https://github.com/quantopian/alphalens/blob/77084f1e4c2c0be407e032d444fb19e4be4b0f37/alphalens/utils.py)
 and the [Diagnostic signal API](../api/index.md#signal-analysis).
 
+<div class="migration-table" markdown="1">
+
 | Alphalens input or task | Diagnostic route | Conversion or difference |
 |---|---|---|
 | Factor Series with `(date, asset)` index | `analyze_signal(factor=...)` | Reset the index to columns `date`, `asset`, `factor`; keep one value per pair. |
 | Wide asset-price table | `analyze_signal(prices=...)` | Stack to `date`, `asset`, `price` rows, including enough future dates for the largest horizon. |
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
 | Group-neutral or zero-aware bucketing and the complete Alphalens tear sheet | No one-call `analyze_signal` equivalent | Preprocess groups or buckets separately if needed; do not treat Diagnostic's default quantiles or reports as equivalent. |
+
+</div>
 
 Here is the shape conversion with data whose factor predicts the next price
 change. Replace the synthetic source objects with your Alphalens-shaped inputs:
@@ -81,6 +85,8 @@ benchmark returns, and other inputs. Diagnostic separates numeric analysis
 from HTML rendering. It does not accept Pyfolio's tear-sheet call or a
 Zipline backtest object directly.
 
+<div class="migration-table" markdown="1">
+
 | Pyfolio input or task | Diagnostic route | Conversion or difference |
 |---|---|---|
 | Daily noncumulative return Series | `PortfolioAnalysis(returns=..., dates=...)` | Pass decimal return values and matching dates; set `periods_per_year` and risk-free convention explicitly. |
@@ -89,6 +95,8 @@ Zipline backtest object directly.
 | Performance HTML | `generate_backtest_tearsheet(returns=..., metrics=...)` | Install the `viz` extra; supply a return array and any precomputed metrics. This is not a Pyfolio report template. |
 | A completed `ml4t-backtest` result | `generate_tearsheet_from_result(result)` | Only this bridge takes an `ml4t-backtest` result; it does not ingest a Pyfolio or Zipline result. |
 | Trade-level ranking | `TradeAnalysis` on `TradeRecord` objects | Pair fills into completed trades and calculate PnL and duration first. Raw Pyfolio transaction rows are not completed trades. |
+
+</div>
 
 The minimal return conversion can be checked without visualization packages:
 

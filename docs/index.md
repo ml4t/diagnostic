@@ -35,6 +35,11 @@ print(f"Expected maximum Sharpe from noise: {result.expected_max_sharpe:.3f}")
 print(f"Significant: {result.is_significant}")
 ```
 
+With this fixed seed, the result reports `Significant: False` and a corrected
+probability near 0.39. The selected variant does not clear a 95% significance
+threshold after accounting for three trials. For a signal-analysis first run,
+continue to the [synthetic quickstart](getting-started/quickstart.md).
+
 ## Choose the guide for your task
 
 | Task | Guide |

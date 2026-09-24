@@ -139,16 +139,15 @@ body {
 
 /* ── Header ────────────────────────────────────────── */
 
-/* The website navbar is injected by Django at serve time.
-   Hide the MkDocs header bar but keep the tabs as in-page
-   navigation that blends with the website's visual language. */
+/* The website navbar is injected by Django at serve time. Keep tabs as
+   in-page navigation on wide screens, and retain the MkDocs mobile menu. */
 .md-header {
   background: white;
   border-bottom: none;
   box-shadow: none;
 }
 
-/* Collapse the MkDocs header bar to zero — only tabs remain visible */
+/* Hide the header bar while desktop tabs are visible. */
 .md-header__inner {
   display: none;
   height: 0;
@@ -385,6 +384,23 @@ body {
 /* ── Responsive ────────────────────────────────────── */
 
 @media screen and (max-width: 76.1875em) {
+  /* MkDocs hides tabs at this width, so restore its navigation toggle. */
+  .md-header {
+    border-bottom: 1px solid var(--ml4t-silver-muted);
+  }
+
+  .md-header__inner {
+    display: flex;
+    height: 2.4rem;
+    padding: 0 0.6rem;
+    overflow: visible;
+  }
+
+  .md-header__button,
+  .md-header__title {
+    color: var(--ml4t-navy);
+  }
+
   .md-content {
     max-width: 100%;
   }
@@ -398,6 +414,10 @@ body {
 }
 
 @media screen and (max-width: 44.9375em) {
+  .md-typeset .migration-table table {
+    min-width: 34rem;
+  }
+
   .md-typeset h1 {
     font-size: 1.7rem;
   }

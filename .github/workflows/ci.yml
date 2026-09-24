@@ -93,6 +93,12 @@ jobs:
           echo "ML4T_DOCS_VERSION=$(uv run python -c 'from ml4t.diagnostic import __version__; print(__version__)')" >> "$GITHUB_ENV"
           echo "ML4T_DOCS_COMMIT=${GITHUB_SHA}" >> "$GITHUB_ENV"
       - run: uv run mkdocs build --strict
+      - name: Check pinned book files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python scripts/check_book_links.py
+      - name: Check rendered documentation links
+        run: uv run python scripts/check_documentation_links.py --site site --external
       - name: Verify rendered identity
         run: >-
           uv run --no-project python scripts/verify_documentation_identity.py
@@ -231,6 +237,12 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)"
           python -I scripts/run_readme_quickstart.py
+      - name: Run task documentation from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          python -I scripts/check_documentation_examples.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
