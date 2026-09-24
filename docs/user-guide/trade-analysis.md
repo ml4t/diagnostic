@@ -53,4 +53,6 @@ browser.
 See the [evaluation API surface](../api/index.md#evaluation-workflows)
 for `TradeAnalysis` and the book's
 [trade-SHAP notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/19_risk_management/05_trade_shap_diagnostics.ipynb),
-which directly calls Diagnostic in a model-aligned workflow.
+which directly calls Diagnostic in a model-aligned workflow. The
+[migration guide](migration.md#pyfolio-portfolio-and-performance-analysis)
+explains why Pyfolio fills need conversion to completed trades first.

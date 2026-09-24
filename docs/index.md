@@ -48,6 +48,7 @@ print(f"Significant: {result.is_significant}")
 | Inspect trades and recurring losses | [Trade analysis](user-guide/trade-analysis.md) |
 | Generate HTML backtest reports | [Backtest tearsheets](user-guide/backtest-tearsheets.md) |
 | Find examples in the public book | [Book Guide](book-guide/index.md) |
+| Move from Alphalens or Pyfolio | [Migration guide](user-guide/migration.md) |
 
 ## Validation areas
 

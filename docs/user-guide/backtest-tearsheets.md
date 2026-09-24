@@ -66,4 +66,5 @@ browser-dependent PDF export was exercised.
 
 See the [visualization API](../api/index.md#visualization) and the book's
 [performance reporting notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/16_strategy_simulation/09_performance_reporting.ipynb),
-which directly calls Diagnostic in a longer backtest workflow.
+which directly calls Diagnostic in a longer backtest workflow. For Pyfolio
+inputs, use the [migration guide](migration.md#pyfolio-portfolio-and-performance-analysis).

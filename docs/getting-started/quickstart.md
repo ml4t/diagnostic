@@ -107,5 +107,7 @@ explains how to retain the full trial history.
 - [Trade analysis](../user-guide/trade-analysis.md) identifies recurring
   losses in normalized trade records.
 - [API reference](../api/index.md) lists the supported import surfaces.
+- [Migration guide](../user-guide/migration.md) explains how to convert
+  Alphalens factor inputs and Pyfolio performance inputs.
 - [Book Guide](../book-guide/index.md) maps direct Diagnostic calls to pinned
   companion notebooks.
