@@ -42,10 +42,12 @@ print(f"Significant: {result.is_significant}")
 | Analyze cross-sectional predictions | [Quickstart](getting-started/quickstart.md) |
 | Prevent leakage in time-series validation | [Cross-validation](user-guide/cross-validation.md) |
 | Correct Sharpe and IC significance | [Statistical tests](user-guide/statistical-tests.md) |
+| Control false discoveries across signals | [Statistical tests](user-guide/statistical-tests.md#false-discovery-rate-control) |
 | Diagnose feature quality | [Feature diagnostics](user-guide/feature-diagnostics.md) |
 | Select features systematically | [Feature selection](user-guide/feature-selection.md) |
 | Inspect trades and recurring losses | [Trade analysis](user-guide/trade-analysis.md) |
 | Generate HTML backtest reports | [Backtest tearsheets](user-guide/backtest-tearsheets.md) |
+| Find examples in the public book | [Book Guide](book-guide/index.md) |
 
 ## Validation areas
 

@@ -103,17 +103,17 @@ nav:
   - Home: index.md
   - Getting Started:
     - Installation: getting-started/installation.md
-    - Quickstart: getting-started/quickstart.md
+    - Signal Analysis Quickstart: getting-started/quickstart.md
   - User Guide:
-    - Four-Tier Validation: user-guide/validation-tiers.md
-    - Cross-Validation: user-guide/cross-validation.md
+    - Validation Stages: user-guide/validation-tiers.md
+    - Leakage-Aware Cross-Validation: user-guide/cross-validation.md
     - CV Configuration: user-guide/cv-configuration.md
-    - Statistical Tests: user-guide/statistical-tests.md
+    - Statistical Tests and Multiple Testing: user-guide/statistical-tests.md
     - Feature Diagnostics: user-guide/feature-diagnostics.md
     - Feature Selection: user-guide/feature-selection.md
     - Workflows: user-guide/workflows.md
-    - Backtest Tearsheets: user-guide/backtest-tearsheets.md
-    - Trade Analysis: user-guide/trade-analysis.md
+    - HTML Backtest Reports: user-guide/backtest-tearsheets.md
+    - Trade Diagnostics: user-guide/trade-analysis.md
     - Trade-SHAP Dashboard: DASHBOARD.md
   - API Reference:
     - api/index.md

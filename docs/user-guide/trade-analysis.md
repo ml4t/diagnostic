@@ -2,6 +2,10 @@
 
 `TradeAnalysis` ranks individual trades and computes aggregate statistics from
 normalized `TradeRecord` objects.
+Each record needs an exit timestamp, symbol, entry and exit prices, PnL,
+and duration. Direction and quantity are optional. Compare trades under the same accounting convention;
+inconsistent currencies, fees, or partial-fill treatment distort rankings
+and aggregate statistics.
 
 ## Analyze synthetic trades
 
@@ -32,6 +36,7 @@ analysis = TradeAnalysis(trades)
 worst = analysis.worst_trades(n=3)
 statistics = analysis.compute_statistics()
 
+assert [trade.pnl for trade in worst] == [-410.0, -240.0, -130.0]
 print([trade.pnl for trade in worst])
 print(statistics.summary())
 ```
@@ -42,3 +47,10 @@ Use `TradeFilters` to restrict symbols, dates, duration, or PnL before analysis.
 SHAP-based trade diagnostics require model-aligned feature rows and SHAP values.
 Use the executable dashboard script in `examples/trade_shap_dashboard_demo.py`
 as the supported starting point for that workflow.
+The dashboard is optional; the core ranking above runs without SHAP or a
+browser.
+
+See the [evaluation API surface](../api/index.md#evaluation-workflows)
+for `TradeAnalysis` and the book's
+[trade-SHAP notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/19_risk_management/05_trade_shap_diagnostics.ipynb),
+which directly calls Diagnostic in a model-aligned workflow.

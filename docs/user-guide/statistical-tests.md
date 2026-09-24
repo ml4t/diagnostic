@@ -3,6 +3,10 @@
 Use these tests to separate an observed backtest result from the research
 process that selected it. Report the inputs and correction method with every
 result.
+Supply aligned, same-frequency observations for every candidate. The number
+of trials is the full selection history, not just the survivors. For
+autocorrelated IC series, choose a HAC lag that reflects the overlapping
+forward-return horizon.
 
 ## Deflated Sharpe Ratio
 
@@ -27,6 +31,8 @@ dsr = deflated_sharpe_ratio(
     min_k_eff=2.0,
 )
 
+assert dsr.n_trials_raw == 4
+assert 0 <= dsr.probability <= 1
 print(f"Annualized Sharpe: {dsr.sharpe_ratio_annualized:.2f}")
 print(f"Probability after correction: {dsr.probability:.3f}")
 print(f"Raw trials: {dsr.n_trials_raw}")
@@ -35,6 +41,8 @@ print(f"Effective trials: {dsr.n_trials_effective:.2f}")
 
 Include every strategy variant considered during selection. Omitting failed or
 discarded variants understates the multiple-testing penalty.
+`dsr.probability` is the corrected probability under the supplied trial
+model; it is not an estimated future return.
 
 ### Keep trial history across research sessions
 
@@ -133,12 +141,15 @@ from ml4t.diagnostic.evaluation.stats import benjamini_hochberg_fdr
 p_values = [0.001, 0.012, 0.030, 0.080, 0.40]
 fdr = benjamini_hochberg_fdr(p_values, alpha=0.05, return_details=True)
 
+assert fdr["rejected"].tolist() == [True, True, True, False, False]
 print(f"Rejected hypotheses: {fdr['rejected'].tolist()}")
 print(f"Adjusted p-values: {fdr['adjusted_p_values'].round(4).tolist()}")
 ```
 
 Benjamini-Hochberg assumes independent or positively dependent tests. Use
 `holm_bonferroni` when you need family-wise error control instead.
+The rejection mask identifies discoveries at the chosen FDR level; it does
+not assign a probability of truth to each hypothesis.
 
 ## HAC-adjusted IC
 
@@ -152,3 +163,8 @@ contains a complete example and the returned fields.
 strategy variants. Use it when the same variants have been evaluated across
 multiple partitions. PBO complements DSR; it tests ranking decay rather than
 Sharpe significance.
+
+See the [statistical API reference](../api/index.md#statistical-tests) for
+call signatures and the book's
+[multiple-testing notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/07_defining_the_learning_task/07_multiple_testing.ipynb)
+for direct Diagnostic calls alongside a manual explanation.
