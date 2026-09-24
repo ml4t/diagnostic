@@ -92,4 +92,5 @@ print(f"Maximum drawdown: {metrics.max_drawdown:.2%}")
 
 Use [CPCV](cross-validation.md) when you need a distribution across many test
 group combinations. Use [backtest tearsheets](backtest-tearsheets.md) to render
-the final metrics and return series as HTML.
+the final metrics and return series as HTML. For Pyfolio return and position
+inputs, use the [migration guide](migration.md#pyfolio-portfolio-and-performance-analysis).

@@ -35,6 +35,11 @@ print(f"Expected maximum Sharpe from noise: {result.expected_max_sharpe:.3f}")
 print(f"Significant: {result.is_significant}")
 ```
 
+With this fixed seed, the result reports `Significant: False` and a corrected
+probability near 0.39. The selected variant does not clear a 95% significance
+threshold after accounting for three trials. For a signal-analysis first run,
+continue to the [synthetic quickstart](getting-started/quickstart.md).
+
 ## Choose the guide for your task
 
 | Task | Guide |
@@ -42,10 +47,13 @@ print(f"Significant: {result.is_significant}")
 | Analyze cross-sectional predictions | [Quickstart](getting-started/quickstart.md) |
 | Prevent leakage in time-series validation | [Cross-validation](user-guide/cross-validation.md) |
 | Correct Sharpe and IC significance | [Statistical tests](user-guide/statistical-tests.md) |
+| Control false discoveries across signals | [Statistical tests](user-guide/statistical-tests.md#false-discovery-rate-control) |
 | Diagnose feature quality | [Feature diagnostics](user-guide/feature-diagnostics.md) |
 | Select features systematically | [Feature selection](user-guide/feature-selection.md) |
 | Inspect trades and recurring losses | [Trade analysis](user-guide/trade-analysis.md) |
 | Generate HTML backtest reports | [Backtest tearsheets](user-guide/backtest-tearsheets.md) |
+| Find examples in the public book | [Book Guide](book-guide/index.md) |
+| Move from Alphalens or Pyfolio | [Migration guide](user-guide/migration.md) |
 
 ## Validation areas
 

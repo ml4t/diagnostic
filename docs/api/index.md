@@ -177,4 +177,6 @@ The visualization namespace is Plotly-first and grouped by workflow:
 | Factor analysis | `plot_factor_betas_bar`, `plot_rolling_betas`, `plot_return_attribution_waterfall` |
 | Reporting | `combine_figures_to_html`, `generate_combined_report`, `export_figures_to_pdf` |
 
-For a package-layout overview, see the [Architecture](../reference/architecture.md) page.
+For task-by-task input conversion from Alphalens and Pyfolio, see the
+[migration guide](../user-guide/migration.md). For a package-layout overview,
+see the [Architecture](../reference/architecture.md) page.

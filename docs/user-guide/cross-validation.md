@@ -3,6 +3,10 @@
 Use `WalkForwardCV` for chronological model evaluation. Use `CombinatorialCV`
 when you need multiple backtest paths and a distribution of out-of-sample
 results.
+Supply observations in time order, with each feature row aligned to its label.
+Set `label_horizon` to the number of observations used by each forward label;
+purging by less than the actual label window can leak outcomes into training.
+Do not shuffle rows before splitting.
 
 ## Run purged walk-forward validation
 
@@ -30,7 +34,9 @@ for fold, (train, test) in enumerate(walk_forward_splits, start=1):
 ```
 
 `label_horizon=5` removes training observations whose five-period forward
-labels would overlap the test set.
+labels would overlap the test set. The assertions check fold count,
+chronological order, and the label gap. Index separation does not prove that
+feature construction itself avoided future data.
 
 ## Run combinatorial purged validation
 
@@ -66,6 +72,9 @@ assert all(
 print(f"CPCV combinations: {len(combinatorial_splits)}")
 ```
 
+CPCV test groups can occur on either side of a training group. Verify
+purging around every test group and account for the chosen embargo.
+
 ## Combine CPCV results with DSR
 
 `ValidatedCrossValidation` summarizes fold Sharpe ratios and corrects the best
@@ -93,3 +102,7 @@ print(validation_result.summary())
 Serialize splitter settings with the [CV configuration guide](cv-configuration.md).
 The [CPCV method page](../methods/cpcv.md) explains the group and combination
 parameters.
+The [cross-validation API reference](../api/index.md#cross-validation)
+documents both splitters. The book's
+[CV foundations notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/06_strategy_definition/02_cv_foundations.ipynb)
+calls Diagnostic splitters and also constructs folds manually.

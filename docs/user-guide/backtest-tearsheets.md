@@ -2,6 +2,9 @@
 
 Generate a standalone HTML report from normalized metrics, trades, and returns.
 The minimal supported input is a metrics dictionary or a return series.
+The example uses synthetic daily returns and does not require a backtest engine.
+Install the `viz` extra for Plotly rendering. Use real returns at the frequency
+assumed by the metrics and statistical corrections.
 
 ## Generate an HTML report
 
@@ -38,6 +41,10 @@ assert "plotly" in html.lower()
 print(f"Wrote {output}")
 ```
 
+The file-existence and Plotly assertions check that rendering completed.
+Inspect reported Sharpe, drawdown, and trial count against your source
+backtest; HTML generation does not validate supplied metrics.
+
 ## Choose a template
 
 | Template | Primary content |
@@ -52,6 +59,12 @@ costs, predictions, and factor results. Use
 `generate_tearsheet_from_result` for an `ml4t-backtest` result. The integration
 normalizes the backtest object before rendering.
 
-HTML generation requires the `viz` extra. PDF export also depends on the
-browser and rendering packages documented in the
+PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).
+A headless environment can verify HTML generation without claiming that
+browser-dependent PDF export was exercised.
+
+See the [visualization API](../api/index.md#visualization) and the book's
+[performance reporting notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/16_strategy_simulation/09_performance_reporting.ipynb),
+which directly calls Diagnostic in a longer backtest workflow. For Pyfolio
+inputs, use the [migration guide](migration.md#pyfolio-portfolio-and-performance-analysis).
