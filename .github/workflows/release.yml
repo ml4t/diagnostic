@@ -54,7 +54,7 @@ jobs:
     needs: preflight
     permissions:
       contents: read
-    uses: ml4t/ecosystem/.github/workflows/qualify-library.yml@da2cbb9a9d0b4d2f166ad630470ff7d7a1aa2643 # 2026-09-19 policy snapshot
+    uses: ml4t/ecosystem/.github/workflows/qualify-library.yml@a3080f8e09b197098c9d796240e746aca516492e # 2026-09-23 policy snapshot
     with:
       import-package: ml4t.diagnostic
       prerelease-exception: python-315-scipy
