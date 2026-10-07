@@ -460,9 +460,9 @@ def hill_estimator(
             alpha, alpha_se = compute_hill_alpha(sorted_data, k)
 
         elif tail == "lower":
-            # For lower tail, analyze absolute values of negative tail
-            # Take absolute values to ensure positive data for log transform
-            sorted_data = np.sort(np.abs(arr))[::-1]
+            # Upper order statistics of the negated series are the most negative
+            # observations. abs() would mix in large gains and report the right tail.
+            sorted_data = np.sort(-arr)[::-1]
             alpha, alpha_se = compute_hill_alpha(sorted_data, k)
 
         else:  # both
@@ -470,8 +470,7 @@ def hill_estimator(
             sorted_upper = np.sort(arr)[::-1]
             alpha_upper, alpha_se_upper = compute_hill_alpha(sorted_upper, k)
 
-            # For lower tail, use absolute values
-            sorted_lower = np.sort(np.abs(arr))[::-1]
+            sorted_lower = np.sort(-arr)[::-1]
             alpha_lower, alpha_se_lower = compute_hill_alpha(sorted_lower, k)
 
             # Use minimum (heavier tail)

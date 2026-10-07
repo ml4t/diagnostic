@@ -523,6 +523,24 @@ class TestHillEstimator:
         assert result.tail == "lower"
         assert result.tail_index > 0
 
+    def test_hill_lower_tail_ignores_right_tail_spikes(self):
+        """Large gains must not enter the lower-tail order statistics."""
+        losses = -np.geomspace(10.0, 1.1, 60)
+        data = np.concatenate(
+            [np.array([1000.0, 500.0, 100.0, 50.0, 20.0]), losses, np.full(40, 0.01)]
+        )
+        k = 10
+
+        result = hill_estimator(data, k=k, tail="lower")
+
+        negated = np.sort(-data)[::-1]
+        expected = k / np.sum(np.log(negated[:k]) - np.log(negated[k]))
+        absolute = np.sort(np.abs(data))[::-1]
+        absolute_alpha = k / np.sum(np.log(absolute[:k]) - np.log(absolute[k]))
+
+        assert result.tail_index == pytest.approx(expected)
+        assert abs(expected - absolute_alpha) > 1.0
+
     def test_hill_both_tails(self):
         """Test Hill estimator on both tails (returns minimum)."""
         np.random.seed(42)
