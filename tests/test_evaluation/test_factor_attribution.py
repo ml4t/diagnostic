@@ -81,6 +81,48 @@ class TestReturnAttribution:
 
         assert result.idiosyncratic_se > 0
 
+    def test_nan_row_matches_predropped_sample(
+        self, synthetic_data: tuple[np.ndarray, FactorData]
+    ) -> None:
+        """A dropped NaN row must not shift rolling betas relative to factor returns."""
+        returns, fd = synthetic_data
+        nan_idx = 80
+        returns_nan = returns.copy()
+        returns_nan[nan_idx] = np.nan
+        factor_frame = fd.returns.with_columns(
+            pl.when(pl.int_range(pl.len()) == nan_idx)
+            .then(None)
+            .otherwise(pl.col("Mkt-RF"))
+            .alias("Mkt-RF")
+        )
+        fd_nan = FactorData(
+            returns=factor_frame,
+            rf_rate=fd.rf_rate,
+            factor_names=fd.factor_names,
+            source=fd.source,
+            frequency=fd.frequency,
+        )
+        keep = np.ones(len(returns), dtype=bool)
+        keep[nan_idx] = False
+        fd_clean = FactorData(
+            returns=fd.returns.filter(pl.int_range(pl.len()) != nan_idx),
+            rf_rate=None,
+            factor_names=fd.factor_names,
+            source=fd.source,
+            frequency=fd.frequency,
+        )
+
+        with_nan = compute_return_attribution(returns_nan, fd_nan, window=30, lag=1)
+        cleaned = compute_return_attribution(returns[keep], fd_clean, window=30, lag=1)
+
+        assert len(with_nan.timestamps) == len(cleaned.timestamps)
+        for name in fd.factor_names:
+            np.testing.assert_allclose(
+                with_nan.factor_contributions[name],
+                cleaned.factor_contributions[name],
+                atol=1e-12,
+            )
+
     def test_lag_matters(self, synthetic_data: tuple[np.ndarray, FactorData]) -> None:
         returns, fd = synthetic_data
         result1 = compute_return_attribution(returns, fd, window=63, lag=1)
