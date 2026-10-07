@@ -136,26 +136,24 @@ class TestComputeReturnStatistics:
         assert np.isfinite(autocorr) or autocorr == 0.0
 
     def test_reference_scipy_skewness(self):
-        """Test skewness matches scipy.stats.skew."""
+        """Skewness matches scipy.stats.skew, including short samples."""
         np.random.seed(123)
-        returns = np.random.randn(200)
+        returns = np.random.standard_t(df=4, size=30)
 
         _, skewness, _, _, _ = compute_return_statistics(returns)
         scipy_skew = scipy_stats.skew(returns)
 
-        # Should be close but formula may differ slightly
-        assert abs(skewness - scipy_skew) < 0.1
+        assert skewness == pytest.approx(scipy_skew, rel=1e-12, abs=1e-12)
 
     def test_reference_scipy_kurtosis(self):
-        """Test kurtosis matches scipy.stats.kurtosis (Pearson)."""
+        """Kurtosis matches scipy.stats.kurtosis (Pearson), including short samples."""
         np.random.seed(456)
-        returns = np.random.randn(200)
+        returns = np.random.standard_t(df=4, size=30)
 
         _, _, kurtosis, _, _ = compute_return_statistics(returns)
         scipy_kurtosis = scipy_stats.kurtosis(returns, fisher=False)
 
-        # Should be close
-        assert abs(kurtosis - scipy_kurtosis) < 0.5
+        assert kurtosis == pytest.approx(scipy_kurtosis, rel=1e-12, abs=1e-12)
 
 
 class TestComputeSharpe:
