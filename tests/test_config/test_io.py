@@ -214,6 +214,28 @@ class TestJSONIO:
         with pytest.raises(FileNotFoundError):
             DiagnosticConfig.from_json("/nonexistent/config.json")
 
+    def test_non_mapping_documents_raise_value_error(self):
+        """Empty, null, and list documents are invalid configs, not TypeErrors."""
+        from ml4t.diagnostic.config import DiagnosticConfig
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cases = {
+                root / "empty.yaml": "",
+                root / "list.yaml": "- a\n",
+                root / "null.json": "null",
+                root / "list.json": "[]",
+            }
+            for path, text in cases.items():
+                path.write_text(text)
+                loader = (
+                    DiagnosticConfig.from_json
+                    if path.suffix == ".json"
+                    else DiagnosticConfig.from_yaml
+                )
+                with pytest.raises(ValueError, match="mapping"):
+                    loader(path)
+
 
 class TestDictIO:
     """Test dictionary loading and export."""
