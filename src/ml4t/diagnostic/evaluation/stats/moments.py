@@ -50,18 +50,23 @@ def compute_return_statistics(
         raise ValueError("Need at least 2 return observations")
 
     mean = np.mean(returns)
-    std = np.std(returns, ddof=1)
+    centered = returns - mean
+    # Sharpe uses the sample standard deviation. Skewness and kurtosis use the
+    # population second moment (divisor n). Reusing the sample standard deviation
+    # there understates Fisher's skewness by ((n-1)/n)**1.5 and Pearson kurtosis
+    # by ((n-1)/n)**2.
+    sample_variance = float(np.dot(centered, centered) / (n - 1))
 
-    if std == 0:
+    if sample_variance == 0:
         raise ValueError("Return series has zero variance")
 
-    sharpe = mean / std
+    sharpe = mean / np.sqrt(sample_variance)
 
-    # Skewness (γ₃) - Fisher's definition
-    skewness = float(((returns - mean) ** 3).mean() / std**3)
-
-    # Kurtosis (γ₄) - Pearson (normal = 3)
-    kurtosis = float(((returns - mean) ** 4).mean() / std**4)
+    m2 = float(np.mean(centered**2))
+    m3 = float(np.mean(centered**3))
+    m4 = float(np.mean(centered**4))
+    skewness = float(m3 / m2**1.5)
+    kurtosis = float(m4 / m2**2)
 
     # First-order autocorrelation (ρ)
     if n > 2:
