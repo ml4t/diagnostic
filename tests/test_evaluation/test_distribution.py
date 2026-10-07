@@ -541,6 +541,17 @@ class TestHillEstimator:
         assert result.tail_index == pytest.approx(expected)
         assert abs(expected - absolute_alpha) > 1.0
 
+    def test_hill_both_on_positive_sample_uses_upper_tail(self):
+        """Positive samples have no loss tail; both-tail must not raise."""
+        np.random.seed(42)
+        data = np.random.pareto(1.8, 1000) + 1.0
+
+        both = hill_estimator(data, tail="both")
+        upper = hill_estimator(data, tail="upper")
+
+        assert both.tail_index == pytest.approx(upper.tail_index)
+        assert both.tail_index > 0
+
     def test_hill_both_tails(self):
         """Test Hill estimator on both tails (returns minimum)."""
         np.random.seed(42)
