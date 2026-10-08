@@ -104,6 +104,15 @@ Use `ml4t.diagnostic.metrics` for reusable metric and feature-statistic helpers.
         - maximum_drawdown
         - hit_rate
         - compute_forward_returns
+        - brier_score
+        - brier_decomposition
+        - BrierDecomposition
+        - log_loss
+        - reliability_table
+        - expected_calibration_error
+        - max_calibration_error
+        - calibration_slope
+        - CalibrationSlope
 
 ## Cross-Validation
 

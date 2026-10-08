@@ -30,6 +30,13 @@ def test_metrics_package_exports_core_metric_groups():
         "compute_fold_percentiles",
         "QuantileProfile",
         "quantile_profile",
+        "brier_score",
+        "brier_decomposition",
+        "log_loss",
+        "reliability_table",
+        "expected_calibration_error",
+        "max_calibration_error",
+        "calibration_slope",
     }
 
     assert expected.issubset(set(metrics.__all__))

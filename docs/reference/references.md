@@ -577,6 +577,22 @@ High turnover means factor definitions change frequently, inducing trading costs
     "Testing and Valuing Dynamic Correlations for Asset Allocation."
     *Journal of Business & Economic Statistics*, 24(2), 238-253.
 
+11. **Murphy, A. H. (1973)**
+    "A New Vector Partition of the Probability Score."
+    *Journal of Applied Meteorology*, 12(4), 595-600.
+
+12. **Stephenson, D. B., Coelho, C. A. S., & Jolliffe, I. T. (2008)**
+    "Two Extra Components in the Brier Score Decomposition."
+    *Weather and Forecasting*, 23(4), 752-757.
+
+13. **Cameron, A. C., & Miller, D. L. (2015)**
+    "A Practitioner's Guide to Cluster-Robust Inference."
+    *Journal of Human Resources*, 50(2), 317-372.
+
+14. **Snowberg, E., & Wolfers, J. (2010)**
+    "Explaining the Favorite-Long Shot Bias: Is it Risk-Love or Misperceptions?"
+    *Journal of Political Economy*, 118(4), 723-746.
+
 ### Reference Implementations
 
 - DSR: https://github.com/zoonek/2025-sharpe-ratio
