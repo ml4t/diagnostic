@@ -126,6 +126,7 @@ nav:
     - Deflated Sharpe Ratio: methods/deflated-sharpe-ratio.md
     - Combinatorial Purged CV: methods/cpcv.md
     - HAC-adjusted IC: methods/hac-ic.md
+    - Probability Calibration: methods/calibration.md
   - Reference:
     - Architecture: reference/architecture.md
     - Academic References: reference/references.md

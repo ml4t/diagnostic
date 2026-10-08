@@ -7,6 +7,18 @@ Provides statistical metrics and percentile computation utilities for model eval
 from statsmodels.stats.sandwich_covariance import cov_hac
 
 from ml4t.diagnostic.metrics.basic import compute_forward_returns, hit_rate
+from ml4t.diagnostic.metrics.calibration import (
+    PREDICTION_MARKET_BIN_EDGES,
+    BrierDecomposition,
+    CalibrationSlope,
+    brier_decomposition,
+    brier_score,
+    calibration_slope,
+    expected_calibration_error,
+    log_loss,
+    max_calibration_error,
+    reliability_table,
+)
 from ml4t.diagnostic.metrics.conditional import compute_conditional_ic
 from ml4t.diagnostic.metrics.feature_outcome import analyze_feature_outcome
 from ml4t.diagnostic.metrics.ic import (
@@ -87,4 +99,14 @@ __all__ = [
     "cross_sectional_auc_series",
     "compute_ic_uncertainty",
     "compute_auc_uncertainty",
+    "PREDICTION_MARKET_BIN_EDGES",
+    "BrierDecomposition",
+    "CalibrationSlope",
+    "brier_score",
+    "brier_decomposition",
+    "log_loss",
+    "reliability_table",
+    "expected_calibration_error",
+    "max_calibration_error",
+    "calibration_slope",
 ]

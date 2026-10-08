@@ -28,6 +28,7 @@ The methods below address these problems with mathematical rigor.
 | [Deflated Sharpe Ratio](deflated-sharpe-ratio.md) | Selection bias from testing many strategies | `deflated_sharpe_ratio()` | Lopez de Prado et al. (2025) |
 | [CPCV](cpcv.md) | Backtest overfitting detection | `CombinatorialCV` | Lopez de Prado (2018) |
 | [HAC-adjusted IC](hac-ic.md) | Autocorrelation in IC significance testing | `compute_ic_hac_stats()` | Newey & West (1987) |
+| [Probability Calibration](calibration.md) | Whether forecast probabilities or market prices match outcome frequencies | `reliability_table()`, `calibration_slope()` | Murphy (1973) |
 
 ## Methods by Category
 

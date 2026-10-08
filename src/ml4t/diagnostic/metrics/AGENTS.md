@@ -12,6 +12,8 @@ Feature-level and signal-level metric functions used by diagnostics, selection, 
 - `interactions.py` - H-statistic and SHAP interaction workflows
 - `feature_outcome.py` - combined feature-outcome analysis
 - `monotonicity.py` and `risk_adjusted.py` - ranking and portfolio-style metrics
+- `calibration.py` - Brier score and decomposition, log loss, reliability table with
+  Wilson or cluster-bootstrap intervals, ECE/MCE, calibration slope
 
 ## Common Entry Points
 
@@ -23,3 +25,4 @@ Feature-level and signal-level metric functions used by diagnostics, selection, 
 - `compute_shap_importance`
 - `compute_h_statistic`
 - `analyze_feature_outcome`
+- `reliability_table`, `brier_decomposition`, `calibration_slope`
