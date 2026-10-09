@@ -44,14 +44,29 @@ class FactorData:
         missing = [f for f in self.factor_names if f not in self.returns.columns]
         if missing:
             raise ValueError(f"Factor columns missing from returns: {missing}")
-        # Ensure timestamp is a sortable/joinable type (Date or Datetime)
+        # Ensure timestamp is a sortable/joinable type (Date or Datetime).
+        # Polars 2 removed strict casts from string to Date/Datetime; parse instead.
         ts_dtype = self.returns["timestamp"].dtype
         if ts_dtype in (pl.Object, pl.Utf8, pl.String):
-            try:
-                self.returns = self.returns.with_columns(pl.col("timestamp").cast(pl.Date))
-            except Exception:
-                # If casting to Date fails, try Datetime
-                self.returns = self.returns.with_columns(pl.col("timestamp").cast(pl.Datetime))
+            original_nulls = int(self.returns["timestamp"].null_count())
+            as_date = self.returns.select(
+                pl.col("timestamp").str.to_date(strict=False).alias("timestamp")
+            )
+            if int(as_date["timestamp"].null_count()) == original_nulls:
+                self.returns = self.returns.with_columns(
+                    pl.col("timestamp").str.to_date(strict=False)
+                )
+            else:
+                as_datetime = self.returns.select(
+                    pl.col("timestamp").str.to_datetime(strict=False).alias("timestamp")
+                )
+                if int(as_datetime["timestamp"].null_count()) != original_nulls:
+                    raise ValueError(
+                        f"timestamp values must be ISO dates or datetimes, got dtype {ts_dtype}"
+                    )
+                self.returns = self.returns.with_columns(
+                    pl.col("timestamp").str.to_datetime(strict=False)
+                )
 
     @property
     def n_periods(self) -> int:

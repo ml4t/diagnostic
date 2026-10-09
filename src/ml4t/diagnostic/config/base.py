@@ -80,6 +80,8 @@ class BaseConfig(BaseModel):
         path = Path(file_path)
         with path.open(encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"JSON config must be a mapping, got {type(data).__name__}")
         return cls(**data)
 
     def to_yaml(self, file_path: str | Path) -> None:
@@ -111,6 +113,8 @@ class BaseConfig(BaseModel):
         path = Path(file_path)
         with path.open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"YAML config must be a mapping, got {type(data).__name__}")
         return cls(**data)
 
     @classmethod
