@@ -10,7 +10,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Search existing issues first. Do not disclose suspected vulnerabilities here.
+        Search existing issues and report one problem per issue. Follow the
+        [contribution policy](https://github.com/ml4t/diagnostic/blob/main/CONTRIBUTING.md).
+        Do not disclose suspected vulnerabilities here; use private security reporting.
   - type: input
     id: version
     attributes:

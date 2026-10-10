@@ -7,6 +7,11 @@ labels:
   - "status: needs-triage"
   - "compatibility: affected"
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues and request one coherent change per issue. Follow the
+        [contribution policy](https://github.com/ml4t/diagnostic/blob/main/CONTRIBUTING.md).
   - type: input
     id: version
     attributes:
