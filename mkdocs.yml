@@ -113,6 +113,7 @@ nav:
     - Feature Selection: user-guide/feature-selection.md
     - Workflows: user-guide/workflows.md
     - From Alphalens and Pyfolio: user-guide/migration.md
+    - From Empyrical Metrics: user-guide/empyrical-migration.md
     - HTML Backtest Reports: user-guide/backtest-tearsheets.md
     - Trade Diagnostics: user-guide/trade-analysis.md
     - Trade-SHAP Dashboard: DASHBOARD.md
