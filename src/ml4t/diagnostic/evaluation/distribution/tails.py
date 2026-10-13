@@ -468,16 +468,15 @@ def hill_estimator(
         else:  # both
             # Compute both tails and take minimum (more conservative)
             sorted_upper = np.sort(arr)[::-1]
-            alpha_upper, alpha_se_upper = compute_hill_alpha(sorted_upper, k)
-
             sorted_lower = np.sort(-arr)[::-1]
-            # A non-positive threshold means the sample does not have k+1
-            # strictly negative observations (for example a Pareto or
-            # exponential sample). There is no separate loss tail to estimate,
-            # so the upper tail is the Hill result. Do not substitute abs().
-            if sorted_lower[k] <= 0:
-                alpha, alpha_se = alpha_upper, alpha_se_upper
+            # A non-positive threshold leaves too few observations to estimate
+            # that tail. Use the other tail when only one is estimable.
+            if sorted_upper[k] <= 0:
+                alpha, alpha_se = compute_hill_alpha(sorted_lower, k)
+            elif sorted_lower[k] <= 0:
+                alpha, alpha_se = compute_hill_alpha(sorted_upper, k)
             else:
+                alpha_upper, alpha_se_upper = compute_hill_alpha(sorted_upper, k)
                 alpha_lower, alpha_se_lower = compute_hill_alpha(sorted_lower, k)
 
                 # Use minimum (heavier tail)
