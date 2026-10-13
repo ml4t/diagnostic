@@ -49,24 +49,25 @@ class FactorData:
         ts_dtype = self.returns["timestamp"].dtype
         if ts_dtype in (pl.Object, pl.Utf8, pl.String):
             original_nulls = int(self.returns["timestamp"].null_count())
-            as_date = self.returns.select(
-                pl.col("timestamp").str.to_date(strict=False).alias("timestamp")
-            )
-            if int(as_date["timestamp"].null_count()) == original_nulls:
-                self.returns = self.returns.with_columns(
-                    pl.col("timestamp").str.to_date(strict=False)
+            try:
+                as_date = self.returns.select(pl.col("timestamp").str.to_date(strict=False))
+            except pl.exceptions.PolarsError:
+                # Polars 1.x raises even with strict=False for datetime strings.
+                as_date = None
+            if as_date is not None and int(as_date["timestamp"].null_count()) == original_nulls:
+                self.returns = self.returns.with_columns(as_date["timestamp"])
+                return
+            try:
+                as_datetime = self.returns.select(pl.col("timestamp").str.to_datetime(strict=False))
+            except pl.exceptions.PolarsError as exc:
+                raise ValueError(
+                    f"timestamp values must be ISO dates or datetimes, got dtype {ts_dtype}"
+                ) from exc
+            if int(as_datetime["timestamp"].null_count()) != original_nulls:
+                raise ValueError(
+                    f"timestamp values must be ISO dates or datetimes, got dtype {ts_dtype}"
                 )
-            else:
-                as_datetime = self.returns.select(
-                    pl.col("timestamp").str.to_datetime(strict=False).alias("timestamp")
-                )
-                if int(as_datetime["timestamp"].null_count()) != original_nulls:
-                    raise ValueError(
-                        f"timestamp values must be ISO dates or datetimes, got dtype {ts_dtype}"
-                    )
-                self.returns = self.returns.with_columns(
-                    pl.col("timestamp").str.to_datetime(strict=False)
-                )
+            self.returns = self.returns.with_columns(as_datetime["timestamp"])
 
     @property
     def n_periods(self) -> int:
