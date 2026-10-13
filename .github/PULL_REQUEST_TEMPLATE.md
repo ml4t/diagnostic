@@ -4,7 +4,7 @@ Closes #
 
 Automated dependency updates and administrative metadata changes do not need a separate issue.
 Each other PR addresses one issue and contains one focused change. See the
-[contribution policy](https://github.com/ml4t/diagnostic/blob/main/CONTRIBUTING.md).
+[shared contribution policy](https://github.com/ml4t/ecosystem/blob/main/CONTRIBUTING.md).
 
 ## Outcome
 
@@ -15,9 +15,13 @@ Describe the user-visible or standards outcome.
 - [ ] No public compatibility impact
 - [ ] Compatibility impact is documented in the owning issue and migration guidance
 
+For a proposed change to a numerical definition, annualization, sign, or default, link the
+owning issue's agreed expected behavior and state the compatibility impact. Correct verified
+numerical defects rather than preserving an incorrect result.
+
 ## Verification
 
-- [ ] For a bug: a public-API or user-workflow regression fails on the base revision and passes on this head
+- [ ] For a bug: a public-API or user-workflow regression fails on base and passes on this head
 - [ ] Ruff lint and format checks pass
 - [ ] `ty` passes
 - [ ] Test suite passes
