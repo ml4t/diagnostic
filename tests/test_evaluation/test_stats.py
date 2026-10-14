@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from scipy import stats as scipy_stats
 
 from ml4t.diagnostic.evaluation.stats import (
     DSRResult,
@@ -1803,6 +1804,17 @@ class TestDeflatedSharpeRatioRawReturns:
     These tests cover the function that takes raw returns arrays
     rather than pre-computed statistics.
     """
+
+    def test_short_sample_moments_match_scipy(self):
+        """Raw-return DSR must not mix sample and population moment divisors."""
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+
+        returns = np.random.default_rng(123).standard_t(df=4, size=30) * 0.01
+
+        result = deflated_sharpe_ratio(returns, frequency="daily")
+
+        assert result.skewness == pytest.approx(scipy_stats.skew(returns), rel=1e-12)
+        assert result.excess_kurtosis == pytest.approx(scipy_stats.kurtosis(returns), rel=1e-12)
 
     def test_single_strategy_psr(self):
         """Test PSR with single strategy returns."""

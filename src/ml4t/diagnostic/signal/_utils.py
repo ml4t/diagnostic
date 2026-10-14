@@ -64,7 +64,7 @@ def filter_outliers(
     pl.DataFrame
         Data with outliers removed.
     """
-    if z_threshold <= 0:
+    if z_threshold <= 0 or data.height == 0:
         return data
 
     # Cross-sectional z-score with std=0 edge case
