@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import posixpath
 import re
+import time
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -81,12 +82,20 @@ def _readme_links() -> tuple[int, set[str]]:
 
 def _check_external(url: str) -> None:
     request = Request(url, headers={"User-Agent": "ml4t-diagnostic-docs/1.0"})
-    try:
-        with urlopen(request, timeout=20) as response:
-            if response.status >= 400:
-                raise ValueError(f"{url}: HTTP {response.status}")
-    except (HTTPError, URLError, TimeoutError) as error:
-        raise ValueError(f"External link failed: {url}: {error}") from error
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=20) as response:
+                if response.status >= 400:
+                    raise ValueError(f"{url}: HTTP {response.status}")
+            return
+        except (HTTPError, URLError, TimeoutError) as error:
+            if isinstance(error, HTTPError):
+                error.close()
+                if error.code not in {429, 500, 502, 503, 504}:
+                    raise ValueError(f"External link failed: {url}: {error}") from error
+            if attempt == 2:
+                raise ValueError(f"External link failed: {url}: {error}") from error
+            time.sleep(2**attempt)
 
 
 def check_links(site: Path, *, external: bool = False) -> tuple[int, int]:
