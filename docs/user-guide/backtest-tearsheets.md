@@ -34,6 +34,7 @@ html = generate_backtest_tearsheet(
     theme="default",
     output_path=output,
     n_trials=25,
+    periods_per_year=252,
 )
 
 assert output.exists()
@@ -44,6 +45,27 @@ print(f"Wrote {output}")
 The file-existence and Plotly assertions check that rendering completed.
 Inspect reported Sharpe, drawdown, and trial count against your source
 backtest; HTML generation does not validate supplied metrics.
+
+Set `periods_per_year` from the cadence of the return observations, not the
+number of observations or the rebalance frequency. Use 12 for monthly returns,
+252 for a declared daily trading-year convention, or 365 for daily continuous
+returns. The value must be a positive integer. It is a numerical convention,
+not evidence that an expected calendar/bar grid is complete.
+
+The same override is available on `BacktestTearsheet`, `export_workspaces`,
+`generate_tearsheet_from_result`, and `generate_tearsheet_from_run_artifacts`.
+Without an override, profile reports inherit the profile's annualization scale;
+raw-return reports use the documented 252-period daily convention at every
+sample length. Computed metrics, benchmark comparisons, rolling plots, factor
+analysis and statistical-validation sections use that scale. Supplied metrics
+are retained and must already use the same convention. Reports record the scale
+in their methodology section and the `ml4t-periods-per-year` HTML metadata.
+
+In 0.1.9 and earlier, raw reports with fewer than 100 observations incorrectly
+selected a 12-period scale. That published release remains unchanged; this
+correction applies to subsequent source revisions. Portfolio input alignment,
+calendar selection and full Pyfolio/Alphalens capability coverage are separate
+requirements, not guarantees established by report generation.
 
 ## Choose a template
 

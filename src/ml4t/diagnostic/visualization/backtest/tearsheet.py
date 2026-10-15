@@ -20,6 +20,7 @@ from __future__ import annotations
 import html as html_mod
 import json
 import logging
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -470,11 +471,23 @@ def _resolve_report_metadata(
     return document_title, resolved_title, resolved_subtitle, resolved_benchmark
 
 
-def _infer_periods_per_year(returns: pl.Series | np.ndarray | None) -> int:
-    if returns is None:
-        return 252
-    n_periods = len(returns)
-    return 12 if n_periods < 100 else 252
+def _resolve_periods_per_year(
+    periods_per_year: int | None, profile: BacktestProfile | None = None
+) -> int:
+    value = periods_per_year
+    if value is None:
+        value = profile.periods_per_year if profile is not None else 252
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value <= 0:
+        raise ValueError("periods_per_year must be a positive integer")
+    return int(value)
+
+
+def _with_annualization_metadata(html: str, periods_per_year: int) -> str:
+    return html.replace(
+        "</head>",
+        f'<meta name="ml4t-periods-per-year" content="{periods_per_year}"></head>',
+        1,
+    )
 
 
 def _enrich_benchmark_metrics(
@@ -747,6 +760,8 @@ def generate_backtest_tearsheet(
     factor_data: FactorData | None = None,
     interactive: bool = True,
     include_plotlyjs: bool = True,
+    *,
+    periods_per_year: int | None = None,
 ) -> str:
     """Generate a comprehensive backtest tearsheet.
 
@@ -789,6 +804,10 @@ def generate_backtest_tearsheet(
         Whether charts should be interactive (vs static images)
     include_plotlyjs : bool
         Whether to include Plotly.js (set False if already loaded)
+    periods_per_year : int, optional
+        Positive annualization scale for every computed report metric. Defaults
+        to the profile scale, or 252 for raw daily returns, never sample length.
+        Precomputed metrics must use the same convention.
 
     Returns
     -------
@@ -814,7 +833,10 @@ def generate_backtest_tearsheet(
     ...     n_trials=100,  # For DSR
     ... )
     """
+    periods_per_year = _resolve_periods_per_year(periods_per_year, profile)
     if profile is not None:
+        if periods_per_year != profile.periods_per_year:
+            profile = replace(profile, annualization_factor=periods_per_year)
         trades = trades if trades is not None else profile.trades_df
         returns = returns if returns is not None else profile.daily_returns
         equity_curve = equity_curve if equity_curve is not None else profile.equity_df
@@ -837,7 +859,8 @@ def generate_backtest_tearsheet(
     # Get template
     tmpl = get_template(template)
     preset = get_dashboard_preset(template)
-    periods_per_year = _infer_periods_per_year(returns)
+    if metrics is None:
+        metrics = {}
     benchmark_metrics = _compute_portfolio_summary_metrics(
         benchmark_returns,
         periods_per_year=periods_per_year,
@@ -908,6 +931,7 @@ def generate_backtest_tearsheet(
         report_metadata=report_metadata,
         theme=theme,
         interactive=interactive,
+        periods_per_year=periods_per_year,
     )
 
     html = HTML_TEMPLATE.format(
@@ -920,6 +944,8 @@ def generate_backtest_tearsheet(
         plotly_js=_plotly_js_tag(include_plotlyjs),
         sections_html=sections_html,
     )
+
+    html = _with_annualization_metadata(html, periods_per_year)
 
     # Save if path provided
     if output_path:
@@ -934,6 +960,7 @@ def _enrich_validation_metrics(
     metrics: dict[str, Any],
     returns: pl.Series | np.ndarray | None,
     n_trials: int | None,
+    periods_per_year: int = 252,
 ) -> dict[str, Any]:
     """Compute DSR, MinTRL, and confidence intervals from returns when absent."""
     if returns is None or len(returns) == 0:
@@ -966,9 +993,11 @@ def _enrich_validation_metrics(
             )
 
             if n_trials is not None and n_trials > 1:
-                dsr_result = deflated_sharpe_ratio([ret_arr] * n_trials)
+                dsr_result = deflated_sharpe_ratio(
+                    [ret_arr] * n_trials, periods_per_year=periods_per_year
+                )
             else:
-                dsr_result = deflated_sharpe_ratio(ret_arr)
+                dsr_result = deflated_sharpe_ratio(ret_arr, periods_per_year=periods_per_year)
             metrics["dsr_probability"] = dsr_result.probability
             if metrics.get("sharpe") is None:
                 metrics["sharpe"] = dsr_result.sharpe_ratio_annualized
@@ -994,7 +1023,7 @@ def _enrich_validation_metrics(
             else:
                 from ml4t.diagnostic.evaluation.stats.minimum_track_record import compute_min_trl
 
-                trl_result = compute_min_trl(ret_arr)
+                trl_result = compute_min_trl(ret_arr, periods_per_year=periods_per_year)
                 if trl_result.min_trl != float("inf"):
                     metrics["min_trl"] = trl_result.min_trl
         except Exception as exc:
@@ -1015,13 +1044,16 @@ def _enrich_validation_metrics(
             max_dd = metrics.get("max_drawdown")
             if sharpe is not None:
                 # Approximate 95% CI for Sharpe: SE ≈ sqrt((1 + sr²/2) / T)
-                se_sr = float(np.sqrt((1 + float(sharpe) ** 2 / 2) / n_obs))
-                se_annual = se_sr * np.sqrt(252)
+                sharpe_period = float(sharpe) / np.sqrt(periods_per_year)
+                se_sr = float(np.sqrt((1 + sharpe_period**2 / 2) / n_obs))
+                se_annual = se_sr * np.sqrt(periods_per_year)
                 metrics["sharpe_lower_95"] = float(sharpe) - 1.96 * se_annual
                 metrics["sharpe_upper_95"] = float(sharpe) + 1.96 * se_annual
             if cagr is not None:
-                vol = metrics.get("volatility", float(np.std(ret_arr) * np.sqrt(252)))
-                se_cagr = float(vol) / np.sqrt(n_obs / 252)
+                vol = metrics.get(
+                    "volatility", float(np.std(ret_arr, ddof=1) * np.sqrt(periods_per_year))
+                )
+                se_cagr = float(vol) / np.sqrt(n_obs / periods_per_year)
                 metrics["cagr_lower_95"] = float(cagr) - 1.96 * se_cagr
                 metrics["cagr_upper_95"] = float(cagr) + 1.96 * se_cagr
             if max_dd is not None:
@@ -1050,15 +1082,15 @@ def _enrich_validation_metrics(
         # Sharpe SE with non-normality correction (Lo 2002 / Bailey & Lopez de Prado)
         sr = metrics.get("sharpe")
         if sr is not None:
-            sr_f = float(sr)
+            sr_f = float(sr) / np.sqrt(periods_per_year)
             from scipy.stats import norm
 
             se_corrected = float(
-                np.sqrt(max(0, 1 - skew * sr_f + (kurt - 3) / 4 * sr_f**2) / n_obs)
-            ) * np.sqrt(252)
+                np.sqrt(max(0, 1 - skew * sr_f + (kurt - 1) / 4 * sr_f**2) / n_obs)
+            ) * np.sqrt(periods_per_year)
             metrics.setdefault("sharpe_se", se_corrected)
             if se_corrected > 0:
-                z_stat = sr_f / se_corrected
+                z_stat = float(sr) / se_corrected
                 p_value = float(2 * norm.sf(abs(z_stat)))
                 metrics.setdefault("sharpe_pvalue", p_value)
     except Exception as exc:
@@ -1091,11 +1123,12 @@ def _generate_sections(
     report_metadata: BacktestReportMetadata | None = None,
     theme: str = "default",
     interactive: bool = True,
+    periods_per_year: int = 252,
 ) -> str:
     """Generate HTML for all enabled sections."""
     # Enrich metrics with computed validation stats when absent
     if metrics is not None:
-        metrics = _enrich_validation_metrics(metrics, returns, n_trials)
+        metrics = _enrich_validation_metrics(metrics, returns, n_trials, periods_per_year)
 
     # Pre-build FactorAnalysis to cache models across factor sections
     factor_analysis = None
@@ -1103,7 +1136,7 @@ def _generate_sections(
         from ml4t.diagnostic.evaluation.factor.analysis import FactorAnalysis
 
         ret_arr = returns if isinstance(returns, np.ndarray) else returns.to_numpy()
-        factor_analysis = FactorAnalysis(ret_arr, factor_data)
+        factor_analysis = FactorAnalysis(ret_arr, factor_data, periods_per_year=periods_per_year)
 
     rendered_sections: list[tuple[TearsheetSection, str]] = []
 
@@ -1127,6 +1160,7 @@ def _generate_sections(
             report_metadata=report_metadata,
             theme=theme,
             interactive=interactive,
+            periods_per_year=periods_per_year,
         )
         if section_html:
             rendered_sections.append((section, section_html))
@@ -1155,6 +1189,7 @@ def _generate_section(
     report_metadata: BacktestReportMetadata | None = None,
     theme: str = "default",
     interactive: bool = True,
+    periods_per_year: int = 252,
 ) -> str | None:
     """Generate HTML for a single section."""
     preset = preset or get_dashboard_preset("full")
@@ -1183,6 +1218,7 @@ def _generate_section(
             factor_analysis=factor_analysis,
             report_metadata=report_metadata,
             theme=theme,
+            periods_per_year=periods_per_year,
         )
 
         if content is None:
@@ -1252,12 +1288,12 @@ def _build_portfolio_analysis(
     benchmark_returns: pl.Series | np.ndarray | None = None,
     profile: BacktestProfile | None = None,
     equity_curve: pl.DataFrame | None = None,
+    periods_per_year: int = 252,
 ) -> Any:
     """Build a PortfolioAnalysis instance with date and benchmark resolution."""
     from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
     ret_series = returns if isinstance(returns, pl.Series) else pl.Series("returns", returns)
-    periods_per_year = 12 if len(ret_series) < 100 else 252
 
     bench = None
     if benchmark_returns is not None:
@@ -1344,6 +1380,7 @@ class _SectionContext:
         "theme",
         "data_sources",
         "report_metadata",
+        "periods_per_year",
     )
 
     def __init__(
@@ -1366,6 +1403,7 @@ class _SectionContext:
         report_metadata: BacktestReportMetadata | None,
         theme: str,
         data_sources: dict[str, str] | None = None,
+        periods_per_year: int = 252,
     ):
         self.preset = preset
         self.profile = profile
@@ -1384,6 +1422,7 @@ class _SectionContext:
         self.report_metadata = report_metadata
         self.theme = theme
         self.data_sources = data_sources or {}
+        self.periods_per_year = periods_per_year
 
 
 # --- Executive / Overview renderers ---
@@ -1428,7 +1467,7 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
     else:
         x = list(range(n))
 
-    sqrt_252 = float(np.sqrt(252))
+    annualization_scale = float(np.sqrt(ctx.periods_per_year))
     window = 252
 
     # Determine if we can compute rolling beta
@@ -1457,10 +1496,10 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
         w = ret_arr[i - window + 1 : i + 1]
         mu = float(np.mean(w))
         sigma = float(np.std(w, ddof=1))
-        roll_ret[i] = mu * 252
-        roll_vol[i] = sigma * sqrt_252
+        roll_ret[i] = mu * ctx.periods_per_year
+        roll_vol[i] = sigma * annualization_scale
         if sigma > 0:
-            roll_sharpe[i] = (mu * 252) / (sigma * sqrt_252)
+            roll_sharpe[i] = mu / sigma * annualization_scale
 
         if has_benchmark and bench_arr is not None:
             # Rolling beta = cov(r, b) / var(b)
@@ -1475,7 +1514,7 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
             downside = np.minimum(w, 0.0)
             ds = float(np.sqrt(np.mean(downside**2)))
             if ds > 0:
-                roll_fourth[i] = mu / ds * sqrt_252
+                roll_fourth[i] = mu / ds * annualization_scale
 
     theme = validate_theme(ctx.theme)
     theme_config = get_theme_config(theme)
@@ -1773,11 +1812,12 @@ def _render_sharpe_bootstrap(ctx: _SectionContext) -> go.Figure | None:
         return None
     observed_sr = ctx.metrics.get("sharpe_ratio", ctx.metrics.get("sharpe"))
     if observed_sr is None:
-        vol = float(np.std(ret_arr, ddof=1) * np.sqrt(252))
-        observed_sr = float(np.mean(ret_arr) * 252 / vol) if vol > 0 else 0.0
+        vol = float(np.std(ret_arr, ddof=1) * np.sqrt(ctx.periods_per_year))
+        observed_sr = float(np.mean(ret_arr) * ctx.periods_per_year / vol) if vol > 0 else 0.0
     return plot_sharpe_bootstrap(
         ret_arr,
         observed_sharpe=float(observed_sr),
+        periods_per_year=ctx.periods_per_year,
         theme=ctx.theme,
     )
 
@@ -1859,7 +1899,9 @@ def _render_cost_sensitivity(ctx: _SectionContext) -> go.Figure | None:
         return None
     from .cost_attribution import plot_cost_sensitivity
 
-    return plot_cost_sensitivity(ctx.returns, theme=ctx.theme)
+    return plot_cost_sensitivity(
+        ctx.returns, theme=ctx.theme, periods_per_year=ctx.periods_per_year
+    )
 
 
 # --- Statistical Validity renderers ---
@@ -1894,6 +1936,7 @@ def _render_min_trl(ctx: _SectionContext) -> go.Figure | None:
     return plot_minimum_track_record(
         observed_sharpe=sharpe,
         current_periods=periods,
+        periods_per_year=ctx.periods_per_year,
         theme=ctx.theme,
     )
 
@@ -2076,6 +2119,7 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
         benchmark_returns=ctx.benchmark_returns,
         profile=ctx.profile,
         equity_curve=ctx.equity_curve,
+        periods_per_year=ctx.periods_per_year,
     )
 
     if section_name == "equity_curve":
@@ -2399,8 +2443,8 @@ def _render_factor_regression_table(ctx: _SectionContext) -> str | None:
     a_class = ' class="positive"' if a_p < 0.05 else ""
     rows.append(
         f"<tr><td><em>Alpha (annlzd)</em></td>"
-        f'<td class="num">{a * 252:.4f}</td>'
-        f'<td class="num">{a_se * np.sqrt(252):.4f}</td>'
+        f'<td class="num">{a * ctx.periods_per_year:.4f}</td>'
+        f'<td class="num">{a_se * ctx.periods_per_year:.4f}</td>'
         f'<td class="num">{a_t:.2f}</td>'
         f'<td class="num"{a_class}>{a_p:.3f}{a_sig}</td></tr>'
     )
@@ -2473,8 +2517,8 @@ _METHODOLOGY_SECTIONS: list[tuple[str, str, str, tuple[str, ...]]] = [
     (
         "Performance",
         "Rolling Metrics",
-        "21-day and 252-day rolling windows for Sharpe, Sortino, Calmar, and return. "
-        "Annualization uses the resolved calendar (default NYSE = 252 days/year).",
+        "Rolling windows count return observations independently of annualization. "
+        "The report's declared periods-per-year scale applies to all annualized metrics.",
         ("equity",),
     ),
     (
@@ -2544,7 +2588,11 @@ def _render_methodology_notes(ctx: _SectionContext) -> str | None:
     """Render structured methodology documentation with active data-source flags."""
     data_sources = ctx.data_sources or {}
 
-    rows: list[str] = []
+    rows: list[str] = [
+        "<tr><td>Methodology</td><td><strong>Annualization</strong><br>"
+        f"{ctx.periods_per_year} return observations per year. "
+        "This numerical scale does not establish calendar or bar completeness.</td></tr>"
+    ]
     metadata = ctx.report_metadata
     if metadata is not None:
         metadata_rows = [
@@ -2709,6 +2757,7 @@ def _create_section_figure(
     factor_analysis: Any | None = None,
     report_metadata: BacktestReportMetadata | None = None,
     theme: str = "default",
+    periods_per_year: int = 252,
 ) -> go.Figure | str | None:
     """Create the Plotly figure for a specific section.
 
@@ -2735,6 +2784,7 @@ def _create_section_figure(
         factor_analysis=factor_analysis,
         report_metadata=report_metadata,
         theme=theme,
+        periods_per_year=periods_per_year,
         data_sources=profile.data_sources if profile is not None else None,
     )
     return renderer(ctx)
@@ -2759,6 +2809,8 @@ class BacktestTearsheet:
         template: Literal["quant_trader", "hedge_fund", "risk_manager", "full"] = "full",
         theme: Literal["default", "dark", "print", "presentation"] = "default",
         title: str | None = None,
+        *,
+        periods_per_year: int | None = None,
     ):
         """Initialize tearsheet builder."""
         self.template = get_template(template)
@@ -2767,6 +2819,9 @@ class BacktestTearsheet:
         self.subtitle: str | None = None
         self.profile: BacktestProfile | None = None
         self.report_metadata: BacktestReportMetadata | None = None
+        if periods_per_year is not None:
+            _resolve_periods_per_year(periods_per_year)
+        self.periods_per_year = periods_per_year
 
         # Data
         self.trades: pl.DataFrame | None = None
@@ -2781,6 +2836,9 @@ class BacktestTearsheet:
 
     def add_profile(self, profile: BacktestProfile) -> BacktestTearsheet:
         """Add a BacktestProfile and hydrate default surfaces from it."""
+        scale = _resolve_periods_per_year(self.periods_per_year, profile)
+        if scale != profile.periods_per_year:
+            profile = replace(profile, annualization_factor=scale)
         self.profile = profile
         self.trades = profile.trades_df
         self.returns = profile.daily_returns
@@ -2897,9 +2955,23 @@ class BacktestTearsheet:
 
         # Use stored template directly (not recreated from name) to preserve
         # enable_section/disable_section customizations
+        periods_per_year = _resolve_periods_per_year(self.periods_per_year, self.profile)
+        if self.returns is not None:
+            for key, value in _compute_portfolio_summary_metrics(
+                self.returns, periods_per_year=periods_per_year
+            ).items():
+                self.metrics.setdefault(key, value)
+            if self.benchmark_returns is not None:
+                _enrich_benchmark_metrics(
+                    self.returns, self.benchmark_returns, self.metrics, periods_per_year
+                )
+        if "sharpe_ratio" in self.metrics:
+            self.metrics.setdefault("sharpe", self.metrics["sharpe_ratio"])
+        if self.trades is not None:
+            _enrich_from_trades(self.trades, self.metrics)
         benchmark_metrics = _compute_portfolio_summary_metrics(
             self.benchmark_returns,
-            periods_per_year=_infer_periods_per_year(self.returns),
+            periods_per_year=periods_per_year,
         )
         document_title, report_title, report_subtitle, resolved_benchmark_name = (
             _resolve_report_metadata(
@@ -2926,6 +2998,7 @@ class BacktestTearsheet:
             report_metadata=self.report_metadata,
             theme=self.theme,
             interactive=interactive,
+            periods_per_year=periods_per_year,
         )
 
         html = HTML_TEMPLATE.format(
@@ -2939,6 +3012,7 @@ class BacktestTearsheet:
             sections_html=sections_html,
         )
 
+        html = _with_annualization_metadata(html, periods_per_year)
         if output_path:
             path = Path(output_path)
             path.parent.mkdir(parents=True, exist_ok=True)
