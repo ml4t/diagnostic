@@ -10,7 +10,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Search existing issues first. Do not disclose suspected vulnerabilities here.
+        Search existing issues and report one problem per issue. Follow the
+        [shared contribution policy](https://github.com/ml4t/ecosystem/blob/main/CONTRIBUTING.md).
+        Do not disclose suspected vulnerabilities here; use private security reporting.
   - type: input
     id: version
     attributes:
@@ -29,12 +31,16 @@ body:
     id: observed
     attributes:
       label: Observed behavior
+      description: For a numerical defect, include the input and observed value or result.
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
       label: Expected behavior
+      description: >-
+        For a numerical defect, explain the expected value and its definition,
+        sign, or annualization.
     validations:
       required: true
   - type: textarea
