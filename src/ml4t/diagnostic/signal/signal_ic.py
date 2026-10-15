@@ -11,6 +11,7 @@ import polars as pl
 
 from ml4t.diagnostic.metrics.ic import cross_sectional_ic_series
 from ml4t.diagnostic.metrics.ic_inference import compute_ic_summary_stats
+from ml4t.diagnostic.signal._utils import precise_dates
 
 
 def extract_signal_ic_series(
@@ -68,7 +69,7 @@ def extract_signal_ic_series(
     ic_clean = ic_df.filter(
         (pl.col("n_obs") >= min_obs) & pl.col("ic").cast(pl.Float64).is_finite()
     )
-    dates = ic_clean[date_col].to_list()
+    dates = precise_dates(ic_clean[date_col])
     ic_values = ic_clean["ic"].cast(pl.Float64).to_list()
     return dates, ic_values
 

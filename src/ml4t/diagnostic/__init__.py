@@ -93,7 +93,7 @@ from .metrics import QuantileProfile, quantile_profile
 from .selection import FeatureSelector, SelectionReport
 
 # Signal analysis
-from .signal import SignalResult, analyze_signal
+from .signal import SignalResult, analyze_prepared_signal, analyze_signal
 
 # Visualization (optional - may fail if plotly not installed)
 try:
@@ -125,6 +125,7 @@ __all__ = [
     "SelectionReport",
     # Signal Analysis
     "analyze_signal",
+    "analyze_prepared_signal",
     "SignalResult",
     # Cross-sectional feature profiles
     "QuantileProfile",
