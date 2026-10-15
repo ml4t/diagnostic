@@ -20,6 +20,7 @@ Example:
 from __future__ import annotations
 
 from copy import deepcopy
+from numbers import Integral, Real
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
@@ -167,7 +168,7 @@ class PortfolioAnalysis:
         # Cached results
         self._metrics_cache: PortfolioMetrics | None = None
         self._rolling_cache: dict[tuple, RollingMetricsResult] = {}
-        self._drawdown_cache: DrawdownResult | None = None
+        self._drawdown_cache: dict[tuple[int, float], DrawdownResult] = {}
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:
@@ -530,9 +531,11 @@ class PortfolioAnalysis:
         Parameters
         ----------
         top_n : int, default 5
-            Number of top drawdowns to identify
+            Nonnegative number of top drawdowns to select. Zero returns only the
+            aggregate statistics; it does not change the total episode count.
         threshold : float, default 0.01
-            Minimum drawdown depth to count (1%)
+            Finite minimum absolute depth in [0, 1]. Episodes strictly deeper
+            than this threshold are counted. Does not change the underwater curve.
 
         Returns
         -------
@@ -543,10 +546,21 @@ class PortfolioAnalysis:
         --------
         >>> dd = analysis.compute_drawdown_analysis(top_n=10)
         >>> print(f"Max drawdown: {dd.max_drawdown:.1%}")
-        >>> print(f"Avg duration: {dd.avg_duration_days:.0f} days")
+        >>> print(f"Avg duration: {dd.avg_duration_days:.0f} observations")
         """
-        if self._drawdown_cache is not None:
-            return deepcopy(self._drawdown_cache)
+        if isinstance(top_n, (bool, np.bool_)) or not isinstance(top_n, Integral) or top_n < 0:
+            raise ValueError("top_n must be a nonnegative integer")
+        if (
+            isinstance(threshold, (bool, np.bool_))
+            or not isinstance(threshold, Real)
+            or not np.isfinite(threshold)
+            or not 0 <= threshold <= 1
+        ):
+            raise ValueError("threshold must be a finite real depth in [0, 1]")
+        top_n, threshold = int(top_n), float(threshold)
+        cache_key = (top_n, threshold)
+        if cache_key in self._drawdown_cache:
+            return deepcopy(self._drawdown_cache[cache_key])
 
         returns = self._returns
         dates = self._dates
@@ -575,7 +589,7 @@ class PortfolioAnalysis:
         max_duration = max(durations) if durations else 0
         avg_duration = float(np.mean(durations)) if durations else 0.0
 
-        self._drawdown_cache = DrawdownResult(
+        self._drawdown_cache[cache_key] = DrawdownResult(
             current_drawdown=current_dd,
             max_drawdown=max_dd,
             avg_drawdown=avg_dd,
@@ -587,7 +601,7 @@ class PortfolioAnalysis:
             dates=dates,
         )
 
-        return deepcopy(self._drawdown_cache)
+        return deepcopy(self._drawdown_cache[cache_key])
 
     def _identify_drawdown_periods(
         self,
