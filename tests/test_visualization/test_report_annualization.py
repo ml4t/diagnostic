@@ -164,6 +164,7 @@ def test_factor_table_scales_intercept_and_its_standard_error_identically(scale)
 
 
 @pytest.mark.parametrize("route", ["function", "builder", "export", "integration"])
+@pytest.mark.filterwarnings("error::RuntimeWarning")
 def test_profile_report_inherits_or_overrides_scale_without_changing_profile(route):
     from ml4t.backtest import BacktestResult
 

@@ -1854,7 +1854,7 @@ def _render_trade_waterfall(ctx: _SectionContext) -> go.Figure | None:
 
 
 def _render_duration(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.trades is None or "bars_held" not in ctx.trades.columns:
+    if ctx.trades is None or ctx.trades.is_empty() or "bars_held" not in ctx.trades.columns:
         return None
     from .trade_plots import plot_trade_duration_distribution
 
