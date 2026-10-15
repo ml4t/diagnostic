@@ -2,6 +2,10 @@
 
 Closes #
 
+Automated dependency updates and administrative metadata changes do not need a separate issue.
+Each other PR addresses one issue and contains one focused change. See the
+[shared contribution policy](https://github.com/ml4t/ecosystem/blob/main/CONTRIBUTING.md).
+
 ## Outcome
 
 Describe the user-visible or standards outcome.
@@ -11,15 +15,29 @@ Describe the user-visible or standards outcome.
 - [ ] No public compatibility impact
 - [ ] Compatibility impact is documented in the owning issue and migration guidance
 
+For a proposed change to a numerical definition, annualization, sign, or default, link the
+owning issue's agreed expected behavior and state the compatibility impact. Correct verified
+numerical defects rather than preserving an incorrect result.
+
 ## Verification
 
-- [ ] Tests reproduce the prior failure or verify the requested behavior
+- [ ] For a bug: a public-API or user-workflow regression fails on base and passes on this head
 - [ ] Ruff lint and format checks pass
 - [ ] `ty` passes
 - [ ] Test suite passes
 - [ ] Package build passes when applicable
 - [ ] Strict MkDocs build passes when documentation is affected
 - [ ] Ecosystem qualification passes
+
+For a bug fix, record the base and head commit IDs, the regression command, and each result.
+For other changes, report the checks actually run and any missing evidence. A checked box is not
+a substitute for results.
+
+## AI assistance
+
+State whether AI tools helped produce code, tests, documentation, or this description. Name the
+parts they helped with. Confirm that you reviewed and tested the submission yourself and can
+explain it to reviewers.
 
 ## Documentation and release
 
