@@ -3,12 +3,13 @@
 Tests turnover.py: compute_turnover, compute_autocorrelation, estimate_half_life.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import polars as pl
 import pytest
 
+from ml4t.diagnostic import analyze_signal
 from ml4t.diagnostic.signal.turnover import (
     compute_autocorrelation,
     compute_turnover,
@@ -98,6 +99,43 @@ def autocorrelation_data():
 # =============================================================================
 
 
+def test_analyze_signal_does_not_repeat_adjacent_turnover_for_longer_horizons():
+    factor = pl.DataFrame(
+        [
+            {
+                "date": date(2025, 1, 1) + timedelta(days=day),
+                "asset": f"a{asset:02d}",
+                "factor": float((asset - day) % 20),
+            }
+            for day in range(30)
+            for asset in range(20)
+        ]
+    )
+    prices = pl.DataFrame(
+        [
+            {
+                "date": date(2025, 1, 1) + timedelta(days=day),
+                "asset": f"a{asset:02d}",
+                "price": 100 * (1 + 0.001 * (asset + 1)) ** day,
+            }
+            for day in range(65)
+            for asset in range(20)
+        ]
+    )
+
+    result = analyze_signal(
+        factor, prices, periods=(1, 2, 5, 20, 21, 30), quantiles=5, filter_zscore=None
+    )
+
+    assert result.turnover is not None
+    assert result.turnover["1D"] == 0.25
+    assert result.turnover["2D"] == 0.5
+    assert result.turnover["5D"] == 1.0
+    assert result.turnover["20D"] == 0.0
+    assert result.turnover["21D"] == 0.25
+    assert np.isnan(result.turnover["30D"])
+
+
 class TestComputeTurnover:
     """Tests for compute_turnover function."""
 
@@ -107,6 +145,11 @@ class TestComputeTurnover:
 
         # Assets stay in same quantiles, so turnover should be 0
         assert turnover == 0.0
+
+    @pytest.mark.parametrize("lag", [0, -1])
+    def test_nonpositive_lag_is_rejected(self, turnover_data, lag):
+        with pytest.raises(ValueError, match="lag must be positive"):
+            compute_turnover(turnover_data, n_quantiles=5, lag=lag)
 
     def test_high_turnover(self, high_turnover_data):
         """Test turnover with rotating membership."""
