@@ -69,6 +69,19 @@ def date_index(dates: pl.Series) -> pd.DatetimeIndex:
     return pd.DatetimeIndex(dates.to_pandas())
 
 
+def initial_valuation_time(value: Any, dates: pl.Series) -> pd.Timestamp | None:
+    if value is None:
+        return None
+    if not dates.dtype.is_temporal():
+        raise ValueError("initial_timestamp requires dated return observations")
+    initial = date_snapshot(pd.DatetimeIndex([value]), 1, "initial_timestamp")
+    initial_index = date_index(initial)
+    observations = date_index(dates)
+    if initial_index.tz != observations.tz or initial_index[0] >= observations[0]:
+        raise ValueError("initial_timestamp must precede the first return and use its timezone")
+    return initial_index[0]
+
+
 def normalize_observations(
     returns: Any, benchmark: Any, dates: Any
 ) -> tuple[np.ndarray, np.ndarray | None, pl.Series]:

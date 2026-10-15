@@ -82,6 +82,14 @@ print(f"Sortino: {metrics.sortino_ratio:.2f}")
 print(f"Maximum drawdown: {metrics.max_drawdown:.2%}")
 ```
 
+Current source includes initial unit wealth in drawdown calculations. Returns
+`[-0.2, 0.1, 0.05]` imply wealth `100, 80, 88, 92.4` and a -20% maximum
+drawdown, including the first loss. The initial valuation is not an extra return
+row. With dated returns, pass `initial_timestamp=...` only when the producer
+supplies that earlier valuation time; otherwise its peak time remains unavailable.
+The legacy `duration_days` and `recovery_days` episode fields count return
+observations, not calendar days. These corrections are unreleased after 0.1.9.
+
 ## Replace the synthetic inputs
 
 1. Replace the factor and price tables with one row per date and asset.

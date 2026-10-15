@@ -193,11 +193,13 @@ def plot_drawdown_periods(
                 "Peak: %{customdata[0]}<br>"
                 "Valley: %{customdata[1]}<br>"
                 "Recovery: %{customdata[2]}<br>"
-                "Duration: %{customdata[3]} days<extra></extra>"
+                "Duration: %{customdata[3]} observations<extra></extra>"
             ),
             customdata=[
                 [
-                    str(d.peak_date)[:10],
+                    str(d.peak_date)[:10]
+                    if d.peak_date is not None
+                    else "Initial capital (time unavailable)",
                     str(d.valley_date)[:10],
                     str(d.recovery_date)[:10] if d.recovery_date else "Not recovered",
                     d.duration_days,

@@ -40,7 +40,8 @@ def calculate_drawdown_numba(
     Returns
     -------
     Tuple[float, int, int, int]
-        (max_drawdown, duration, peak_idx, trough_idx)
+        (max_drawdown, duration, peak_idx, trough_idx). A peak index of -1
+        denotes initial capital before the first return observation.
     """
     n = len(cum_returns)
     if n == 0:
@@ -54,13 +55,13 @@ def calculate_drawdown_numba(
     # from cum_returns[0] and starting the loop at 1 made a first-period loss invisible:
     # [-0.5, 0.1] reported a drawdown of 0.0 rather than -0.5.
     current_peak = 1.0
-    current_peak_idx = 0
+    current_peak_idx = -1
 
     for i in range(n):
         wealth = 1.0 + cum_returns[i]
 
         # Update peak if necessary
-        if wealth > current_peak:
+        if wealth >= current_peak:
             current_peak = wealth
             current_peak_idx = i
 

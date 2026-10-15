@@ -27,6 +27,12 @@ def _periodic_risk_free_rate(annual_risk_free_rate: float, periods_per_year: int
     return float((1 + annual_risk_free_rate) ** (1 / periods_per_year) - 1)
 
 
+def _drawdown_from_wealth(wealth: np.ndarray) -> np.ndarray:
+    """Return declines from a high-water mark seeded by initial unit wealth."""
+    high_water = np.maximum.accumulate(np.maximum(wealth, 1.0))
+    return wealth / high_water - 1.0
+
+
 def sharpe_ratio(
     returns: Union[pl.Series, pd.Series, "NDArray[Any]"],
     risk_free_rate: float = 0.0,
@@ -259,7 +265,7 @@ def maximum_drawdown(
     max_drawdown_val, dd_duration, peak_idx, trough_idx = calculate_drawdown_numba(cum_returns)
 
     # Handle case where no drawdown was found
-    if peak_idx == -1:
+    if max_drawdown_val == 0:
         return {
             "max_drawdown": 0.0,
             "max_drawdown_duration": 0,

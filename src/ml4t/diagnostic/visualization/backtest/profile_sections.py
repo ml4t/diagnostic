@@ -182,9 +182,9 @@ def plot_overview_snapshot(profile: BacktestProfile, theme: str | None = None) -
         else:
             import numpy as np
 
-            cum_arr = np.array(cum_ret)
-            hwm = np.maximum.accumulate(cum_arr)
-            dd = ((cum_arr - hwm) / np.where(hwm > 0, hwm, 1.0)).tolist()
+            from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
+
+            dd = _drawdown_from_wealth(1 + np.array(cum_ret)).tolist()
 
         fig.add_trace(
             go.Scatter(
