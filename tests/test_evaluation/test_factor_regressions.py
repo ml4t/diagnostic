@@ -8,7 +8,7 @@ Tests that would have caught:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import numpy as np
 import polars as pl
@@ -221,6 +221,30 @@ class TestUtf8Timestamps:
         )
         fd = FactorData.from_dataframe(df)
         assert fd.returns["timestamp"].dtype == pl.Date
+
+    def test_iso_datetime_strings_remain_datetimes(self):
+        """ISO datetime values must not fail a date-only parser or lose time of day."""
+        df = pl.DataFrame(
+            {
+                "timestamp": ["2020-01-01T10:30:00", "2020-01-02T15:45:00"],
+                "Mkt-RF": [0.01, -0.005],
+            }
+        )
+
+        fd = FactorData.from_dataframe(df)
+
+        assert fd.returns["timestamp"].dtype == pl.Datetime
+        assert fd.returns["timestamp"].to_list() == [
+            datetime(2020, 1, 1, 10, 30),
+            datetime(2020, 1, 2, 15, 45),
+        ]
+
+    def test_invalid_timestamp_rejected(self):
+        """A partially parsed timestamp column must not silently gain nulls."""
+        df = pl.DataFrame({"timestamp": ["2020-01-01", "not-a-date"], "Mkt-RF": [0.01, -0.005]})
+
+        with pytest.raises(ValueError, match="ISO dates or datetimes"):
+            FactorData.from_dataframe(df)
 
     def test_utf8_combine_with_date(self):
         """Combining string-timestamp and Date-timestamp FactorData should work."""

@@ -59,17 +59,23 @@ def compute_return_attribution(
     T, K = X.shape
     factor_names = factor_data.factor_names
 
-    # Get rolling betas — pass already-excess returns with rf_rate stripped
-    # to avoid double-subtracting the risk-free rate (attribution.py already
-    # called _align_and_prepare which subtracts rf_rate).
-    factor_data_no_rf = FactorData(
-        returns=factor_data.returns,
+    # Roll betas on the same cleaned sample that attribution applies them to.
+    # The original frame can be longer, or still contain the NaN rows that
+    # _align_and_prepare already dropped. Re-aligning that frame to the shorter
+    # excess-return vector keeps a prefix and shifts every beta.
+    aligned_factors = FactorData(
+        returns=pl.DataFrame(
+            {
+                "timestamp": timestamps,
+                **{name: X[:, index] for index, name in enumerate(factor_names)},
+            }
+        ),
         rf_rate=None,
-        factor_names=factor_data.factor_names,
+        factor_names=factor_names,
         source=factor_data.source,
         frequency=factor_data.frequency,
     )
-    rolling_result = compute_rolling_exposures(y, factor_data_no_rf, window=window)
+    rolling_result = compute_rolling_exposures(y, aligned_factors, window=window)
 
     # Determine the attribution period (after window + lag)
     n_rolling = len(rolling_result.timestamps)
