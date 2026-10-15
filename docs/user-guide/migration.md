@@ -3,6 +3,36 @@
 Diagnostic is not a drop-in replacement for either package. Choose a task below,
 convert its input shape, and compare result definitions before comparing numbers.
 The examples use synthetic data and run with the base `ml4t-diagnostic` package.
+For selected performance metrics, see the separate
+[Empyrical migration assessment](empyrical-migration.md).
+
+One reason to evaluate Diagnostic beyond these matching values is its
+[purged cross-validation workflow](cross-validation.md), which combines
+chronological folds with multiple-trial Sharpe assessment. For portfolio
+reporting, its [backtest bridge](backtest-tearsheets.md) also accepts a
+completed `ml4t-backtest` result. These are separate capabilities, not
+claims that the legacy tear sheets or factor panels are reproduced.
+
+## Run the shared-input comparison
+
+The package-only examples below show each Diagnostic input shape. To compare the
+published legacy and Diagnostic APIs on the same deterministic inputs, run this
+script from a checkout of this repository on Python 3.12:
+
+```bash
+uv run --no-project --python 3.12 \
+  --with 'ml4t-diagnostic==0.1.8' \
+  --with 'pyfolio-reloaded==0.9.9' \
+  --with 'alphalens-reloaded==0.4.6' \
+  --with 'empyrical-reloaded==0.5.12' \
+  python examples/legacy_migration_comparison.py --task all
+```
+
+The comparison script at `examples/legacy_migration_comparison.py` uses the
+published packages, not the source checkout. It asserts the shared
+Sharpe, drawdown, and IC results and prints other measured values. The figures
+below are from that command with the stated versions; they are not performance
+benchmarks or a promise that every legacy output matches.
 
 ## Alphalens factor analysis
 
@@ -67,9 +97,19 @@ print(f"One-day IC: {signal.ic['1D']:.3f}")
 The assertion establishes the expected direction on these synthetic data;
 it is not a significance test for a real factor. Use the
 [signal quickstart](../getting-started/quickstart.md) to interpret IC and spread.
+In the shared-input comparison, 600 factor rows across 50 business dates and
+12 assets use one-day forward returns from the same wide price table. Both calls
+use five quantiles, no outlier filter, and ungrouped Spearman IC. Alphalens
+kept all 600 rows; its mean IC and Diagnostic's `SignalResult.ic["1D"]` were
+both `0.318881`. Diagnostic also returned a top-minus-bottom quantile spread
+of `0.004636`. The agreement is for this ungrouped input and definition.
+
 Alphalens also supports grouped and group-adjusted IC, configurable
 zero-aware bucketing, and its own complete factor tear sheet. Those options
-are not implied by a Diagnostic signal result.
+are not implied by a Diagnostic signal result. In particular, do not interpret
+Diagnostic's default global quantiles as Alphalens `group_adjust=True` or
+`binning_by_group=True`. Keep the legacy path when those panels or conventions
+are required.
 
 Factor *construction* is a separate task. If needed,
 [ML4T Engineer's feature guide](https://github.com/ml4t/engineer/blob/145ccafd2ca36dc61f976cdbeaaf147af21e7c2e/docs/user-guide/features.md)
@@ -122,6 +162,31 @@ print(f"Portfolio Sharpe: {summary.sharpe_ratio:.2f}")
 
 Use the [portfolio workflow](workflows.md) and
 [backtest report guide](backtest-tearsheets.md) for the supported output checks.
+The shared-input comparison passes 252 aligned business-day returns and benchmark
+returns to Pyfolio `perf_stats()` and Diagnostic `PortfolioAnalysis`, with zero
+risk-free rate and 252 periods per year. Return, volatility, drawdown, and
+alpha values use decimal-return units; Sharpe ratio and beta are dimensionless:
+
+<div class="migration-table" markdown="1">
+
+| Metric | Pyfolio 0.9.9 | Diagnostic 0.1.8 |
+|---|---:|---:|
+| Annual return | 0.079730 | 0.079730 |
+| Annual volatility | 0.150155 | 0.150155 |
+| Sharpe ratio | 0.585568 | 0.585568 |
+| Maximum drawdown | -0.110216 | -0.110216 |
+| Alpha | 0.100369 | 0.095663 |
+| Beta | 0.795601 | 0.795601 |
+
+</div>
+
+The alpha difference is expected under the two implementations: Pyfolio's
+Empyrical calculation compounds mean periodic alpha, while Diagnostic
+multiplies its fitted daily intercept by 252. Do not compare annualized alpha
+without choosing a convention. The example has no positions or transactions;
+Pyfolio's optional Zipline position multipliers were unavailable and did not
+affect these returns-based values.
+
 Pyfolio's full sheet can additionally include return cones, significant
 events, round trips reconstructed from fills, capacity analysis using
 market data, and optional factor-attribution panels. Diagnostic has related
