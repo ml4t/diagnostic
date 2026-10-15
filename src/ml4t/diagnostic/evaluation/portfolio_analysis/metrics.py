@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any, Union, cast
 import numpy as np
 from scipy import stats
 
+from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
+
 if TYPE_CHECKING:
     import polars as pl
 
@@ -152,14 +154,9 @@ def max_drawdown(returns: ArrayLike) -> float:
 
     # Compute cumulative returns
     cum_returns = _safe_cumprod(1 + returns)
-
-    # Running maximum
-    running_max = np.maximum.accumulate(cum_returns)
-
-    # Drawdown
-    drawdown = (cum_returns - running_max) / running_max
-
-    return np.nanmin(drawdown)
+    if len(cum_returns) == 0:
+        return np.nan
+    return float(np.nanmin(_drawdown_from_wealth(cum_returns)))
 
 
 def annual_return(

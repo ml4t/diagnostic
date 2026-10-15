@@ -131,12 +131,16 @@ def create_top_drawdowns_table_html(
     periods = drawdown_periods[:max_rows]
     rows: list[str] = []
     for i, dd in enumerate(periods, 1):
-        peak = _fmt_date(dd.peak_date)
+        peak = (
+            _fmt_date(dd.peak_date)
+            if dd.peak_date is not None
+            else "Initial capital (time unavailable)"
+        )
         valley = _fmt_date(dd.valley_date)
         recovery = _fmt_date(dd.recovery_date) if dd.recovery_date else "Active"
         depth = f"{dd.depth:.1%}" if dd.depth is not None else "N/A"
-        duration = f"{dd.duration_days}d" if dd.duration_days is not None else "N/A"
-        recovery_days = f"{dd.recovery_days}d" if dd.recovery_days is not None else "—"
+        duration = f"{dd.duration_days} obs" if dd.duration_days is not None else "N/A"
+        recovery_days = f"{dd.recovery_days} obs" if dd.recovery_days is not None else "-"
         status = "Recovered" if dd.recovery_date else "Active"
 
         rows.append(

@@ -27,8 +27,14 @@ import polars as pl
 from scipy import stats
 
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
+from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
-from .inputs import annual_risk_free, normalize_observations, positive_integer
+from .inputs import (
+    annual_risk_free,
+    initial_valuation_time,
+    normalize_observations,
+    positive_integer,
+)
 from .metrics import (
     _safe_cumprod,
     _safe_prod,
@@ -93,6 +99,9 @@ class PortfolioAnalysis:
         Explicit dates must agree with that index. Without dates, numerical and
         rolling outputs use zero-based observation indices; calendar tables and
         complete calendar dashboards require genuine dates.
+    initial_timestamp : datetime or date, optional
+        Time of the initial valuation, before the first dated return. If omitted,
+        a drawdown starting at initial capital has an unavailable peak timestamp.
 
     Notes
     -----
@@ -137,6 +146,8 @@ class PortfolioAnalysis:
         dates: pl.Series | np.ndarray | pd.DatetimeIndex | list[date | datetime] | None = None,
         risk_free: float = 0.0,
         periods_per_year: int = 252,
+        *,
+        initial_timestamp: date | datetime | None = None,
     ):
         scale = positive_integer(periods_per_year, "periods_per_year")
         annual_rf = annual_risk_free(risk_free)
@@ -146,6 +157,7 @@ class PortfolioAnalysis:
         self._returns = owned_returns
         self._benchmark = owned_benchmark
         self._dates = owned_dates
+        self._initial_timestamp = initial_valuation_time(initial_timestamp, owned_dates)
         self._positions = self._to_polars_df(positions) if positions is not None else None
         self._transactions = self._to_polars_df(transactions) if transactions is not None else None
 
@@ -539,12 +551,9 @@ class PortfolioAnalysis:
         returns = self._returns
         dates = self._dates
 
-        # Compute cumulative returns and running max
+        # The initial valuation is a high-water mark, not an extra return observation.
         cum_returns = _safe_cumprod(1 + returns)
-        running_max = np.maximum.accumulate(cum_returns)
-
-        # Underwater curve
-        underwater = (cum_returns - running_max) / running_max
+        underwater = _drawdown_from_wealth(cum_returns)
 
         # Identify drawdown periods
         drawdown_periods = self._identify_drawdown_periods(underwater, dates, threshold)
@@ -590,7 +599,7 @@ class PortfolioAnalysis:
         periods = []
 
         in_drawdown = False
-        peak_idx = 0
+        peak_idx = -1
         valley_idx = 0
         valley_depth = 0.0
 
@@ -610,7 +619,7 @@ class PortfolioAnalysis:
                 elif dd >= 0:
                     # Recovery
                     period = DrawdownPeriod(
-                        peak_date=dates[peak_idx],
+                        peak_date=(self._initial_timestamp if peak_idx < 0 else dates[peak_idx]),
                         valley_date=dates[valley_idx],
                         recovery_date=dates[i],
                         depth=valley_depth,
@@ -624,7 +633,7 @@ class PortfolioAnalysis:
         # Handle ongoing drawdown
         if in_drawdown:
             period = DrawdownPeriod(
-                peak_date=dates[peak_idx],
+                peak_date=(self._initial_timestamp if peak_idx < 0 else dates[peak_idx]),
                 valley_date=dates[valley_idx],
                 recovery_date=None,
                 depth=valley_depth,

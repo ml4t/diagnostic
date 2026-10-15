@@ -20,6 +20,7 @@ from ml4t.diagnostic.evaluation.stats import (
     whites_reality_check,
 )
 from ml4t.diagnostic.metrics.ic_inference import _newey_west_lag
+from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
 
 @dataclass(frozen=True)
@@ -399,8 +400,7 @@ def _sample_stats(returns: np.ndarray[Any, np.dtype[Any]], periods_per_year: int
     else:
         annualized_return = float(base ** (1.0 / years) - 1.0)
     volatility = std * np.sqrt(periods_per_year)
-    running_max = np.maximum.accumulate(cumulative)
-    drawdown = (cumulative - running_max) / np.where(running_max > 0, running_max, np.nan)
+    drawdown = _drawdown_from_wealth(cumulative)
     max_drawdown = float(np.nanmin(drawdown)) if np.any(np.isfinite(drawdown)) else 0.0
     calmar = annualized_return / abs(max_drawdown) if max_drawdown < 0 else 0.0
     return _ReturnStats(sharpe, sortino, annualized_return, volatility, max_drawdown, calmar)
