@@ -54,6 +54,8 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Factor Series with `(date, asset)` index | `analyze_signal(factor=...)` | Reset the index to columns `date`, `asset`, `factor`; keep one value per pair. |
 | Wide asset-price table | `analyze_signal(prices=...)` | Stack to `date`, `asset`, `price` rows, including enough future dates for the largest horizon. |
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
+| Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
+| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
 | Group-neutral or zero-aware bucketing and the complete Alphalens tear sheet | No one-call `analyze_signal` equivalent | Preprocess groups or buckets separately if needed; do not treat Diagnostic's default quantiles or reports as equivalent. |
 
 </div>
@@ -103,6 +105,31 @@ use five quantiles, no outlier filter, and ungrouped Spearman IC. Alphalens
 kept all 600 rows; its mean IC and Diagnostic's `SignalResult.ic["1D"]` were
 both `0.318881`. Diagnostic also returned a top-minus-bottom quantile spread
 of `0.004636`. The agreement is for this ungrouped input and definition.
+
+### Quantiles, turnover, and report boundaries
+
+Quantile returns need not agree on other panels. In a separate shared-input
+comparison with Alphalens 0.4.6 and Diagnostic 0.1.8, 40 assets on every date
+produced matching raw 1D/5D quantile means. With 12 assets in five quantiles,
+the packages allocated the remainder differently. With a changing 20/40-asset
+universe, Diagnostic pooled observations within each quantile, while Alphalens
+averaged per-date quantile means. Choose the bucketing and date-weighting
+conventions explicitly before comparing those outputs. A raw top-minus-bottom
+mean is also not a 50/50 unit-gross long-short portfolio return.
+
+On 20 assets whose four-asset quantiles rotate by one asset per observation,
+Alphalens turnover was `0.25` at lag 1 and `1.0` at lag 5. Diagnostic 0.1.8
+incorrectly repeated `0.25` under both `1D` and `5D`; 0.1.9 corrects the
+horizon-labelled result to use the requested lag. It retains the normalization
+`1 - overlap / max(previous_count, current_count)`, which can differ from
+Alphalens when membership sizes change. Lags count observed factor dates,
+not elapsed calendar days; insufficient history returns NaN.
+
+`SignalResult.to_tear_sheet()` supplies IC and quantile analysis to the HTML
+dashboard. It does not supply turnover analysis or cumulative quantile-return
+paths. Do not infer those panels from a successful HTML render or the presence
+of related plotting functions. Keep Alphalens when those report sections,
+factor-weighted portfolios, or event-aligned cumulative paths are required.
 
 Alphalens also supports grouped and group-adjusted IC, configurable
 zero-aware bucketing, and its own complete factor tear sheet. Those options

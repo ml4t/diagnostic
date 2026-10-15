@@ -18,10 +18,13 @@ def compute_turnover(
     date_col: str = "date",
     asset_col: str = "asset",
     quantile_col: str = "quantile",
+    *,
+    lag: int = 1,
 ) -> float:
     """Compute mean turnover rate across quantiles.
 
-    Turnover = fraction of assets that change quantile each period.
+    Compare quantile membership at dates separated by ``lag`` observations.
+    Turnover is one minus the overlap divided by the larger membership count.
 
     Parameters
     ----------
@@ -31,15 +34,20 @@ def compute_turnover(
         Number of quantiles.
     date_col, asset_col, quantile_col : str
         Column names.
+    lag : int, default 1
+        Positive separation in sorted observed dates, not calendar days.
 
     Returns
     -------
     float
-        Mean turnover rate (0-1).
+        Mean turnover rate (0-1), or NaN when no comparable date pairs exist.
     """
+    if lag < 1:
+        raise ValueError("lag must be positive")
+
     unique_dates = data.select(date_col).unique().sort(date_col).to_series().to_list()
 
-    if len(unique_dates) < 2:
+    if len(unique_dates) <= lag:
         return float("nan")
 
     # Pre-compute asset sets per (date, quantile) using dict comprehension
@@ -59,9 +67,9 @@ def compute_turnover(
     for q in range(1, n_quantiles + 1):
         q_turnovers: list[float] = []
 
-        for i in range(len(unique_dates) - 1):
+        for i in range(len(unique_dates) - lag):
             date_t = unique_dates[i]
-            date_t1 = unique_dates[i + 1]
+            date_t1 = unique_dates[i + lag]
 
             assets_t = asset_sets.get((date_t, q), set())
             assets_t1 = asset_sets.get((date_t1, q), set())

@@ -52,7 +52,7 @@ class SignalResult:
     monotonicity : dict[str, float]
         Rank correlation of quantile returns (how monotonic).
     turnover : dict[str, float] | None
-        Mean turnover rate by period.
+        Mean turnover rate at each period's lag in observed factor dates.
     autocorrelation : list[float] | None
         Factor autocorrelation at lags 1, 2, ...
     half_life : float | None

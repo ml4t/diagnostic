@@ -258,8 +258,9 @@ def analyze_signal(
     half_life: float | None = None
 
     if compute_turnover_flag:
-        turnover_val = compute_turnover(data, quantiles, date_col, asset_col)
-        turnover_dict = {f"{p}D": turnover_val for p in periods}
+        turnover_dict = {
+            f"{p}D": compute_turnover(data, quantiles, date_col, asset_col, lag=p) for p in periods
+        }
 
         lags = list(range(1, autocorrelation_lags + 1))
         autocorr = compute_autocorrelation(data, lags, date_col, asset_col, factor_col)
