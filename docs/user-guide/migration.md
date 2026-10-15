@@ -144,6 +144,13 @@ lag method. Group-adjusted/neutral calculations and complete reports remain
 unsupported by this route. No full-replacement claim follows from retaining a
 prepared panel.
 
+Timestamp grouping can also differ. On a prepared sample containing three
+distinct nanosecond instants, Alphalens 0.4.6 regularizes IC to its inferred
+`CustomBusinessDay` frequency and retains only the first instant. Diagnostic
+retains all three supplied timestamp groups. Its correlations match independent
+per-timestamp SciPy calculations, not a three-row Alphalens output. This does
+not establish calendar or schedule equivalence.
+
 In the shared-input comparison, 600 factor rows across 50 business dates and
 12 assets use one-day forward returns from the same wide price table. Both calls
 use five quantiles, no outlier filter, and ungrouped Spearman IC. Alphalens
