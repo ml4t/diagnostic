@@ -77,6 +77,30 @@ def _make_daily_panel(
 class TestCalendarFirstBasic:
     """Basic calendar-first splitting tests."""
 
+    def test_walk_forward_keeps_overnight_session_rows_together(self):
+        from ml4t.diagnostic.splitters.calendar import TradingCalendar
+
+        calendar = TradingCalendar("CME_Equity")
+        schedule = calendar.calendar.schedule(start_date="2025-07-07", end_date="2025-07-18")
+        timestamps = pd.DatetimeIndex(
+            [
+                opened + delta
+                for opened in schedule["market_open"]
+                for delta in (pd.Timedelta(minutes=30), pd.Timedelta(hours=3))
+            ]
+        )
+        data = pd.DataFrame({"feature": np.arange(len(timestamps))}, index=timestamps)
+        cv = WalkForwardCV(n_splits=2, test_size="2D", calendar="CME_Equity")
+
+        folds = list(cv.split(data))
+
+        assert len(folds) == 2
+        assert any(0 in train for train, _ in folds)
+        for train, test in folds:
+            for indices in (set(train), set(test)):
+                for first in range(0, len(timestamps), 2):
+                    assert (first in indices) == (first + 1 in indices)
+
     def test_calendar_default_is_nyse(self):
         """WalkForwardCV without explicit calendar should use NYSE."""
         cv = WalkForwardCV(n_splits=3, test_size=20)

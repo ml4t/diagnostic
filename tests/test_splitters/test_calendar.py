@@ -486,6 +486,39 @@ class TestUnorderedTimestamps:
 class TestGetSessionsAndMask:
     """Tests for TradingCalendar.get_sessions_and_mask()."""
 
+    @pytest.mark.parametrize("timezone", ["UTC", "America/Chicago"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_active_overnight_rows_use_exchange_session_not_civil_date(self, timezone, reverse):
+        cal = TradingCalendar(CalendarConfig(exchange="CME_Equity", timezone=timezone))
+        timestamps = pd.DatetimeIndex(
+            [
+                "2025-07-06T21:00Z",
+                "2025-07-06T23:30Z",
+                "2025-07-07T00:30Z",
+                "2025-07-07T23:30Z",
+                "2025-07-08T00:30Z",
+            ]
+        )
+        expected = [
+            pd.NaT,
+            pd.Timestamp("2025-07-07"),
+            pd.Timestamp("2025-07-07"),
+            pd.Timestamp("2025-07-08"),
+            pd.Timestamp("2025-07-08"),
+        ]
+        expected_mask = [False, True, True, True, True]
+        if reverse:
+            timestamps = timestamps[::-1]
+            expected = expected[::-1]
+            expected_mask = expected_mask[::-1]
+
+        sessions, mask = cal.get_sessions_and_mask(timestamps)
+
+        pd.testing.assert_series_equal(
+            sessions, pd.Series(expected, index=timestamps, dtype="datetime64[ns]")
+        )
+        assert mask.tolist() == expected_mask
+
     def test_all_trading_days(self):
         """All weekday timestamps should be trading rows."""
         cal = TradingCalendar("NYSE")
