@@ -230,6 +230,16 @@ without choosing a convention. The example has no positions or transactions;
 Pyfolio's optional Zipline position multipliers were unavailable and did not
 affect these returns-based values.
 
+For initial losses, the [drawdown correction](https://github.com/ml4t/diagnostic/issues/118)
+uses initial capital as the first high-water mark. In an executed Pyfolio 0.9.9
+comparison, returns `[-0.2, 0.1, 0.05]` gave its episode table 0% drawdown even
+though Empyrical's scalar maximum drawdown was -20%. The independent wealth path
+`100, 80, 88, 92.4` requires -20%; current Diagnostic source uses that result
+instead of reproducing the episode error. A pre-first-return peak has no invented
+date. Native episode thresholds and observation-count durations still differ
+from Pyfolio's top-only selection and business-date recovery durations. This
+focused correction does not qualify every episode option or the full report.
+
 Pyfolio's full sheet can additionally include return cones, significant
 events, round trips reconstructed from fills, capacity analysis using
 market data, and optional factor-attribution panels. Diagnostic has related

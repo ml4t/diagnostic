@@ -229,7 +229,11 @@ class RollingMetricsResult:
 
 @dataclass
 class DrawdownPeriod:
-    """Individual drawdown period details."""
+    """Individual drawdown period details.
+
+    A missing peak_date denotes initial capital without a supplied valuation time.
+    Legacy duration_days/recovery_days fields count return observations, not calendar days.
+    """
 
     peak_date: Any  # datetime
     valley_date: Any  # datetime

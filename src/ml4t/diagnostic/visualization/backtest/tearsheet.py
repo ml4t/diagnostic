@@ -1573,6 +1573,7 @@ def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
+    from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
     from ml4t.diagnostic.visualization.core import get_theme_config, validate_theme
 
     ret = ctx.returns
@@ -1581,8 +1582,7 @@ def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
 
     ret_arr = ret if isinstance(ret, np.ndarray) else ret.to_numpy()
     cum = np.cumprod(1 + ret_arr)
-    hwm = np.maximum.accumulate(cum)
-    dd = (cum - hwm) / np.where(hwm > 0, hwm, 1.0)
+    dd = _drawdown_from_wealth(cum)
 
     # Build x-axis from equity_curve timestamps or integer index
     if (
