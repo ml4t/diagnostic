@@ -503,11 +503,8 @@ def _enrich_benchmark_metrics(
         if isinstance(benchmark_returns, np.ndarray)
         else benchmark_returns.to_numpy()
     )
-    # Align lengths (benchmark may have slightly different count)
-    n = min(len(ret), len(bench))
-    if n < 60:
+    if len(ret) < 60:
         return
-    ret, bench = ret[:n], bench[:n]
 
     # Beta and Alpha (CAPM regression)
     cov_matrix = np.cov(ret, bench)
@@ -845,6 +842,11 @@ def generate_backtest_tearsheet(
         metrics = dict(metrics or {})
         for key, value in _normalize_profile_metrics(profile).items():
             metrics.setdefault(key, value)
+
+    if returns is not None and len(returns) > 0:
+        from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+        PortfolioAnalysis(returns, benchmark=benchmark_returns, periods_per_year=periods_per_year)
 
     if not interactive:
         import warnings
@@ -1302,11 +1304,6 @@ def _build_portfolio_analysis(
             if isinstance(benchmark_returns, pl.Series)
             else pl.Series("benchmark", benchmark_returns)
         )
-        # Align lengths — benchmark may differ due to shift/dropna in return calc
-        if len(bench) != len(ret_series):
-            min_len = min(len(bench), len(ret_series))
-            bench = bench.tail(min_len)
-
     analysis_dates = None
     if profile is not None:
         try:
@@ -1462,7 +1459,11 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
         return None
 
     # Build x-axis
-    if ctx.equity_curve is not None and "timestamp" in ctx.equity_curve.columns:
+    if (
+        ctx.equity_curve is not None
+        and "timestamp" in ctx.equity_curve.columns
+        and ctx.equity_curve.height == n
+    ):
         x = ctx.equity_curve["timestamp"].to_list()
     else:
         x = list(range(n))
@@ -1584,7 +1585,11 @@ def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
     dd = (cum - hwm) / np.where(hwm > 0, hwm, 1.0)
 
     # Build x-axis from equity_curve timestamps or integer index
-    if ctx.equity_curve is not None and "timestamp" in ctx.equity_curve.columns:
+    if (
+        ctx.equity_curve is not None
+        and "timestamp" in ctx.equity_curve.columns
+        and ctx.equity_curve.height == len(cum)
+    ):
         x = ctx.equity_curve["timestamp"].to_list()
     else:
         x = list(range(len(cum)))
@@ -1623,12 +1628,10 @@ def _build_equity_drawdown_figure(ctx: _SectionContext) -> go.Figure | None:
             else ctx.benchmark_returns.to_numpy()
         )
         bench_cum = np.cumprod(1 + bench_arr)
-        # Trim to match length (benchmark may have slightly different dates)
-        n_bench = min(len(bench_cum), len(x))
         fig.add_trace(
             go.Scatter(
-                x=x[:n_bench],
-                y=(bench_cum[:n_bench] - 1).tolist(),
+                x=x,
+                y=(bench_cum - 1).tolist(),
                 mode="lines",
                 name=ctx.benchmark_name,
                 line={"color": "gray", "width": 1.5, "dash": "dash"},
@@ -2123,6 +2126,14 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
         equity_curve=ctx.equity_curve,
         periods_per_year=ctx.periods_per_year,
     )
+    if (
+        section_name in {"monthly_returns", "monthly_heatmap_overview", "annual_returns"}
+        and not pa.has_dates
+    ):
+        return (
+            '<p data-availability="missing-dates">Calendar returns unavailable: '
+            "supply matching dated equity data or a BacktestProfile.</p>"
+        )
 
     if section_name == "equity_curve":
         from ml4t.diagnostic.visualization.portfolio import plot_cumulative_returns

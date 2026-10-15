@@ -290,6 +290,8 @@ def alpha_beta(
     """
     returns = _to_numpy(returns)
     benchmark = _to_numpy(benchmark_returns)
+    if returns.ndim != 1 or benchmark.ndim != 1 or returns.shape != benchmark.shape:
+        raise ValueError("benchmark and returns must be one-dimensional with equal length")
 
     # Convert annual risk-free to daily
     daily_rf = (1 + risk_free) ** (1 / periods_per_year) - 1
@@ -298,14 +300,9 @@ def alpha_beta(
     excess_returns = returns - daily_rf
     excess_benchmark = benchmark - daily_rf
 
-    # Align lengths
-    min_len = min(len(excess_returns), len(excess_benchmark))
-    excess_returns = excess_returns[:min_len]
-    excess_benchmark = excess_benchmark[:min_len]
-
     # Remove NaN
     mask = ~(np.isnan(excess_returns) | np.isnan(excess_benchmark))
-    if mask.sum() < 2:
+    if mask.sum() < 2 or np.ptp(excess_benchmark[mask]) == 0:
         return np.nan, np.nan
 
     # Linear regression
@@ -336,10 +333,8 @@ def information_ratio(
     returns = _to_numpy(returns)
     benchmark = _to_numpy(benchmark_returns)
 
-    # Align lengths
-    min_len = min(len(returns), len(benchmark))
-    returns = returns[:min_len]
-    benchmark = benchmark[:min_len]
+    if returns.ndim != 1 or benchmark.ndim != 1 or returns.shape != benchmark.shape:
+        raise ValueError("benchmark and returns must be one-dimensional with equal length")
 
     # Active return
     active_return = returns - benchmark
@@ -372,10 +367,8 @@ def up_down_capture(
     returns = _to_numpy(returns)
     benchmark = _to_numpy(benchmark_returns)
 
-    # Align lengths
-    min_len = min(len(returns), len(benchmark))
-    returns = returns[:min_len]
-    benchmark = benchmark[:min_len]
+    if returns.ndim != 1 or benchmark.ndim != 1 or returns.shape != benchmark.shape:
+        raise ValueError("benchmark and returns must be one-dimensional with equal length")
 
     # Up markets
     up_mask = benchmark > 0

@@ -259,6 +259,7 @@ def create_portfolio_dashboard(
     theme = validate_theme(theme)
     get_theme_config(theme)
 
+    analysis.require_dates()
     # Compute all metrics
     metrics = analysis.compute_summary_stats()
 
@@ -405,6 +406,7 @@ def create_simple_dashboard(
     go.Figure
         Single combined figure
     """
+    analysis.require_dates()
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
