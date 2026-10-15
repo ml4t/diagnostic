@@ -64,7 +64,7 @@ def plot_cumulative_returns(
 
     fig = create_base_figure(
         title="Cumulative Returns",
-        xaxis_title="Date",
+        xaxis_title="Date" if analysis.has_dates else "Observation",
         yaxis_title="Cumulative Return",
         height=height,
         width=width,
@@ -83,7 +83,7 @@ def plot_cumulative_returns(
             mode="lines",
             name="Strategy",
             line={"color": theme_config["colorway"][0], "width": 2.5},
-            hovertemplate="Date: %{x}<br>Return: %{y:.2%}<extra></extra>",
+            hovertemplate="%{x}<br>Return: %{y:.2%}<extra></extra>",
         )
     )
 
@@ -97,7 +97,7 @@ def plot_cumulative_returns(
                 mode="lines",
                 name=benchmark_label,
                 line={"color": theme_config["colorway"][1], "width": 2.0, "dash": "dash"},
-                hovertemplate="Date: %{x}<br>Return: %{y:.2%}<extra></extra>",
+                hovertemplate="%{x}<br>Return: %{y:.2%}<extra></extra>",
             )
         )
 
@@ -161,7 +161,7 @@ def plot_rolling_returns(
 
     fig = create_base_figure(
         title="Rolling Returns",
-        xaxis_title="Date",
+        xaxis_title="Date" if rolling_result.dates.dtype.is_temporal() else "Observation",
         yaxis_title="Rolling Return",
         height=height,
         width=width,
@@ -262,13 +262,8 @@ def plot_annual_returns_bar(
         # Compute benchmark annual returns
         import polars as pl
 
-        # Align lengths — benchmark may be shorter than dates
         bench_arr = analysis.benchmark
         dates_arr = analysis.dates
-        if dates_arr is not None and len(bench_arr) != len(dates_arr):
-            n = min(len(bench_arr), len(dates_arr))
-            bench_arr = bench_arr[-n:]
-            dates_arr = dates_arr[-n:]
         bench_df = (
             pl.DataFrame(
                 {

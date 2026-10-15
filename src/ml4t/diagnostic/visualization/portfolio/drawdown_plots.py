@@ -63,7 +63,7 @@ def plot_drawdown_underwater(
 
     fig = create_base_figure(
         title="Underwater (Drawdown) Curve",
-        xaxis_title="Date",
+        xaxis_title="Date" if drawdown_result.dates.dtype.is_temporal() else "Observation",
         yaxis_title="Drawdown",
         height=height,
         width=width,
@@ -83,7 +83,7 @@ def plot_drawdown_underwater(
             line={"color": theme_config["colorway"][1], "width": 1},
             fill="tozeroy",
             fillcolor="rgba(231, 76, 60, 0.3)",  # Semi-transparent red
-            hovertemplate="Date: %{x}<br>Drawdown: %{y:.2%}<extra></extra>",
+            hovertemplate="%{x}<br>Drawdown: %{y:.2%}<extra></extra>",
         )
     )
 
@@ -96,7 +96,7 @@ def plot_drawdown_underwater(
             mode="markers",
             name=f"Max DD: {underwater[max_dd_idx]:.1%}",
             marker={"color": "darkred", "size": 10, "symbol": "circle"},
-            hovertemplate="Max Drawdown<br>Date: %{x}<br>DD: %{y:.2%}<extra></extra>",
+            hovertemplate="Max Drawdown<br>%{x}<br>DD: %{y:.2%}<extra></extra>",
         )
     )
 
@@ -252,7 +252,7 @@ def plot_drawdown_summary(
 
     fig = create_base_figure(
         title="Drawdown Analysis",
-        xaxis_title="Date",
+        xaxis_title="Date" if drawdown_result.dates.dtype.is_temporal() else "Observation",
         yaxis_title="Drawdown",
         height=height,
         width=width,
@@ -271,7 +271,7 @@ def plot_drawdown_summary(
             line={"color": theme_config["colorway"][1], "width": 1},
             fill="tozeroy",
             fillcolor="rgba(231, 76, 60, 0.3)",
-            hovertemplate="Date: %{x}<br>Drawdown: %{y:.2%}<extra></extra>",
+            hovertemplate="%{x}<br>Drawdown: %{y:.2%}<extra></extra>",
         ),
     )
 

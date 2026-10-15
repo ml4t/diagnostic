@@ -644,11 +644,12 @@ class TestPortfolioAnalysisInitialization:
 
         assert len(analysis.dates) == len(simple_returns)
 
-    def test_auto_generate_dates(self, simple_returns):
-        """Test that dates are auto-generated if not provided."""
+    def test_undated_input_uses_observation_indices(self, simple_returns):
+        """Undated samples retain order without assigning fictional calendar dates."""
         analysis = PortfolioAnalysis(returns=simple_returns)
 
-        assert len(analysis.dates) == len(simple_returns)
+        assert analysis.dates.to_list() == list(range(len(simple_returns)))
+        assert not analysis.has_dates
 
     def test_custom_risk_free(self, simple_returns):
         """Test initialization with custom risk-free rate."""
@@ -677,7 +678,8 @@ class TestPortfolioAnalysisMetrics:
         metrics1 = portfolio_analysis.compute_summary_stats()
         metrics2 = portfolio_analysis.compute_summary_stats()
 
-        assert metrics1 is metrics2  # Same object from cache
+        assert metrics1 == metrics2
+        assert metrics1 is not metrics2
 
     def test_force_recompute(self, portfolio_analysis):
         """Test force_recompute bypasses cache."""
@@ -723,7 +725,8 @@ class TestPortfolioAnalysisRolling:
         result1 = portfolio_analysis.compute_rolling_metrics(windows=[21])
         result2 = portfolio_analysis.compute_rolling_metrics(windows=[21])
 
-        assert result1 is result2
+        assert result1 is not result2
+        assert result1.to_dataframe().equals(result2.to_dataframe())
 
     def test_rolling_sharpe(self, portfolio_analysis):
         """Test rolling Sharpe ratio computation."""
@@ -803,7 +806,8 @@ class TestPortfolioAnalysisDrawdown:
         result1 = portfolio_analysis.compute_drawdown_analysis()
         result2 = portfolio_analysis.compute_drawdown_analysis()
 
-        assert result1 is result2
+        assert result1 is not result2
+        assert result1.to_dataframe().equals(result2.to_dataframe())
 
     def test_underwater_curve(self, portfolio_analysis):
         """Test underwater curve in drawdown result."""

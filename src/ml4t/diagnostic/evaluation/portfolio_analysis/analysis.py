@@ -19,6 +19,7 @@ Example:
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
@@ -27,10 +28,10 @@ from scipy import stats
 
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 
+from .inputs import annual_risk_free, normalize_observations, positive_integer
 from .metrics import (
     _safe_cumprod,
     _safe_prod,
-    _to_numpy,
     alpha_beta,
     annual_return,
     annual_volatility,
@@ -53,10 +54,12 @@ from .results import (
 )
 
 if TYPE_CHECKING:
+    from datetime import date, datetime
+
     import pandas as pd
 
 # Type aliases - use Union for Python 3.9 compatibility
-ArrayLike = Union[np.ndarray, pl.Series, "list[float]"]
+ArrayLike = Union[np.ndarray, pl.Series, "pd.Series", "list[float]"]
 DataFrameLike = Union[pl.DataFrame, "pd.DataFrame"]
 
 
@@ -85,6 +88,19 @@ class PortfolioAnalysis:
         Annual risk-free rate for Sharpe/Sortino calculation.
     periods_per_year : int, default 252
         Trading periods per year (252 for daily data).
+    dates : date-like sequence, optional
+        Unique increasing dates, inferred from a pandas DatetimeIndex when present.
+        Explicit dates must agree with that index. Without dates, numerical and
+        rolling outputs use zero-based observation indices; calendar tables and
+        complete calendar dashboards require genuine dates.
+
+    Notes
+    -----
+    Inputs are owned snapshots of nonempty, one-dimensional, finite simple returns
+    no lower than -1. Missing returns are rejected, not replaced with zeros.
+    Dated benchmarks are aligned to every strategy observation without filling;
+    extra benchmark dates are excluded. Undated benchmarks must match in length.
+    Public arrays and cached results are returned as independent copies.
 
     Examples
     --------
@@ -118,40 +134,23 @@ class PortfolioAnalysis:
         benchmark: ArrayLike | pl.Series | None = None,
         positions: DataFrameLike | None = None,
         transactions: DataFrameLike | None = None,
-        dates: ArrayLike | pl.Series | None = None,
+        dates: pl.Series | np.ndarray | pd.DatetimeIndex | list[date | datetime] | None = None,
         risk_free: float = 0.0,
         periods_per_year: int = 252,
     ):
-        # Convert returns to numpy
-        self._returns = _to_numpy(returns)
-
-        # Handle dates
-        if dates is not None:
-            if isinstance(dates, pl.Series):
-                self._dates = dates
-            else:
-                self._dates = pl.Series("date", dates)
-        else:
-            # Generate synthetic dates
-            self._dates = pl.Series(
-                "date",
-                pl.date_range(
-                    pl.date(2000, 1, 1),
-                    pl.date(2000, 1, 1) + pl.duration(days=len(self._returns) - 1),
-                    eager=True,
-                ),
-            )
-
-        # Convert benchmark if provided
-        self._benchmark = _to_numpy(benchmark) if benchmark is not None else None
-
-        # Store positions and transactions (convert to Polars if needed)
+        scale = positive_integer(periods_per_year, "periods_per_year")
+        annual_rf = annual_risk_free(risk_free)
+        owned_returns, owned_benchmark, owned_dates = normalize_observations(
+            returns, benchmark, dates
+        )
+        self._returns = owned_returns
+        self._benchmark = owned_benchmark
+        self._dates = owned_dates
         self._positions = self._to_polars_df(positions) if positions is not None else None
         self._transactions = self._to_polars_df(transactions) if transactions is not None else None
 
-        # Configuration
-        self._risk_free = risk_free
-        self._periods_per_year = periods_per_year
+        self._risk_free = annual_rf
+        self._periods_per_year = scale
 
         # Cached results
         self._metrics_cache: PortfolioMetrics | None = None
@@ -164,24 +163,36 @@ class PortfolioAnalysis:
         if df is None:
             return None
         if isinstance(df, pl.DataFrame):
-            return df
+            return df.clone()
         # Assume pandas DataFrame
         return pl.from_pandas(df)
 
     @property
     def returns(self) -> np.ndarray:
-        """Get returns as numpy array."""
-        return self._returns
+        """Get an independent copy of the strategy return snapshot."""
+        return self._returns.copy()
 
     @property
     def dates(self) -> pl.Series:
-        """Get dates as Polars Series."""
-        return self._dates
+        """Get dates or, for undated input, zero-based observation indices."""
+        return self._dates.clone()
+
+    @property
+    def has_dates(self) -> bool:
+        """Whether actual dates were supplied or retained from labeled returns."""
+        return self._dates.dtype.is_temporal()
+
+    def require_dates(self) -> None:
+        """Reject calendar-based outputs when only observation order is known."""
+        if not self.has_dates:
+            raise ValueError(
+                "dates are required for calendar tables and complete portfolio reports"
+            )
 
     @property
     def benchmark(self) -> np.ndarray | None:
-        """Get benchmark returns as numpy array."""
-        return self._benchmark
+        """Get an independent copy of the aligned benchmark snapshot."""
+        return self._benchmark.copy() if self._benchmark is not None else None
 
     @property
     def has_benchmark(self) -> bool:
@@ -225,7 +236,7 @@ class PortfolioAnalysis:
         >>> print(f"Max Drawdown: {metrics.max_drawdown:.1%}")
         """
         if self._metrics_cache is not None and not force_recompute:
-            return self._metrics_cache
+            return deepcopy(self._metrics_cache)
 
         returns = self._returns
         rf = self._risk_free
@@ -234,7 +245,7 @@ class PortfolioAnalysis:
         # Basic returns
         total_ret = float(_safe_prod(1 + returns) - 1)
         ann_ret = annual_return(returns, ppy)
-        ann_vol = annual_volatility(returns, ppy)
+        ann_vol = annual_volatility(returns, ppy) if len(returns) > 1 else np.nan
 
         # Risk-adjusted
         sr = sharpe_ratio(returns, rf, ppy)
@@ -247,8 +258,9 @@ class PortfolioAnalysis:
         max_dd = max_drawdown(returns)
 
         # Distribution
-        skew = float(stats.skew(returns[~np.isnan(returns)]))
-        kurt = float(stats.kurtosis(returns[~np.isnan(returns)]))
+        has_dispersion = len(returns) > 1 and np.ptp(returns) > 0
+        skew = float(stats.skew(returns)) if has_dispersion else np.nan
+        kurt = float(stats.kurtosis(returns)) if has_dispersion else np.nan
 
         # Risk
         var95 = value_at_risk(returns, 0.95)
@@ -303,7 +315,7 @@ class PortfolioAnalysis:
             down_capture=down_cap,
         )
 
-        return self._metrics_cache
+        return deepcopy(self._metrics_cache)
 
     def compute_rolling_metrics(
         self,
@@ -335,15 +347,25 @@ class PortfolioAnalysis:
         if metrics is None:
             metrics = ["sharpe", "volatility", "returns"]
 
+        if not windows:
+            raise ValueError("windows must contain positive integer observation counts")
+        windows = [positive_integer(window, "windows") for window in windows]
+        if not metrics or any(
+            metric not in {"sharpe", "volatility", "returns", "beta"} for metric in metrics
+        ):
+            raise ValueError("metrics must contain sharpe, volatility, returns or beta")
+        if "beta" in metrics and not self.has_benchmark:
+            raise ValueError("metrics beta requires a benchmark")
+
         cache_key = (tuple(windows), tuple(metrics))
         if cache_key in self._rolling_cache:
-            return self._rolling_cache[cache_key]
+            return deepcopy(self._rolling_cache[cache_key])
 
         returns = self._returns
         rf = self._risk_free
         ppy = self._periods_per_year
 
-        result = RollingMetricsResult(windows=windows, dates=self._dates)
+        result = RollingMetricsResult(windows=windows, dates=self._dates.clone())
 
         for window in windows:
             if "sharpe" in metrics:
@@ -365,7 +387,7 @@ class PortfolioAnalysis:
                 result.beta[window] = pl.Series(f"beta_{window}d", rolling_beta).fill_nan(None)
 
         self._rolling_cache[cache_key] = result
-        return result
+        return deepcopy(result)
 
     @staticmethod
     def _rolling_sharpe(
@@ -380,7 +402,7 @@ class PortfolioAnalysis:
         n = len(returns)
         result = np.full(n, np.nan)
 
-        if n < window:
+        if n < window or window < 2:
             return result
 
         daily_rf = (1 + risk_free) ** (1 / periods_per_year) - 1
@@ -394,7 +416,9 @@ class PortfolioAnalysis:
         sd = np.std(excess, axis=1, ddof=1)
 
         # Sharpe where std > 0
-        sharpe = np.where(sd > 0, (mu / sd) * np.sqrt(periods_per_year), np.nan)
+        sharpe = np.full(len(mu), np.nan)
+        np.divide(mu, sd, out=sharpe, where=sd > 0)
+        sharpe *= np.sqrt(periods_per_year)
         result[window - 1 :] = sharpe
 
         return result
@@ -411,7 +435,7 @@ class PortfolioAnalysis:
         n = len(returns)
         result = np.full(n, np.nan)
 
-        if n < window:
+        if n < window or window < 2:
             return result
 
         # Vectorized: create all windows at once
@@ -458,7 +482,7 @@ class PortfolioAnalysis:
         n = len(returns)
         result = np.full(n, np.nan)
 
-        if n < window:
+        if n < window or window < 2:
             return result
 
         # Vectorized: create all windows at once
@@ -478,7 +502,8 @@ class PortfolioAnalysis:
         var = np.sum(bench_dev * bench_dev, axis=1) / (window - 1)
 
         # Beta = cov / var where var > 0
-        beta = np.where(var > 0, cov / var, np.nan)
+        beta = np.full(len(cov), np.nan)
+        np.divide(cov, var, out=beta, where=var > 0)
         result[window - 1 :] = beta
 
         return result
@@ -509,7 +534,7 @@ class PortfolioAnalysis:
         >>> print(f"Avg duration: {dd.avg_duration_days:.0f} days")
         """
         if self._drawdown_cache is not None:
-            return self._drawdown_cache
+            return deepcopy(self._drawdown_cache)
 
         returns = self._returns
         dates = self._dates
@@ -553,7 +578,7 @@ class PortfolioAnalysis:
             dates=dates,
         )
 
-        return self._drawdown_cache
+        return deepcopy(self._drawdown_cache)
 
     def _identify_drawdown_periods(
         self,
@@ -664,6 +689,7 @@ class PortfolioAnalysis:
         pl.DataFrame
             Monthly returns with year and month columns
         """
+        self.require_dates()
         df = pl.DataFrame(
             {
                 "date": self._dates,
@@ -694,6 +720,7 @@ class PortfolioAnalysis:
         pl.DataFrame
             Annual returns with year column
         """
+        self.require_dates()
         df = pl.DataFrame(
             {
                 "date": self._dates,

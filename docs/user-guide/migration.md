@@ -156,8 +156,8 @@ Zipline backtest object directly.
 
 | Pyfolio input or task | Diagnostic route | Conversion or difference |
 |---|---|---|
-| Daily noncumulative return Series | `PortfolioAnalysis(returns=..., dates=...)` | Pass decimal return values and matching dates; set `periods_per_year` and risk-free convention explicitly. |
-| Benchmark return Series | `PortfolioAnalysis(benchmark=...)` | Reindex to the strategy dates before passing values; verify missing dates and currency. |
+| Daily noncumulative return Series | `PortfolioAnalysis(returns=..., dates=...)` | A pandas DatetimeIndex is retained automatically. Explicit dates must agree with it; set `periods_per_year` and risk-free convention explicitly. |
+| Benchmark return Series | `PortfolioAnalysis(benchmark=...)` | A dated Series is aligned to every strategy observation, with extra benchmark dates excluded. Missing/duplicate keys and timezone mismatches raise; verify currency separately. Undated arrays must have equal lengths. |
 | Daily position values and fill transactions | `PortfolioAnalysis(positions=..., transactions=...)` | Positions may be wide by asset or long `date`, `asset`, `value`; transactions need `date`, `asset`, `quantity`, `price`, `commission`. Reconcile cash, signs, and fees. |
 | Performance HTML | `generate_backtest_tearsheet(returns=..., metrics=...)` | Install the `viz` extra; supply a return array and any precomputed metrics. This is not a Pyfolio report template. |
 | A completed `ml4t-backtest` result | `generate_tearsheet_from_result(result)` | Only this bridge takes an `ml4t-backtest` result; it does not ingest a Pyfolio or Zipline result. |
@@ -178,14 +178,28 @@ daily_returns = pd.Series(
     index=pd.bdate_range("2025-01-01", periods=252),
 )
 portfolio = PortfolioAnalysis(
-    returns=daily_returns.to_numpy(),
-    dates=daily_returns.index.to_numpy(),
+    returns=daily_returns,
     periods_per_year=252,
 )
 summary = portfolio.compute_summary_stats()
 assert np.isfinite(summary.sharpe_ratio)
 print(f"Portfolio Sharpe: {summary.sharpe_ratio:.2f}")
 ```
+
+Current source validates nonempty one-dimensional real simple returns, finite
+values no lower than -1, a positive integer `periods_per_year`, and a finite
+annual `risk_free > -1`. Missing observations raise instead of becoming cash
+returns. Zero-return observations remain in the sample. Inputs and returned
+arrays/results are independent snapshots, so caller mutations cannot change
+cached metrics.
+
+NumPy and Polars return arrays without dates still support numerical analysis
+and observation-indexed charts. They no longer acquire fictional year-2000
+dates. Monthly/annual tables and complete calendar dashboards require actual,
+unique, increasing dates. Date preservation does not infer an exchange calendar
+or convert event timestamps to session labels. These boundary corrections are
+unreleased source changes after 0.1.9; earlier published behavior is not a
+supported missing-data or positional-alignment policy.
 
 Use the [portfolio workflow](workflows.md) and
 [backtest report guide](backtest-tearsheets.md) for the supported output checks.

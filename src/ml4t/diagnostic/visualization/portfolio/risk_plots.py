@@ -72,7 +72,7 @@ def plot_rolling_volatility(
 
     fig = create_base_figure(
         title="Rolling Volatility (Annualized)",
-        xaxis_title="Date",
+        xaxis_title="Date" if rolling_result.dates.dtype.is_temporal() else "Observation",
         yaxis_title="Volatility",
         height=height,
         width=width,
@@ -155,7 +155,7 @@ def plot_rolling_sharpe(
 
     fig = create_base_figure(
         title="Rolling Sharpe Ratio",
-        xaxis_title="Date",
+        xaxis_title="Date" if rolling_result.dates.dtype.is_temporal() else "Observation",
         yaxis_title="Sharpe Ratio",
         height=height,
         width=width,
@@ -270,7 +270,7 @@ def plot_rolling_beta(
 
     fig = create_base_figure(
         title=f"Rolling Beta ({window}d)",
-        xaxis_title="Date",
+        xaxis_title="Date" if rolling_result.dates.dtype.is_temporal() else "Observation",
         yaxis_title="Beta",
         height=height,
         width=width,
@@ -291,7 +291,7 @@ def plot_rolling_beta(
             fillcolor=f"rgba({int(theme_config['colorway'][0][1:3], 16)}, "
             f"{int(theme_config['colorway'][0][3:5], 16)}, "
             f"{int(theme_config['colorway'][0][5:7], 16)}, 0.2)",
-            hovertemplate="Date: %{x}<br>Beta: %{y:.2f}<extra></extra>",
+            hovertemplate="%{x}<br>Beta: %{y:.2f}<extra></extra>",
         )
     )
 
