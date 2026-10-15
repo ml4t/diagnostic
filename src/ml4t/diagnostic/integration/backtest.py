@@ -457,6 +457,8 @@ def generate_tearsheet_from_result(
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
+    *,
+    periods_per_year: int | None = None,
 ) -> str:
     """Generate an HTML tearsheet from a BacktestResult."""
     del include_statistical
@@ -472,7 +474,9 @@ def generate_tearsheet_from_result(
         effective_metadata = report_metadata.merged_with(effective_metadata)
     trades_df = result.to_trades_dataframe()
     returns = result.to_daily_returns(calendar=calendar).to_numpy()
-    tearsheet_metrics = _normalize_tearsheet_metrics(result, calendar=calendar)
+    tearsheet_metrics = (
+        _normalize_tearsheet_metrics(result, calendar=calendar) if periods_per_year is None else {}
+    )
 
     if "total_pnl" not in tearsheet_metrics and result.trades:
         tearsheet_metrics["total_pnl"] = sum(trade.pnl for trade in result.trades)
@@ -491,6 +495,7 @@ def generate_tearsheet_from_result(
         benchmark_returns=benchmark,
         benchmark_name=benchmark_name,
         report_metadata=effective_metadata,
+        periods_per_year=periods_per_year,
     )
 
     if output_path is not None:
@@ -513,6 +518,7 @@ def generate_tearsheet_from_run_artifacts(
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
+    periods_per_year: int | None = None,
 ) -> str:
     """Generate a tearsheet directly from backtest run artifacts."""
     from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
@@ -544,6 +550,7 @@ def generate_tearsheet_from_run_artifacts(
         benchmark_name=benchmark_name,
         report_metadata=effective_metadata,
         output_path=output_path,
+        periods_per_year=periods_per_year,
     )
     return html
 

@@ -62,6 +62,7 @@ def export_workspaces(
     subtitle: str | None = None,
     output_path: str | Path | None = None,
     include_plotlyjs: bool = True,
+    periods_per_year: int | None = None,
 ) -> str:
     """Export selected workspaces as a standalone HTML document.
 
@@ -73,6 +74,9 @@ def export_workspaces(
         ``"executive"`` or ``"full_report"``.
     profile : BacktestProfile, optional
         Full backtest profile for rich analytics.
+    periods_per_year : int, optional
+        Positive annualization scale. Inherits the profile scale or defaults to
+        252 for raw daily returns, independent of sample length.
     trades, returns, equity_curve, metrics, predictions
         Raw data fallbacks (same as generate_backtest_tearsheet).
     theme : str
@@ -115,18 +119,26 @@ def export_workspaces(
         _compute_portfolio_summary_metrics,
         _enrich_benchmark_metrics,
         _enrich_from_trades,
-        _enrich_validation_metrics,
         _generate_sections,
-        _infer_periods_per_year,
         _normalize_profile_metrics,
         _plotly_js_tag,
+        _resolve_periods_per_year,
         _resolve_report_metadata,
         _section_workspace_name,
+        _with_annualization_metadata,
     )
 
     template_name: Literal["quant_trader", "hedge_fund", "risk_manager", "full"] = "full"
     tmpl = get_template(template_name)
     preset = get_dashboard_preset(template_name)
+
+    periods_per_year = _resolve_periods_per_year(periods_per_year, profile)
+    if profile is not None and periods_per_year != profile.periods_per_year:
+        from dataclasses import replace
+
+        profile = replace(profile, annualization_factor=periods_per_year)
+    if metrics is None:
+        metrics = {}
 
     # Seed from profile
     if profile is not None:
@@ -139,7 +151,6 @@ def export_workspaces(
         for key, value in _normalize_profile_metrics(profile).items():
             metrics.setdefault(key, value)
 
-    periods_per_year = _infer_periods_per_year(returns)
     benchmark_metrics = _compute_portfolio_summary_metrics(
         benchmark_returns,
         periods_per_year=periods_per_year,
@@ -164,8 +175,6 @@ def export_workspaces(
         _enrich_benchmark_metrics(returns, benchmark_returns, metrics, periods_per_year)
     if trades is not None and metrics is not None:
         _enrich_from_trades(trades, metrics)
-    if returns is not None:
-        _enrich_validation_metrics(metrics or {}, returns, n_trials=n_trials)
 
     # Auto-enable ML/factor sections
     if predictions is not None and not predictions.is_empty():
@@ -208,6 +217,7 @@ def export_workspaces(
         report_metadata=report_metadata,
         theme=theme,
         interactive=True,
+        periods_per_year=periods_per_year,
     )
 
     html = HTML_TEMPLATE.format(
@@ -221,6 +231,7 @@ def export_workspaces(
         sections_html=sections_html,
     )
 
+    html = _with_annualization_metadata(html, periods_per_year)
     if output_path:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)

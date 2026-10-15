@@ -83,7 +83,7 @@ class TestTearsheetHTMLEscaping:
         )
 
         html = generate_backtest_tearsheet(
-            returns=np.random.randn(100),
+            returns=np.random.default_rng(42).normal(0.001, 0.01, 100),
             title='<script>alert("xss")</script>',
             subtitle='<img onerror="alert(1)">',
             template="quant_trader",
@@ -101,7 +101,7 @@ class TestTearsheetHTMLEscaping:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             generate_backtest_tearsheet(
-                returns=np.random.randn(100),
+                returns=np.random.default_rng(42).normal(0.001, 0.01, 100),
                 template="quant_trader",
                 interactive=False,
             )

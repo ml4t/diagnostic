@@ -73,6 +73,7 @@ class BacktestProfile:
     signals_override: Any = None
     strategy_metadata_override: dict[str, Any] | None = None
     data_sources: dict[str, str] = field(default_factory=dict)
+    annualization_factor: int | None = None
     _performance_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _edge_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _activity_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
@@ -94,6 +95,8 @@ class BacktestProfile:
     @property
     def periods_per_year(self) -> int:
         """Return annualization factor for the resolved calendar."""
+        if self.annualization_factor is not None:
+            return self.annualization_factor
         return get_annualization_factor(self.resolved_calendar)
 
     @property

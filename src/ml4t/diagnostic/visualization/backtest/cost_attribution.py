@@ -180,6 +180,8 @@ def plot_cost_sensitivity(
     theme: str | None = None,
     height: int = 500,
     width: int | None = None,
+    *,
+    periods_per_year: int = 252,
 ) -> go.Figure:
     """Analyze how Sharpe ratio degrades as transaction costs increase.
 
@@ -208,6 +210,8 @@ def plot_cost_sensitivity(
         Figure height in pixels
     width : int, optional
         Figure width in pixels
+    periods_per_year : int
+        Positive return observations per year, independent of trade frequency.
 
     Returns
     -------
@@ -216,6 +220,12 @@ def plot_cost_sensitivity(
     """
     import polars as pl
 
+    if (
+        isinstance(periods_per_year, bool)
+        or not isinstance(periods_per_year, (int, np.integer))
+        or periods_per_year <= 0
+    ):
+        raise ValueError("periods_per_year must be a positive integer")
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
@@ -241,20 +251,24 @@ def plot_cost_sensitivity(
         # Cost per trade in decimal
         cost_per_trade = (base_costs_bps * mult) / 10000
 
-        # Estimate daily cost drag (assuming uniform trading)
-        daily_cost_drag = cost_per_trade * (trades_per_year / 252)
+        # Estimate per-observation cost drag (assuming uniform trading).
+        daily_cost_drag = cost_per_trade * (trades_per_year / periods_per_year)
 
         # Net returns
         net_mean = gross_mean - daily_cost_drag
 
         # Calculate Sharpe
         if gross_std > 0:
-            sharpe = (net_mean - risk_free_rate / 252) / gross_std * np.sqrt(252)
+            sharpe = (
+                (net_mean - risk_free_rate / periods_per_year)
+                / gross_std
+                * np.sqrt(periods_per_year)
+            )
         else:
             sharpe = 0
 
         # Calculate CAGR (approximate)
-        cagr = (1 + net_mean) ** 252 - 1
+        cagr = (1 + net_mean) ** periods_per_year - 1
 
         cost_levels.append(base_costs_bps * mult)
         sharpe_values.append(sharpe)

@@ -90,6 +90,8 @@ def generate_tearsheet_from_result(
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
+    *,
+    periods_per_year: int | None = None,
 ) -> str:
     """Generate a diagnostic tearsheet from a BacktestResult."""
     return _load_backtest_bridge().generate_tearsheet_from_result(
@@ -103,6 +105,7 @@ def generate_tearsheet_from_result(
         benchmark=benchmark,
         benchmark_name=benchmark_name,
         report_metadata=report_metadata,
+        periods_per_year=periods_per_year,
     )
 
 
@@ -136,6 +139,7 @@ def generate_tearsheet_from_run_artifacts(
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
+    periods_per_year: int | None = None,
 ) -> str:
     """Generate a tearsheet directly from backtest artifact directories."""
     return _load_backtest_bridge().generate_tearsheet_from_run_artifacts(
@@ -149,6 +153,7 @@ def generate_tearsheet_from_run_artifacts(
         benchmark=benchmark,
         benchmark_name=benchmark_name,
         report_metadata=report_metadata,
+        periods_per_year=periods_per_year,
     )
 
 

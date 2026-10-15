@@ -499,10 +499,10 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
         cols=2,
         shared_xaxes=True,
         subplot_titles=(
-            "Rolling Return (252d)",
-            "Rolling Sharpe (252d)",
-            "Rolling Volatility (252d)",
-            "Rolling Sortino (252d)",
+            "Rolling Return (252 observations)",
+            "Rolling Sharpe (252 observations)",
+            "Rolling Volatility (252 observations)",
+            "Rolling Sortino (252 observations)",
         ),
         vertical_spacing=0.14,
         horizontal_spacing=0.08,
@@ -549,9 +549,9 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
         # Row 2, Col 1: Rolling Volatility (252d)
         n = len(returns)
         vol_252 = np.full(n, np.nan)
-        sqrt_252 = float(np.sqrt(252))
+        annualization_scale = float(np.sqrt(profile.periods_per_year))
         for i in range(251, n):
-            vol_252[i] = float(np.std(returns[i - 251 : i + 1], ddof=1)) * sqrt_252
+            vol_252[i] = float(np.std(returns[i - 251 : i + 1], ddof=1)) * annualization_scale
         fig.add_trace(
             go.Scatter(
                 x=x_axis,
@@ -573,7 +573,7 @@ def plot_stability_overview(profile: BacktestProfile, theme: str | None = None) 
             downside = np.minimum(window, 0.0)
             downside_std = float(np.sqrt(np.mean(downside**2)))
             if downside_std > 0:
-                sortino_252[i] = mean_r / downside_std * sqrt_252
+                sortino_252[i] = mean_r / downside_std * annualization_scale
         fig.add_trace(
             go.Scatter(
                 x=x_axis,
