@@ -197,7 +197,9 @@ NumPy and Polars return arrays without dates still support numerical analysis
 and observation-indexed charts. They no longer acquire fictional year-2000
 dates. Monthly/annual tables and complete calendar dashboards require actual,
 unique, increasing dates. Date preservation does not infer an exchange calendar
-or convert event timestamps to session labels. These boundary corrections are
+or convert event timestamps to session labels. A raw-return backtest tearsheet
+without dated equity data marks calendar panels unavailable while retaining
+observation-based analysis. These boundary corrections are
 unreleased source changes after 0.1.9; earlier published behavior is not a
 supported missing-data or positional-alignment policy.
 

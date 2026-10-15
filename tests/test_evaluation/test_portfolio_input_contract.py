@@ -75,6 +75,17 @@ def test_undated_arrays_do_not_invent_calendar_tables_or_reports(tmp_path):
     assert output.read_text() == "existing report"
 
 
+def test_undated_backtest_report_marks_calendar_panels_unavailable_instead_of_inventing_dates():
+    from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+    html = generate_backtest_tearsheet(
+        returns=np.random.default_rng(116).normal(0.001, 0.01, 80), template="full"
+    )
+    assert 'data-availability="missing-dates"' in html
+    assert "Calendar returns unavailable" in html
+    assert "2000-01" not in html
+
+
 def test_reference_permutation_and_extra_dates_keep_one_paired_sample():
     benchmark = pd.Series(
         [0.01, -0.02, 0.03, 0, -0.01, 0.02], index=pd.bdate_range("2025-01-02", periods=6)

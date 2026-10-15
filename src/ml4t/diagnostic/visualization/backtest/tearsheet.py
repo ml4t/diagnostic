@@ -2123,6 +2123,14 @@ def _render_portfolio_section(ctx: _SectionContext, section_name: str) -> Any:
         equity_curve=ctx.equity_curve,
         periods_per_year=ctx.periods_per_year,
     )
+    if (
+        section_name in {"monthly_returns", "monthly_heatmap_overview", "annual_returns"}
+        and not pa.has_dates
+    ):
+        return (
+            '<p data-availability="missing-dates">Calendar returns unavailable: '
+            "supply matching dated equity data or a BacktestProfile.</p>"
+        )
 
     if section_name == "equity_curve":
         from ml4t.diagnostic.visualization.portfolio import plot_cumulative_returns
