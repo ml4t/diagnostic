@@ -42,8 +42,9 @@ a factor Series indexed by date and asset plus a wide price DataFrame, then
 quantiles. Its full tear sheet includes returns, IC, turnover, and grouped
 analysis. Diagnostic's `analyze_signal()` takes two long tables and returns
 IC, quantile returns, spread, and turnover metrics. It recomputes forward
-returns from prices, so an Alphalens *cleaned* factor table by itself is
-not an input substitute. Preserve the original point-in-time prices.
+returns from prices. Current unreleased source also provides
+`analyze_prepared_signal()` for an existing cleaned factor table, retaining its
+supplied forward returns and bucket assignments without fabricated prices.
 See the [Alphalens input contract](https://github.com/quantopian/alphalens/blob/77084f1e4c2c0be407e032d444fb19e4be4b0f37/alphalens/utils.py)
 and the [Diagnostic signal API](../api/index.md#signal-analysis).
 
@@ -53,10 +54,11 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 |---|---|---|
 | Factor Series with `(date, asset)` index | `analyze_signal(factor=...)` | Reset the index to columns `date`, `asset`, `factor`; keep one value per pair. |
 | Wide asset-price table | `analyze_signal(prices=...)` | Stack to `date`, `asset`, `price` rows, including enough future dates for the largest horizon. |
+| Already-cleaned factor table | `analyze_prepared_signal(data, ...)` | Accepts the ordinary pandas `(date, asset)` index, `factor_quantile` and `1D`/`5D` columns, or native flat columns. Preserves supplied buckets; rejects duplicate keys and incomplete requested data rather than cleaning it. Unreleased after 0.1.9. |
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
-| Group-neutral or zero-aware bucketing and the complete Alphalens tear sheet | No one-call `analyze_signal` equivalent | Preprocess groups or buckets separately if needed; do not treat Diagnostic's default quantiles or reports as equivalent. |
+| Group-neutral or zero-aware bucketing and the complete Alphalens tear sheet | No complete equivalent | The prepared route can retain supplied buckets. It does not implement group-adjusted IC/returns, group-neutral portfolios or the complete tear sheet. |
 
 </div>
 
@@ -99,6 +101,56 @@ print(f"One-day IC: {signal.ic['1D']:.3f}")
 The assertion establishes the expected direction on these synthetic data;
 it is not a significance test for a real factor. Use the
 [signal quickstart](../getting-started/quickstart.md) to interpret IC and spread.
+
+For an already-cleaned panel, current source can retain its sample and supplied
+buckets directly. This example does not need Alphalens at runtime:
+
+```python
+import numpy as np
+import pandas as pd
+
+from ml4t.diagnostic import analyze_prepared_signal
+
+index = pd.MultiIndex.from_product(
+    [pd.bdate_range("2025-01-02", periods=3), [f"A{i:02}" for i in range(12)]],
+    names=["date", "asset"],
+)
+prepared = pd.DataFrame(
+    {
+        "factor": np.tile(np.arange(12, dtype=float), 3),
+        "factor_quantile": np.tile(np.repeat([1, 2, 3], 4), 3),
+        "1D": np.random.default_rng(120).normal(0.001, 0.01, 36),
+    },
+    index=index,
+)
+result = analyze_prepared_signal(prepared, periods=(1,), quantiles=3, min_assets=2)
+assert result.prepared_data.height == 36
+assert result.preparation_metadata["excluded_rows"] == 0
+print(f"Prepared observations retained: {result.prepared_data.height}")
+```
+
+`result.prepared_data` returns an independent canonical frame. JSON round-trips
+store it as a base64 Arrow IPC payload to preserve schema, nanoseconds and
+timezone. The strict boundary rejects duplicate keys, incomplete/nonfinite
+requested values and invalid buckets. It does not replace the full Alphalens
+cleaner or produce a loss audit for excluded rows: it excludes no rows.
+
+Precomputed `1D`/`5D` labels are selectors here, not newly calculated durations
+or evidence of exchange-session/bar completeness. Native pooled quantile
+statistics and two-sample spread inference still differ from Alphalens'
+equal-date aggregation and propagated standard errors. Turnover is disabled by
+default on this prepared route; enabling it uses the existing observed-date
+lag method. Group-adjusted/neutral calculations and complete reports remain
+unsupported by this route. No full-replacement claim follows from retaining a
+prepared panel.
+
+Timestamp grouping can also differ. On a prepared sample containing three
+distinct nanosecond instants, Alphalens 0.4.6 regularizes IC to its inferred
+`CustomBusinessDay` frequency and retains only the first instant. Diagnostic
+retains all three supplied timestamp groups. Its correlations match independent
+per-timestamp SciPy calculations, not a three-row Alphalens output. This does
+not establish calendar or schedule equivalence.
+
 In the shared-input comparison, 600 factor rows across 50 business dates and
 12 assets use one-day forward returns from the same wide price table. Both calls
 use five quantiles, no outlier filter, and ungrouped Spearman IC. Alphalens

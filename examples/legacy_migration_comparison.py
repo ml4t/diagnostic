@@ -1,4 +1,4 @@
-"""Compare published legacy and Diagnostic APIs on shared synthetic inputs.
+"""Compare published legacy APIs with Diagnostic on shared synthetic inputs.
 
 Run from the repository root with the pinned-package command in the migration guide.
 """
@@ -98,7 +98,8 @@ def compare_signals(factor: pd.Series, prices: pd.DataFrame) -> None:
         filter_zscore=None,
         max_loss=0.35,
     )
-    legacy_ic = alphalens_performance.factor_information_coefficient(cleaned)["1D"].mean()
+    legacy_series = alphalens_performance.factor_information_coefficient(cleaned)["1D"]
+    legacy_ic = legacy_series.mean()
     current = current_signal(factor, prices)
     print("Alphalens / Diagnostic one-day signal analysis")
     print(f"Input factor rows: {len(factor)}")
@@ -106,6 +107,37 @@ def compare_signals(factor: pd.Series, prices: pd.DataFrame) -> None:
     print(f"Mean Spearman IC: {legacy_ic:.6f} / {current.ic['1D']:.6f}")
     print(f"Diagnostic spread: {current.spread['1D']:.6f}")
     np.testing.assert_allclose(legacy_ic, current.ic["1D"])
+    try:
+        from ml4t.diagnostic import analyze_prepared_signal
+    except ImportError:
+        print("Installed Diagnostic has no prepared-panel route; the original comparison above ran.")
+        return
+    prepared = analyze_prepared_signal(cleaned, periods=(1,), quantiles=5, min_assets=2)
+    canonical = (
+        prepared.prepared_data.to_pandas()
+        .rename(columns={"quantile": "factor_quantile", "1D_fwd_return": "1D"})
+        .set_index(["date", "asset"])
+    )
+    pd.testing.assert_frame_equal(
+        canonical[cleaned.columns].sort_index(), cleaned.sort_index(), check_freq=False
+    )
+    np.testing.assert_array_equal(
+        pd.DatetimeIndex(prepared.ic_dates["1D"]).asi8, legacy_series.index.asi8
+    )
+    np.testing.assert_allclose(prepared.ic_series["1D"], legacy_series, atol=1e-12)
+    legacy_quantiles, _ = alphalens_performance.mean_return_by_quantile(
+        cleaned, by_date=False, demeaned=False, group_adjust=False
+    )
+    for bucket in range(1, 6):
+        np.testing.assert_allclose(
+            prepared.quantile_returns["1D"][bucket], legacy_quantiles.loc[bucket, "1D"],
+            atol=1e-12,
+        )
+    print(f"Prepared rows/buckets retained exactly: {prepared.prepared_data.height}")
+    print(
+        "Prepared per-date IC and means match on this balanced sample; "
+        "native std/spread inference differ."
+    )
 
 
 def show_diagnostic_only() -> None:
@@ -145,20 +177,28 @@ def compare_metrics(strategy: pd.Series) -> None:
     for label, values in (("complete", strategy), ("one NaN", strategy.copy())):
         if label == "one NaN":
             values.iloc[10] = np.nan
-        current = PortfolioAnalysis(
-            returns=values.to_numpy(),
-            dates=values.index.to_numpy(),
-            periods_per_year=252,
-        ).compute_summary_stats()
+        try:
+            current = PortfolioAnalysis(
+                returns=values.to_numpy(),
+                dates=values.index.to_numpy(),
+                periods_per_year=252,
+            ).compute_summary_stats()
+        except ValueError as exc:
+            if label != "one NaN" or "finite" not in str(exc):
+                raise
+            current = None
+            print(f"Diagnostic rejects missing observations: {exc}")
         print(f"Input: {label}, rows={len(values)}, valid={values.notna().sum()}")
         for name, current_name, legacy_function in metrics:
             old = float(legacy_function(values))
-            new = float(getattr(current, current_name))
-            print(f"{name}: {old:.6f} / {new:.6f}")
+            new = float(getattr(current, current_name)) if current is not None else None
+            displayed = f"{new:.6f}" if new is not None else "unavailable (strict input boundary)"
+            print(f"{name}: {old:.6f} / {displayed}")
             if label == "complete":
                 np.testing.assert_allclose(old, new)
         old_stability = empyrical.stability_of_timeseries(values)
-        print(f"stability_of_timeseries: {old_stability:.6f} / {current.stability:.6f}")
+        stability = f"{current.stability:.6f}" if current is not None else "unavailable"
+        print(f"stability_of_timeseries: {old_stability:.6f} / {stability}")
 
     monthly = pd.Series(
         [0.01, -0.02, 0.015, 0.004, -0.006, 0.012, 0.003, -0.005, 0.011, 0.008, -0.004, 0.009],

@@ -64,6 +64,7 @@ The package root re-exports the most common classes and configs for interactive 
       show_root_heading: true
       members:
         - analyze_signal
+        - analyze_prepared_signal
         - SignalResult
         - prepare_data
         - extract_signal_ic_series
