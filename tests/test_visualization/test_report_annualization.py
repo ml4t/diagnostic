@@ -98,7 +98,8 @@ def test_declared_scale_reaches_relative_metrics_and_actual_chart_data(scale, ro
     assert metrics["sharpe_se"] == pytest.approx(expected_se)
     assert f'name="ml4t-periods-per-year" content="{scale}"' in html
 
-    data, _ = chart_payloads(html, "rolling_metrics")
+    data, layout = chart_payloads(html, "rolling_metrics")
+    assert all("252 observations" in item["text"] for item in layout["annotations"])
     window = returns[-252:]
     assert data[1]["y"][-1] == pytest.approx(window.mean() / window.std(ddof=1) * np.sqrt(scale))
     assert data[2]["y"][-1] == pytest.approx(window.std(ddof=1) * np.sqrt(scale))
@@ -115,6 +116,8 @@ def test_declared_scale_reaches_relative_metrics_and_actual_chart_data(scale, ro
 
 @pytest.mark.parametrize("scale", [0, -1, float("nan"), float("inf"), True, 12.5])
 def test_invalid_report_scale_does_not_mutate_metrics_or_publish_output(scale, tmp_path):
+    from ml4t.diagnostic.visualization.backtest import plot_cost_sensitivity
+
     returns, equity = report_inputs(80)
     metrics = {"sharpe_ratio": 1.5}
     output = tmp_path / "report.html"
@@ -129,6 +132,8 @@ def test_invalid_report_scale_does_not_mutate_metrics_or_publish_output(scale, t
         )
     assert metrics == {"sharpe_ratio": 1.5}
     assert output.read_text() == "previous report"
+    with pytest.raises(ValueError, match="periods_per_year"):
+        plot_cost_sensitivity(returns, periods_per_year=scale)
 
 
 @pytest.mark.parametrize("scale", [None, 12, 365])
@@ -184,7 +189,8 @@ def test_profile_report_inherits_or_overrides_scale_without_changing_profile(rou
         html = export_workspaces("full_report", profile=profile, periods_per_year=365)
     else:
         html = generate_tearsheet_from_result(result, calendar="NYSE", periods_per_year=365)
-    data, _ = chart_payloads(html, "rolling_metrics")
+    data, layout = chart_payloads(html, "rolling_metrics")
+    assert all("252 observations" in item["text"] for item in layout["annotations"])
     expected_vol = returns[-252:].std(ddof=1) * np.sqrt(365)
     assert data[2]["y"][-1] == pytest.approx(expected_vol)
     assert profile.periods_per_year == original_scale

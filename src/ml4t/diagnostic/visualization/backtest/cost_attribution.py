@@ -220,6 +220,12 @@ def plot_cost_sensitivity(
     """
     import polars as pl
 
+    if (
+        isinstance(periods_per_year, bool)
+        or not isinstance(periods_per_year, (int, np.integer))
+        or periods_per_year <= 0
+    ):
+        raise ValueError("periods_per_year must be a positive integer")
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 

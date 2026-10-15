@@ -1036,7 +1036,7 @@ def _enrich_validation_metrics(
             ) from exc
         metrics.pop("_dsr_min_trl", None)
 
-    # Compute confidence intervals via bootstrap
+    # Compute normal-approximation intervals at the declared annualization scale.
     if not has_ci:
         try:
             sharpe = metrics.get("sharpe")
@@ -1484,7 +1484,9 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
             min_len = min(len(bench_arr), n)
             bench_arr = bench_arr[-min_len:]
 
-    fourth_title = "Rolling Beta (252d)" if has_benchmark else "Rolling Sortino (252d)"
+    fourth_title = (
+        "Rolling Beta (252 observations)" if has_benchmark else "Rolling Sortino (252 observations)"
+    )
 
     # Compute rolling metrics
     roll_ret = np.full(n, np.nan)
@@ -1526,9 +1528,9 @@ def _build_rolling_2x2(ctx: _SectionContext) -> go.Figure | None:
         cols=2,
         shared_xaxes=True,
         subplot_titles=(
-            "Rolling Return (252d)",
-            "Rolling Sharpe (252d)",
-            "Rolling Volatility (252d)",
+            "Annualized Mean Return (252 observations)",
+            "Rolling Sharpe (252 observations)",
+            "Rolling Volatility (252 observations)",
             fourth_title,
         ),
         vertical_spacing=0.14,
@@ -2554,7 +2556,7 @@ _METHODOLOGY_SECTIONS: list[tuple[str, str, str, tuple[str, ...]]] = [
     (
         "Validation",
         "Sharpe Bootstrap",
-        "5,000 block-bootstrap replications (block size = 252) of the Sharpe ratio. "
+        "5,000 block-bootstrap replications (block size = 21 observations) of the Sharpe ratio. "
         "Reports P(SR\u22640) — probability the true Sharpe is zero or negative.",
         (),
     ),
