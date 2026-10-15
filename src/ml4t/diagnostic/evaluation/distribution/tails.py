@@ -460,25 +460,30 @@ def hill_estimator(
             alpha, alpha_se = compute_hill_alpha(sorted_data, k)
 
         elif tail == "lower":
-            # For lower tail, analyze absolute values of negative tail
-            # Take absolute values to ensure positive data for log transform
-            sorted_data = np.sort(np.abs(arr))[::-1]
+            # Upper order statistics of the negated series are the most negative
+            # observations. abs() would mix in large gains and report the right tail.
+            sorted_data = np.sort(-arr)[::-1]
             alpha, alpha_se = compute_hill_alpha(sorted_data, k)
 
         else:  # both
             # Compute both tails and take minimum (more conservative)
             sorted_upper = np.sort(arr)[::-1]
-            alpha_upper, alpha_se_upper = compute_hill_alpha(sorted_upper, k)
-
-            # For lower tail, use absolute values
-            sorted_lower = np.sort(np.abs(arr))[::-1]
-            alpha_lower, alpha_se_lower = compute_hill_alpha(sorted_lower, k)
-
-            # Use minimum (heavier tail)
-            if alpha_upper < alpha_lower:
-                alpha, alpha_se = alpha_upper, alpha_se_upper
+            sorted_lower = np.sort(-arr)[::-1]
+            # A non-positive threshold leaves too few observations to estimate
+            # that tail. Use the other tail when only one is estimable.
+            if sorted_upper[k] <= 0:
+                alpha, alpha_se = compute_hill_alpha(sorted_lower, k)
+            elif sorted_lower[k] <= 0:
+                alpha, alpha_se = compute_hill_alpha(sorted_upper, k)
             else:
-                alpha, alpha_se = alpha_lower, alpha_se_lower
+                alpha_upper, alpha_se_upper = compute_hill_alpha(sorted_upper, k)
+                alpha_lower, alpha_se_lower = compute_hill_alpha(sorted_lower, k)
+
+                # Use minimum (heavier tail)
+                if alpha_upper < alpha_lower:
+                    alpha, alpha_se = alpha_upper, alpha_se_upper
+                else:
+                    alpha, alpha_se = alpha_lower, alpha_se_lower
 
         # Classify tail
         if alpha <= 2.0:
