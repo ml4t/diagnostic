@@ -231,6 +231,8 @@ class TradingCalendar:
 
         Unlike get_sessions(), this method does NOT forward-fill non-trading timestamps.
         Non-trading rows (weekends, holidays) get NaT session and False mask.
+        Active overnight rows use the exchange session date, not their civil date.
+        Other rows retain daily-date classification; this is not an intraday-hours filter.
 
         The result does not depend on the order of the input.
 
@@ -252,8 +254,8 @@ class TradingCalendar:
         # Get schedule for the data period (with buffer for edge cases)
         start_date, end_date = self._schedule_span(timestamps_tz)
 
-        valid_days = self.calendar.valid_days(start_date=start_date, end_date=end_date, tz="UTC")
-        trading_dates = set(valid_days.tz_localize(None).normalize())
+        schedule = self._schedule(start_date=start_date, end_date=end_date)
+        trading_dates = set(pd.DatetimeIndex(schedule.index).tz_localize(None).normalize())
 
         # Normalize each timestamp to its date and check if it's a trading day
         ts_dates = timestamps_tz.normalize()  # type: ignore[unresolved-attribute]
@@ -264,6 +266,17 @@ class TradingCalendar:
 
         session_values = np.full(len(timestamps), np.datetime64("NaT"), dtype="datetime64[ns]")
         session_values[trading_mask] = ts_dates_naive[trading_mask].to_numpy(dtype="datetime64[ns]")
+
+        if not schedule.empty:
+            ts_ns = timestamps_tz.as_unit("ns").asi8
+            opens = schedule["market_open"].dt.as_unit("ns").to_numpy(dtype=np.int64)
+            closes = schedule["market_close"].dt.as_unit("ns").to_numpy(dtype=np.int64)
+            session_dates = schedule.index.to_numpy(dtype="datetime64[ns]")
+            candidates = np.searchsorted(opens, ts_ns, side="right") - 1
+            active = candidates >= 0
+            active[active] = ts_ns[active] < closes[candidates[active]]
+            session_values[active] = session_dates[candidates[active]]
+            trading_mask[active] = True
 
         sessions = pd.Series(session_values, index=timestamps)
         return sessions, trading_mask
