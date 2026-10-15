@@ -26,7 +26,7 @@ Statistical validation and diagnostics for ML-based quantitative trading workflo
 ## High-Value Entry Points
 
 ```python
-from ml4t.diagnostic import ValidatedCrossValidation, analyze_signal
+from ml4t.diagnostic import ValidatedCrossValidation, analyze_prepared_signal, analyze_signal
 from ml4t.diagnostic.evaluation import FeatureDiagnostics, TradeShapAnalyzer
 from ml4t.diagnostic.integration import generate_tearsheet_from_result
 from ml4t.diagnostic.selection import FeatureSelector
