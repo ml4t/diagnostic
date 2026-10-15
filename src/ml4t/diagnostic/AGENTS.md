@@ -3,6 +3,7 @@
 ## Stable Top-Level Workflows
 
 - `analyze_signal` for factor-style signal validation
+- `analyze_prepared_signal` for owned precomputed signal panels with supplied buckets
 - `ValidatedCrossValidation` for CPCV plus DSR in one workflow
 - `FeatureSelector` for IC, correlation, importance, and drift-based triage
 - `FeatureDiagnostics`, `TradeAnalysis`, and `TradeShapAnalyzer` from `evaluation`

@@ -1,5 +1,7 @@
 """Prepared-panel workflows must preserve supplied sample and bucket identities."""
 
+import json
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -176,3 +178,28 @@ def test_single_supplied_bucket_remains_useful_without_a_fabricated_long_short_b
     assert np.isfinite(result.quantile_returns["1D"][1])
     assert np.isnan(result.spread["1D"])
     assert np.isnan(result.spread_p_value["1D"])
+
+
+@pytest.mark.parametrize("invalid", ["unknown", "inf"])
+def test_numeric_entity_keys_from_a_coercing_pipeline_cannot_be_nonfinite(invalid):
+    from ml4t.diagnostic import analyze_prepared_signal
+
+    codes = [str(i) for i in np.tile(np.arange(12), 3)]
+    codes[0] = invalid
+    numeric_keys = pd.to_numeric(pd.Series(codes), errors="coerce").to_numpy()
+    panel = supplied_panel().with_columns(pl.Series("asset", numeric_keys))
+    with pytest.raises(ValueError, match="asset"):
+        analyze_prepared_signal(panel, periods=(1, 5), quantiles=3)
+
+
+@pytest.mark.parametrize("encoded", [{}, {"format": "arrow-ipc-base64", "data": "not-base64!"}])
+def test_corrupted_prepared_json_cannot_be_silently_accepted(encoded, tmp_path):
+    from ml4t.diagnostic import SignalResult, analyze_prepared_signal
+
+    result = analyze_prepared_signal(supplied_panel(), periods=(1,), quantiles=3)
+    serialized = result.to_dict()
+    serialized["prepared_data"] = encoded
+    output = tmp_path / "corrupted.json"
+    output.write_text(json.dumps(serialized))
+    with pytest.raises(ValueError, match="prepared_data"):
+        SignalResult.from_json(str(output))

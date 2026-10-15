@@ -59,6 +59,8 @@ def prepared_snapshot(
     for key in (date_col, asset_col):
         if frame[key].null_count():
             raise ValueError(f"prepared {key} keys must be nonmissing")
+    if frame[asset_col].dtype.is_numeric() and not frame[asset_col].is_finite().all():
+        raise ValueError(f"prepared {asset_col} keys must be finite")
     if frame.select(date_col, asset_col).is_duplicated().any():
         raise ValueError("duplicate prepared date/asset keys are not allowed")
     for column in (factor_col, "quantile", *return_columns):

@@ -77,6 +77,13 @@ uses a percentile that includes NaN; Diagnostic `.var_95` returned
 `0.071988`; the input still had 252 periods and 251 valid returns. Choose a
 missing-value policy before migration rather than relying on this one example.
 
+Those NaN values describe the pinned published 0.1.8 workflow above. Current
+unreleased source after 0.1.9 rejects missing/nonfinite portfolio returns at the
+constructor boundary. The same comparison script reports that rejection and
+still evaluates Empyrical's NaN behavior; it does not silently fill or drop a
+return to make the inputs agree. The published comparison table remains a
+historical measurement, not the current source's missing-data contract.
+
 ## Metrics that need separate review
 
 Benchmark-relative `alpha` and `beta` are available from Diagnostic when you
