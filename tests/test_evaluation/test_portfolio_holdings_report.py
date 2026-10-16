@@ -185,6 +185,22 @@ def test_date_labels_are_not_exported_as_invented_midnight_event_timestamps():
     assert [row["date"] for row in report.to_dict()["holdings"]["timeline"]] == expected
 
 
+def test_date_label_holdings_cannot_alias_midnight_timestamps_in_another_valid_analysis():
+    days = pl.Series("date", [date(2025, 1, day) for day in [2, 3, 6]])
+    analysis = PortfolioAnalysis(
+        [0.0, 0.0, 0.0], dates=days, positions=pl.DataFrame({"date": days, "A": [100.0] * 3})
+    )
+    holdings = analysis.compute_holdings_analysis(
+        pl.DataFrame({"date": days, "equity": [1000.0] * 3, "cash": [900.0] * 3}),
+        complete_snapshots=True,
+    )
+    other = PortfolioAnalysis(
+        pd.Series([0.0] * 3, index=pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06"]))
+    )
+    with pytest.raises(ValueError, match="observation|keys|Date"):
+        create_portfolio_dashboard(other, holdings=holdings)
+
+
 def test_requested_but_unprepared_positions_have_actionable_reason_and_are_not_silently_ignored():
     analysis, _, _ = _prepared()
     report = create_portfolio_dashboard(analysis, include_positions=True)
