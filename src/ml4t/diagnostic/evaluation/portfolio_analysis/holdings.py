@@ -26,6 +26,7 @@ class HoldingsAnalysisResult:
     metrics: dict[str, Any]
     coverage: dict[str, Any]
     snapshot_kind: str
+    sectors: pl.DataFrame | None = None
 
 
 def position_snapshot(frame: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
