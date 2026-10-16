@@ -379,14 +379,14 @@ def compute_occupancy_metrics(portfolio_state_df: pl.DataFrame) -> dict[str, Any
     if portfolio_state_df.is_empty():
         return {
             "metrics": {
-                "time_in_market": 0.0,
-                "avg_invested_fraction": 0.0,
-                "avg_gross_exposure": 0.0,
-                "max_gross_exposure": 0.0,
-                "avg_net_exposure": 0.0,
-                "max_net_exposure": 0.0,
-                "avg_open_positions": 0.0,
-                "max_open_positions": 0,
+                "time_in_market": None,
+                "avg_invested_fraction": None,
+                "avg_gross_exposure": None,
+                "max_gross_exposure": None,
+                "avg_net_exposure": None,
+                "max_net_exposure": None,
+                "avg_open_positions": None,
+                "max_open_positions": None,
             },
             "timeline": pl.DataFrame(
                 schema={
@@ -395,27 +395,39 @@ def compute_occupancy_metrics(portfolio_state_df: pl.DataFrame) -> dict[str, Any
                     "gross_exposure": pl.Float64(),
                     "net_exposure": pl.Float64(),
                     "open_positions": pl.Int32(),
+                    **portfolio_state_df.schema,
                     "invested_fraction": pl.Float64(),
                     "gross_exposure_fraction": pl.Float64(),
                     "net_exposure_fraction": pl.Float64(),
+                    "normalization_status": pl.String(),
                 }
             ),
+            "coverage": {
+                "n_observations": 0,
+                "n_normalized_observations": 0,
+                "normalization_coverage": None,
+                "status": "unavailable",
+            },
         }
 
+    equity = pl.col("equity")
+    gross_fraction = pl.col("gross_exposure") / equity
+    net_fraction = pl.col("net_exposure") / equity
+    usable_equity = equity.is_not_null() & equity.is_finite()
+    valid = usable_equity & (equity > 0) & gross_fraction.is_finite() & net_fraction.is_finite()
     timeline = portfolio_state_df.sort("timestamp").with_columns(
         [
-            pl.when(pl.col("equity") > 0)
-            .then(pl.col("gross_exposure") / pl.col("equity"))
-            .otherwise(0.0)
-            .alias("invested_fraction"),
-            pl.when(pl.col("equity") > 0)
-            .then(pl.col("gross_exposure") / pl.col("equity"))
-            .otherwise(0.0)
-            .alias("gross_exposure_fraction"),
-            pl.when(pl.col("equity") > 0)
-            .then(pl.col("net_exposure") / pl.col("equity"))
-            .otherwise(0.0)
-            .alias("net_exposure_fraction"),
+            pl.when(valid).then(gross_fraction).otherwise(None).alias("invested_fraction"),
+            pl.when(valid).then(gross_fraction).otherwise(None).alias("gross_exposure_fraction"),
+            pl.when(valid).then(net_fraction).otherwise(None).alias("net_exposure_fraction"),
+            pl.when(~usable_equity)
+            .then(pl.lit("unusable_equity"))
+            .when(equity <= 0)
+            .then(pl.lit("nonpositive_equity"))
+            .when(valid.fill_null(False))
+            .then(pl.lit("defined"))
+            .otherwise(pl.lit("unusable_exposure"))
+            .alias("normalization_status"),
         ]
     )
 
@@ -423,15 +435,26 @@ def compute_occupancy_metrics(portfolio_state_df: pl.DataFrame) -> dict[str, Any
         "time_in_market": float(
             timeline.select((pl.col("open_positions") > 0).mean().alias("value"))["value"][0]
         ),
-        "avg_invested_fraction": float(timeline["invested_fraction"].mean()),
-        "avg_gross_exposure": float(timeline["gross_exposure_fraction"].mean()),
-        "max_gross_exposure": float(timeline["gross_exposure_fraction"].max()),
-        "avg_net_exposure": float(timeline["net_exposure_fraction"].mean()),
-        "max_net_exposure": float(timeline["net_exposure_fraction"].abs().max()),
+        "avg_invested_fraction": timeline["invested_fraction"].mean(),
+        "avg_gross_exposure": timeline["gross_exposure_fraction"].mean(),
+        "max_gross_exposure": timeline["gross_exposure_fraction"].max(),
+        "avg_net_exposure": timeline["net_exposure_fraction"].mean(),
+        "max_net_exposure": timeline["net_exposure_fraction"].abs().max(),
         "avg_open_positions": float(timeline["open_positions"].mean()),
         "max_open_positions": int(timeline["open_positions"].max()),
     }
-    return {"metrics": metrics, "timeline": timeline}
+    n_normalized = timeline.filter(pl.col("normalization_status") == "defined").height
+    coverage = {
+        "n_observations": timeline.height,
+        "n_normalized_observations": n_normalized,
+        "normalization_coverage": n_normalized / timeline.height,
+        "status": "available"
+        if n_normalized == timeline.height
+        else "partial"
+        if n_normalized
+        else "unavailable",
+    }
+    return {"metrics": metrics, "timeline": timeline, "coverage": coverage}
 
 
 def compute_attribution_metrics(trades_df: pl.DataFrame, fills_df: pl.DataFrame) -> dict[str, Any]:
