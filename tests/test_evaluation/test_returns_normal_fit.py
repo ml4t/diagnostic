@@ -112,7 +112,7 @@ def test_dashboard_html_and_export_share_the_actual_unavailable_fit_reason(case,
     assert report.to_dict()["availability"]["normal_fit"] == info
     output = tmp_path / "normal-fit.html"
     report.save_html(output, include_plotlyjs=True)
-    assert info["reason"] in output.read_text()
+    assert info["reason"] in output.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("width", [1280, 375])
