@@ -450,6 +450,10 @@ future return columns are required by this consumer. Dated full-date-rank
 correlation, report/plot integration and authoritative calendar/time contracts
 remain separate capabilities.
 
+The shared membership cache also isolates caller column names from its internal
+aggregation names. A native `quantile_col="assets"` previously raised a duplicate
+column error; that valid selector now retains the same scalar definition.
+
 ### Construct factor weights and supplied-return contributions
 
 Use the owned panel's factor observations to construct exposure independently of

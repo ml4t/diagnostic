@@ -30,7 +30,12 @@ def _persistence_time_keys(data: pl.DataFrame, date_col: str) -> pl.DataFrame:
 def _membership_cache(
     data: pl.DataFrame, date_col: str, asset_col: str, quantile_col: str
 ) -> dict[tuple[Any, int], set[Any]]:
-    memberships = data.group_by([date_col, quantile_col]).agg(pl.col(asset_col).alias("assets"))
+    values = data.select(
+        pl.col(date_col).alias("__date"),
+        pl.col(quantile_col).alias("__bucket"),
+        pl.col(asset_col).alias("__asset"),
+    )
+    memberships = values.group_by(["__date", "__bucket"]).agg(pl.col("__asset").alias("__members"))
     return {(row[0], row[1]): set(row[2]) for row in memberships.rows()}
 
 

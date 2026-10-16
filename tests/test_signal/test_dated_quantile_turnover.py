@@ -191,6 +191,15 @@ def test_existing_scalar_larger_membership_definition_remains_available():
     assert compute_turnover(panel.data, n_quantiles=2) == 0.25
 
 
+@pytest.mark.parametrize("name", ["assets", "__members"])
+def test_shared_native_membership_cache_does_not_shadow_custom_bucket_names(name):
+    panel, _ = _inputs()
+    data = panel.data.rename({"quantile": name})
+    before = data.clone()
+    assert compute_turnover(data, n_quantiles=2, quantile_col=name) == 0.25
+    assert data.equals(before)
+
+
 @pytest.mark.parametrize(
     "profile,expected",
     [
