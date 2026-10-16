@@ -2,6 +2,9 @@
 
 import json
 import math
+import re
+import shutil
+import subprocess
 
 import pandas as pd
 import polars as pl
@@ -199,3 +202,57 @@ def test_persisted_result_cannot_silently_drop_corrupted_dated_observations(corr
     path.write_text(json.dumps(data))
     with pytest.raises(ValueError):
         SignalResult.from_json(str(path))
+
+
+@pytest.mark.parametrize("width", [1280, 375])
+def test_real_browser_tab_click_keeps_persistence_and_parent_report_visible(width, tmp_path):
+    from ml4t.diagnostic.visualization.signal import SignalDashboard
+
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
+    if chrome is None:
+        pytest.skip("Installed Chrome/Chromium is required for actual report browser checks")
+    factor, marks, panel, _ = _inputs()
+    report = SignalDashboard().generate(_analyze("owned", factor, marks, panel).to_tear_sheet())
+    probe = """<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const button = Array.from(document.querySelectorAll('button')).find(node => node.textContent === 'Turnover');
+        button.click();
+        const panel = document.getElementById('turnover');
+        const prose = panel.querySelector('p');
+        const cell = panel.querySelector('td');
+        const marker = document.createElement('output');
+        marker.id = 'persistence-browser-check';
+        marker.textContent = JSON.stringify({
+            panelWidth: panel.getBoundingClientRect().width,
+            proseWidth: prose.getBoundingClientRect().width,
+            cellFont: parseFloat(getComputedStyle(cell).fontSize)
+        });
+        document.body.appendChild(marker);
+    });
+    </script>"""
+    path = tmp_path / "report.html"
+    path.write_text(report.replace("</body>", probe + "</body>"))
+    completed = subprocess.run(
+        [
+            chrome,
+            "--headless",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-background-networking",
+            "--host-resolver-rules=MAP * ~NOTFOUND",
+            f"--user-data-dir={tmp_path / 'browser-profile'}",
+            f"--window-size={width},1000",
+            "--virtual-time-budget=1000",
+            "--dump-dom",
+            path.as_uri(),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    match = re.search(r'<output id="persistence-browser-check">([^<]+)</output>', completed.stdout)
+    assert match, completed.stderr
+    measured = json.loads(match[1])
+    assert measured["panelWidth"] > 0 and measured["proseWidth"] > 0
+    assert measured["cellFont"] >= 14
