@@ -671,7 +671,9 @@ clock with Alphalens Reloaded 0.4.6 `quantile_turnover` and
 scalar larger-membership turnover and paired-sample Spearman definitions remain
 separate. These chart workflows do not establish exchange-calendar defaults,
 complete turnover-sheet composition or full Alphalens/Pyfolio replacement.
-Run the existing supplied-panel example with `--plots` to inspect the actual
+Run the existing
+[supplied-panel example](https://github.com/ml4t/diagnostic/blob/8d52739bb133e5c5d3540c8cf268ea1a8d3c7722/examples/signal_panel_cleaning.py)
+with `--plots` to inspect the actual
 trace values, recorded methods and hover counts without a legacy dependency.
 
 ### Plot empirical dated quantile observations
