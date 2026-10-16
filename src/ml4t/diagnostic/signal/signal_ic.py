@@ -61,15 +61,17 @@ def compute_signal_ic(
     factor_col, date_col, asset_col, group_col : str
         Explicit input names. Groups must be nonmissing when used.
     date_grid : DataFrame, optional
-        Explicit requested dates, or date/group pairs for by-group output.
+        Explicit requested date_col values, or date_col/group_col pairs for
+        by-group output. String and categorical group labels match by value.
         No calendar or grid is inferred. Missing requested pairs have null IC,
         zero observations and a no_pairs status, not a zero correlation.
 
     Returns
     -------
     polars.DataFrame
-        Date, optional group, return_column, ic, n_obs, status and method/
-        adjustment/minimum metadata. Unavailable ICs are null, never zero.
+        Canonical date, optional group, return_column, ic, n_obs, status and
+        method/adjustment/minimum metadata. Input column names cannot shadow
+        those result fields. Unavailable ICs are null, never zero.
     """
     min_obs = positive_count(min_obs, "min_obs")
     if method not in ("spearman", "pearson"):
@@ -84,19 +86,6 @@ def compute_signal_ic(
         or len(set(columns)) != len(columns)
     ):
         raise ValueError("return_columns must be a nonempty sequence of distinct column names")
-    reserved = {
-        "return_column",
-        "ic",
-        "n_obs",
-        "status",
-        "ic_method",
-        "return_adjustment",
-        "min_obs",
-        "__factor_unique",
-        "__outcome_unique",
-    }
-    if date_col in reserved or (by_group and (group_col in reserved or group_col == date_col)):
-        raise ValueError("date/group names must be distinct from IC result columns")
 
     def frame(value: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
         if isinstance(value, pd.DataFrame):
@@ -125,22 +114,36 @@ def compute_signal_ic(
     requested = frame(date_grid) if date_grid is not None else None
     if requested is not None:
         _validate_observation_keys(requested, grid_keys, "IC grid")
-        requested = requested.select(grid_keys)
+        requested = requested.select(
+            pl.col(date_col).alias("date"),
+            *([pl.col(group_col).alias("group")] if by_group else []),
+        )
+    outcome_names = [f"__return_{index}" for index in range(len(columns))]
+    values = values.select(
+        pl.col(date_col).alias("date"),
+        pl.col(asset_col).alias("asset"),
+        pl.col(factor_col).alias("factor"),
+        *(pl.col(column).alias(name) for column, name in zip(columns, outcome_names, strict=True)),
+        *([pl.col(group_col).alias("group")] if group_adjust or by_group else []),
+    )
+    date_col, asset_col, factor_col, group_col = "date", "asset", "factor", "group"
+    keys = [date_col, asset_col]
+    grid_keys = [date_col, group_col] if by_group else [date_col]
     if group_adjust and not values.is_empty():
-        grouped = values.select(date_col, group_col, factor_col, *columns).to_pandas()
-        for column in columns:
+        grouped = values.select(date_col, group_col, factor_col, *outcome_names).to_pandas()
+        for column in outcome_names:
             grouped[column] = grouped[column].where(
                 np.isfinite(grouped[factor_col]) & np.isfinite(grouped[column])
             )
         adjusted = grouped.groupby([date_col, group_col], observed=True, sort=False)[
-            columns
+            outcome_names
         ].transform(lambda outcome: outcome - outcome.mean())
         values = values.with_columns(
-            pl.Series(column, adjusted[column].to_numpy()) for column in columns
+            pl.Series(column, adjusted[column].to_numpy()) for column in outcome_names
         )
     outputs = []
     partitions = values.partition_by(group_col, maintain_order=True) if by_group else [values]
-    for column in columns:
+    for column, label in zip(outcome_names, columns, strict=True):
         parts = []
         for part in partitions:
             observations = cross_sectional_ic_series(
@@ -176,7 +179,9 @@ def compute_signal_ic(
             )
         )
         if requested is not None:
-            observed, grid = _align_datetime_key_resolution(observed, requested, date_col)
+            grid = requested
+            for key in grid_keys:
+                observed, grid = _align_datetime_key_resolution(observed, grid, key)
             if by_group:
                 if observed.is_empty() and observed.schema[group_col] == pl.Null:
                     observed = observed.with_columns(pl.col(group_col).cast(grid.schema[group_col]))
@@ -202,7 +207,7 @@ def compute_signal_ic(
             .then(pl.lit("defined"))
             .otherwise(pl.lit("undefined"))
             .alias("status"),
-            pl.lit(column).alias("return_column"),
+            pl.lit(label).alias("return_column"),
             pl.lit(method).alias("ic_method"),
             pl.lit("date_group_mean" if group_adjust else "none").alias("return_adjustment"),
             pl.lit(min_obs).alias("min_obs"),
@@ -273,7 +278,7 @@ def extract_signal_ic_series(
     ic_clean = ic_df.filter(
         (pl.col("n_obs") >= min_obs) & pl.col("ic").cast(pl.Float64).is_finite()
     )
-    dates = precise_dates(ic_clean[date_col])
+    dates = precise_dates(ic_clean["date"])
     ic_values = ic_clean["ic"].cast(pl.Float64).to_list()
     return dates, ic_values
 

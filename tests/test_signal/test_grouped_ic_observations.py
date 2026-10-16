@@ -304,3 +304,46 @@ def test_grouped_grid_requires_explicit_group_keys_before_calculation():
     panel = prepare_signal_panel(factor, forward[["1D"]], groups=groups, quantiles=2, max_loss=0.0)
     with pytest.raises(ValueError, match="IC grid.*missing key"):
         panel.ic_by_date(by_group=True, date_grid=pd.DataFrame({"date": dates[[1, 3]]}))
+
+
+@pytest.mark.parametrize("date_key", ["status", "ic_method"])
+def test_legacy_custom_time_column_still_analyzes_when_its_name_matches_new_ic_metadata(date_key):
+    factor, forward, _, _ = _inputs()
+    factor = factor.rename("score")
+    factor.index = factor.index.set_names([date_key, "symbol"])
+    forward.index = forward.index.set_names([date_key, "symbol"])
+    panel = prepare_signal_panel(
+        factor,
+        forward[["1D"]],
+        factor_col="score",
+        date_col=date_key,
+        asset_col="symbol",
+        quantiles=2,
+        max_loss=0.0,
+    )
+    result = panel.analyze(min_assets=2)
+    assert result.n_dates == 2 and result.n_assets == 4
+    assert result.ic_series["1D"] == pytest.approx([0.0, 0.0], abs=1e-14)
+
+
+def test_ic_tables_use_canonical_dimensions_without_losing_conflicting_input_names():
+    factor, forward, _, dates = _inputs()
+    factor = factor.rename("ic_method")
+    factor.index = factor.index.set_names(["status", "return_column"])
+    forward.index = forward.index.set_names(["status", "return_column"])
+    panel = prepare_signal_panel(
+        factor,
+        forward[["1D"]],
+        factor_col="ic_method",
+        date_col="status",
+        asset_col="return_column",
+        quantiles=2,
+        max_loss=0.0,
+    )
+    result = panel.ic_by_date()
+    assert result["date"].dt.timestamp("ns").to_list() == [dates[1].value, dates[3].value]
+    assert result["status"].to_list() == ["defined"] * 2
+    assert result["ic_method"].to_list() == ["spearman"] * 2
+    assert result["return_column"].to_list() == ["1D"] * 2
+    assert result["n_obs"].to_list() == [4] * 2
+    assert result["ic"].to_list() == pytest.approx([0.0, 0.0], abs=1e-14)
