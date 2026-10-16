@@ -1,10 +1,7 @@
 """Report statistics must use the quote-derived IC dates their bridge retains."""
 
-import json
 import math
-import re
 import shutil
-import subprocess
 
 import numpy as np
 import pandas as pd
@@ -188,40 +185,30 @@ def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
     chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
     if chrome is None:
         pytest.skip("Installed Chrome/Chromium required for actual report checks")
+    playwright = pytest.importorskip("playwright.sync_api")
     result, _ = _analysis(profile, "raw", periods)
     html = SignalDashboard().generate(result.to_tear_sheet())
-    probe = """<script>document.addEventListener('DOMContentLoaded',()=>{
-    Array.from(document.querySelectorAll('button')).find(node=>node.textContent==='IC Analysis').click();
-    const plot=Array.from(document.querySelectorAll('#ic .js-plotly-plot')).find(plot=>Array.from(plot.data||[]).some(trace=>trace.name==='Daily IC'));
-    const marker=document.createElement('output');marker.id='ic-bridge-browser-check';
-    const rect=plot.getBoundingClientRect();
-    const box=node=>{const rect=node.getBoundingClientRect();return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}};
-    const summary=Array.from(plot.querySelectorAll('.annotation-text')).find(node=>node.textContent.includes('Summary:'));
-    marker.textContent=JSON.stringify({values:Array.from(plot._fullData[0].y||[]),summary:box(summary),legend:box(plot.querySelector('.legend')),annotations:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,left:box.left-rect.left,right:box.right-rect.left}}),plot_width:rect.width});document.body.appendChild(marker);});</script>"""
     path = tmp_path / "report.html"
-    path.write_text(html.replace("</body>", probe + "</body>"))
-    completed = subprocess.run(
-        [
-            chrome,
-            "--headless",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-background-networking",
-            "--host-resolver-rules=MAP * ~NOTFOUND",
-            f"--user-data-dir={tmp_path / 'browser-profile'}",
-            f"--window-size={width},1000",
-            "--virtual-time-budget=1500",
-            "--dump-dom",
-            path.as_uri(),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=30,
-    )
-    match = re.search(r'<output id="ic-bridge-browser-check">([^<]+)</output>', completed.stdout)
-    assert match, completed.stderr
-    measured = json.loads(match[1])
+    path.write_text(html)
+    errors = []
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1000}, offline=True)
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(path.as_uri(), wait_until="networkidle")
+            page.get_by_role("button", name="IC Analysis", exact=True).click()
+            measured = page.locator("#ic").evaluate("""element=>{
+                const plot=Array.from(element.querySelectorAll('.js-plotly-plot')).find(plot=>Array.from(plot.data||[]).some(trace=>trace.name==='Daily IC'));
+                const rect=plot.getBoundingClientRect();
+                const box=node=>{const rect=node.getBoundingClientRect();return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}};
+                const summary=Array.from(plot.querySelectorAll('.annotation-text')).find(node=>node.textContent.includes('Summary:'));
+                return {viewport_width:innerWidth,values:Array.from(plot._fullData[0].y||[]),summary:box(summary),legend:box(plot.querySelector('.legend')),annotations:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,left:box.left-rect.left,right:box.right-rect.left}}),plot_width:rect.width};
+            }""")
+        finally:
+            browser.close()
+    assert not errors
+    assert measured["viewport_width"] == width
     expected = [1.0, 0.0] if profile == "full" else [1.0]
     np.testing.assert_allclose(measured["values"], expected, rtol=0, atol=1e-14)
     label = next(
