@@ -618,6 +618,65 @@ separate accepted work. Persistence-disabled analyses and historical saved
 results without dated observations return no turnover component; scalar means
 cannot reconstruct missing dates, buckets or reference ranks.
 
+### Plot dated rank and membership persistence
+
+Unreleased after 0.1.9, the existing plotting APIs consume the actual dated
+component retained by persistence-enabled analysis:
+
+```python
+from ml4t.diagnostic.visualization.signal import (
+    plot_autocorrelation,
+    plot_top_bottom_turnover,
+)
+from ml4t.diagnostic.visualization.signal.turnover_plots import plot_turnover_heatmap
+
+dated = report_result.to_turnover_result()
+membership_plot = plot_top_bottom_turnover(dated, lag=1)
+rank_plot = plot_autocorrelation(dated, lag=1)
+lag_bucket_means = plot_turnover_heatmap(dated)
+print(membership_plot.layout.meta)
+print(rank_plot.layout.meta)
+```
+
+For dated inputs, `lag` counts recorded clock observations, not return days or
+exchange sessions. The default selects the first recorded lag. Membership and
+rank computations can retain different lag sets; inspect `dated_turnover` and
+`dated_autocorrelation` before selecting one. Missing or invalid lags raise
+`ValueError`. Return-horizon `period` and lag-summary `max_lags` selectors do not
+apply to a dated rank time series. Historical legacy components retain their
+existing horizon bars and lag-summary plots; they are not converted into dated
+observations.
+
+Top/bottom plots show actual entrants/current-membership fractions for the
+extreme recorded buckets; `show_all_quantiles=True` includes every recorded
+bucket. Rank plots show the existing full-date average-rank Pearson estimates,
+not reranked paired-sample Spearman correlations. With changing membership,
+the paired ranks `[1, 2, 4]` and `[1, 2, 3]` yield `9 / sqrt(84)`, not `1`.
+Both charts preserve null gaps and show actual counts and statuses on hover.
+Sub-millisecond, single-date and entirely unavailable samples use a categorical
+observed-order axis with exact
+timestamps on hover, avoiding millisecond collapse in the browser. An empty
+warmup sample displays unavailable; a supplied empty clock retains missing
+observations rather than fabricated zero estimates.
+
+The heatmap reuses recorded bucket/lag means over defined dates and shows their
+date counts. A defined zero turnover remains zero; missing means stay blank.
+No confidence interval or half-life is inferred from the dated tables. The rank
+plot displays `CI unavailable` when `show_significance=True`; setting it to
+`False` omits that notice. The existing dashboard renders both dated charts
+at their first recorded lag and retains the complete tables and summaries.
+
+Shared-input checks compare the same membership, rank universe and observation
+clock with Alphalens Reloaded 0.4.6 `quantile_turnover` and
+`factor_rank_autocorrelation` before their dated plotting routes. The native
+scalar larger-membership turnover and paired-sample Spearman definitions remain
+separate. These chart workflows do not establish exchange-calendar defaults,
+complete turnover-sheet composition or full Alphalens/Pyfolio replacement.
+Run the existing
+[supplied-panel example](https://github.com/ml4t/diagnostic/blob/8d52739bb133e5c5d3540c8cf268ea1a8d3c7722/examples/signal_panel_cleaning.py)
+with `--plots` to inspect the actual
+trace values, recorded methods and hover counts without a legacy dependency.
+
 ### Plot empirical dated quantile observations
 
 Unreleased after 0.1.9, the actual raw, prepared and owned analysis routes retain
