@@ -9,9 +9,12 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
+from stat import S_IMODE
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import plotly.graph_objects as go
+import polars as pl
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS
@@ -205,9 +208,19 @@ class PortfolioTearSheet:
 </html>
 """)
 
-        # Write to file
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("".join(html_parts))
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+        created = False
+        try:
+            with temporary.open("x", encoding="utf-8") as output:
+                created = True
+                output.write("".join(html_parts))
+            if path.exists():
+                temporary.chmod(S_IMODE(path.stat().st_mode))
+            temporary.replace(path)
+            created = False
+        finally:
+            if created:
+                temporary.unlink(missing_ok=True)
 
     def get_figures(self) -> dict[str, go.Figure]:
         """Get dictionary of all figures.
@@ -335,6 +348,10 @@ def create_portfolio_dashboard(
             if not isinstance(holdings, HoldingsAnalysisResult):
                 raise TypeError("holdings must be a prepared HoldingsAnalysisResult")
             actual, expected = date_index(holdings.timeline["date"]), date_index(analysis.dates)
+            if (holdings.timeline["date"].dtype == pl.Date) != (analysis.dates.dtype == pl.Date):
+                raise ValueError(
+                    "holdings observation keys must preserve Date labels versus Datetime values"
+                )
             if (
                 len(actual) != len(expected)
                 or actual.tz != expected.tz

@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 
 def _exact_dates(dates: pl.Series) -> list[str]:
+    if dates.dtype == pl.Date:
+        return [date.isoformat() for date in dates.to_list()]
     return [date.isoformat() for date in pd.DatetimeIndex(dates.to_pandas())]
 
 
@@ -59,7 +61,7 @@ def _holdings_figures(
     def figure(title: str, unit: str) -> go.Figure:
         fig = create_base_figure(
             title=title,
-            xaxis_title="Observed timestamp",
+            xaxis_title="Observation key",
             yaxis_title=unit,
             theme=theme,
             height=max(height, 320),
