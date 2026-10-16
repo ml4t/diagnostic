@@ -225,7 +225,9 @@ def test_real_browser_tab_click_keeps_persistence_and_parent_report_visible(widt
         marker.textContent = JSON.stringify({
             panelWidth: panel.getBoundingClientRect().width,
             proseWidth: prose.getBoundingClientRect().width,
-            cellFont: parseFloat(getComputedStyle(cell).fontSize)
+            cellFont: parseFloat(getComputedStyle(cell).fontSize),
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: innerWidth
         });
         document.body.appendChild(marker);
     });
@@ -256,3 +258,4 @@ def test_real_browser_tab_click_keeps_persistence_and_parent_report_visible(widt
     measured = json.loads(match[1])
     assert measured["panelWidth"] > 0 and measured["proseWidth"] > 0
     assert measured["cellFont"] >= 14
+    assert measured["documentWidth"] <= measured["viewportWidth"]

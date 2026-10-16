@@ -240,7 +240,7 @@ class SignalDashboard(BaseDashboard):
 
         # Compose tabbed layout
         html_content = f"""
-        <div class="tab-navigation">
+        <div class="tab-navigation" style="flex-wrap: wrap;">
             {tab_buttons}
         </div>
         {tab_divs}
