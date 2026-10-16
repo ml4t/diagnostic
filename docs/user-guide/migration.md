@@ -1115,6 +1115,58 @@ report still rejects simple returns below
 that restriction or qualify complete positions, transactions or round-trip
 reports.
 
+### Retain executed turnover when equity cannot normalize it
+
+For a Backtest result, `analyze_backtest_result(result).activity` retains raw
+fill/rebalance totals and provides `turnover_timeline`, `metrics` and `coverage`.
+Its current turnover divides absolute executed notional by the account equity
+at the same observed timestamp. Cost drag divides observed implementation cost
+by that equity. Nonpositive or unusable equity leaves both ratios null, not
+zero. Positive-equity observations without fills retain known zeros when an
+activity timeline is available.
+
+`avg_turnover` uses defined active observations (positive filled notional);
+`max_turnover` uses all defined observations. Coverage reports both the total
+and normalized observation counts and the separate `n_active_observations`,
+`n_normalized_active_observations` and `active_normalization_coverage`. Inspect
+both sample sizes before comparing windows. Raw execution amounts/counts stay
+available when none of the selected ratios are defined. The full report's
+Activity strip states both normalization samples; the standalone
+`visualization.backtest.plot_activity_overview(profile)` preserves chart gaps
+and raw execution hover details.
+
+Run the existing migration example with actual next-bar short and cover fills:
+
+```bash
+uv run --with ml4t-backtest==0.1.12 --with plotly \
+  python examples/legacy_migration_comparison.py --task activity
+```
+
+The short fills 10 shares at 100; the cover fills at 150, 200 or 250. With
+initial equity 1000, the final equity is 500, 0 or -500 and closing notional is
+1500, 2000 or 2500. The positive-equity close has turnover 3 and active mean 2.
+The other closing ratios are unavailable; their active mean is 1 from one of
+two active observations. Their three-row windows have two normalized
+observations, and the zero-equity example generates the actual full report.
+This is an unreleased correction after 0.1.9.
+
+On shared positive-equity inputs, pinned Pyfolio 0.9.9
+`txn.get_turnover(..., denominator="portfolio_value")` agrees with the current
+per-observation ratios. Its default is `"AGB"`, which averages consecutive
+gross books and is a different denominator. Pyfolio also normalizes timestamps
+to civil dates and fills NaN ratios with zero; Diagnostic's current bridge
+retains exact observation timestamps. This example has one observation per
+explicit daily input date. It does not establish exchange-session alignment,
+intraday aggregation or AGB support. Invalid-NAV reference divisions are
+recorded as differences, not parity targets.
+
+Direct Pyfolio transaction ingestion, complete unknown-fee handling, cost
+scenarios, flow adjustments and calendar/session grouping remain accepted work.
+The full performance report still requires valid simple returns: a negative-NAV
+step below -100%, or a later 0/0 return after NAV reaches zero, is not supported
+by the current performance workflow. Standalone activity analysis does not
+remove those restrictions.
+
 Pyfolio's full sheet can additionally include return cones, significant
 events, round trips reconstructed from fills, capacity analysis using
 market data, and optional factor-attribution panels. Diagnostic has related

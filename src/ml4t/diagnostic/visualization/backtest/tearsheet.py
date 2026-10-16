@@ -207,6 +207,7 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     "stock_attribution": "performance",
     # Trading
     "activity_strip": "trading",
+    "activity_overview": "trading",
     "occupancy_overview": "trading",
     "rebalance_timeline": "trading",
     "cost_waterfall": "trading",
@@ -262,6 +263,7 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
     ),
     "trading": (
         "activity_strip",
+        "activity_overview",
         "occupancy_overview",  # exposure timeline
         "rebalance_timeline",  # rebalance events bar chart
         "cost_waterfall",  # paired with cost_sensitivity
@@ -394,6 +396,7 @@ _SECTION_FOOTNOTES: dict[str, str] = {
 _SECTION_DATA_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     # Fills-dependent (costs, turnover, rebalancing)
     "activity_strip": ("fills",),
+    "activity_overview": ("fills",),
     "rebalance_timeline": ("fills",),
     "cost_waterfall": ("fills",),
     "cost_sensitivity": ("fills",),
@@ -1997,6 +2000,14 @@ def _render_activity_strip(ctx: _SectionContext) -> str | None:
     return create_activity_strip_html(ctx.metrics)
 
 
+def _render_activity_overview(ctx: _SectionContext) -> go.Figure | str | None:
+    if ctx.profile is None:
+        return None
+    from .profile_sections import plot_activity_overview
+
+    return plot_activity_overview(ctx.profile, theme=ctx.theme)
+
+
 def _render_ml_summary_strip(ctx: _SectionContext) -> str | None:
     """Render ML summary KPI strip from predictions data or pre-computed metrics."""
     ml_metrics: dict[str, Any] = dict(ctx.metrics) if ctx.metrics else {}
@@ -2741,6 +2752,7 @@ _SECTION_REGISTRY: dict[str, Any] = {
     "stock_attribution": _render_stock_attribution,
     # Trading
     "activity_strip": _render_activity_strip,
+    "activity_overview": _render_activity_overview,
     "occupancy_overview": _render_occupancy_overview,
     "rebalance_timeline": _render_rebalance_timeline,
     "cost_waterfall": _render_cost_waterfall,

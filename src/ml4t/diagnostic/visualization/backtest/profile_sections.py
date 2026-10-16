@@ -144,7 +144,7 @@ def plot_activity_overview(
     # Serialize chart to HTML and combine with table
     from .tearsheet import _figure_to_clean_html
 
-    fig.update_layout(autosize=True, width=None, margin={"t": 40})
+    fig.update_layout(title=None, autosize=True, width=None, margin={"t": 40})
     chart_html = f'<div class="chart-container">{_figure_to_clean_html(fig)}</div>'
     return chart_html + table_html
 

@@ -120,8 +120,11 @@ class _ActivityCaption(HTMLParser):
         super().__init__()
         self.active = False
         self.text = []
+        self.has_turnover_section = False
 
     def handle_starttag(self, tag, attrs):
+        if dict(attrs).get("data-section") == "activity_overview":
+            self.has_turnover_section = True
         if tag == "p" and dict(attrs).get("data-activity-normalization") == "partial":
             self.active = True
 
@@ -146,3 +149,4 @@ def test_actual_zero_nav_closing_fill_full_report_states_its_active_normalizatio
     assert "2 of 3 observations" in text
     assert "1 of 2 active observations" in text
     assert "defined active observations only" in text
+    assert parser.has_turnover_section
