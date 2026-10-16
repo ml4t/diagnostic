@@ -404,10 +404,10 @@ def _build_availability(
         if activity_coverage is not None
         else compute_activity_metrics(fills_df, portfolio_state_df)["coverage"]
     )
-    activity_reason = None
+    activity_normalization_reason = None
     if not fills_df.is_empty() and not portfolio_state_df.is_empty():
         if activity_normalization["status"] != "available":
-            activity_reason = (
+            activity_normalization_reason = (
                 "Turnover and cost-drag normalization is defined for "
                 f"{activity_normalization['n_normalized_observations']} of "
                 f"{activity_normalization['n_observations']} observations. "
@@ -498,8 +498,12 @@ def _build_availability(
             activity_reason = "Turnover and cost-drag series require portfolio_state."
             activity_fallback = "Use fill counts, notional, and rebalance summaries only."
         else:
-            activity_status = AvailabilityState.AVAILABLE
-            activity_reason = None
+            activity_status = (
+                AvailabilityState.AVAILABLE
+                if activity_normalization["status"] == "available"
+                else AvailabilityState.PARTIAL
+            )
+            activity_reason = activity_normalization_reason
 
     attribution_status = AvailabilityState.UNAVAILABLE
     attribution_reason = "Neither trades nor fills are available."
@@ -553,6 +557,7 @@ def _build_availability(
             activity_status,
             activity_reason,
             fallback=activity_fallback,
+            coverage=activity_normalization["normalization_coverage"],
         ),
         "occupancy": AvailabilityInfo(
             (
@@ -606,7 +611,7 @@ def _build_availability(
                 else AvailabilityState.UNAVAILABLE
             ),
             (
-                activity_reason
+                activity_normalization_reason
                 if not fills_df.is_empty() and not portfolio_state_df.is_empty()
                 else "Turnover requires both fills and portfolio_state."
             ),
@@ -621,7 +626,7 @@ def _build_availability(
                 else AvailabilityState.UNAVAILABLE
             ),
             (
-                activity_reason
+                activity_normalization_reason
                 if not fills_df.is_empty() and not portfolio_state_df.is_empty()
                 else "Cost drag over time requires portfolio_state."
                 if not fills_df.is_empty()

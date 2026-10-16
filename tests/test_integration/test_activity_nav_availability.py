@@ -1,6 +1,7 @@
 """An actually executed closing fill must not become zero turnover at nonpositive NAV."""
 
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 
 import polars as pl
 import pytest
@@ -11,29 +12,31 @@ from ml4t.diagnostic.integration.backtest_analytics import compute_activity_metr
 
 
 class _ShortThenCover(Strategy):
-    def __init__(self):
+    def __init__(self, close_observation=3):
         self.observations = 0
+        self.close_observation = close_observation
 
     def on_data(self, timestamp, data, context, broker):
         self.observations += 1
         if self.observations == 1:
             broker.submit_order("A", -10)
-        elif self.observations == 3:
+        elif self.observations == self.close_observation:
             broker.submit_order("A", 10)
 
 
-def _actual_result(mark=200.0):
+def _actual_result(mark=200.0, close_observation=3):
+    n = close_observation + 1
     prices = pl.DataFrame(
         {
-            "timestamp": [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6, 7]],
-            "asset": ["A"] * 4,
-            **dict.fromkeys(["open", "high", "low", "close"], [100.0, 100.0, mark, mark]),
-            "volume": [10000.0] * 4,
+            "timestamp": [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6, 7][:n]],
+            "asset": ["A"] * n,
+            **dict.fromkeys(["open", "high", "low", "close"], [100.0, 100.0, mark, mark][:n]),
+            "volume": [10000.0] * n,
         }
     )
     result = Engine(
         DataFeed(prices_df=prices),
-        _ShortThenCover(),
+        _ShortThenCover(close_observation),
         BacktestConfig(initial_cash=1000, allow_short_selling=True),
     ).run()
     assert len(result.fills) == 2
@@ -74,10 +77,17 @@ def test_actual_active_observation_mean_excludes_undefined_closing_ratio_and_rep
         "n_normalized_observations": 2,
         "normalization_coverage": 0.5,
         "status": "partial",
+        "n_active_observations": 2,
+        "n_normalized_active_observations": 1,
+        "active_normalization_coverage": 0.5,
     }
     for metric in ["turnover", "cost_drag"]:
         availability = profile.availability.metrics[metric]
         assert availability.status.value == "partial" and availability.coverage == 0.5
+        assert "2 of 4" in availability.reason
+    family = profile.availability.families["activity"]
+    assert family.status.value == "partial" and family.coverage == 0.5
+    assert "2 of 4" in family.reason
 
 
 @pytest.mark.parametrize("mark", [200.0, 250.0])
@@ -103,3 +113,36 @@ def test_real_positive_equity_no_trade_observations_keep_known_zero_activity():
     assert timeline["cost_drag"].to_list() == [0, 0, 0, 0]
     assert activity["metrics"]["avg_turnover"] == 2
     assert activity["metrics"]["max_turnover"] == 3
+
+
+class _ActivityCaption(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.active = False
+        self.text = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "p" and dict(attrs).get("data-activity-normalization") == "partial":
+            self.active = True
+
+    def handle_endtag(self, tag):
+        if tag == "p":
+            self.active = False
+
+    def handle_data(self, text):
+        if self.active:
+            self.text.append(text)
+
+
+def test_actual_zero_nav_closing_fill_full_report_states_its_active_normalization_sample():
+    from ml4t.diagnostic.integration import generate_tearsheet_from_result
+
+    result = _actual_result(200.0, close_observation=2)
+    state = result.to_portfolio_state_dataframe()
+    assert state["equity"].to_list() == [1000, 1000, 0]
+    parser = _ActivityCaption()
+    parser.feed(generate_tearsheet_from_result(result, include_statistical=False))
+    text = " ".join(parser.text)
+    assert "2 of 3 observations" in text
+    assert "1 of 2 active observations" in text
+    assert "defined active observations only" in text

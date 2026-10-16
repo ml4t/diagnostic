@@ -1246,6 +1246,19 @@ def _generate_section(
                 "Averages and maxima use defined ratios only; gaps are not zero exposure.</p>"
                 + body_html
             )
+        elif section_name == "activity_strip" and profile is not None:
+            coverage = profile.activity["coverage"]
+            status = html_mod.escape(coverage["status"])
+            body_html = (
+                f'<p data-activity-normalization="{status}">Activity normalization: '
+                f"{coverage['n_normalized_observations']} of "
+                f"{coverage['n_observations']} observations; "
+                f"{coverage['n_normalized_active_observations']} of "
+                f"{coverage['n_active_observations']} active observations. "
+                "Ratios require finite positive equity. Turnover averages use defined active "
+                "observations only; gaps are not zero turnover. Raw fill totals are retained.</p>"
+                + body_html
+            )
         # Collapsible deep-dive sections
         if section_name in _COLLAPSIBLE_SECTIONS:
             return (

@@ -301,6 +301,9 @@ def compute_activity_metrics(
                 "n_normalized_observations": 0,
                 "normalization_coverage": None,
                 "status": "unavailable",
+                "n_active_observations": 0,
+                "n_normalized_active_observations": 0,
+                "active_normalization_coverage": None,
             },
         }
 
@@ -333,6 +336,9 @@ def compute_activity_metrics(
         "n_normalized_observations": 0,
         "normalization_coverage": None,
         "status": "unavailable",
+        "n_active_observations": 0,
+        "n_normalized_active_observations": 0,
+        "active_normalization_coverage": None,
     }
     if not portfolio_state_df.is_empty():
         fills_by_timestamp = fills.group_by("timestamp").agg(
@@ -370,11 +376,14 @@ def compute_activity_metrics(
                 ]
             )
         )
-        # Average turnover on rebalance days only (not diluted by non-trading days)
+        # The mean uses active observations, not untraded timestamps or inferred sessions.
         rebalance_days = turnover_timeline.filter(pl.col("filled_notional") > 0)
         avg_turnover = rebalance_days["turnover"].mean()
         max_turnover = turnover_timeline["turnover"].max()
         n_normalized = turnover_timeline.filter(pl.col("normalization_status") == "defined").height
+        n_active_normalized = rebalance_days.filter(
+            pl.col("normalization_status") == "defined"
+        ).height
         coverage = {
             "n_observations": turnover_timeline.height,
             "n_normalized_observations": n_normalized,
@@ -384,6 +393,11 @@ def compute_activity_metrics(
             else "partial"
             if n_normalized
             else "unavailable",
+            "n_active_observations": rebalance_days.height,
+            "n_normalized_active_observations": n_active_normalized,
+            "active_normalization_coverage": n_active_normalized / rebalance_days.height
+            if rebalance_days.height
+            else None,
         }
 
     metrics = {
