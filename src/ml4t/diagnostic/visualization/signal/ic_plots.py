@@ -643,7 +643,11 @@ def plot_monthly_ic_heatmap(
             z=pivot.values,
             x=[month_names[int(month) - 1] for month in pivot.columns],
             y=pivot.index.astype(str).tolist(),
-            texttemplate="%{z:.3f}",
+            text=[
+                [f"{value:.3f}" if np.isfinite(value) else "" for value in row]
+                for row in pivot.values
+            ],
+            texttemplate="%{text}",
             textfont={"size": 14},
             colorscale=colors if isinstance(colors, str) else "RdBu",
             zmid=0,
