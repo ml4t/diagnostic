@@ -14,7 +14,10 @@ from scipy.stats import spearmanr
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.metrics.basic import compute_forward_returns
-from ml4t.diagnostic.utils.validation import _validate_observation_keys
+from ml4t.diagnostic.utils.validation import (
+    _align_datetime_key_resolution,
+    _validate_observation_keys,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -441,6 +444,9 @@ def compute_ic_by_horizon(
     if group_col is not None:
         merge_on.append(group_col)
 
+    predictions_pl, prices_with_fwd_pl = _align_datetime_key_resolution(
+        predictions_pl, prices_with_fwd_pl, date_col
+    )
     df = predictions_pl.join(prices_with_fwd_pl, on=merge_on, how="inner")
     if output_as_pandas:
         df = df.to_pandas()
