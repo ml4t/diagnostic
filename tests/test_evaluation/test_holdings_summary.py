@@ -19,7 +19,7 @@ def _holdings():
     return result, returns, positions, valuations
 
 
-@pytest.mark.parametrize("top", [1, 10])
+@pytest.mark.parametrize("top", [1, 10, 10**30])
 @pytest.mark.parametrize("side", ["long", "short", "absolute"])
 def test_top_holdings_use_actual_across_sample_signed_marks_not_final_row_or_nav_weights(top, side):
     result, _, _, _ = _holdings()
