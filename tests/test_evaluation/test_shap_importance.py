@@ -760,6 +760,7 @@ class TestLinearExplainerIntegration:
         assert not np.isnan(shap_values).any(), "SHAP values contain NaN"
         assert not np.isinf(shap_values).any(), "SHAP values contain inf"
 
+    @pytest.mark.slow
     def test_linear_explainer_performance_benchmark(self, simple_classification_data):
         """Test that LinearExplainer is fast enough (<100ms per sample)."""
         import time

@@ -175,6 +175,7 @@ class TestExpandingWindow:
         with pytest.raises(ValueError, match="Unknown operation"):
             PolarsBackend.fast_expanding_window(data, ["value"], operation="unknown")
 
+    @pytest.mark.slow
     def test_performance_benchmark(self):
         """Benchmark performance with larger dataset."""
         # Create larger dataset for performance testing

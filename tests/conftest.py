@@ -224,8 +224,7 @@ def pytest_configure(config):
 # Patterns that indicate slow tests (actual ML model training)
 # These patterns are checked against test NAME, not file name
 SLOW_TEST_PATTERNS = [
-    # Patterns that match truly slow test names (E2E, benchmarks)
-    "benchmark",
+    # Patterns that match explicitly named E2E and scale runs
     "e2e",
     "scale_test",
     # Removed patterns (tests complete in <15s after optimization):
