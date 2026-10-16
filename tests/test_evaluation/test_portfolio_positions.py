@@ -206,7 +206,7 @@ def test_sparse_complete_snapshots_preserve_integer_asset_ids_and_exact_timestam
     long = pl.from_pandas(positions.reset_index()).unpivot(index="date", variable_name="asset")
     long = long.with_columns(pl.col("asset").replace_strict({"A": 1, "B": 2}))
     long = long.filter((pl.col("value") != 0) | (pl.col("asset") == 1))
-    long = long.with_columns(pl.col("date").cast(pl.Datetime("ms")))
+    long = long.with_columns(pl.col("date").cast(pl.Datetime("ms", long["date"].dtype.time_zone)))
     result = PortfolioAnalysis(returns, positions=long).compute_holdings_analysis(
         valuations, complete_snapshots=True
     )
@@ -225,7 +225,11 @@ def test_nonfinite_or_misdeclared_prepared_values_and_clock_do_not_become_valid_
     elif defect == "boolean_mark":
         positions["A"] = [False, True, True]
     else:
-        positions.index = positions.index.tz_localize("UTC")
+        positions.index = (
+            positions.index.tz_localize("UTC")
+            if positions.index.tz is None
+            else positions.index.tz_localize(None)
+        )
     with pytest.raises((ValueError, TypeError), match="finite|numeric|date|boolean"):
         PortfolioAnalysis(returns, positions=positions).compute_holdings_analysis(
             valuations, complete_snapshots=True
