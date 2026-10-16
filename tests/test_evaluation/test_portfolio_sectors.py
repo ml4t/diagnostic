@@ -4,10 +4,9 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
+from test_portfolio_positions import _actual_prepared_inputs
 
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
-
-from .test_portfolio_positions import _actual_prepared_inputs
 
 
 def _analysis():
