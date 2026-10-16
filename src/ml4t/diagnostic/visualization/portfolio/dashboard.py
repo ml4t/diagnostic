@@ -467,6 +467,9 @@ def create_portfolio_dashboard(
         fig.update_xaxes(tickfont_size=14, title_font_size=14)
         fig.update_yaxes(tickfont_size=14, title_font_size=14)
         fig.update_annotations(font_size=13)
+        for trace in fig.data:
+            if hasattr(trace, "colorbar"):
+                trace.update(colorbar_tickfont_size=14, colorbar_title_font_size=14)
         if width is None:
             fig.update_layout(width=None, autosize=True)
 

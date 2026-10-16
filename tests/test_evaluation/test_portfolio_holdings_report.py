@@ -41,6 +41,10 @@ def test_actual_prepared_holdings_reach_report_with_signed_values_dates_and_expo
     ]
     assert exposure.layout.meta["units"] == "fraction of reported NAV"
     assert _traces(report.figures["Position Counts"])["Open"] == [0, 2, 2]
+    assert (
+        report.figures["Gross-Capital Concentration"].layout.meta["units"]
+        == "dimensionless share / HHI"
+    )
     assert _traces(report.figures["Signed Position Weights"])["Minimum short"] == [None, -0.3, -0.3]
     top = report.figures["Top Short Holdings"].data[0]
     assert list(top.x) == [-300.0] and list(top.y) == ["B"]

@@ -128,9 +128,7 @@ def _holdings_figures(
         )
 
     if timeline["gross_hhi"].null_count() < timeline.height:
-        concentration = figure(
-            "Gross-Capital Concentration", "fraction of absolute invested capital"
-        )
+        concentration = figure("Gross-Capital Concentration", "dimensionless share / HHI")
         for name, column in [
             ("Largest gross share", "largest_gross_share"),
             ("Gross HHI", "gross_hhi"),
