@@ -1,5 +1,6 @@
 """How-to: audit one common supplied-return sample without a legacy dependency."""
 
+import argparse
 import json
 from importlib.metadata import version
 
@@ -11,7 +12,7 @@ from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import prepare_signal_panel
 
 
-def main() -> None:
+def main(*, plots: bool = False) -> None:
     dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
     assets = ["A", "B", "C", "D"]
     prices = pd.DataFrame(
@@ -96,6 +97,15 @@ def main() -> None:
     assert persistence.get_dataframe("dated_turnover").equals(dated_turnover)
     assert persistence.get_dataframe("dated_autocorrelation").equals(dated_rank)
     assert result.to_tear_sheet().turnover_analysis is not None
+    spread_plot = None
+    if plots:
+        from ml4t.diagnostic.visualization.signal import plot_spread_timeseries
+
+        figure = plot_spread_timeseries(result.to_quantile_result(), rolling_window=2)
+        spread_plot = {
+            "metadata": dict(figure.layout.meta),
+            "traces": [{"name": trace.name, "values": list(trace.y)} for trace in figure.data],
+        }
     print(
         json.dumps(
             {
@@ -122,6 +132,7 @@ def main() -> None:
                 "dated_quantile_turnover": dated_turnover.to_dicts(),
                 "dated_rank_autocorrelation": dated_rank.to_dicts(),
                 "persistence_summary": persistence.get_dataframe("summary").to_dicts(),
+                "spread_plot": spread_plot,
             },
             indent=2,
             default=str,
@@ -130,4 +141,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--plots", action="store_true", help="Inspect actual spread plot data (viz extra)"
+    )
+    main(plots=parser.parse_args().plots)

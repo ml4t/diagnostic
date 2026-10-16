@@ -62,6 +62,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | Unreleased after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
 | Daily quantile means/errors and equal-date summaries | `panel.quantile_statistics(by_date=..., by_group=..., demeaned=..., group_adjust=...)` | Unreleased after 0.1.9. Reports sample standard deviation, standard error and asset/date counts; does not change the native pooled `SignalResult` fields or spread inference. |
 | Empirical quantile return distributions | `plot_quantile_returns_violin(result.to_quantile_result(), period=...)` | Unreleased after 0.1.9. Uses actual dated bucket means retained by the analysis/report bridge, with explicit adjustment and percentile options. No summary-derived simulation. Pooled bars and density presentation remain distinct. |
+| Dated spread/error chart | `plot_spread_timeseries(result.to_quantile_result(), observations=...)` | Unreleased after 0.1.9. Uses actual dated bucket means and independent propagated errors, with explicit pair, bandwidth and observation-window controls. No cumulative-increment reconstruction or inferred confidence coverage. |
 | Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
 | Selected-factor cumulative wealth | `panel.factor_cumulative_returns(return_column=..., quantiles=..., groups=...)` | Unreleased after 0.1.9. Selects rows before shared weighting, then compounds one supplied horizon in observation order. Retains actual returns/counts and a labelled flat-wealth policy for unavailable returns. Not self-financing daily holdings or an inferred calendar. |
@@ -227,7 +228,7 @@ null for unavailable values and restores them as NaN on the result round trip.
 For an unbucketed factor Series and a precomputed return panel, unreleased
 source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
 It does not need Alphalens or prices at runtime. From a source checkout, run the
-[self-contained example](https://github.com/ml4t/diagnostic/blob/52aa36388f555d89287b68ed804c6a9a94a94a8b/examples/signal_panel_cleaning.py):
+[self-contained example](https://github.com/ml4t/diagnostic/blob/3231786bd9ad1ff0e47cea7c2e3b336ff6519893/examples/signal_panel_cleaning.py):
 
 ```bash
 uv run python examples/signal_panel_cleaning.py
@@ -613,6 +614,56 @@ bucket membership and mean returns are checked against Alphalens Reloaded
 or a statistical significance claim. The
 [runnable supplied-panel example](https://github.com/ml4t/diagnostic/blob/b94d7017b03353ad0f0b0c41f939217888106a90/examples/signal_panel_cleaning.py)
 prints the unavailable decisions alongside the actual observations.
+
+### Plot dated spreads and propagated errors
+
+Unreleased after 0.1.9, the existing spread chart uses actual dated bucket means
+retained by the analysis or supplied explicitly. With the visualization extra:
+
+```python
+from ml4t.diagnostic.visualization.signal import SignalDashboard, plot_spread_timeseries
+
+quantiles = report_result.to_quantile_result()
+fig = plot_spread_timeseries(
+    quantiles, period="1D", upper_quantile=2, lower_quantile=1,
+    rolling_window=22, bandwidth=1.0,
+)
+adjusted = panel.quantile_statistics(by_date=True, demeaned=True, group_adjust=True)
+adjusted_fig = plot_spread_timeseries(quantiles, observations=adjusted, period="1D")
+html = SignalDashboard().generate(report_result.to_tear_sheet())
+```
+
+The curve is the raw upper-minus-lower mean difference, with +1/-1 (gross-two)
+exposure, not a unit-gross portfolio return. It delegates to
+`compute_quantile_spread`, retaining each leg's actual asset count and shared
+return adjustment. Select one group before passing grouped statistics. Missing
+counterparts stay unavailable rather than becoming a zero mean. The automatic
+top/bottom route requires at least two buckets; explicit arbitrary/reversed/same
+bucket pairs retain the shared method's independent-error convention.
+
+`rolling_window` counts observations and requires a complete defined window.
+The native default is 21; choose 22 to match Alphalens 0.4.6's plotted moving
+mean. `bandwidth` multiplies the actual propagated standard error at each date,
+not a rolling sample deviation. The historical `show_confidence` argument now
+controls these error bands; its name does not establish a confidence level.
+Unavailable errors create gaps and an explicit note, not a fabricated 95% band.
+Pooled scalar/Student summaries remain separate and are not used to annotate
+this dated sample.
+
+Trace returns stay decimal with percentage ticks. The reference shows basis
+points and clips its default axis to the 95th percentile of absolute spreads;
+Diagnostic retains every trace value and uses its automatic range. Callers can
+set a different range on the returned figure. Non-millisecond timestamps use
+labelled observation order, with exact timestamps/counts on hover, instead of
+silently collapsing distinct keys through JavaScript dates.
+
+Historical summaries or cumulative-only models must supply actual canonical
+statistics; neither cumulative increments nor aggregate means reconstruct the
+missing sample and uncertainty. With the source checkout's visualization extra,
+`uv run --extra viz python examples/signal_panel_cleaning.py --plots` prints
+actual plot arrays and provenance alongside the existing core-only example.
+This adds a dated chart to the first-horizon report, not the complete reference
+multi-horizon, cumulative, holdings or event workflows.
 
 ### Construct factor weights and supplied-return contributions
 
