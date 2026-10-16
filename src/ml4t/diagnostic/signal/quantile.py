@@ -26,6 +26,18 @@ def _sample_return_statistics(values: np.ndarray) -> tuple[float, float, int]:
     )
 
 
+def _quantile_stat_frame(identity: pl.DataFrame, values: np.ndarray) -> pl.DataFrame:
+    mean, std, count = _sample_return_statistics(values)
+    return identity.with_columns(
+        pl.lit(mean if count else None, dtype=pl.Float64).alias("mean"),
+        pl.lit(std if count > 1 else None, dtype=pl.Float64).alias("std"),
+        pl.lit(std / np.sqrt(count) if count > 1 else None, dtype=pl.Float64).alias(
+            "standard_error"
+        ),
+        pl.lit(count, dtype=pl.UInt32).alias("n_obs"),
+    )
+
+
 def compute_quantile_statistics(
     data: pl.DataFrame | pd.DataFrame,
     *,
@@ -114,23 +126,17 @@ def compute_quantile_statistics(
             values, outcomes, "factor", "date", "group" if group_adjust else None
         )
     keys = ["date", *(["group"] if by_group else []), "quantile"]
-    rows = []
+    parts = []
     for part in values.partition_by(keys, maintain_order=True):
-        identity = part.select(keys).row(0, named=True)
+        identity = part.select(keys).head(1)
         for column, label in zip(outcomes, columns, strict=True):
             returns = part.filter(pl.col("factor").is_finite() & pl.col(column).is_finite())[
                 column
             ].to_numpy()
-            mean, std, count = _sample_return_statistics(returns)
-            rows.append(
-                {
-                    **identity,
-                    "return_column": label,
-                    "mean": mean if count else None,
-                    "std": std if count > 1 else None,
-                    "standard_error": std / np.sqrt(count) if count > 1 else None,
-                    "n_obs": count,
-                }
+            parts.append(
+                _quantile_stat_frame(
+                    identity.with_columns(pl.lit(label).alias("return_column")), returns
+                )
             )
     dimensions = {key: values.schema[key] for key in keys}
     schema = {
@@ -141,26 +147,21 @@ def compute_quantile_statistics(
         "standard_error": pl.Float64,
         "n_obs": pl.UInt32,
     }
-    result = pl.DataFrame(rows, schema=schema)
+    result = pl.concat(parts) if parts else pl.DataFrame(schema=schema)
     if not by_date:
         summary_keys = [key for key in keys if key != "date"] + ["return_column"]
-        rows = []
+        parts = []
         for part in result.partition_by(summary_keys, maintain_order=True):
-            identity = part.select(summary_keys).row(0, named=True)
-            mean, std, count = _sample_return_statistics(
-                part.filter(pl.col("mean").is_finite())["mean"].to_numpy()
+            identity = part.select(summary_keys).head(1)
+            parts.append(
+                _quantile_stat_frame(
+                    identity, part.filter(pl.col("mean").is_finite())["mean"].to_numpy()
+                )
             )
-            rows.append(
-                {
-                    **identity,
-                    "mean": mean if count else None,
-                    "std": std if count > 1 else None,
-                    "standard_error": std / np.sqrt(count) if count > 1 else None,
-                    "n_obs": count,
-                }
-            )
-        result = pl.DataFrame(
-            rows, schema={key: value for key, value in schema.items() if key != "date"}
+        result = (
+            pl.concat(parts)
+            if parts
+            else pl.DataFrame(schema={key: value for key, value in schema.items() if key != "date"})
         )
     return result.with_columns(
         pl.lit("asset" if by_date else "date").alias("sample_unit"),

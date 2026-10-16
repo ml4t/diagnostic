@@ -10,8 +10,10 @@ from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import prepare_signal_panel
 
 
-def _panel(representation="multiindex"):
+def _panel(representation="multiindex", nanoseconds=False):
     dates = pd.bdate_range("2025-01-02", periods=5, tz="UTC")
+    if nanoseconds:
+        dates = pd.DatetimeIndex([dates[0] + pd.Timedelta(i * 100, unit="ns") for i in range(5)])
     wide = pd.DataFrame(
         {
             "A": [128.0, 144.0, 180.0, 202.5, 253.125],
@@ -148,3 +150,92 @@ def test_equal_date_upper_bucket_is_not_the_existing_pooled_mean():
     assert upper["mean"] == pytest.approx(0.40625)
     assert upper["standard_error"] == pytest.approx(0.09375)
     assert upper["n_obs"] == 2
+
+
+@pytest.mark.parametrize("by_group", [False, True])
+def test_daily_statistics_do_not_truncate_distinct_quote_nanoseconds_into_one_timestamp(by_group):
+    panel, dates = _panel(nanoseconds=True)
+    result = panel.quantile_statistics(by_date=True, by_group=by_group, demeaned=False)
+    assert result["date"].dtype == pl.Datetime("ns", "UTC")
+    assert sorted(result["date"].dt.timestamp("ns").unique().to_list()) == [
+        dates[1].value,
+        dates[3].value,
+    ]
+    assert result["n_obs"].sum() == 7
+
+
+def test_actual_feature_warmup_can_produce_an_empty_owned_quantile_sample():
+    panel, _ = _panel()
+    original = panel.data
+    warmup = original.select("date", "asset", pl.col("factor").rolling_mean(20))
+    empty = prepare_signal_panel(
+        warmup, original.select("date", "asset", "1D"), groups={}, quantiles=2, max_loss=1
+    )
+    for by_date in [False, True]:
+        for by_group in [False, True]:
+            result = empty.quantile_statistics(by_date=by_date, by_group=by_group)
+            assert result.is_empty()
+            assert result.schema["mean"] == pl.Float64
+
+
+@pytest.mark.parametrize("by_date", [False, True])
+def test_partial_forward_tail_has_zero_asset_or_date_count_not_an_invented_mean(by_date):
+    from ml4t.diagnostic.signal import compute_quantile_statistics
+
+    panel, dates = _panel()
+    raw = panel.data.with_columns(
+        pl.when(pl.col("date") == dates[3]).then(None).otherwise(pl.col("1D")).alias("next_quote")
+    )
+    before = raw.clone()
+    result = compute_quantile_statistics(
+        raw, return_columns=["next_quote", "1D"], by_date=by_date, demeaned=False
+    )
+    missing = result.filter(pl.col("return_column") == "next_quote")
+    if by_date:
+        tail = missing.filter(pl.col("date") == dates[3])
+        assert tail["n_obs"].to_list() == [0, 0]
+        assert tail["mean"].null_count() == 2
+    else:
+        assert missing["n_obs"].to_list() == [1, 1]
+        assert missing["standard_error"].null_count() == 2
+    assert raw.equals(before)
+
+
+def test_custom_input_names_cannot_shadow_canonical_quantile_result_dimensions():
+    from ml4t.diagnostic.signal import compute_quantile_statistics
+
+    panel, _ = _panel()
+    source = panel.data.rename(
+        {
+            "date": "mean",
+            "factor": "standard_error",
+            "asset": "return_column",
+            "quantile": "n_obs",
+            "group": "std",
+            "1D": "next_quote",
+        }
+    )
+    before = source.clone()
+    result = compute_quantile_statistics(
+        source,
+        return_columns=["next_quote"],
+        date_col="mean",
+        factor_col="standard_error",
+        asset_col="return_column",
+        quantile_col="n_obs",
+        group_col="std",
+        by_date=True,
+        by_group=True,
+        group_adjust=True,
+    )
+    assert result["n_obs"].sum() == 7
+    assert set(result["group"].to_list()) == {"L", "H"}
+    assert result["quantile"].n_unique() == 2
+    assert source.equals(before)
+
+
+@pytest.mark.parametrize("option", ["by_date", "by_group", "demeaned", "group_adjust"])
+def test_string_boolean_never_silently_changes_the_quantile_adjustment_policy(option):
+    panel, _ = _panel()
+    with pytest.raises(ValueError, match=option):
+        panel.quantile_statistics(**{option: "false"})
