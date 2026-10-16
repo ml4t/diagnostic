@@ -498,6 +498,7 @@ class TestCombinatorialCV:
     # Note: Multi-asset purging (asset_col) not yet implemented
     # Tests removed pending TASK-006+ implementation
 
+    @pytest.mark.slow
     def test_performance_benchmark_10k_samples(self):
         """Test performance with 10K samples (should complete in <1 second)."""
         import time
