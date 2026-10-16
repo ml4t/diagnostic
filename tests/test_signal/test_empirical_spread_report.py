@@ -334,7 +334,8 @@ def test_actual_offline_report_browser_renders_spread_values_and_exact_nanosecon
     probe = """<script>document.addEventListener('DOMContentLoaded',()=>{
     Array.from(document.querySelectorAll('button')).find(node=>node.textContent==='Quantile Analysis').click();
     const panel=document.getElementById('quantile'), marker=document.createElement('output');marker.id='spread-browser-check';
-    marker.textContent=JSON.stringify({width:innerWidth,documentWidth:document.documentElement.scrollWidth,traces:Array.from(panel.querySelectorAll('.js-plotly-plot')).flatMap(plot=>Array.from(plot._fullData||[]).filter(trace=>trace.name==='Observed Spread').map(trace=>({y:Array.from(trace.y||[]),customdata:Array.from(trace.customdata||[])})))});
+    const plot=Array.from(panel.querySelectorAll('.js-plotly-plot')).find(plot=>Array.from(plot._fullData||[]).some(trace=>trace.name==='Observed Spread'));
+    marker.textContent=JSON.stringify({width:innerWidth,documentWidth:document.documentElement.scrollWidth,pointCount:plot?plot.querySelectorAll('.scatterlayer .point').length:null,legends:plot?Array.from(plot.querySelectorAll('.legendtext')).map(node=>node.textContent):[],traces:Array.from(panel.querySelectorAll('.js-plotly-plot')).flatMap(plot=>Array.from(plot._fullData||[]).filter(trace=>trace.name==='Observed Spread').map(trace=>({y:Array.from(trace.y||[]),customdata:Array.from(trace.customdata||[])})))});
     document.body.appendChild(marker);});</script>"""
     path = tmp_path / "report.html"
     path.write_text(html.replace("</body>", probe + "</body>"))
@@ -364,3 +365,9 @@ def test_actual_offline_report_browser_renders_spread_values_and_exact_nanosecon
     np.testing.assert_allclose(measured["traces"][0]["y"], [0.25, 0.0625], rtol=0, atol=1e-14)
     assert measured["traces"][0]["customdata"][0][0].endswith("000000100+00:00")
     assert measured["documentWidth"] <= measured["width"]
+    assert measured["pointCount"] == 2
+    assert measured["legends"] == [
+        "Observed Spread",
+        "21-Observation Rolling Mean",
+        "Propagated SE band",
+    ]
