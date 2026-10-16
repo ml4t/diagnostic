@@ -41,6 +41,24 @@ def _plot_dated_persistence(
 
     observations = result.get_dataframe("dated_autocorrelation" if rank else "dated_turnover")
     available = observations["lag"].unique().sort().to_list()
+    if not available and lag is None:
+        figure = create_base_figure(
+            title="Dated Rank Autocorrelation" if rank else "Dated Quantile Turnover",
+            theme=theme,
+            width=width,
+            height=height,
+        )
+        figure.add_annotation(
+            text="Rank autocorrelation unavailable" if rank else "Turnover unavailable",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        figure.update_xaxes(visible=False)
+        figure.update_yaxes(visible=False)
+        return figure
     selected = (
         positive_count(lag, "lag") if lag is not None else available[0] if available else None
     )
@@ -51,7 +69,7 @@ def _plot_dated_persistence(
     observations = observations.filter(pl.col("lag") == selected).sort("date")
     config = get_theme_config(theme)
     figure = create_base_figure(
-        title=f"Dated {'Rank Autocorrelation' if rank else 'Quantile Turnover'} (Lag {selected} Observations)",
+        title=f"Dated {'Rank Autocorrelation' if rank else 'Quantile Turnover'}<br>Lag {selected} Observations",
         xaxis_title="Observed date",
         yaxis_title="Rank autocorrelation" if rank else "Entrants / current membership",
         theme=theme,
@@ -108,8 +126,19 @@ def _plot_dated_persistence(
                 + "<extra>%{fullData.name}</extra>",
             )
         )
-    figure.update_layout(meta=metadata, legend={"orientation": "h", "x": 0, "y": -0.2})
+    metadata["x_clock"] = "observation_order" if category_clock else "dated"
+    figure.update_layout(
+        meta=metadata, showlegend=True, legend={"orientation": "h", "x": 0, "y": -0.2}
+    )
     figure.update_xaxes(type="category" if category_clock else "date")
+    if category_clock and figure.data:
+        dates = list(figure.data[0].x)
+        figure.update_xaxes(
+            title_text="Observed date order",
+            tickmode="array",
+            tickvals=dates,
+            ticktext=[str(index + 1) for index in range(len(dates))],
+        )
     if not rank:
         figure.update_yaxes(tickformat=".0%")
     defined = observations["autocorrelation" if rank else "turnover"].drop_nulls()
@@ -153,6 +182,18 @@ def _plot_dated_turnover_heatmap(
         height=height or 300 + 30 * len(buckets),
         theme=theme,
     )
+    if not values.height:
+        figure.add_annotation(
+            text="Turnover unavailable",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        figure.update_xaxes(visible=False)
+        figure.update_yaxes(visible=False)
+        return figure
     figure.add_trace(
         go.Heatmap(
             x=lags,
