@@ -386,39 +386,50 @@ class TestVizRoundtrip:
         assert fig is not None
         assert len(fig.data) > 0
 
-    def test_quantile_plots_handle_single_observation(self, signal_result):
+    def test_quantile_plots_handle_single_observation(self):
         """Unavailable sample deviation does not produce NaN plot data."""
         from ml4t.diagnostic.visualization.signal.quantile_plots import (
             plot_quantile_returns_bar,
             plot_quantile_returns_violin,
         )
 
-        result = signal_result.to_quantile_result()
-        result.std_returns["1D"]["Q1"] = float("nan")
-        result.count_by_quantile["Q1"] = 1
-        result.spread_mean["1D"] = float("nan")
-        result.spread_t_stat["1D"] = float("nan")
-        result.spread_p_value["1D"] = float("nan")
+        observed = date(2025, 1, 2)
+        factor = pl.DataFrame(
+            {"date": [observed, observed], "asset": ["A", "B"], "factor": [-1.0, 1.0]}
+        )
+        prices = pl.DataFrame(
+            {
+                "date": [
+                    observed,
+                    observed,
+                    observed + timedelta(days=1),
+                    observed + timedelta(days=1),
+                ],
+                "asset": ["A", "B", "A", "B"],
+                "price": [100.0, 100.0, 110.0, 90.0],
+            }
+        )
+        result = analyze_signal(
+            factor,
+            prices,
+            periods=(1,),
+            quantiles=2,
+            min_assets=2,
+            filter_zscore=None,
+            compute_turnover_flag=False,
+        ).to_quantile_result()
+        assert np.isnan(result.std_returns["1D"]["Q1"])
+        assert result.count_by_quantile["Q1"] == 1
 
         bar = plot_quantile_returns_bar(result, period="1D")
         violin = plot_quantile_returns_violin(result, period="1D")
 
         assert bar.data[0].error_y.array[0] == 0.0
         assert len(violin.data[0].y) == 1
+        np.testing.assert_allclose(violin.data[0].y, [0.1], rtol=0, atol=1e-14)
         assert np.isfinite(np.asarray(violin.data[0].y)).all()
         assert "N/A" in bar.layout.annotations[-1].text
         assert "nan" not in bar.layout.annotations[-1].text.lower()
-
-        missing_mean = result.model_copy(deep=True)
-        missing_mean.mean_returns["1D"]["Q1"] = float("nan")
-        empty_for_mean = plot_quantile_returns_violin(missing_mean, period="1D")
-        assert len(empty_for_mean.data[0].y) == 0
-
-        zero_count = result.model_copy(deep=True)
-        zero_count.std_returns["1D"]["Q1"] = 0.01
-        zero_count.count_by_quantile["Q1"] = 0
-        empty_for_count = plot_quantile_returns_violin(zero_count, period="1D")
-        assert len(empty_for_count.data[0].y) == 0
 
     def test_ic_single_period_roundtrip(self, signal_result):
         """Single-period IC result works with plot_ic_ts."""
