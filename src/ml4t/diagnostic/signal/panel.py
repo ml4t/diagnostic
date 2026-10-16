@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from importlib.metadata import version
 from io import BytesIO
@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 class PreparedSignalPanel:
     """An owned prepared sample with independently accessible loss metadata."""
 
-    _payload: bytes
-    _audit: str
+    _payload: bytes = field(repr=False)
+    _audit: str = field(repr=False)
     factor_col: str
     date_col: str
     asset_col: str

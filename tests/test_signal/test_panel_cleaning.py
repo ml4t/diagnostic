@@ -8,7 +8,7 @@ import pytest
 from ml4t.diagnostic.metrics import compute_forward_returns
 
 
-def _inputs(nanosecond=False):
+def _inputs(nanosecond=False, zero_mark=False):
     dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
     if nanosecond:
         dates = pd.DatetimeIndex(
@@ -22,6 +22,8 @@ def _inputs(nanosecond=False):
         },
         index=dates,
     )
+    if zero_mark:
+        wide.loc[dates[2], "C"] = 0.0
     index = pd.MultiIndex.from_product([dates, assets], names=["date", "asset"])
     factor = (
         wide.pct_change(fill_method=None).stack(future_stack=True).reindex(index).rename("factor")
@@ -310,3 +312,33 @@ def test_overlapping_input_batches_cannot_be_hidden_as_cleaning_losses(side):
         groups = pd.concat([groups, groups.iloc[[0]]])
     with pytest.raises(ValueError, match="duplicate"):
         prepare_signal_panel(factor, forward, quantiles=2, groups=groups, max_loss=1.0)
+
+
+def test_nonfinite_outcomes_from_actual_zero_price_mark_are_unavailable_not_zero_returns():
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, _ = _inputs(zero_mark=True)
+    assert np.isinf(factor.loc[(dates[3], "C")])
+    assert np.isinf(forward.loc[(dates[2], "C"), "1D"])
+    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0.6)
+    assert panel.data.height == 10
+    assert panel.metadata["loss_by_stage"] == {
+        "factor": 5,
+        "returns": 9,
+        "groups": 0,
+        "bucketing": 0,
+    }
+    keys = {
+        (pd.Timestamp(day).value, asset)
+        for day, asset in panel.data.select("date", "asset").iter_rows()
+    }
+    assert (dates[2].value, "C") not in keys and (dates[3].value, "C") not in keys
+
+
+def test_printing_prepared_panel_does_not_dump_the_entire_caller_arrow_payload():
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, _, _ = _inputs()
+    text = repr(prepare_signal_panel(factor, forward, quantiles=2, max_loss=0.5))
+    assert text.startswith("PreparedSignalPanel(")
+    assert len(text) < 200
