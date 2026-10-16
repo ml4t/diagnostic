@@ -172,6 +172,8 @@ def prepare_signal_panel(
     input_returns_hash = sha256(
         returns.select(*keys, *columns).write_ipc(None).getvalue()
     ).hexdigest()
+    factors = factors.with_columns(pl.col(factor_col).cast(pl.Float64))
+    returns = returns.with_columns(pl.col(column).cast(pl.Float64) for column in columns)
     input_rows = factors.height
     factors = factors.select(*keys, factor_col).filter(pl.col(factor_col).is_finite())
     losses = {"factor": input_rows - factors.height, "returns": 0, "groups": 0, "bucketing": 0}
@@ -276,6 +278,7 @@ def prepare_signal_panel(
         "frame_sha256": sha256(payload).hexdigest(),
         "input_factor_sha256": input_factor_hash,
         "input_returns_sha256": input_returns_hash,
+        "computation_dtype": "Float64",
         "prepared_group_source_sha256": group_source_hash,
         "group_source": "none"
         if groups is None

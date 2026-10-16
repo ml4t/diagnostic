@@ -1,5 +1,7 @@
 """Common supplied-return samples must be selected before factor bucketing."""
 
+import math
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -342,3 +344,28 @@ def test_printing_prepared_panel_does_not_dump_the_entire_caller_arrow_payload()
     text = repr(prepare_signal_panel(factor, forward, quantiles=2, max_loss=0.5))
     assert text.startswith("PreparedSignalPanel(")
     assert len(text) < 200
+
+
+def test_float32_feed_values_use_float64_analysis_not_float32_accumulation():
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, _ = _inputs()
+    factor, forward = factor.astype("float32"), forward.astype("float32")
+    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0.5)
+    result = panel.analyze(min_assets=2)
+    for column in ["1D", "2D"]:
+        values_by_bucket = {1: [], 2: []}
+        for day in dates[1:4]:
+            for position, asset in enumerate(factor.loc[day].sort_values().index):
+                values_by_bucket[1 if position < 2 else 2].append(
+                    float(forward.loc[(day, asset), column])
+                )
+        for bucket, values in values_by_bucket.items():
+            mean = math.fsum(values) / len(values)
+            std = math.sqrt(math.fsum((value - mean) ** 2 for value in values) / (len(values) - 1))
+            assert result.quantile_returns[column][bucket] == pytest.approx(
+                mean, rel=0.0, abs=1e-15
+            )
+            assert result.quantile_returns_std[column][bucket] == pytest.approx(
+                std, rel=0.0, abs=1e-15
+            )
