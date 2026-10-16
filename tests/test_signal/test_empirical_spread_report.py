@@ -2,9 +2,7 @@
 
 import json
 import math
-import re
 import shutil
-import subprocess
 
 import numpy as np
 import pandas as pd
@@ -363,6 +361,7 @@ def test_actual_offline_report_browser_renders_spread_values_and_exact_nanosecon
     chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
     if chrome is None:
         pytest.skip("Installed Chrome/Chromium is required for actual report browser checks")
+    playwright = pytest.importorskip("playwright.sync_api")
     factor, marks, panel, _ = _inputs(True)
     html = SignalDashboard().generate(_analysis("owned", factor, marks, panel).to_tear_sheet())
     probe = """<script>document.addEventListener('DOMContentLoaded',()=>{
@@ -373,28 +372,17 @@ def test_actual_offline_report_browser_renders_spread_values_and_exact_nanosecon
     document.body.appendChild(marker);});</script>"""
     path = tmp_path / "report.html"
     path.write_text(html.replace("</body>", probe + "</body>"))
-    completed = subprocess.run(
-        [
-            chrome,
-            "--headless",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-background-networking",
-            "--host-resolver-rules=MAP * ~NOTFOUND",
-            f"--user-data-dir={tmp_path / 'browser-profile'}",
-            f"--window-size={width},1000",
-            "--virtual-time-budget=1500",
-            "--dump-dom",
-            path.as_uri(),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=True,
-    )
-    match = re.search(r'<output id="spread-browser-check">([^<]+)</output>', completed.stdout)
-    assert match, completed.stderr
-    measured = json.loads(match[1])
+    errors = []
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1000}, offline=True)
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(path.as_uri(), wait_until="networkidle")
+            measured = json.loads(page.locator("#spread-browser-check").text_content())
+        finally:
+            browser.close()
+    assert not errors
     assert measured["width"] == width
     assert len(measured["traces"]) == 1
     np.testing.assert_allclose(measured["traces"][0]["y"], [0.25, 0.0625], rtol=0, atol=1e-14)

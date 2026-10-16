@@ -2,9 +2,7 @@
 
 import json
 import math
-import re
 import shutil
-import subprocess
 
 import pandas as pd
 import polars as pl
@@ -158,6 +156,7 @@ def test_actual_report_browser_displays_unavailable_summary_card_and_bar_annotat
     chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
     if chrome is None:
         pytest.skip("Installed Chrome/Chromium required for real report checks")
+    playwright = pytest.importorskip("playwright.sync_api")
     _, _, panel, _ = _inputs("two")
     html = SignalDashboard().generate(panel.analyze(min_assets=2).to_tear_sheet())
     probe = """<script>document.addEventListener('DOMContentLoaded',()=>{
@@ -168,28 +167,17 @@ def test_actual_report_browser_displays_unavailable_summary_card_and_bar_annotat
     marker.textContent=JSON.stringify({viewportWidth:innerWidth,summary,annotations:Array.from(document.querySelectorAll('#quantile .annotation-text')).map(node=>node.textContent)});document.body.appendChild(marker);});</script>"""
     path = tmp_path / "report.html"
     path.write_text(html.replace("</body>", probe + "</body>"))
-    completed = subprocess.run(
-        [
-            chrome,
-            "--headless",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-background-networking",
-            "--host-resolver-rules=MAP * ~NOTFOUND",
-            f"--user-data-dir={tmp_path / 'browser-profile'}",
-            f"--window-size={width},1000",
-            "--virtual-time-budget=1500",
-            "--dump-dom",
-            path.as_uri(),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=30,
-    )
-    match = re.search(r'<output id="monotonicity-browser-check">([^<]+)</output>', completed.stdout)
-    assert match, completed.stderr
-    measured = json.loads(match[1])
+    errors = []
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1000}, offline=True)
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(path.as_uri(), wait_until="networkidle")
+            measured = json.loads(page.locator("#monotonicity-browser-check").text_content())
+        finally:
+            browser.close()
+    assert not errors
     assert measured["viewportWidth"] == width
     assert measured["summary"] == "N/A"
     assert any("Monotonic: N/A" in text for text in measured["annotations"])
