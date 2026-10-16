@@ -57,7 +57,9 @@ class HoldingsAnalysisResult:
         result = self.positions.group_by("asset").agg(extreme.alias("value"))
         if side != "absolute":
             result = result.filter(pl.col("value") > 0 if side == "long" else pl.col("value") < 0)
-        return result.sort(["value", "asset"], descending=[side != "short", False]).head(int(top))
+        return result.sort(["value", "asset"], descending=[side != "short", False]).head(
+            min(int(top), result.height)
+        )
 
 
 def _exposure_aggregations() -> list[pl.Expr]:
