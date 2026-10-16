@@ -30,6 +30,8 @@ from ml4t.diagnostic.signal.result import SignalResult
 from ml4t.diagnostic.signal.signal_ic import compute_ic_summary, extract_signal_ic_series
 from ml4t.diagnostic.signal.turnover import (
     compute_autocorrelation,
+    compute_quantile_turnover,
+    compute_rank_autocorrelation,
     compute_turnover,
     estimate_half_life,
 )
@@ -352,6 +354,8 @@ def _analyze_data(
     turnover_dict: dict[str, float] | None = None
     autocorr: list[float] | None = None
     half_life: float | None = None
+    dated_turnover: bytes | None = None
+    dated_autocorrelation: bytes | None = None
 
     if compute_turnover_flag:
         turnover_dict = {
@@ -361,6 +365,18 @@ def _analyze_data(
         lags = list(range(1, autocorrelation_lags + 1))
         autocorr = compute_autocorrelation(data, lags, date_col, asset_col, factor_col)
         half_life = estimate_half_life(autocorr)
+        dated_turnover = (
+            compute_quantile_turnover(data, lags=periods, date_col=date_col, asset_col=asset_col)
+            .write_ipc(None)
+            .getvalue()
+        )
+        dated_autocorrelation = (
+            compute_rank_autocorrelation(
+                data, lags=lags, date_col=date_col, asset_col=asset_col, factor_col=factor_col
+            )
+            .write_ipc(None)
+            .getvalue()
+        )
 
     return SignalResult(
         ic=ic,
@@ -382,6 +398,8 @@ def _analyze_data(
         turnover=turnover_dict,
         autocorrelation=autocorr,
         half_life=half_life,
+        _dated_turnover=dated_turnover,
+        _dated_autocorrelation=dated_autocorrelation,
         n_assets=n_assets,
         n_dates=n_dates,
         date_range=date_range,

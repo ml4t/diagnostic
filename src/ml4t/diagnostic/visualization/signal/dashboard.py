@@ -415,14 +415,20 @@ class SignalDashboard(BaseDashboard):
         if tear_sheet.turnover_analysis is not None:
             ta = tear_sheet.turnover_analysis
             periods = list(ta.mean_turnover.keys())
-            first_period = periods[0] if periods else "1D"
+            first_period = periods[0] if periods else "unavailable"
 
-            turnover = ta.mean_turnover.get(first_period, 0)
+            turnover = ta.mean_turnover.get(first_period)
             half_life = ta.half_life.get(first_period)
+            if ta.dated_turnover_ipc_base64 is not None:
+                summary = ta.get_dataframe("summary")
+                first = summary.row(0, named=True) if not summary.is_empty() else {}
+                first_period = first.get("period", "observations")
+                turnover = first.get("mean_turnover")
+                half_life = None
             turnover_display = format_finite(turnover, ".1%")
             turnover_label = (
                 "N/A"
-                if not math.isfinite(turnover)
+                if turnover is None or not math.isfinite(turnover)
                 else "High"
                 if turnover > 0.3
                 else "Moderate"
@@ -626,6 +632,27 @@ class SignalDashboard(BaseDashboard):
             return "\n".join(html_parts)
 
         ta = tear_sheet.turnover_analysis
+        if ta.dated_turnover_ipc_base64 is not None:
+            html_parts.append(
+                "<p>Turnover uses entrants_over_current membership fractions. Rank autocorrelation "
+                "uses full-date average ranks and paired Pearson correlation. Lags count "
+                "observations on the recorded clock, not inferred days or sessions. "
+                "Unavailable estimates remain missing; no half-life or confidence interval "
+                "is inferred. Native scalar summaries retain their separate definitions.</p>"
+            )
+            html_parts.append(self._create_turnover_summary_table(ta))
+            for name, title in [
+                ("dated_turnover", "Dated quantile turnover"),
+                ("dated_autocorrelation", "Dated rank autocorrelation"),
+            ]:
+                html_parts.append(f"<h3>{title}</h3>")
+                table = (
+                    ta.get_dataframe(name)
+                    .to_pandas()
+                    .to_html(index=False, na_rep="N/A", classes="feature-table", border=0)
+                )
+                html_parts.append(f'<div style="overflow-x: auto;">{table}</div>')
+            return "\n".join(html_parts)
         theme_name = "dark" if self.theme == "dark" else "default"
 
         # Two-column layout
@@ -662,15 +689,14 @@ class SignalDashboard(BaseDashboard):
 
     def _create_turnover_summary_table(self, ta: Any) -> str:
         """Create turnover summary table."""
-        periods = list(ta.mean_turnover.keys())
-
         rows = []
-        for period in periods:
-            mean_to = ta.mean_turnover.get(period, 0)
-            top_to = ta.top_quantile_turnover.get(period, 0)
-            bottom_to = ta.bottom_quantile_turnover.get(period, 0)
-            mean_ac = ta.mean_autocorrelation.get(period, 0)
-            half_life = ta.half_life.get(period)
+        for values in ta.get_dataframe("summary").to_dicts():
+            period = values["period"]
+            mean_to = values["mean_turnover"]
+            top_to = values["top_turnover"]
+            bottom_to = values["bottom_turnover"]
+            mean_ac = values["mean_autocorrelation"]
+            half_life = values["half_life"]
             mean_to_display = format_finite(mean_to, ".1%")
             top_to_display = format_finite(top_to, ".1%")
             bottom_to_display = format_finite(bottom_to, ".1%")
