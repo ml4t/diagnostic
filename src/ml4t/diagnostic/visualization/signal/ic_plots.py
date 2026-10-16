@@ -51,7 +51,9 @@ def plot_ic_ts(
     rolling_window : int, default 21
         Window size for rolling mean calculation
     show_significance : bool, default True
-        Show significance bands (±1.96 * std for 95% CI)
+        Show the zero-centered normal-approximation band, z * sample standard
+        deviation / sqrt(finite IC count). Undefined variance displays
+        "CI unavailable", not a band. This is not HAC-adjusted inference.
     significance_level : float, default 0.05
         Significance level for bands (0.05 = 95% CI)
     theme : str | None
@@ -165,19 +167,30 @@ def plot_ic_ts(
     # Significance bands
     if show_significance:
         ic_std = ic_result.ic_std.get(period, 0)
-        z_score = stats.norm.ppf(1 - significance_level / 2)
-        upper = z_score * ic_std / np.sqrt(len(ic_series))
-        lower = -upper
-
-        fig.add_hrect(
-            y0=lower,
-            y1=upper,
-            fillcolor="gray",
-            opacity=0.1,
-            line_width=0,
-            annotation_text=f"{100 * (1 - significance_level):.0f}% CI",
-            annotation_position="top right",
-        )
+        n_finite = int(np.isfinite(ic_series).sum())
+        if n_finite >= 2 and np.isfinite(ic_std):
+            z_score = stats.norm.ppf(1 - significance_level / 2)
+            upper = z_score * ic_std / np.sqrt(n_finite)
+            fig.add_hrect(
+                y0=-upper,
+                y1=upper,
+                fillcolor="gray",
+                opacity=0.1,
+                line_width=0,
+                annotation_text=f"{100 * (1 - significance_level):.0f}% CI",
+                annotation_position="top right",
+            )
+        else:
+            fig.add_annotation(
+                text="CI unavailable",
+                xref="paper",
+                yref="paper",
+                x=0.98,
+                y=0.02,
+                xanchor="right",
+                yanchor="bottom",
+                showarrow=False,
+            )
 
     # Add summary annotation
     positive_pct = ic_result.ic_positive_pct.get(period, 0)

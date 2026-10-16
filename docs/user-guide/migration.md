@@ -246,6 +246,10 @@ intersection has unavailable statistics, not values copied from discarded
 observations. Required numeric summaries serialize unavailable values as null
 and restore NaN on JSON read; optional HAC/RAS fields are unchanged.
 
+The native IC time-series band is the zero-centered normal approximation
+`z * std / sqrt(n_finite)`, not HAC-adjusted inference. Undefined variance
+displays `CI unavailable` without a band; `show_significance=False` omits both.
+
 Alphalens Reloaded 0.4.6 retains per-date undefined IC values in its table.
 The native facade still extracts finite IC dates before this bridge. Compare
 the same explicitly selected dates and finite observations; the bridge is not

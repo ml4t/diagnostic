@@ -228,3 +228,15 @@ def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
         if annotation["text"] == f"Mean IC: {mean:.4f}"
     )
     assert label["left"] >= -1 and label["right"] <= measured["plot_width"] + 1
+    if profile == "missing_tail":
+        assert any(annotation["text"] == "CI unavailable" for annotation in measured["annotations"])
+
+
+@pytest.mark.parametrize("show_significance", [True, False])
+def test_singleton_aligned_ic_does_not_render_confidence_from_undefined_variance(show_significance):
+    result, _ = _analysis("missing_tail", "raw")
+    figure = plot_ic_ts(result.to_ic_result(), period="1D", show_significance=show_significance)
+    assert not any(shape.type == "rect" for shape in figure.layout.shapes)
+    annotations = [annotation.text for annotation in figure.layout.annotations]
+    assert ("CI unavailable" in annotations) is show_significance
+    assert not any("% CI" in annotation for annotation in annotations)
