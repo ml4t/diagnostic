@@ -159,7 +159,7 @@ def plot_ic_ts(
         line_dash="dot",
         line_color=theme_config["colorway"][2],
         annotation_text=f"Mean IC: {format_finite(mean_ic, '.4f')}",
-        annotation_position="right",
+        annotation_position="top right",
     )
 
     # Significance bands

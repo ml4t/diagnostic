@@ -194,7 +194,8 @@ def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
     Array.from(document.querySelectorAll('button')).find(node=>node.textContent==='IC Analysis').click();
     const plot=Array.from(document.querySelectorAll('#ic .js-plotly-plot')).find(plot=>Array.from(plot.data||[]).some(trace=>trace.name==='Daily IC'));
     const marker=document.createElement('output');marker.id='ic-bridge-browser-check';
-    marker.textContent=JSON.stringify({values:Array.from(plot._fullData[0].y||[]),annotations:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.textContent)});document.body.appendChild(marker);});</script>"""
+    const rect=plot.getBoundingClientRect();
+    marker.textContent=JSON.stringify({values:Array.from(plot._fullData[0].y||[]),annotations:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,left:box.left-rect.left,right:box.right-rect.left}}),plot_width:rect.width});document.body.appendChild(marker);});</script>"""
     path = tmp_path / "report.html"
     path.write_text(html.replace("</body>", probe + "</body>"))
     completed = subprocess.run(
@@ -221,4 +222,9 @@ def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
     measured = json.loads(match[1])
     expected = [1.0, 0.0] if profile == "full" else [1.0]
     np.testing.assert_allclose(measured["values"], expected, rtol=0, atol=1e-14)
-    assert any(f"Mean IC: {mean:.4f}" == annotation for annotation in measured["annotations"])
+    label = next(
+        annotation
+        for annotation in measured["annotations"]
+        if annotation["text"] == f"Mean IC: {mean:.4f}"
+    )
+    assert label["left"] >= -1 and label["right"] <= measured["plot_width"] + 1
