@@ -5,11 +5,16 @@ Creates comprehensive tear sheets with multiple panels.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
+from html import escape
 from pathlib import Path
+from stat import S_IMODE
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import plotly.graph_objects as go
+import polars as pl
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS
@@ -20,6 +25,7 @@ from ml4t.diagnostic.visualization.core import (
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
     )
@@ -27,7 +33,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class PortfolioTearSheet:
-    """Container for portfolio tear sheet with all figures and data.
+    """Portfolio figures, owned prepared holdings and availability.
 
     Provides methods to display in notebooks, export to HTML,
     and access individual figures.
@@ -36,19 +42,39 @@ class PortfolioTearSheet:
         metrics: Portfolio performance metrics
         figures: Dictionary of individual Plotly figures
         html_content: Pre-rendered HTML content (if generated)
+        holdings: Independent prepared snapshot, or None if absent or disabled
+        availability: Component statuses and reasons for unavailable/disabled analysis
     """
 
     metrics: PortfolioMetrics
     figures: dict[str, go.Figure] = field(default_factory=dict)
     html_content: str | None = None
     _analysis: PortfolioAnalysis | None = None
+    holdings: HoldingsAnalysisResult | None = None
+    availability: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def _availability_html(self) -> str:
+        if not self.availability:
+            return ""
+        notes = "".join(
+            f"<li><strong>{escape(name.replace('_', ' '))}</strong>: "
+            f"{escape(info['status'])}. {escape(info.get('reason') or '')}</li>"
+            for name, info in self.availability.items()
+            if info.get("reason") or info["status"] != "available"
+        )
+        return (
+            '<section class="metrics-summary"><h2>Analysis availability</h2>'
+            "<p>Panels describe the supplied observations. Missing analysis is not zero risk.</p>"
+            f"<ul>{notes}</ul></section>"
+        )
 
     def show(self, compact: bool = False) -> None:
         """Display tear sheet in Jupyter notebook or browser.
 
         In Jupyter: renders the 4-panel overview inline (compact=True) or
         displays all individual figures (compact=False).
-        In terminal: opens a single browser window with the overview.
+        Individual figures use Plotly's configured renderer. Compact mode is
+        the existing returns-only overview, not the prepared holdings report.
 
         Parameters
         ----------
@@ -64,12 +90,17 @@ class PortfolioTearSheet:
         try:
             from IPython.display import HTML, display
 
-            display(HTML(f"<pre>{self.metrics.summary()}</pre>"))
+            display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
+            if self.availability:
+                display(HTML(self._availability_html()))
             for fig in self.figures.values():
                 fig.show()
         except ImportError:
             # Terminal fallback: print metrics, show each figure
             print(self.metrics.summary())
+            for name, info in self.availability.items():
+                if info.get("reason") or info["status"] != "available":
+                    print(f"{name.replace('_', ' ')}: {info['status']}. {info.get('reason') or ''}")
             print()
             for name, fig in self.figures.items():
                 print(f"\n  {name}")
@@ -81,7 +112,7 @@ class PortfolioTearSheet:
         include_plotlyjs: bool | str = "cdn",
         full_html: bool = True,
     ) -> None:
-        """Save tear sheet as self-contained HTML file.
+        """Save HTML with embedded or linked Plotly.js.
 
         Parameters
         ----------
@@ -105,6 +136,7 @@ class PortfolioTearSheet:
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Portfolio Tear Sheet</title>
     <style>
         body {{
@@ -127,6 +159,8 @@ class PortfolioTearSheet:
             font-size: 13px;
             line-height: 1.5;
             color: {COLORS["neutral"]};
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }}
         .plot-container {{
             background: white;
@@ -134,6 +168,7 @@ class PortfolioTearSheet:
             padding: 15px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(10,22,40,0.08);
+            overflow-x: auto;
         }}
         h1 {{
             color: {COLORS["blue"]};
@@ -143,7 +178,9 @@ class PortfolioTearSheet:
         h2 {{
             color: {COLORS["slate"]};
             margin-top: 0;
+            font-size: 16px;
         }}
+        .figure-note {{ font-size: 13px; line-height: 1.5; }}
     </style>
 </head>
 <body>
@@ -154,12 +191,16 @@ class PortfolioTearSheet:
         html_parts.append(f"""
     <div class="metrics-summary">
         <h2>Performance Summary</h2>
-        <pre>{self.metrics.summary()}</pre>
+        <pre>{escape(self.metrics.summary())}</pre>
     </div>
 """)
 
+        html_parts.append(self._availability_html())
+
         # Add each figure
         for name, fig in self.figures.items():
+            description = (fig.layout.meta or {}).get("description", "")
+            fig = go.Figure(fig).update_layout(title=None)
             fig_html = fig.to_html(
                 include_plotlyjs=include_plotlyjs
                 if name == list(self.figures.keys())[0]
@@ -168,7 +209,8 @@ class PortfolioTearSheet:
             )
             html_parts.append(f"""
     <div class="plot-container">
-        <h2>{name}</h2>
+        <h2>{escape(name)}</h2>
+        <p class="figure-note">{escape(description)}</p>
         {fig_html}
     </div>
 """)
@@ -179,9 +221,19 @@ class PortfolioTearSheet:
 </html>
 """)
 
-        # Write to file
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("".join(html_parts))
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+        created = False
+        try:
+            with temporary.open("x", encoding="utf-8") as output:
+                created = True
+                output.write("".join(html_parts))
+            if path.exists():
+                temporary.chmod(S_IMODE(path.stat().st_mode))
+            temporary.replace(path)
+            created = False
+        finally:
+            if created:
+                temporary.unlink(missing_ok=True)
 
     def get_figures(self) -> dict[str, go.Figure]:
         """Get dictionary of all figures.
@@ -201,9 +253,29 @@ class PortfolioTearSheet:
         dict
             Contains metrics and figure data
         """
+        from .holdings_plots import _holdings_records
+
+        holdings = (
+            None
+            if self.holdings is None
+            else {
+                "positions": _holdings_records(self.holdings.positions),
+                "timeline": _holdings_records(self.holdings.timeline),
+                "sectors": _holdings_records(self.holdings.sectors),
+                "metrics": deepcopy(self.holdings.metrics),
+                "coverage": deepcopy(self.holdings.coverage),
+                "snapshot_kind": self.holdings.snapshot_kind,
+                "top_positions": {
+                    side: self.holdings.top_positions(side=side).to_dicts()
+                    for side in ["long", "short", "absolute"]
+                },
+            }
+        )
         return {
             "metrics": self.metrics.to_dict(),
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
+            "holdings": holdings,
+            "availability": deepcopy(self.availability),
         }
 
 
@@ -215,10 +287,12 @@ def create_portfolio_dashboard(
     include_benchmark: bool = True,
     height_per_row: int = 300,
     width: int | None = None,
+    *,
+    holdings: HoldingsAnalysisResult | None = None,
 ) -> PortfolioTearSheet:
-    """Create comprehensive portfolio tear sheet.
+    """Create a return dashboard with optional prepared holdings.
 
-    Generates a complete portfolio analysis dashboard with:
+    Includes:
     - Performance metrics summary
     - Cumulative returns chart
     - Drawdown underwater curve
@@ -226,6 +300,7 @@ def create_portfolio_dashboard(
     - Rolling volatility
     - Monthly returns heatmap
     - Returns distribution
+    - Prepared holdings panels when supplied and requested
 
     Parameters
     ----------
@@ -234,20 +309,24 @@ def create_portfolio_dashboard(
     theme : str, optional
         Plot theme ("default", "dark", "print", "presentation")
     include_positions : bool, default True
-        Include position analysis (if positions data available)
+        Render explicit holdings, or record why preparation is required
     include_transactions : bool, default True
-        Include transaction analysis (if transactions data available)
+        Record the request; transaction reporting here remains unavailable
     include_benchmark : bool, default True
         Include benchmark comparison (if benchmark available)
     height_per_row : int, default 300
         Height per subplot row
     width : int, optional
         Figure width
+    holdings : HoldingsAnalysisResult, optional
+        Explicitly prepared complete holdings on this analysis's exact observation
+        keys. Computed analytics are rendered without inferring NAV or positions.
+        Requested but absent results have an explicit availability reason.
 
     Returns
     -------
     PortfolioTearSheet
-        Complete tear sheet with all figures and metrics
+        Figures, metrics, owned holdings and explicit component availability
 
     Examples
     --------
@@ -260,6 +339,43 @@ def create_portfolio_dashboard(
     get_theme_config(theme)
 
     analysis.require_dates()
+    availability = {
+        "positions": {"status": "not_requested", "reason": "Position analysis was not requested."},
+        "transactions": {
+            "status": "unavailable" if include_transactions else "not_requested",
+            "reason": "Prepared transaction reporting is not implemented in this dashboard."
+            if include_transactions
+            else "Transaction analysis was not requested.",
+        },
+    }
+    prepared = None
+    if include_positions:
+        if holdings is None:
+            availability["positions"] = {
+                "status": "unavailable",
+                "reason": "Supply holdings=analysis.compute_holdings_analysis(valuations, complete_snapshots=True); NAV and snapshot completeness are not inferred.",
+            }
+        else:
+            from ml4t.diagnostic.evaluation.portfolio_analysis import HoldingsAnalysisResult
+            from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import date_index
+
+            if not isinstance(holdings, HoldingsAnalysisResult):
+                raise TypeError("holdings must be a prepared HoldingsAnalysisResult")
+            actual, expected = date_index(holdings.timeline["date"]), date_index(analysis.dates)
+            if (holdings.timeline["date"].dtype == pl.Date) != (analysis.dates.dtype == pl.Date):
+                raise ValueError(
+                    "holdings observation keys must preserve Date labels versus Datetime values"
+                )
+            if (
+                len(actual) != len(expected)
+                or actual.tz != expected.tz
+                or not (actual == expected).all()
+            ):
+                raise ValueError(
+                    "holdings must match the exact analysis observation keys and timezone"
+                )
+            prepared = deepcopy(holdings)
+            availability["positions"] = {"status": "available", "reason": None}
     # Compute all metrics
     metrics = analysis.compute_summary_stats()
 
@@ -369,10 +485,40 @@ def create_portfolio_dashboard(
         width=width,
     )
 
+    if prepared is not None:
+        from .holdings_plots import _holdings_figures
+
+        position_figures, position_availability = _holdings_figures(
+            prepared, theme, height_per_row, width
+        )
+        figures.update(position_figures)
+        availability.update(position_availability)
+    for name, fig in figures.items():
+        fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
+        fig.update_xaxes(tickfont_size=14, title_font_size=14)
+        fig.update_yaxes(tickfont_size=14, title_font_size=14)
+        fig.update_annotations(font_size=13)
+        for trace in fig.data:
+            if hasattr(trace, "colorbar"):
+                trace.update(colorbar_tickfont_size=14, colorbar_title_font_size=14)
+            if trace.type == "heatmap":
+                trace.update(textfont_size=14)
+        if width is None:
+            wide_matrix = name == "Monthly Returns Heatmap"
+            fig.update_layout(width=1000 if wide_matrix else None, autosize=not wide_matrix)
+        if name == "Monthly Returns Heatmap":
+            fig.update_layout(
+                meta={
+                    "description": "Monthly values compound the supplied observations. Scroll horizontally to read all months on narrow screens."
+                }
+            )
+
     return PortfolioTearSheet(
         metrics=metrics,
         figures=figures,
         _analysis=analysis,
+        holdings=prepared,
+        availability=availability,
     )
 
 

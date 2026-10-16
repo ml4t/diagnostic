@@ -314,6 +314,13 @@ The visualization namespace is Plotly-first and grouped by workflow:
 | Factor analysis | `plot_factor_betas_bar`, `plot_rolling_betas`, `plot_return_attribution_waterfall` |
 | Reporting | `combine_figures_to_html`, `generate_combined_report`, `export_figures_to_pdf` |
 
+The existing portfolio dashboard accepts explicit prepared holdings. See
+[holdings report input, units and availability](../user-guide/migration.md#render-prepared-holdings-in-the-portfolio-dashboard).
+
+::: ml4t.diagnostic.visualization.portfolio.create_portfolio_dashboard
+
+::: ml4t.diagnostic.visualization.portfolio.dashboard.PortfolioTearSheet
+
 For task-by-task input conversion from Alphalens and Pyfolio, see the
 [migration guide](../user-guide/migration.md). For a package-layout overview,
 see the [Architecture](../reference/architecture.md) page.
