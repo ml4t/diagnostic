@@ -143,6 +143,12 @@ def test_unrepresentable_finer_key_unit_raises_instead_of_wrapping_observation_i
 @pytest.mark.parametrize("route", ["prepare", "horizon", "feature"])
 def test_unit_alignment_does_not_infer_a_timezone_policy(zone, route):
     predictions, prices = _inputs("us", "ns", False)
-    prices = prices.with_columns(pl.col("timestamp").dt.convert_time_zone(zone))
+    expression = pl.col("timestamp")
+    expression = (
+        expression.dt.replace_time_zone(None)
+        if zone is None
+        else expression.dt.convert_time_zone(zone)
+    )
+    prices = prices.with_columns(expression)
     with pytest.raises(pl.exceptions.SchemaError):
         _run(route, predictions, prices)
