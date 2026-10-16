@@ -47,7 +47,7 @@ def _inputs(profile):
         prices.stack(future_stack=True).rename("price").rename_axis(["date", "asset"]).reset_index()
     )
     forward = (
-        compute_forward_returns(marks, periods=[1], group_col="asset")
+        compute_forward_returns(marks, periods=[1], group_col="asset", price_col="price")
         .set_index(["date", "asset"])[["fwd_ret_1"]]
         .rename(columns={"fwd_ret_1": "1D"})
     )
