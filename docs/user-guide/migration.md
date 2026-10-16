@@ -291,7 +291,8 @@ month columns. Neither definition fabricates a zero IC for a missing month.
 Shared-input checks cover raw, prepared and owned workflows, their cleaning
 keys, buckets, counts and IC values before monthly reduction. They do not
 establish forward-calendar equivalence, identical renderer presentation or
-complete information tear-sheet coverage. The existing supplied-panel example
+complete information tear-sheet coverage. The existing
+[supplied-panel example](https://github.com/ml4t/diagnostic/blob/b65d0b5246c8a00ad232c0277c59c84aa5238431/examples/signal_panel_cleaning.py)
 checks and prints monthly plot values when run with
 `uv run --extra viz python examples/signal_panel_cleaning.py --plots`.
 
