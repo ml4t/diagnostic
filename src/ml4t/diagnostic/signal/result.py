@@ -473,6 +473,34 @@ class SignalResult:
         if "periods" in data:
             data["periods"] = tuple(data["periods"])
 
+        def restore_numeric(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {key: restore_numeric(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [restore_numeric(item) for item in value]
+            return float("nan") if value is None else value
+
+        for name in (
+            "ic",
+            "ic_std",
+            "ic_t_stat",
+            "ic_p_value",
+            "ic_ir",
+            "ic_positive_pct",
+            "ic_series",
+            "quantile_returns",
+            "quantile_returns_std",
+            "spread",
+            "spread_t_stat",
+            "spread_p_value",
+            "spread_std",
+            "monotonicity",
+            "turnover",
+            "autocorrelation",
+        ):
+            if name in data and data[name] is not None:
+                data[name] = restore_numeric(data[name])
+
         # Convert quantile keys back to int
         if "quantile_returns" in data:
             data["quantile_returns"] = {

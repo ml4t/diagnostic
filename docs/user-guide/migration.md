@@ -203,6 +203,14 @@ kept all 600 rows; its mean IC and Diagnostic's `SignalResult.ic["1D"]` were
 both `0.318881`. Diagnostic also returned a top-minus-bottom quantile spread
 of `0.004636`. The agreement is for this ungrouped input and definition.
 
+Unreleased source after 0.1.9 retains the mean and positive fraction of a
+single defined date-level IC. Its sample standard deviation and t-test remain
+undefined. An empty IC sample has no positive-observation fraction, and a
+zero/undefined IC standard deviation has no IC information ratio; neither is
+reported as a fabricated zero. Signal results express positive observations
+as a percentage, while the direct metric summary uses a fraction. JSON uses
+null for unavailable values and restores them as NaN on the result round trip.
+
 ### Prepare and audit supplied returns
 
 For an unbucketed factor Series and a precomputed return panel, unreleased

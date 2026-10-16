@@ -195,11 +195,11 @@ class TestComputeICSummary:
         assert np.isnan(summary["p_value"])
 
     def test_single_value(self):
-        """Test summary with single IC value (n < 2)."""
+        """A single IC has a point mean but no sample-variance inference."""
         summary = compute_ic_summary([0.05])
 
-        # n < 2, so all should be NaN
-        assert np.isnan(summary["mean"])
+        assert summary["mean"] == 0.05
+        assert summary["pct_positive"] == 1.0
         assert np.isnan(summary["std"])
         assert np.isnan(summary["t_stat"])
         assert np.isnan(summary["p_value"])
