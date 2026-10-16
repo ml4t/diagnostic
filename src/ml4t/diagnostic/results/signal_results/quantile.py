@@ -10,10 +10,12 @@ Lopez de Prado, M. (2018). "Advances in Financial Machine Learning"
 
 from __future__ import annotations
 
+import base64
+from io import BytesIO
 from typing import Any
 
 import polars as pl
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from ml4t.diagnostic.results.base import BaseResult
 from ml4t.diagnostic.results.signal_results.validation import _normalize_period
@@ -144,10 +146,51 @@ class QuantileAnalysisResult(BaseResult):
         default=None,
         description="Dates for cumulative returns",
     )
+    observations_ipc_base64: str | None = Field(
+        default=None, description="Actual per-date bucket statistics, encoded Arrow IPC/base64"
+    )
+
+    def _observations(self) -> pl.DataFrame:
+        if self.observations_ipc_base64 is None:
+            raise ValueError(
+                "empirical quantile observations are unavailable; supply actual statistics"
+            )
+        try:
+            frame = pl.read_ipc(
+                BytesIO(base64.b64decode(self.observations_ipc_base64, validate=True))
+            )
+        except (ValueError, TypeError, OSError, pl.exceptions.PolarsError) as exc:
+            raise ValueError("invalid empirical quantile Arrow IPC/base64 payload") from exc
+        from ml4t.diagnostic.signal.quantile import _quantile_observations
+
+        return _quantile_observations(frame)
 
     # ==========================================================================
     # Validation
     # ==========================================================================
+
+    @field_validator(
+        "mean_returns",
+        "std_returns",
+        "spread_mean",
+        "spread_std",
+        "spread_t_stat",
+        "spread_p_value",
+        "spread_ci_lower",
+        "spread_ci_upper",
+        "rank_correlation",
+        mode="before",
+    )
+    @classmethod
+    def _restore_numeric_nulls(cls, value: Any) -> Any:
+        """Restore undefined JSON statistics with the SignalResult NaN convention."""
+
+        def restore(item: Any) -> Any:
+            if isinstance(item, dict):
+                return {key: restore(number) for key, number in item.items()}
+            return float("nan") if item is None else item
+
+        return restore(value) if isinstance(value, dict) else value
 
     @model_validator(mode="after")
     def _validate_keys(self) -> QuantileAnalysisResult:
@@ -197,6 +240,8 @@ class QuantileAnalysisResult(BaseResult):
                 f"n_quantiles ({self.n_quantiles}) != len(quantile_labels) ({len(self.quantile_labels)})"
             )
 
+        if self.observations_ipc_base64 is not None:
+            self._observations()
         return self
 
     # ==========================================================================
@@ -219,6 +264,8 @@ class QuantileAnalysisResult(BaseResult):
         pl.DataFrame
             Requested DataFrame
         """
+        if name == "observations":
+            return self._observations()
         if name is None or name == "mean_returns":
             mean_return_rows: list[dict[str, Any]] = []
             for period in self.periods:
@@ -274,6 +321,8 @@ class QuantileAnalysisResult(BaseResult):
         dfs = ["mean_returns", "spread"]
         if self.cumulative_returns is not None:
             dfs.append("cumulative")
+        if self.observations_ipc_base64 is not None:
+            dfs.append("observations")
         return dfs
 
     def summary(self) -> str:

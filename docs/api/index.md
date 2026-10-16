@@ -101,6 +101,26 @@ not validate a calendar or infer uncertainty or half-life.
         - list_available_dataframes
         - summary
 
+### Empirical quantile report observations
+
+Signal analyses retain actual dated bucket means in
+`SignalResult.quantile_observations`. `to_quantile_result()` and the tear-sheet
+bridge preserve an owned observation table through JSON. Historical summary-only
+results cannot reconstruct that sample. Pooled bar summaries remain unchanged.
+See the [empirical quantile how-to](../user-guide/migration.md#plot-empirical-dated-quantile-observations)
+for adjustment, units, missing-data and report limits.
+
+::: ml4t.diagnostic.visualization.signal.plot_quantile_returns_violin
+    options:
+      show_root_heading: true
+
+::: ml4t.diagnostic.results.signal_results.QuantileAnalysisResult
+    options:
+      show_root_heading: true
+      members:
+        - get_dataframe
+        - list_available_dataframes
+
 ## Metrics
 
 Use `ml4t.diagnostic.metrics` for reusable metric and feature-statistic helpers.

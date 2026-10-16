@@ -58,6 +58,55 @@ def _quantile_stat_frame(identity: pl.DataFrame, values: np.ndarray) -> pl.DataF
     )
 
 
+def _quantile_observations(data: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
+    """Validate canonical dated bucket statistics without re-estimating their sample."""
+    values = _signal_frame(data)
+    required = {
+        "date",
+        "quantile",
+        "return_column",
+        "mean",
+        "n_obs",
+        "sample_unit",
+        "return_adjustment",
+    }
+    if missing := required.difference(values.columns):
+        raise ValueError(f"empirical quantile observations are missing columns: {sorted(missing)}")
+    _validate_observation_keys(
+        values,
+        ["date", "quantile", "return_column", *(["group"] if "group" in values.columns else [])],
+        "empirical quantile observations",
+    )
+    for column in ["quantile", "mean", "n_obs"]:
+        if not (
+            values[column].dtype.is_numeric()
+            or (column == "mean" and values[column].dtype == pl.Null)
+        ):
+            raise TypeError(f"empirical quantile {column} must be numeric")
+    buckets = values["quantile"]
+    counts = values["n_obs"]
+    if not ((buckets >= 1) & (buckets == buckets.floor())).all():
+        raise ValueError("empirical bucket labels must be positive integers")
+    if (
+        counts.null_count()
+        or not counts.is_finite().all()
+        or not ((counts >= 0) & (counts == counts.floor())).all()
+    ):
+        raise ValueError("empirical asset counts must be nonnegative integers")
+    if not values["sample_unit"].is_in(["asset"]).fill_null(False).all():
+        raise ValueError(
+            "empirical observations require per-date bucket statistics, not date aggregates"
+        )
+    if (
+        not values["return_adjustment"]
+        .is_in(["none", "date_mean", "date_group_mean"])
+        .fill_null(False)
+        .all()
+    ):
+        raise ValueError("empirical return adjustment must name the shared statistics method")
+    return values
+
+
 def compute_quantile_statistics(
     data: pl.DataFrame | pd.DataFrame,
     *,

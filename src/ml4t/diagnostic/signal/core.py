@@ -23,6 +23,7 @@ from ml4t.diagnostic.signal._utils import (
 )
 from ml4t.diagnostic.signal.quantile import (
     _compute_quantile_return_statistics,
+    compute_quantile_statistics,
     compute_spread,
     monotonicity_score,
 )
@@ -350,6 +351,20 @@ def _analyze_data(
         # Monotonicity
         monotonicity[period_key] = monotonicity_score(q_returns)
 
+    quantile_observations: bytes | None = None
+    if periods:
+        columns = {f"{period}D_fwd_return": f"{period}D" for period in periods}
+        observations = compute_quantile_statistics(
+            data,
+            return_columns=list(columns),
+            by_date=True,
+            demeaned=False,
+            factor_col=factor_col,
+            date_col=date_col,
+            asset_col=asset_col,
+        ).with_columns(pl.col("return_column").replace_strict(columns))
+        quantile_observations = observations.write_ipc(None).getvalue()
+
     # Turnover (optional)
     turnover_dict: dict[str, float] | None = None
     autocorr: list[float] | None = None
@@ -402,6 +417,7 @@ def _analyze_data(
         half_life=half_life,
         _dated_turnover=dated_turnover,
         _dated_autocorrelation=dated_autocorrelation,
+        _quantile_observations=quantile_observations,
         n_assets=n_assets,
         n_dates=n_dates,
         date_range=date_range,

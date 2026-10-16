@@ -28,6 +28,7 @@ _OWNED_FRAMES = (
     ("_prepared_data", "prepared_data"),
     ("_dated_turnover", "dated_turnover"),
     ("_dated_autocorrelation", "dated_autocorrelation"),
+    ("_quantile_observations", "quantile_observations"),
 )
 
 
@@ -122,6 +123,7 @@ class SignalResult:
     _prepared_data: bytes | None = field(default=None, repr=False, compare=False)
     _dated_turnover: bytes | None = field(default=None, repr=False, compare=False)
     _dated_autocorrelation: bytes | None = field(default=None, repr=False, compare=False)
+    _quantile_observations: bytes | None = field(default=None, repr=False, compare=False)
 
     @property
     def prepared_data(self) -> pl.DataFrame | None:
@@ -149,6 +151,15 @@ class SignalResult:
         import polars as pl
 
         return pl.read_ipc(BytesIO(self._dated_autocorrelation))
+
+    @property
+    def quantile_observations(self) -> pl.DataFrame | None:
+        """Return actual dated bucket means/counts, not asset samples or simulations."""
+        if self._quantile_observations is None:
+            return None
+        import polars as pl
+
+        return pl.read_ipc(BytesIO(self._quantile_observations))
 
     def to_turnover_result(self) -> TurnoverAnalysisResult | None:
         """Convert actual dated observations without synthesizing data from means.
@@ -384,6 +395,9 @@ class SignalResult:
             is_monotonic=is_monotonic,
             monotonicity_direction=monotonicity_direction,
             rank_correlation=rank_correlation,
+            observations_ipc_base64=base64.b64encode(self._quantile_observations).decode("ascii")
+            if self._quantile_observations is not None
+            else None,
         )
 
     def to_tear_sheet(self, signal_name: str = "signal") -> SignalTearSheet:
