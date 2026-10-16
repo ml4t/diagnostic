@@ -90,12 +90,16 @@ def test_exact_quote_observations_retain_reversing_membership_and_ranks(
 ):
     factor, prices, panel = _inputs(*scenario, representation)
     before = panel.data
+    observations = panel.data
+    original_observations = observations.clone()
+    factor_before = factor.copy(deep=True) if representation == "pandas" else factor.clone()
+    prices_before = prices.copy(deep=True) if representation == "pandas" else prices.clone()
     if route == "turnover":
         for lag, expected in [(1, 1.0), (2, 0.0)]:
-            assert compute_turnover(panel.data, n_quantiles=2, lag=lag) == expected
+            assert compute_turnover(observations, n_quantiles=2, lag=lag) == expected
     elif route == "autocorrelation":
         np.testing.assert_allclose(
-            compute_autocorrelation(panel.data, lags=[1, 2], min_obs=2),
+            compute_autocorrelation(observations, lags=[1, 2], min_obs=2),
             [-1.0, 1.0],
             atol=1e-14,
             rtol=0,
@@ -118,13 +122,24 @@ def test_exact_quote_observations_retain_reversing_membership_and_ranks(
                 **options,
             )
         elif route == "prepared":
-            data = panel.data
+            data = observations
             if representation == "pandas":
                 data = data.to_pandas().set_index(["date", "asset"])
+            data_before = data.copy(deep=True) if representation == "pandas" else data.clone()
             result = analyze_prepared_signal(data, **options)
+            if representation == "pandas":
+                pd.testing.assert_frame_equal(data, data_before)
+            else:
+                assert data.equals(data_before)
         else:
             result = panel.analyze(min_assets=2, compute_turnover_flag=True, autocorrelation_lags=2)
         assert result.turnover == {"1D": 1.0, "2D": 0.0}
         np.testing.assert_allclose(result.autocorrelation, [-1.0, 1.0], atol=1e-14, rtol=0)
         assert result.n_dates == 3 and result.n_assets == 12
     assert panel.data.equals(before)
+    assert observations.equals(original_observations)
+    if representation == "pandas":
+        pd.testing.assert_frame_equal(factor, factor_before)
+        pd.testing.assert_frame_equal(prices, prices_before)
+    else:
+        assert factor.equals(factor_before) and prices.equals(prices_before)

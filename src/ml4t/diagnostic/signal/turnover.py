@@ -12,6 +12,12 @@ import polars as pl
 from scipy.stats import spearmanr
 
 
+def _persistence_time_keys(data: pl.DataFrame, date_col: str) -> pl.DataFrame:
+    if isinstance(data.schema[date_col], pl.Datetime):
+        return data.with_columns(pl.col(date_col).cast(pl.Int64))
+    return data
+
+
 def compute_turnover(
     data: pl.DataFrame,
     n_quantiles: int,
@@ -45,6 +51,7 @@ def compute_turnover(
     if lag < 1:
         raise ValueError("lag must be positive")
 
+    data = _persistence_time_keys(data, date_col)
     unique_dates = data.select(date_col).unique().sort(date_col).to_series().to_list()
 
     if len(unique_dates) <= lag:
@@ -111,6 +118,7 @@ def compute_autocorrelation(
     list[float]
         Autocorrelation at each lag.
     """
+    data = _persistence_time_keys(data, date_col)
     unique_dates = data.select(date_col).unique().sort(date_col).to_series().to_list()
 
     if len(unique_dates) < max(lags) + 1:
