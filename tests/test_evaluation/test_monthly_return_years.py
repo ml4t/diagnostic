@@ -25,15 +25,15 @@ class _BuyOnce(Strategy):
             self.submitted = True
 
 
-def _actual_account(terminal_year, increment):
+def _actual_account(terminal_year, increment, *, active=True):
     dates = [
         datetime(2023, 12, 28, 15, tzinfo=UTC),
         datetime(2023, 12, 29, 15, tzinfo=UTC),
         datetime(terminal_year, 1, 2, 15, tzinfo=UTC),
         datetime(terminal_year, 1, 3, 15, tzinfo=UTC),
     ]
-    opens = [100.0, 100.0, 110.0, 90.0]
-    closes = [100.0, 100.0 + increment, 110.0, 90.0]
+    opens = [100.0, 100.0, 110.0 if active else 100.0, 90.0 if active else 100.0]
+    closes = [100.0, 100.0 + increment, *opens[2:]]
     prices = pl.DataFrame(
         {
             "timestamp": dates,
@@ -49,7 +49,12 @@ def _actual_account(terminal_year, increment):
     fills = result.to_fills_dataframe()
     assert fills.height == 1 and fills["quantity"][0] == 4 and fills["price"][0] == 100
     equity = result.to_equity_dataframe()
-    np.testing.assert_allclose(equity["equity"], [1000, 1000 + 4 * increment, 1040, 960])
+    np.testing.assert_allclose(
+        equity["equity"],
+        [1000, 1000 + 4 * increment, 1040 if active else 1000, 960 if active else 1000],
+        rtol=0,
+        atol=1e-12,
+    )
     analysis = PortfolioAnalysis(result.to_returns_series(), dates=equity["timestamp"])
     return analysis
 
@@ -67,10 +72,16 @@ def test_actual_zero_or_tiny_year_remains_observed_without_inventing_gap_years(
     assert list(fig.data[0].y) == [2023, terminal_year]
     cells = np.asarray(fig.data[0].z, dtype=float)
     assert cells.shape == (2, 13)
-    np.testing.assert_allclose(cells[0, [11, 12]], first_return, atol=1e-15)
-    np.testing.assert_allclose(cells[1, [0, 12]], -0.04, atol=1e-15)
+    np.testing.assert_allclose(cells[0, [11, 12]], first_return, rtol=0, atol=1e-15)
+    np.testing.assert_allclose(
+        cells[1, [0, 12]], 960 / (1000 + 4 * increment) - 1, rtol=0, atol=1e-15
+    )
     assert np.isnan(cells[0, :11]).all()
     assert np.isnan(cells[1, 1:12]).all()
+    flat = plot_monthly_returns_heatmap(_actual_account(terminal_year, 0.0, active=False))
+    assert list(flat.data[0].y) == [2023, terminal_year]
+    np.testing.assert_array_equal(np.asarray(flat.data[0].z)[0, [11, 12]], [0, 0])
+    np.testing.assert_array_equal(np.asarray(flat.data[0].z)[1, [0, 12]], [0, 0])
 
 
 @pytest.mark.parametrize("width", [1280, 375])
@@ -104,13 +115,15 @@ def test_real_html_preserves_observed_zero_year_and_missing_months(width, tmp_pa
             actual = panel.locator(".js-plotly-plot").evaluate("""p=>({
                 years:Array.from(p._fullData[0].y),
                 cells:Array.from(p._fullData[0].z,r=>Array.from(r)),
-                labels:Array.from(p.querySelectorAll('.ytick text')).map(t=>t.textContent)
+                labels:Array.from(p.querySelectorAll('.ytick text'))
+                    .map(t=>({text:t.textContent,top:t.getBoundingClientRect().top}))
+                    .sort((a,b)=>a.top-b.top).map(t=>t.text)
             })""")
             assert actual["years"] == [2023, 2024]
             assert actual["labels"] == ["2023", "2024"]
             assert actual["cells"][0][11] == 0
             assert actual["cells"][1][0] == pytest.approx(-0.04)
-            assert actual["cells"][0][:11] == [None] * 11
-            assert actual["cells"][1][1:12] == [None] * 11
+            assert np.isnan(np.asarray(actual["cells"][0][:11], dtype=float)).all()
+            assert np.isnan(np.asarray(actual["cells"][1][1:12], dtype=float)).all()
         finally:
             browser.close()
