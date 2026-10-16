@@ -463,23 +463,23 @@ class PortfolioAnalysis:
         returns: np.ndarray,
         window: int,
     ) -> np.ndarray:
-        """Compute rolling cumulative returns using O(n) log1p cumsum."""
+        """Compound rolling returns in O(n), retaining exact total-loss observations."""
         n = len(returns)
         result = np.full(n, np.nan)
 
         if n < window:
             return result
 
-        # Vectorized O(n): use log1p cumsum for compound returns
-        # Requires returns > -1 (valid for typical financial returns)
-        # Clip to prevent log of non-positive numbers
-        safe_returns = np.clip(returns, -0.9999, None)
-        log_returns = np.log1p(safe_returns)
+        total_loss = returns == -1
+        log_returns = np.zeros_like(returns)
+        np.log1p(returns, out=log_returns, where=~total_loss)
         cumsum = np.concatenate(([0.0], np.cumsum(log_returns)))
-
-        # Rolling sum of log returns = log(compound return + 1)
+        loss_counts = np.concatenate(([0], np.cumsum(total_loss)))
         window_log_sum = cumsum[window:] - cumsum[:-window]
-        result[window - 1 :] = np.expm1(window_log_sum)
+        has_loss = loss_counts[window:] > loss_counts[:-window]
+        compounded = np.full(len(window_log_sum), -1.0)
+        np.expm1(window_log_sum, out=compounded, where=~has_loss)
+        result[window - 1 :] = compounded
 
         return result
 
