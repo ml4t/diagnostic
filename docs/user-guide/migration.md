@@ -518,6 +518,9 @@ timestamps, counts, unavailable statuses and method/clock metadata. Signal JSON
 and the structured result's JSON preserve those observations as Arrow IPC/base64,
 including sub-microsecond timestamps and null estimates. Missing or malformed
 paired persistence payloads fail instead of silently discarding a report section.
+The new reader accepts older saved results without these observations. New
+persistence-enabled JSON adds two encoded fields and requires the new reader;
+upgrade the reader before loading that JSON in an older environment.
 
 The existing native `turnover`, `autocorrelation` and `half_life` attributes keep
 their definitions. Dated turnover uses entrants/current membership, and dated
