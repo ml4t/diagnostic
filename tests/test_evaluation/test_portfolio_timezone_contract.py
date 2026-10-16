@@ -13,7 +13,7 @@ from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
 @pytest.mark.parametrize("zone", ["UTC", UTC, ZoneInfo("UTC")])
 @pytest.mark.parametrize("date_adapter", ["inferred", "pandas", "polars"])
-def test_equivalent_utc_timezone_objects_preserve_labeled_dates_and_benchmark_pairing(
+def test_equivalent_utc_objects_cannot_reject_valid_dates_or_mispair_reference_returns(
     zone, date_adapter
 ):
     index = pd.bdate_range("2025-01-02T00:00:00.000000001", periods=4, tz=zone)
