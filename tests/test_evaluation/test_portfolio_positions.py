@@ -45,7 +45,7 @@ def _actual_prepared_inputs():
     account = result.to_portfolio_state_dataframe()
     positions = pd.DataFrame(
         {"A": [0.0, 400.0, 400.0], "B": [0.0, -300.0, -300.0]},
-        index=pd.DatetimeIndex(dates, name="date"),
+        index=pd.DatetimeIndex(account["timestamp"].to_list(), name="date"),
     )
     np.testing.assert_array_equal(positions.sum(axis=1), account["net_exposure"])
     np.testing.assert_array_equal(positions.abs().sum(axis=1), account["gross_exposure"])
@@ -166,3 +166,65 @@ def test_incomplete_snapshot_declaration_and_undated_positions_cannot_imply_zero
     analysis = PortfolioAnalysis(returns, positions=positions.reset_index(drop=True))
     with pytest.raises(ValueError, match="date"):
         analysis.compute_holdings_analysis(valuations, complete_snapshots=True)
+
+
+def test_explicit_wide_cash_is_not_an_asset_and_missing_nav_is_not_reconstructed():
+    returns, positions, valuations, _ = _actual_prepared_inputs()
+    positions["cash"] = valuations["cash"].to_numpy()
+    result = PortfolioAnalysis(returns, positions=positions).compute_holdings_analysis(
+        valuations.select("date"), complete_snapshots=True
+    )
+    assert result.timeline["cash"].to_list() == [1000, 900, 900]
+    assert result.timeline["equity"].null_count() == 3
+    assert result.timeline["gross_exposure"].to_list() == [0, 700, 700]
+    assert set(result.positions["asset"]) == {"A", "B"}
+    assert result.coverage["status"] == "unavailable"
+    with pytest.raises(ValueError, match="cash"):
+        PortfolioAnalysis(returns, positions=positions).compute_holdings_analysis(
+            valuations.with_columns(pl.lit(123.0).alias("cash")), complete_snapshots=True
+        )
+
+
+def test_cash_only_complete_snapshots_are_observed_zero_exposure_not_zero_concentration():
+    returns, _, valuations, _ = _actual_prepared_inputs()
+    positions = pd.DataFrame({"cash": [1000.0] * 3}, index=returns.index)
+    valuations = valuations.with_columns(pl.lit(1000.0).alias("cash"))
+    result = PortfolioAnalysis(returns, positions=positions).compute_holdings_analysis(
+        valuations, complete_snapshots=True, snapshot_kind="end_of_day"
+    )
+    assert result.positions.is_empty()
+    assert result.timeline["gross_exposure_fraction"].to_list() == [0, 0, 0]
+    assert result.timeline["gross_hhi"].null_count() == 3
+    assert result.metrics["time_in_market"] == 0
+    assert result.coverage["status"] == "available"
+
+
+def test_sparse_complete_snapshots_preserve_integer_asset_ids_and_exact_timestamp_precision():
+    returns, positions, valuations, _ = _actual_prepared_inputs()
+    long = pl.from_pandas(positions.reset_index()).unpivot(index="date", variable_name="asset")
+    long = long.with_columns(pl.col("asset").replace_strict({"A": 1, "B": 2}))
+    long = long.filter((pl.col("value") != 0) | (pl.col("asset") == 1))
+    long = long.with_columns(pl.col("date").cast(pl.Datetime("ms")))
+    result = PortfolioAnalysis(returns, positions=long).compute_holdings_analysis(
+        valuations, complete_snapshots=True
+    )
+    assert set(result.positions["asset"]) == {1, 2}
+    assert result.timeline["open_positions"].to_list() == [0, 2, 2]
+    assert result.timeline["gross_exposure"].to_list() == [0, 700, 700]
+
+
+@pytest.mark.parametrize("defect", ["nan_mark", "infinite_nav", "boolean_mark", "timezone"])
+def test_nonfinite_or_misdeclared_prepared_values_and_clock_do_not_become_valid_ratios(defect):
+    returns, positions, valuations, _ = _actual_prepared_inputs()
+    if defect == "nan_mark":
+        positions.iloc[-1, 0] = np.nan
+    elif defect == "infinite_nav":
+        valuations = valuations.with_columns(pl.lit(float("inf")).alias("equity"))
+    elif defect == "boolean_mark":
+        positions["A"] = [False, True, True]
+    else:
+        positions.index = positions.index.tz_localize("UTC")
+    with pytest.raises((ValueError, TypeError), match="finite|numeric|date|boolean"):
+        PortfolioAnalysis(returns, positions=positions).compute_holdings_analysis(
+            valuations, complete_snapshots=True
+        )
