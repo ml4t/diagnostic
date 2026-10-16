@@ -330,6 +330,8 @@ def prepare_signal_panel(
         "groups_labeled": group_labels is not None,
         "pandas_version": version("pandas"),
         "numpy_version": version("numpy"),
+        "polars_version": version("polars"),
+        "diagnostic_version": version("ml4t-diagnostic"),
         "sample_policy": "common finite factor/return/group sample before bucketing",
         "calendar_validation": "not performed; supplied labels do not establish endpoints or a schedule",
     }
