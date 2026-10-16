@@ -206,3 +206,80 @@ def test_ambiguous_sector_keys_fail_without_expanding_or_mutating_holdings(defec
         )
     pd.testing.assert_frame_equal(mapping, original)
     assert positions.iloc[-1].to_list() == [400, -300]
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "wrong_id_type",
+        "missing_id",
+        "empty_label",
+        "infinite_label",
+        "boolean_label",
+        "extra_column",
+    ],
+)
+def test_invalid_classification_metadata_fails_after_valid_public_workflow_control(defect):
+    analysis, _, _, valuations, _ = _analysis()
+    analysis.compute_holdings_analysis(valuations, complete_snapshots=True, sector_mapping={})
+    mappings = {
+        "wrong_id_type": {1: "Technology"},
+        "missing_id": pd.DataFrame({"asset": [None], "sector": ["Technology"]}),
+        "empty_label": {"A": ""},
+        "infinite_label": {"A": float("inf")},
+        "boolean_label": {"A": True},
+        "extra_column": pd.DataFrame(
+            {"asset": ["A"], "sector": ["Technology"], "known_at": ["future"]}
+        ),
+    }
+    with pytest.raises((ValueError, TypeError), match="asset IDs|sector labels|mapping columns"):
+        analysis.compute_holdings_analysis(
+            valuations, complete_snapshots=True, sector_mapping=mappings[defect]
+        )
+
+
+def test_dated_mapping_cannot_round_nanoseconds_into_a_different_holdings_key():
+    _, returns, positions, valuations, _ = _analysis()
+    tz = valuations["date"].dtype.time_zone
+    dates = pl.Series("date", returns.index).cast(pl.Datetime("us", tz))
+    analysis = PortfolioAnalysis(returns, positions=positions, dates=dates)
+    analysis.compute_holdings_analysis(valuations, complete_snapshots=True, sector_mapping={})
+    mapping = pd.DataFrame(
+        {
+            "date": [returns.index[-1] + pd.Timedelta(1, unit="ns")],
+            "asset": ["A"],
+            "sector": ["Technology"],
+        }
+    )
+    with pytest.raises(ValueError, match="precision"):
+        analysis.compute_holdings_analysis(
+            valuations, complete_snapshots=True, sector_mapping=mapping
+        )
+
+
+def test_unheld_classifications_do_not_expand_the_observed_holdings_sample():
+    analysis, _, _, valuations, _ = _analysis()
+    result = analysis.compute_holdings_analysis(
+        valuations,
+        complete_snapshots=True,
+        sector_mapping={"A": "Technology", "B": "Finance", "C": "Unused"},
+    )
+    assert result.positions.height == 6 and "Unused" not in result.sectors["sector"].to_list()
+    _assert_conservation(result)
+
+
+def test_sector_requests_do_not_change_a_later_unclassified_result_or_cached_return_metrics():
+    analysis, _, _, valuations, _ = _analysis()
+    metrics = analysis.compute_summary_stats().to_dict()
+    analysis.compute_holdings_analysis(
+        valuations, complete_snapshots=True, sector_mapping={"A": "Technology", "B": "Finance"}
+    )
+    plain = analysis.compute_holdings_analysis(valuations, complete_snapshots=True)
+    assert plain.sectors is None and "sector" not in plain.positions.columns
+    assert plain.timeline["gross_exposure"].to_list() == [0, 700, 700]
+    after = analysis.compute_summary_stats().to_dict()
+    for name, value in metrics.items():
+        if value is None:
+            assert after[name] is None
+        else:
+            np.testing.assert_equal(after[name], value)
