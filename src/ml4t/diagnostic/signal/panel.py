@@ -205,6 +205,37 @@ class PreparedSignalPanel:
             asset_col=self.asset_col,
         )
 
+    def quantile_spread(
+        self,
+        *,
+        upper_quantile: int,
+        lower_quantile: int,
+        by_date: bool = False,
+        by_group: bool = False,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        include_standard_error: bool = True,
+    ) -> pl.DataFrame:
+        """Inspect arbitrary bucket mean differences and independent propagated errors.
+
+        Reuse quantile_statistics samples and compute_quantile_spread. Raw
+        differences represent +1 upper / -1 lower exposure, not unit-gross
+        portfolio returns or the existing pooled analyze() Student test.
+        """
+        from ml4t.diagnostic.signal.quantile import compute_quantile_spread
+
+        return compute_quantile_spread(
+            self.quantile_statistics(
+                by_date=by_date,
+                by_group=by_group,
+                demeaned=demeaned,
+                group_adjust=group_adjust,
+            ),
+            upper_quantile=upper_quantile,
+            lower_quantile=lower_quantile,
+            include_standard_error=include_standard_error,
+        )
+
     def demean_returns(self, *, by_group: bool = False) -> pl.DataFrame:
         """Inspect date- or date/group-demeaned outcomes without changing this panel.
 
