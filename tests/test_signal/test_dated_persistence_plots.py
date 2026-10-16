@@ -228,7 +228,7 @@ def test_actual_dated_report_contains_visible_plot_values_counts_and_exact_clock
             measured = page.locator("#turnover").evaluate("""e=>{
                 const plots=Array.from(e.querySelectorAll('.js-plotly-plot')).map(p=>{
                     const r=p.getBoundingClientRect(),title=p.querySelector('.gtitle'),t=title.getBoundingClientRect();
-                    return {title:p._fullLayout.title.text,width:r.width,legend:Array.from(p.querySelectorAll('.legendtext')).map(n=>n.textContent),title_bounds:{left:t.left-r.left,right:t.right-r.left},traces:p._fullData.map(d=>({name:d.name,x:d.x,y:d.y,custom:d.customdata})),text:Array.from(p.querySelectorAll('text')).filter(n=>n.getBoundingClientRect().width>0).map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)}))};
+                    return {title:p._fullLayout.title.text,width:r.width,plot_top:p._fullLayout._size.t,y_range:p._fullLayout.yaxis.range,legend:Array.from(p.querySelectorAll('.legendtext')).map(n=>n.textContent),title_bounds:{left:t.left-r.left,right:t.right-r.left,bottom:t.bottom-r.top},traces:p._fullData.map(d=>({name:d.name,x:d.x,y:d.y,custom:d.customdata})),text:Array.from(p.querySelectorAll('text')).filter(n=>n.getBoundingClientRect().width>0).map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)}))};
                 });return {width:innerWidth,body_font:parseFloat(getComputedStyle(e.querySelector('p')).fontSize),plots};
             }""")
         finally:
@@ -238,6 +238,9 @@ def test_actual_dated_report_contains_visible_plot_values_counts_and_exact_clock
     expected_dates = dates[[1]] if profile == "single_date" else dates[[1, 3]]
     for plot in measured["plots"]:
         assert 0 <= plot["title_bounds"]["left"] < plot["title_bounds"]["right"] <= plot["width"]
+        assert plot["title_bounds"]["bottom"] <= plot["plot_top"]
+        lower = -1.05 if plot["title"].startswith("Dated Rank") else -0.05
+        assert lower - 1e-12 <= plot["y_range"][0] < plot["y_range"][1] <= 1.05 + 1e-12
         assert plot["legend"] == [trace["name"] for trace in plot["traces"]]
         for text in plot["text"]:
             assert 13 <= text["size"] <= measured["body_font"]

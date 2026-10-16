@@ -75,6 +75,7 @@ def _plot_dated_persistence(
         theme=theme,
         width=width or config["defaults"]["line_height"] + 300,
         height=height or config["defaults"]["line_height"],
+        margin={"t": 90},
     )
     metadata = {"lag": selected, "lag_unit": "observations"}
     for column in (
@@ -89,13 +90,15 @@ def _plot_dated_persistence(
     buckets = [None] if rank else observations["quantile"].unique().sort().to_list()
     if not rank and not show_all_quantiles:
         buckets = list(dict.fromkeys([buckets[-1], buckets[0]])) if buckets else []
-    category_clock = False
+    defined = observations["autocorrelation" if rank else "turnover"].drop_nulls()
+    category_clock = not len(defined)
     for index, bucket in enumerate(buckets):
         rows = observations if rank else observations.filter(pl.col("quantile") == bucket)
         if rows["date"].dtype.is_temporal():
             timestamps = [pd.Timestamp(value) for value in rows["date"].to_pandas()]
             dates = [value.isoformat() for value in timestamps]
             category_clock |= any(value.value % 1_000_000 for value in timestamps)
+            category_clock |= len(timestamps) == 1
         else:
             dates = [str(value) for value in rows["date"]]
             category_clock = True
@@ -141,8 +144,9 @@ def _plot_dated_persistence(
             ticktext=[str(index + 1) for index in range(len(dates))],
         )
     if not rank:
-        figure.update_yaxes(tickformat=".0%")
-    defined = observations["autocorrelation" if rank else "turnover"].drop_nulls()
+        figure.update_yaxes(tickformat=".0%", range=[-0.05, 1.05], tickvals=[0, 0.25, 0.5, 0.75, 1])
+    else:
+        figure.update_yaxes(range=[-1.05, 1.05], tickvals=[-1, -0.5, 0, 0.5, 1])
     if not len(defined):
         figure.add_annotation(
             text="Rank autocorrelation unavailable" if rank else "Turnover unavailable",

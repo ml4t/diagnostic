@@ -653,7 +653,8 @@ bucket. Rank plots show the existing full-date average-rank Pearson estimates,
 not reranked paired-sample Spearman correlations. With changing membership,
 the paired ranks `[1, 2, 4]` and `[1, 2, 3]` yield `9 / sqrt(84)`, not `1`.
 Both charts preserve null gaps and show actual counts and statuses on hover.
-Sub-millisecond observations use a categorical observed-order axis with exact
+Sub-millisecond, single-date and entirely unavailable samples use a categorical
+observed-order axis with exact
 timestamps on hover, avoiding millisecond collapse in the browser. An empty
 warmup sample displays unavailable; a supplied empty clock retains missing
 observations rather than fabricated zero estimates.
