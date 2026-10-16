@@ -223,6 +223,37 @@ reported as a fabricated zero. Signal results express positive observations
 as a percentage, while the direct metric summary uses a fraction. JSON uses
 null for unavailable values and restores them as NaN on the result round trip.
 
+### Match IC report statistics to selected dates
+
+Unreleased after 0.1.9, `result.to_ic_result()` and the tear-sheet bridge compute
+their summaries from the common finite IC dates they retain across requested
+horizons. The original `SignalResult.ic`, standard deviation and inference maps
+still describe each horizon's full finite sample. Select one period explicitly
+to inspect that horizon without another horizon's date restriction:
+
+```python
+single_ic = result.to_ic_result(period=1)
+values = np.asarray(single_ic.ic_by_date["1D"])
+assert np.isclose(single_ic.ic_mean["1D"], values.mean())
+print(single_ic.get_dataframe("summary"))
+```
+
+For example, a quote-derived one-period IC series `[1, -1]` can be restricted to
+`[1]` when another horizon lacks the second date. The report mean is then `1`,
+not the original full-sample mean `0`. A singleton keeps its mean and positive
+percentage but no sample deviation, t/p or information ratio. An empty common
+intersection has unavailable statistics, not values copied from discarded
+observations. Required numeric summaries serialize unavailable values as null
+and restore NaN on JSON read; optional HAC/RAS fields are unchanged.
+
+Alphalens Reloaded 0.4.6 retains per-date undefined IC values in its table.
+The native facade still extracts finite IC dates before this bridge. Compare
+the same explicitly selected dates and finite observations; the bridge is not
+a complete dated-status/count export or a union-clock report. Calendar/bar
+semantics and full report composition remain separate accepted work. The
+[runnable supplied-panel example](https://github.com/ml4t/diagnostic/blob/0ef65182e33fb661cb9cb8ccaf3aa0d01d123a63/examples/signal_panel_cleaning.py)
+checks report means against their actual series and prints the report summaries.
+
 ### Prepare and audit supplied returns
 
 For an unbucketed factor Series and a precomputed return panel, unreleased
