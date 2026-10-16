@@ -55,6 +55,12 @@ def _fmt_duration(v: Any) -> str:
     return f"{float(v):.1f} d"
 
 
+def _fmt_bars(v: Any) -> str:
+    if v is None:
+        return "N/A"
+    return f"{float(v):.1f} bars"
+
+
 def _fmt_shape(v: Any) -> str:
     if v is None:
         return "\u2014"
@@ -115,7 +121,7 @@ _SIDEBAR_GROUPS: list[tuple[str, list[tuple[str, tuple[str, ...], Any, bool]]]] 
             ("Trades", ("num_trades", "n_trades"), _fmt_int, False),
             ("Win Rate", ("win_rate",), _fmt_pct, True),
             ("Profit Factor", ("profit_factor",), _fmt_ratio, True),
-            ("Avg Holding", ("avg_bars_held",), _fmt_duration, False),
+            ("Avg Holding", ("avg_bars_held",), _fmt_bars, False),
         ],
     ),
     (
@@ -409,7 +415,7 @@ def create_activity_strip_html(metrics: dict[str, Any]) -> str:
 
     avg_holding = _get(metrics, "avg_bars_held")
     if avg_holding is not None:
-        cards.append(_kpi_card("AVG HOLDING", f"{float(avg_holding):.1f} days"))
+        cards.append(_kpi_card("AVG HOLDING", f"{float(avg_holding):.1f} bars"))
 
     avg_turnover = _get(metrics, "avg_turnover")
     if avg_turnover is not None:
