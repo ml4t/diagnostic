@@ -1,6 +1,9 @@
 """Prepared holdings must reach real portfolio figures, exports and readable HTML."""
 
 import shutil
+import subprocess
+import sys
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -163,6 +166,25 @@ def test_valid_nanosecond_keys_survive_holdings_chart_transport_and_export_witho
     assert [row["date"] for row in report.to_dict()["holdings"]["timeline"]] == expected
 
 
+def test_date_labels_are_not_exported_as_invented_midnight_event_timestamps():
+    days = pl.Series("date", [date(2025, 1, day) for day in [2, 3, 6]])
+    analysis = PortfolioAnalysis(
+        [0.0, 0.0, 0.0],
+        dates=days,
+        positions=pl.DataFrame(
+            {"date": days, "A": [0.0, 400.0, 400.0], "B": [0.0, -300.0, -300.0]}
+        ),
+    )
+    holdings = analysis.compute_holdings_analysis(
+        pl.DataFrame({"date": days, "equity": [1000.0] * 3, "cash": [1000.0, 900.0, 900.0]}),
+        complete_snapshots=True,
+    )
+    report = create_portfolio_dashboard(analysis, holdings=holdings)
+    expected = ["2025-01-02", "2025-01-03", "2025-01-06"]
+    assert list(report.figures["Holdings Exposure"].data[0].x) == expected
+    assert [row["date"] for row in report.to_dict()["holdings"]["timeline"]] == expected
+
+
 def test_requested_but_unprepared_positions_have_actionable_reason_and_are_not_silently_ignored():
     analysis, _, _ = _prepared()
     report = create_portfolio_dashboard(analysis, include_positions=True)
@@ -224,6 +246,41 @@ def test_report_and_exports_own_the_prepared_snapshot_without_changing_analysis(
     assert report.holdings.positions["value"][0] == 0
     for key, value in original.items():
         np.testing.assert_equal(analysis.compute_summary_stats().to_dict()[key], value)
+
+
+def test_real_write_interruption_cannot_replace_verified_html_with_a_partial_report(tmp_path):
+    pytest.importorskip(
+        "resource", reason="POSIX file-size limit required for real write interruption"
+    )
+    path = tmp_path / "report.html"
+    path.write_bytes(b"existing verified report")
+    probe = """
+import errno
+import resource
+import signal
+import sys
+import pandas as pd
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
+analysis = PortfolioAnalysis(pd.Series([0., .01, -.01],index=pd.date_range('2025-01-01',periods=3)))
+report = create_portfolio_dashboard(analysis,include_positions=False,include_transactions=False)
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+resource.setrlimit(resource.RLIMIT_FSIZE,(4096,4096))
+try:
+    report.save_html(sys.argv[1],include_plotlyjs=True)
+except OSError as error:
+    assert error.errno == errno.EFBIG, repr(error)
+    print('write_interrupted')
+else:
+    raise AssertionError('Real file-size limit did not interrupt report output')
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", probe, str(path)], capture_output=True, text=True, timeout=60
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "write_interrupted" in completed.stdout
+    assert path.read_bytes() == b"existing verified report"
+    assert list(tmp_path.iterdir()) == [path]
 
 
 @pytest.mark.parametrize("width", [1280, 375])
