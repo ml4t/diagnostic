@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from numbers import Integral, Real
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Literal, Union
 
 import numpy as np
 import polars as pl
@@ -30,6 +30,7 @@ from scipy import stats
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
+from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
 from .inputs import (
     annual_risk_free,
     initial_valuation_time,
@@ -159,7 +160,7 @@ class PortfolioAnalysis:
         self._benchmark = owned_benchmark
         self._dates = owned_dates
         self._initial_timestamp = initial_valuation_time(initial_timestamp, owned_dates)
-        self._positions = self._to_polars_df(positions) if positions is not None else None
+        self._positions = position_snapshot(positions) if positions is not None else None
         self._transactions = self._to_polars_df(transactions) if transactions is not None else None
 
         self._risk_free = annual_rf
@@ -221,6 +222,38 @@ class PortfolioAnalysis:
     def has_transactions(self) -> bool:
         """Check if transactions data was provided."""
         return self._transactions is not None
+
+    def compute_holdings_analysis(
+        self,
+        valuations: DataFrameLike,
+        *,
+        complete_snapshots: bool,
+        snapshot_kind: Literal["observed", "end_of_day", "intraday"] = "observed",
+    ) -> HoldingsAnalysisResult:
+        """Analyze complete holdings on exact supplied return observation keys.
+
+        Positions are signed market values in long date/asset/value format or
+        wide string asset columns. Pandas DatetimeIndex labels are retained.
+        Valuations supply date and optional reported equity/cash, in the same
+        currency as holdings. Missing NAV leaves NAV ratios unavailable; NAV is
+        never inferred from cash plus holdings. Missing position marks fail.
+
+        Explicit completeness declares absent assets zero within a snapshot;
+        every observation still requires a dated snapshot. No calendar grouping,
+        forward fill, intraday reconstruction or instrument valuation is done.
+        Snapshot kind is caller-declared provenance, not an inferred schedule.
+        The result and its tables are independent of inputs and previous calls.
+        """
+        self.require_dates()
+        if self._positions is None:
+            raise ValueError("positions are required for holdings analysis")
+        return analyze_holdings(
+            self._positions,
+            valuations,
+            self._dates,
+            complete_snapshots=complete_snapshots,
+            snapshot_kind=snapshot_kind,
+        )
 
     # =========================================================================
     # Core Metric Methods

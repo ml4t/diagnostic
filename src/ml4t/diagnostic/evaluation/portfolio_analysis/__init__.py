@@ -17,6 +17,7 @@ from __future__ import annotations
 
 # Main analysis class
 from ml4t.diagnostic.evaluation.portfolio_analysis.analysis import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.portfolio_analysis.holdings import HoldingsAnalysisResult
 
 # Core metric functions
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
@@ -51,6 +52,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
 __all__ = [
     # Main class
     "PortfolioAnalysis",
+    "HoldingsAnalysisResult",
     # Result classes
     "PortfolioMetrics",
     "RollingMetricsResult",

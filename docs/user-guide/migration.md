@@ -971,7 +971,8 @@ Zipline backtest object directly.
 |---|---|---|
 | Daily noncumulative return Series | `PortfolioAnalysis(returns=..., dates=...)` | A pandas DatetimeIndex is retained automatically. Explicit dates must agree with it; set `periods_per_year` and risk-free convention explicitly. |
 | Benchmark return Series | `PortfolioAnalysis(benchmark=...)` | A dated Series is aligned to every strategy observation, with extra benchmark dates excluded. Missing/duplicate keys and timezone mismatches raise; verify currency separately. Undated arrays must have equal lengths. |
-| Daily position values and fill transactions | `PortfolioAnalysis(positions=..., transactions=...)` | Positions may be wide by asset or long `date`, `asset`, `value`; transactions need `date`, `asset`, `quantity`, `price`, `commission`. Reconcile cash, signs, and fees. |
+| Complete dated signed holdings | `PortfolioAnalysis(positions=...).compute_holdings_analysis(valuations, complete_snapshots=True)` | Unreleased after 0.1.9. Wide string asset columns or long `date`, `asset`, `value`; supply exact observed keys and reported account values. See [prepared holdings](#analyze-prepared-holdings-on-observed-keys). |
+| Fill transactions | `PortfolioAnalysis(transactions=...)` | Currently stored only, not a direct transaction-analysis or fill-to-trade workflow. Passing a table does not enable those analyses. Reconcile fees and executed quantities upstream. |
 | Performance HTML | `generate_backtest_tearsheet(returns=..., metrics=...)` | Install the `viz` extra; supply a return array and any precomputed metrics. This is not a Pyfolio report template. |
 | A completed `ml4t-backtest` result | `generate_tearsheet_from_result(result)` | Only this bridge takes an `ml4t-backtest` result; it does not ingest a Pyfolio or Zipline result. |
 | Trade-level ranking | `TradeAnalysis` on `TradeRecord` objects | Pair fills into completed trades and calculate PnL and duration first. Raw Pyfolio transaction rows are not completed trades. |
@@ -1070,6 +1071,69 @@ inputs and different dated windows raise instead of guessing observation identit
 Single-series uncertainty retains its finite-value filter; neither route validates
 a calendar grid or records excluded dates in its result. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
 intervals; matching point estimates does not establish interval equivalence.
+
+### Analyze prepared holdings on observed keys
+
+In unreleased source after 0.1.9, use the existing `PortfolioAnalysis` workflow
+for complete, caller-prepared signed market values in a single account currency.
+Supply dated account valuations separately. Reported `equity` is authoritative;
+Diagnostic does not infer NAV from cash plus holdings, which need not describe
+account equity for every instrument. Missing equity is allowed and leaves only
+NAV-dependent ratios unavailable.
+
+Run the existing example without Pyfolio, Backtest or visualization packages:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task holdings
+```
+
+The example supplies three dated snapshots, first all-cash and then A=400,
+B=-300, cash=900 and NAV=1000. The resulting long/short magnitudes are .4/.3,
+gross/net exposures .7/.1, largest absolute-invested-capital share 4/7 and
+gross HHI 25/49. Per-asset `nav_weight` preserves signed shorts (-.3).
+Pyfolio 0.9.9's `pos.get_long_short_pos()` instead reports short exposure as
+a negative number. `pos.get_percent_alloc()` includes cash; Diagnostic's
+`gross_share` and concentration exclude cash and use absolute asset values.
+These are declared conventions, not interchangeable columns. The example also
+checks canonical long inputs with integer asset IDs (A=1, B=2).
+
+Positions may be wide pandas/Polars tables or canonical long `date`, `asset`,
+`value` rows. Pandas DatetimeIndex labels are preserved. Wide tables reserve
+`date` and optional `cash`; use long format for integer asset IDs or assets
+named `asset`/`value`. Values must already be marked market values, not
+quantities or unconverted foreign currencies. All frames must cover the same
+exact, unique return observation keys and timezone. Intraday keys are not
+normalized to civil dates. Different datetime storage precision is accepted
+only when the actual keys agree.
+
+`complete_snapshots=True` explicitly declares absent assets zero within each
+snapshot; it does not fill missing dates or unknown marks. Long format still
+needs a row for every observation, including an explicit zero holding for an
+all-cash observation. Wide cash-only rows also represent complete all-cash
+snapshots. Null/nonfinite asset marks and duplicate date/asset IDs raise.
+Optional wide cash must agree with cash supplied in valuations. Missing cash
+stays unknown. Caller inputs are copied before conversion, and every result
+owns independent tables.
+
+The typed `HoldingsAnalysisResult` contains `positions`, `timeline`, shared
+occupancy `metrics`, `coverage` and caller-declared `snapshot_kind`
+(`observed`, `end_of_day` or `intraday`). No kind infers a calendar or validates
+a session boundary. Exposure ratios reuse the existing
+[Backtest occupancy kernel](#retain-raw-exposure-when-equity-cannot-normalize-it),
+which provides a tested reason to evaluate this route alongside Backtest
+analysis without a fabricated engine result. Counts and averages use supplied
+observations, not elapsed days or inferred sessions.
+
+Zero, negative or missing NAV leaves ratios null while raw values, counts and
+gross-capital concentration remain available. All-cash positive NAV has known
+zero exposure but undefined concentration, not HHI=0. Inspect normalization
+coverage before using averages. `snapshot_kind="intraday"` describes observed
+snapshots only; it does not reconstruct missing intraday holdings.
+
+This route does not yet provide sectors, intraday reconstruction, automatic
+per-asset Backtest holdings exports, calendar/session-aware `from_pyfolio()` or
+`from_zipline()`, transaction costs/scenarios or complete portfolio reports.
+Those remain accepted coverage requirements. No full replacement is claimed.
 
 ### Retain raw exposure when equity cannot normalize it
 

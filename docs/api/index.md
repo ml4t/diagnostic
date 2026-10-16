@@ -243,6 +243,14 @@ These workflows live under `ml4t.diagnostic.evaluation`:
 | Trade diagnostics | `TradeAnalysis`, `TradeShapAnalyzer`, `TradeShapResult` |
 | Event and barrier workflows | `EventStudyAnalysis`, `BarrierAnalysis` |
 
+For complete signed holdings on exact observed keys, see
+[prepared holdings](../user-guide/migration.md#analyze-prepared-holdings-on-observed-keys).
+Calendar/session ingestion and full Pyfolio reporting remain separate work.
+
+::: ml4t.diagnostic.evaluation.portfolio_analysis.PortfolioAnalysis.compute_holdings_analysis
+
+::: ml4t.diagnostic.evaluation.portfolio_analysis.HoldingsAnalysisResult
+
 ## Statistical Tests
 
 ::: ml4t.diagnostic.evaluation.stats
