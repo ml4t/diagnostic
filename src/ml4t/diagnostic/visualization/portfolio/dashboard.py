@@ -5,7 +5,9 @@ Creates comprehensive tear sheets with multiple panels.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
+from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +22,7 @@ from ml4t.diagnostic.visualization.core import (
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
     )
@@ -42,6 +45,8 @@ class PortfolioTearSheet:
     figures: dict[str, go.Figure] = field(default_factory=dict)
     html_content: str | None = None
     _analysis: PortfolioAnalysis | None = None
+    holdings: HoldingsAnalysisResult | None = None
+    availability: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def show(self, compact: bool = False) -> None:
         """Display tear sheet in Jupyter notebook or browser.
@@ -81,7 +86,7 @@ class PortfolioTearSheet:
         include_plotlyjs: bool | str = "cdn",
         full_html: bool = True,
     ) -> None:
-        """Save tear sheet as self-contained HTML file.
+        """Save HTML with embedded or linked Plotly.js.
 
         Parameters
         ----------
@@ -105,6 +110,7 @@ class PortfolioTearSheet:
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Portfolio Tear Sheet</title>
     <style>
         body {{
@@ -127,6 +133,8 @@ class PortfolioTearSheet:
             font-size: 13px;
             line-height: 1.5;
             color: {COLORS["neutral"]};
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }}
         .plot-container {{
             background: white;
@@ -134,6 +142,7 @@ class PortfolioTearSheet:
             padding: 15px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(10,22,40,0.08);
+            overflow-x: auto;
         }}
         h1 {{
             color: {COLORS["blue"]};
@@ -143,7 +152,9 @@ class PortfolioTearSheet:
         h2 {{
             color: {COLORS["slate"]};
             margin-top: 0;
+            font-size: 16px;
         }}
+        .figure-note {{ font-size: 13px; line-height: 1.5; }}
     </style>
 </head>
 <body>
@@ -154,12 +165,26 @@ class PortfolioTearSheet:
         html_parts.append(f"""
     <div class="metrics-summary">
         <h2>Performance Summary</h2>
-        <pre>{self.metrics.summary()}</pre>
+        <pre>{escape(self.metrics.summary())}</pre>
     </div>
 """)
 
+        if self.availability:
+            notes = "".join(
+                f"<li><strong>{escape(name.replace('_', ' '))}</strong>: "
+                f"{escape(info['status'])}. {escape(info.get('reason') or '')}</li>"
+                for name, info in self.availability.items()
+                if info.get("reason") or info["status"] != "available"
+            )
+            html_parts.append(
+                '<section class="metrics-summary"><h2>Analysis availability</h2>'
+                "<p>Panels describe the supplied observations. Missing analysis is not zero risk.</p>"
+                f"<ul>{notes}</ul></section>"
+            )
+
         # Add each figure
         for name, fig in self.figures.items():
+            description = (fig.layout.meta or {}).get("description", "")
             fig_html = fig.to_html(
                 include_plotlyjs=include_plotlyjs
                 if name == list(self.figures.keys())[0]
@@ -168,7 +193,8 @@ class PortfolioTearSheet:
             )
             html_parts.append(f"""
     <div class="plot-container">
-        <h2>{name}</h2>
+        <h2>{escape(name)}</h2>
+        <p class="figure-note">{escape(description)}</p>
         {fig_html}
     </div>
 """)
@@ -201,9 +227,29 @@ class PortfolioTearSheet:
         dict
             Contains metrics and figure data
         """
+        from .holdings_plots import _holdings_records
+
+        holdings = (
+            None
+            if self.holdings is None
+            else {
+                "positions": _holdings_records(self.holdings.positions),
+                "timeline": _holdings_records(self.holdings.timeline),
+                "sectors": _holdings_records(self.holdings.sectors),
+                "metrics": deepcopy(self.holdings.metrics),
+                "coverage": deepcopy(self.holdings.coverage),
+                "snapshot_kind": self.holdings.snapshot_kind,
+                "top_positions": {
+                    side: self.holdings.top_positions(side=side).to_dicts()
+                    for side in ["long", "short", "absolute"]
+                },
+            }
+        )
         return {
             "metrics": self.metrics.to_dict(),
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
+            "holdings": holdings,
+            "availability": deepcopy(self.availability),
         }
 
 
@@ -215,6 +261,8 @@ def create_portfolio_dashboard(
     include_benchmark: bool = True,
     height_per_row: int = 300,
     width: int | None = None,
+    *,
+    holdings: HoldingsAnalysisResult | None = None,
 ) -> PortfolioTearSheet:
     """Create comprehensive portfolio tear sheet.
 
@@ -243,6 +291,10 @@ def create_portfolio_dashboard(
         Height per subplot row
     width : int, optional
         Figure width
+    holdings : HoldingsAnalysisResult, optional
+        Explicitly prepared complete holdings on this analysis's exact observation
+        keys. Computed analytics are rendered without inferring NAV or positions.
+        Requested but absent results have an explicit availability reason.
 
     Returns
     -------
@@ -260,6 +312,39 @@ def create_portfolio_dashboard(
     get_theme_config(theme)
 
     analysis.require_dates()
+    availability = {
+        "positions": {"status": "not_requested", "reason": "Position analysis was not requested."},
+        "transactions": {
+            "status": "unavailable" if include_transactions else "not_requested",
+            "reason": "Prepared transaction reporting is not implemented in this dashboard."
+            if include_transactions
+            else "Transaction analysis was not requested.",
+        },
+    }
+    prepared = None
+    if include_positions:
+        if holdings is None:
+            availability["positions"] = {
+                "status": "unavailable",
+                "reason": "Supply holdings=analysis.compute_holdings_analysis(valuations, complete_snapshots=True); NAV and snapshot completeness are not inferred.",
+            }
+        else:
+            from ml4t.diagnostic.evaluation.portfolio_analysis import HoldingsAnalysisResult
+            from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import date_index
+
+            if not isinstance(holdings, HoldingsAnalysisResult):
+                raise TypeError("holdings must be a prepared HoldingsAnalysisResult")
+            actual, expected = date_index(holdings.timeline["date"]), date_index(analysis.dates)
+            if (
+                len(actual) != len(expected)
+                or actual.tz != expected.tz
+                or not (actual == expected).all()
+            ):
+                raise ValueError(
+                    "holdings must match the exact analysis observation keys and timezone"
+                )
+            prepared = deepcopy(holdings)
+            availability["positions"] = {"status": "available", "reason": None}
     # Compute all metrics
     metrics = analysis.compute_summary_stats()
 
@@ -369,10 +454,28 @@ def create_portfolio_dashboard(
         width=width,
     )
 
+    if prepared is not None:
+        from .holdings_plots import _holdings_figures
+
+        position_figures, position_availability = _holdings_figures(
+            prepared, theme, height_per_row, width
+        )
+        figures.update(position_figures)
+        availability.update(position_availability)
+    for fig in figures.values():
+        fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
+        fig.update_xaxes(tickfont_size=14, title_font_size=14)
+        fig.update_yaxes(tickfont_size=14, title_font_size=14)
+        fig.update_annotations(font_size=13)
+        if width is None:
+            fig.update_layout(width=None, autosize=True)
+
     return PortfolioTearSheet(
         metrics=metrics,
         figures=figures,
         _analysis=analysis,
+        holdings=prepared,
+        availability=availability,
     )
 
 
