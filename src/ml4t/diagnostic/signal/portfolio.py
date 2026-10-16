@@ -18,6 +18,8 @@ from ml4t.diagnostic.utils.validation import (
 def _weight_values(values: np.ndarray, demeaned: bool, equal_weight: bool) -> np.ndarray:
     scale = np.max(np.abs(values)) if len(values) else 0.0
     scaled = values / scale if scale > 0 else np.zeros(len(values))
+    if demeaned and len(scaled):
+        scaled = scaled - scaled[0]
     if equal_weight:
         weights = np.sign(scaled - np.median(scaled) if demeaned else scaled)
         if demeaned:
@@ -57,6 +59,8 @@ def compute_factor_weights(
     Active groups receive equal gross exposure; inactive groups stay zero.
 
     Inputs must have unique nonmissing date/asset keys and finite numeric factors.
+    Normalization rescales finite magnitudes and removes a common offset before
+    centering to avoid overflow and near-constant exposure cancellation.
     This helper does not clean, filter by future outcomes or construct buckets.
     Zero dispersion produces zero weights, not the undefined zero-normalization
     result in released Alphalens 0.4.6. No positions, expirations, capital or

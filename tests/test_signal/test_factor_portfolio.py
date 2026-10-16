@@ -1,5 +1,6 @@
 """Factor exposure and contributions must retain the declared point-in-time universe."""
 
+import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
@@ -294,3 +295,24 @@ def test_finite_feature_units_do_not_overflow_factor_weight_gross_normalization(
     result = compute_factor_weights(scaled, demeaned=demeaned, equal_weight=equal_weight)
     expected = _expected(demeaned, False, equal_weight, False, True) * 2
     assert result["weight"].to_list() == pytest.approx(expected, abs=1e-14)
+
+
+@pytest.mark.parametrize("two_high", [False, True])
+@pytest.mark.parametrize("equal_weight", [False, True])
+def test_near_constant_quote_features_do_not_round_centered_exposure_to_one_side(
+    two_high, equal_weight
+):
+    from ml4t.diagnostic.signal import compute_factor_weights
+
+    factor, _, groups, _ = _inputs()
+    threshold = 0.375 if two_high else 0.75
+    probability = (1 + np.spacing(1.0) * (factor > threshold)).rename("factor")
+    result = compute_factor_weights(probability.to_frame().join(groups), equal_weight=equal_weight)
+    expected = (
+        [-0.25, -0.25, 0.25, 0.25]
+        if two_high
+        else [0, 0, 0, 1]
+        if equal_weight
+        else [-1 / 6, -1 / 6, -1 / 6, 0.5]
+    )
+    assert result["weight"].to_list() == pytest.approx(expected * 2, abs=1e-14)
