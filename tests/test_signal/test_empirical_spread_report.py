@@ -322,6 +322,40 @@ def test_actual_long_quote_sample_exercises_complete_22_observation_means_not_on
     assert np.isfinite(np.asarray(_trace(figure, "Propagated SE band").y)).all()
 
 
+def test_real_compounding_producer_cannot_replace_mean_return_spreads_with_wealth_increments():
+    from ml4t.diagnostic.evaluation import PortfolioAnalysis
+    from ml4t.diagnostic.visualization.portfolio import plot_cumulative_returns
+
+    factor, marks, panel, _ = _inputs()
+    result = _analysis("owned", factor, marks, panel)
+    model = result.to_quantile_result()
+    observations = result.quantile_observations.to_pandas()
+    paths = {}
+    dates = None
+    for period in model.periods:
+        paths[period] = {}
+        for bucket in [1, 2]:
+            sample = (
+                observations[
+                    (observations["return_column"] == period) & (observations["quantile"] == bucket)
+                ]
+                .set_index("date")["mean"]
+                .sort_index()
+            )
+            cumulative = plot_cumulative_returns(PortfolioAnalysis(sample))
+            paths[period][f"Q{bucket}"] = list(cumulative.data[0].y)
+            dates = [day.isoformat() for day in sample.index]
+    supplied = type(model).model_validate(
+        {**model.model_dump(), "cumulative_returns": paths, "cumulative_dates": dates}
+    )
+    figure = plot_spread_timeseries(supplied, period="1D", rolling_window=2)
+    observed = next(
+        trace for trace in figure.data if trace.name in {"Observed Spread", "Daily Spread"}
+    )
+    np.testing.assert_allclose(observed.y, [0.25, 0.0625], rtol=0, atol=1e-14)
+    assert "95% CI" not in [trace.name for trace in figure.data]
+
+
 @pytest.mark.parametrize("width", [1280, 375])
 def test_actual_offline_report_browser_renders_spread_values_and_exact_nanosecond_hover(
     width, tmp_path
