@@ -2,6 +2,9 @@
 
 import json
 import math
+import re
+import shutil
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -248,3 +251,63 @@ def test_explicit_shared_adjustments_supply_real_selected_date_bucket_values(
         if representation == "polars"
         else observations.equals(pl.from_pandas(data.reset_index()))
     )
+
+
+@pytest.mark.parametrize("width", [1280, 375])
+def test_offline_report_browser_renders_actual_empirical_arrays_with_its_own_runtime(
+    width, tmp_path
+):
+    from ml4t.diagnostic.visualization.signal import SignalDashboard
+
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
+    if chrome is None:
+        pytest.skip("Installed Chrome/Chromium is required for actual report browser checks")
+    factor, marks, panel, _ = _inputs(True)
+    report = SignalDashboard().generate(_analysis("owned", factor, marks, panel).to_tear_sheet())
+    probe = """<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const button = Array.from(document.querySelectorAll('button')).find(node => node.textContent === 'Quantile Analysis');
+        button.click();
+        const panel = document.getElementById('quantile');
+        const marker = document.createElement('output');
+        marker.id = 'empirical-browser-check';
+        marker.textContent = JSON.stringify({
+            runtime: typeof Plotly === 'undefined' ? null : Plotly.version,
+            documentWidth:document.documentElement.scrollWidth, viewportWidth:innerWidth,
+            traces:Array.from(panel.querySelectorAll('.js-plotly-plot')).flatMap(plot => Array.from(plot._fullData || []).filter(trace => trace.type === 'violin').map(trace => ({name:trace.name,y:Array.from(trace.y || []),customdata:Array.from(trace.customdata || [])})))
+        });
+        document.body.appendChild(marker);
+    });
+    </script>"""
+    path = tmp_path / "report.html"
+    path.write_text(report.replace("</body>", probe + "</body>"))
+    completed = subprocess.run(
+        [
+            chrome,
+            "--headless",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-background-networking",
+            "--host-resolver-rules=MAP * ~NOTFOUND",
+            f"--user-data-dir={tmp_path / 'browser-profile'}",
+            f"--window-size={width},1000",
+            "--virtual-time-budget=1500",
+            "--dump-dom",
+            path.as_uri(),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    match = re.search(r'<output id="empirical-browser-check">([^<]+)</output>', completed.stdout)
+    assert match, completed.stderr
+    measured = json.loads(match[1])
+    assert measured["runtime"] is not None
+    actual = {trace["name"]: trace for trace in measured["traces"]}
+    assert set(actual) == {"Q1", "Q2"}
+    np.testing.assert_allclose(actual["Q1"]["y"], [0.0625, 0.0625], rtol=0, atol=1e-14)
+    np.testing.assert_allclose(actual["Q2"]["y"], [0.3125, 0.125], rtol=0, atol=1e-14)
+    assert [row[1] for row in actual["Q2"]["customdata"]] == [2, 1]
+    assert actual["Q2"]["customdata"][0][0].endswith("000000100+00:00")
+    assert measured["documentWidth"] <= measured["viewportWidth"]
