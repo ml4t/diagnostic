@@ -220,9 +220,10 @@ warmup observations and eight incomplete forward tails are excluded. It asserts
 those losses, then passes the owned panel to the existing analysis engine.
 The printed IC values describe synthetic data, not evidence of a profitable factor.
 
-Inspect `panel.data` and `panel.metadata["loss_by_stage"]` before calling
-`panel.analyze()`. Both accessors return independent copies; analysis JSON retains
-the selected Arrow snapshot and cleaning audit. Loss limits use the original
+Inspect `panel.data`, `panel.excluded_data` and `panel.metadata["loss_by_stage"]`
+before calling `panel.analyze()`. Each accessor returns an independent copy.
+Excluded keys retain their timestamp precision, first failing stage and reason;
+analysis JSON retains both Arrow snapshots and the cleaning audit. Loss limits use the original
 factor count. `max_loss=0` exposes bucket errors and permits no exclusions;
 values outside supplied bin/probability edges count as bucketing losses.
 Numeric factor/outcome columns are normalized to Float64 without modifying the

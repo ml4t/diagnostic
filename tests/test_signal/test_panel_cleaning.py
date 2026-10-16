@@ -1,6 +1,8 @@
 """Common supplied-return samples must be selected before factor bucketing."""
 
+import base64
 import math
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
@@ -391,6 +393,122 @@ def test_requested_return_columns_determine_the_common_sample_not_unused_tails()
     assert one.data["date"].n_unique() == 4
     assert both.analyze(min_assets=2).periods == (2, 1)
     assert pd.Timestamp(one.data["date"].max()) == dates[4]
+
+
+@pytest.mark.parametrize(
+    "producer",
+    [
+        "normal",
+        "zero_mark",
+        "group_gap",
+        "partial",
+        "constant",
+        "nanosecond",
+        "custom_keys",
+        "date_keys",
+    ],
+)
+def test_excluded_observation_keys_and_reasons_are_owned_exact_and_survive_analysis_json(
+    producer, tmp_path
+):
+    from ml4t.diagnostic import SignalResult
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, assets = _inputs(
+        nanosecond=producer == "nanosecond", zero_mark=producer == "zero_mark"
+    )
+    expected = {(day.value, asset): "returns" for day in dates[4:] for asset in assets}
+    expected.update({(dates[0].value, asset): "factor" for asset in assets})
+    options = {"quantiles": 2}
+    if producer == "zero_mark":
+        expected[(dates[3].value, "C")] = "factor"
+        expected[(dates[2].value, "C")] = "returns"
+    elif producer == "group_gap":
+        groups = (
+            pd.Series(
+                ["g1" if asset in ["A", "B"] else "g2" for _ in dates for asset in assets],
+                index=factor.index,
+            )
+            .drop((dates[2], "A"))
+            .reindex(factor.index)
+        )
+        options.update(groups=groups, binning_by_group=True)
+        expected.update({(dates[2].value, "A"): "groups", (dates[2].value, "B"): "bucketing"})
+    elif producer == "partial":
+        factor = factor - factor.groupby(level="date").transform("mean")
+        options["quantiles"] = [0.25, 0.75]
+        for day in dates[1:4]:
+            for asset in factor.loc[day].sort_values().iloc[[0, -1]].index:
+                expected[(day.value, asset)] = "bucketing"
+    elif producer == "constant":
+        factor.loc[dates[2]] = factor.loc[dates[2]].mean()
+        expected.update({(dates[2].value, asset): "bucketing" for asset in assets})
+    date_key, asset_key = "date", "asset"
+    if producer == "custom_keys":
+        date_key, asset_key = "timestamp", "symbol"
+        factor.index = factor.index.set_names([date_key, asset_key])
+        forward.index = forward.index.set_names([date_key, asset_key])
+        options.update(date_col=date_key, asset_col=asset_key)
+    elif producer == "date_keys":
+        factor = pl.from_pandas(factor.reset_index()).with_columns(pl.col("date").cast(pl.Date))
+        forward = pl.from_pandas(forward.reset_index()).with_columns(pl.col("date").cast(pl.Date))
+    panel = prepare_signal_panel(factor, forward, max_loss=1.0, **options)
+    excluded = panel.excluded_data
+    actual = dict(
+        zip(
+            zip(
+                excluded[date_key].dt.timestamp("ns").to_list(),
+                excluded[asset_key].to_list(),
+                strict=True,
+            ),
+            excluded["exclusion_stage"].to_list(),
+            strict=True,
+        )
+    )
+    assert actual == expected and excluded.height == len(expected)
+    assert excluded["exclusion_reason"].null_count() == 0
+    for stage, reason in excluded.select("exclusion_stage", "exclusion_reason").iter_rows():
+        expected_reason = {
+            "factor": "missing or nonfinite factor",
+            "returns": "missing or nonfinite requested outcome",
+            "groups": "missing or nonfinite group",
+        }.get(stage)
+        if expected_reason is not None:
+            assert reason == expected_reason
+        elif producer == "partial":
+            assert reason == "outside requested bucket edges"
+        else:
+            assert "Bin edges must be unique" in reason
+    if producer == "nanosecond":
+        assert excluded["date"].dtype == pl.Datetime("ns", "UTC")
+    retained = set(zip(panel.data[date_key].dt.timestamp("ns"), panel.data[asset_key], strict=True))
+    assert not retained.intersection(actual)
+    assert len(retained) + len(actual) == len(factor)
+    excluded.replace_column(
+        excluded.get_column_index("exclusion_stage"),
+        pl.Series("exclusion_stage", ["changed"] * excluded.height),
+    )
+    assert "changed" not in panel.excluded_data["exclusion_stage"].to_list()
+    if producer == "normal":
+        result = panel.analyze(min_assets=2)
+        path = tmp_path / "with-exclusions.json"
+        result.to_json(str(path))
+        restored = SignalResult.from_json(str(path))
+        encoded = restored.preparation_metadata["cleaning"]["excluded_data_ipc_base64"]
+        assert pl.read_ipc(BytesIO(base64.b64decode(encoded))).equals(panel.excluded_data)
+
+
+def test_already_complete_causal_sample_has_an_owned_empty_exclusion_schema():
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, _ = _inputs()
+    factor = factor.loc[(slice(dates[1], dates[3]), slice(None))]
+    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0.0)
+    assert panel.data.height == 12
+    excluded = panel.excluded_data
+    assert excluded.height == 0
+    assert excluded.columns == ["date", "asset", "exclusion_stage", "exclusion_reason"]
+    assert excluded["date"].dtype == panel.data["date"].dtype
 
 
 @pytest.mark.parametrize(

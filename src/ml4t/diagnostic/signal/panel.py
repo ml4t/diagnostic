@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -45,6 +46,15 @@ class PreparedSignalPanel:
     def metadata(self) -> dict:
         """Return an independent copy of the preparation audit."""
         return json.loads(self._audit)
+
+    @property
+    def excluded_data(self) -> pl.DataFrame:
+        """Return excluded keys with their first failing stage and reason.
+
+        The Arrow snapshot preserves timestamp precision and timezone. Its
+        base64 representation also survives the existing analysis JSON export.
+        """
+        return pl.read_ipc(BytesIO(base64.b64decode(self.metadata["excluded_data_ipc_base64"])))
 
     def analyze(
         self,
@@ -166,12 +176,14 @@ def prepare_signal_panel(
         One permits an empty owned panel; analyze() still rejects empty samples.
         Zero exposes bucket errors and allows no exclusions.
     factor_col, date_col, asset_col : str
-        Explicit input column/index names.
+        Explicit input column/index names, distinct from group, quantile and
+        the exclusion audit's exclusion_stage/exclusion_reason columns.
 
     Returns
     -------
     PreparedSignalPanel
-        Owned Float64 factor/outcome values, exact keys and loss provenance.
+        Owned Float64 factor/outcome values, exact retained/excluded keys and
+        loss provenance. excluded_data exposes each exclusion's stage/reason.
         Float32 input quantization cannot be recovered. Original input hashes
         precede Float64 conversion; caller objects are not modified.
     """
@@ -186,8 +198,23 @@ def prepare_signal_panel(
         or not 0 <= max_loss <= 1
     ):
         raise ValueError("max_loss must be a finite fraction in[0,1]")
-    if len({date_col, asset_col, factor_col, "group", "quantile"}) != 5:
-        raise ValueError("signal key/value names must be distinct from group and quantile")
+    if (
+        len(
+            {
+                date_col,
+                asset_col,
+                factor_col,
+                "group",
+                "quantile",
+                "exclusion_stage",
+                "exclusion_reason",
+            }
+        )
+        != 7
+    ):
+        raise ValueError(
+            "signal key/value names must be distinct from group, quantile and exclusion columns"
+        )
     factors = _frame(factor, date_col, asset_col, factor_col)
     returns = _frame(forward_returns, date_col, asset_col)
     keys = [date_col, asset_col]
@@ -217,13 +244,31 @@ def prepare_signal_panel(
     factors = factors.with_columns(pl.col(factor_col).cast(pl.Float64))
     returns = returns.with_columns(pl.col(column).cast(pl.Float64) for column in columns)
     input_rows = factors.height
+    exclusions = []
+
+    def exclude(frame: pl.DataFrame, stage: str, reason: str) -> None:
+        exclusions.append(
+            frame.select(*keys).with_columns(
+                pl.lit(stage).alias("exclusion_stage"), pl.lit(reason).alias("exclusion_reason")
+            )
+        )
+
+    exclude(
+        factors.filter(~pl.col(factor_col).is_finite().fill_null(False)),
+        "factor",
+        "missing or nonfinite factor",
+    )
     factors = factors.select(*keys, factor_col).filter(pl.col(factor_col).is_finite())
     losses = {"factor": input_rows - factors.height, "returns": 0, "groups": 0, "bucketing": 0}
     factors, returns = _align_datetime_key_resolution(
         factors, returns.select(*keys, *columns), date_col
     )
     data = factors.join(returns, on=keys, how="left")
-    complete = data.filter(pl.all_horizontal(pl.col(column).is_finite() for column in columns))
+    available_returns = pl.all_horizontal(
+        pl.col(column).is_finite() for column in columns
+    ).fill_null(False)
+    exclude(data.filter(~available_returns), "returns", "missing or nonfinite requested outcome")
+    complete = data.filter(available_returns)
     losses["returns"] = data.height - complete.height
     data = complete
     group_source_hash = None
@@ -252,6 +297,7 @@ def prepare_signal_panel(
         valid_group = pl.col("group").is_not_null()
         if data["group"].dtype.is_numeric():
             valid_group = valid_group & pl.col("group").is_finite()
+        exclude(data.filter(~valid_group.fill_null(False)), "groups", "missing or nonfinite group")
         complete = data.filter(valid_group)
         losses["groups"] = data.height - complete.height
         data = complete
@@ -269,6 +315,7 @@ def prepare_signal_panel(
             if max_loss == 0:
                 raise
             losses["bucketing"] += part.height
+            exclude(part, "bucketing", str(exc))
             key_payload = part.select(keys).write_ipc(None).getvalue()
             failures.append(
                 {
@@ -283,6 +330,11 @@ def prepare_signal_panel(
             pl.col(label).cast(pl.String).cast(pl.Int32).alias("quantile")
         ).drop(label)
         retained = assigned.filter(pl.col("quantile").is_not_null())
+        exclude(
+            assigned.filter(pl.col("quantile").is_null()),
+            "bucketing",
+            "outside requested bucket edges",
+        )
         out_of_range_rows += assigned.height - retained.height
         losses["bucketing"] += assigned.height - retained.height
         parts.append(retained)
@@ -296,6 +348,11 @@ def prepare_signal_panel(
         raise ValueError(
             f"max_loss {max_loss} exceeded by observed exclusion fraction {loss_fraction}; losses={losses}"
         )
+    aligned_exclusions = []
+    for excluded in exclusions:
+        data, excluded = _align_datetime_key_resolution(data, excluded, date_col)
+        aligned_exclusions.append(excluded)
+    excluded_data = pl.concat(aligned_exclusions).sort(keys)
     payload = data.write_ipc(None).getvalue()
     metadata = {
         "input_rows": input_rows,
@@ -303,6 +360,9 @@ def prepare_signal_panel(
         "loss_fraction": loss_fraction,
         "max_loss": float(max_loss),
         "loss_by_stage": losses,
+        "excluded_data_ipc_base64": base64.b64encode(
+            excluded_data.write_ipc(None).getvalue()
+        ).decode("ascii"),
         "bucket_failures": failures,
         "return_columns": columns,
         "bucket_method": "pandas.cut" if bins is not None else "pandas.qcut",
