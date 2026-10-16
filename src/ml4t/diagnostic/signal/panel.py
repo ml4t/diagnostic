@@ -1,0 +1,253 @@
+"""Owned common-horizon input preparation, separate from return construction."""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from hashlib import sha256
+from importlib.metadata import version
+from io import BytesIO
+from numbers import Real
+from typing import TYPE_CHECKING
+
+import numpy as np
+import pandas as pd
+import polars as pl
+
+from ml4t.diagnostic.backends.polars_backend import PolarsBackend
+from ml4t.diagnostic.signal._prepared import positive_count
+from ml4t.diagnostic.utils.validation import (
+    _align_datetime_key_resolution,
+    _validate_observation_keys,
+)
+
+if TYPE_CHECKING:
+    from ml4t.diagnostic.signal.result import SignalResult
+
+
+@dataclass(frozen=True)
+class PreparedSignalPanel:
+    """An owned prepared sample with independently accessible loss metadata."""
+
+    _payload: bytes
+    _audit: str
+    factor_col: str
+    date_col: str
+    asset_col: str
+
+    @property
+    def data(self) -> pl.DataFrame:
+        """Return a new frame without exposing the stored Arrow snapshot."""
+        return pl.read_ipc(BytesIO(self._payload))
+
+    @property
+    def metadata(self) -> dict:
+        """Return an independent copy of the preparation audit."""
+        return json.loads(self._audit)
+
+    def analyze(
+        self,
+        *,
+        min_assets: int = 10,
+        ic_method: str = "spearman",
+        compute_turnover_flag: bool = False,
+        autocorrelation_lags: int = 10,
+    ) -> SignalResult:
+        """Feed supported integer-day selectors to the existing analysis engine.
+
+        These labels select supplied columns; they do not establish durations or
+        calendar conformance. Other horizon labels remain available in ``data``.
+        """
+        from ml4t.diagnostic.signal.core import analyze_prepared_signal
+
+        columns = self.metadata["return_columns"]
+        if not all(re.fullmatch(r"[1-9]\d*D", column) for column in columns):
+            raise ValueError("analysis currently requires positive integer D horizon labels")
+        data = self.data
+        buckets = sorted(data["quantile"].unique().to_list())
+        if not buckets or buckets != list(range(1, max(buckets) + 1)):
+            raise ValueError("analysis requires a nonempty contiguous bucket range starting at1")
+        result = analyze_prepared_signal(
+            data,
+            periods=tuple(int(column[:-1]) for column in columns),
+            quantiles=max(buckets),
+            min_assets=min_assets,
+            ic_method=ic_method,
+            compute_turnover_flag=compute_turnover_flag,
+            autocorrelation_lags=autocorrelation_lags,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+        return replace(
+            result, preparation_metadata={**result.preparation_metadata, "cleaning": self.metadata}
+        )
+
+
+def _frame(
+    data: pl.DataFrame | pd.DataFrame | pd.Series,
+    date_col: str,
+    asset_col: str,
+    value_col: str | None = None,
+) -> pl.DataFrame:
+    if isinstance(data, pd.Series):
+        if value_col is None:
+            raise TypeError("a return panel must be a DataFrame")
+        data = data.rename(value_col).to_frame()
+    if isinstance(data, pd.DataFrame):
+        if isinstance(data.index, pd.MultiIndex):
+            data = data.reset_index()
+        frame = pl.from_pandas(data)
+    elif isinstance(data, pl.DataFrame):
+        frame = data.clone()
+    else:
+        raise TypeError("signal inputs must be Pandas or Polars frames, or indexed series")
+    _validate_observation_keys(frame, [date_col, asset_col], "signal panel")
+    if frame[date_col].dtype != pl.Date and not isinstance(frame[date_col].dtype, pl.Datetime):
+        raise TypeError("signal panel dates must contain Date or Datetime values")
+    return frame
+
+
+def prepare_signal_panel(
+    factor: pl.DataFrame | pd.DataFrame | pd.Series,
+    forward_returns: pl.DataFrame | pd.DataFrame,
+    *,
+    quantiles: int = 5,
+    return_columns: Sequence[str] | None = None,
+    groups: Mapping | pl.DataFrame | pd.DataFrame | pd.Series | None = None,
+    group_labels: Mapping | None = None,
+    binning_by_group: bool = False,
+    max_loss: float = 0.35,
+    factor_col: str = "factor",
+    date_col: str = "date",
+    asset_col: str = "asset",
+) -> PreparedSignalPanel:
+    """Select one complete supplied-return sample, then assign integer qcut buckets.
+
+    Losses use the original factor count and disjoint factor, return, group and
+    bucketing stages. Nonfinite factors/returns and missing group observations
+    are excluded explicitly, not filled. A failed bucket group is excluded only
+    when max_loss>0; max_loss=0 exposes its actual error. No returns or calendar
+    are inferred. Existing price-based preparation defaults remain unchanged.
+    """
+    quantiles = positive_count(quantiles, "quantiles")
+    if (
+        isinstance(max_loss, bool)
+        or not isinstance(max_loss, Real)
+        or not np.isfinite(max_loss)
+        or not 0 <= max_loss <= 1
+    ):
+        raise ValueError("max_loss must be a finite fraction in[0,1]")
+    if len({date_col, asset_col, factor_col, "group", "quantile"}) != 5:
+        raise ValueError("signal key/value names must be distinct from group and quantile")
+    factors = _frame(factor, date_col, asset_col, factor_col)
+    returns = _frame(forward_returns, date_col, asset_col)
+    keys = [date_col, asset_col]
+    columns = (
+        list(return_columns)
+        if return_columns is not None
+        else [column for column in returns.columns if column not in keys]
+    )
+    if not columns or len(set(columns)) != len(columns):
+        raise ValueError("return_columns must be nonempty and unique")
+    if set(columns).intersection([*keys, factor_col, "group", "quantile"]):
+        raise ValueError("return columns must be distinct from signal keys and values")
+    for frame, names in [(factors, [factor_col]), (returns, columns)]:
+        for column in names:
+            if column not in frame.columns or not frame[column].dtype.is_numeric():
+                raise TypeError(f"signal panel {column} must contain numeric values")
+    if factors.is_empty():
+        raise ValueError("factor must contain observations")
+    input_rows = factors.height
+    factors = factors.select(*keys, factor_col).filter(pl.col(factor_col).is_finite())
+    losses = {"factor": input_rows - factors.height, "returns": 0, "groups": 0, "bucketing": 0}
+    factors, returns = _align_datetime_key_resolution(
+        factors, returns.select(*keys, *columns), date_col
+    )
+    data = factors.join(returns, on=keys, how="left")
+    complete = data.filter(pl.all_horizontal(pl.col(column).is_finite() for column in columns))
+    losses["returns"] = data.height - complete.height
+    data = complete
+    if groups is not None:
+        if isinstance(groups, Mapping):
+            missing = set(factors[asset_col].unique().to_list()).difference(groups)
+            if missing:
+                raise KeyError(f"assets missing from group mapping: {sorted(missing, key=str)}")
+            group_frame = pl.DataFrame({asset_col: list(groups), "group": list(groups.values())})
+            group_keys = [asset_col]
+        else:
+            group_frame = _frame(groups, date_col, asset_col, "group").select(*keys, "group")
+            data, group_frame = _align_datetime_key_resolution(data, group_frame, date_col)
+            group_keys = keys
+        if group_labels is not None:
+            codes = set(group_frame["group"].drop_nulls().unique().to_list())
+            if missing := codes.difference(group_labels):
+                raise KeyError(f"groups missing from display labels: {sorted(missing, key=str)}")
+            group_frame = group_frame.with_columns(
+                pl.col("group").replace_strict(dict(group_labels))
+            )
+        data = data.join(group_frame, on=group_keys, how="left")
+        valid_group = pl.col("group").is_not_null()
+        if data["group"].dtype.is_numeric():
+            valid_group = valid_group & pl.col("group").is_finite()
+        complete = data.filter(valid_group)
+        losses["groups"] = data.height - complete.height
+        data = complete
+    elif binning_by_group or group_labels is not None:
+        raise ValueError("group binning/labels require groups")
+    bucket_keys = [date_col, "group"] if binning_by_group else [date_col]
+    parts, failures = [], []
+    for part in data.sort(keys).partition_by(bucket_keys, maintain_order=True):
+        try:
+            assigned = PolarsBackend.fast_quantile_assignment(part, factor_col, quantiles)
+        except (ValueError, pl.exceptions.DuplicateError) as exc:
+            if max_loss == 0:
+                raise
+            losses["bucketing"] += part.height
+            key_payload = part.select(keys).write_ipc(None).getvalue()
+            failures.append(
+                {
+                    "rows": part.height,
+                    "keys_sha256": sha256(key_payload).hexdigest(),
+                    "reason": str(exc),
+                }
+            )
+            continue
+        label = f"{factor_col}_quantile"
+        parts.append(
+            assigned.with_columns(
+                pl.col(label).cast(pl.String).cast(pl.Int32).alias("quantile")
+            ).drop(label)
+        )
+    data = (
+        pl.concat(parts).sort(keys)
+        if parts
+        else data.head(0).with_columns(pl.Series("quantile", [], dtype=pl.Int32))
+    )
+    loss_fraction = (input_rows - data.height) / input_rows
+    if loss_fraction > max_loss:
+        raise ValueError(
+            f"max_loss {max_loss} exceeded by observed exclusion fraction {loss_fraction}; losses={losses}"
+        )
+    payload = data.write_ipc(None).getvalue()
+    metadata = {
+        "input_rows": input_rows,
+        "retained_rows": data.height,
+        "loss_fraction": loss_fraction,
+        "loss_by_stage": losses,
+        "bucket_failures": failures,
+        "return_columns": columns,
+        "bucket_method": "pandas.qcut",
+        "bucket_count": quantiles,
+        "binning_by_group": binning_by_group,
+        "frame_sha256": sha256(payload).hexdigest(),
+        "pandas_version": version("pandas"),
+        "numpy_version": version("numpy"),
+        "sample_policy": "common finite factor/return/group sample before bucketing",
+        "calendar_validation": "not performed; supplied labels do not establish endpoints or a schedule",
+    }
+    return PreparedSignalPanel(
+        payload, json.dumps(metadata, allow_nan=False), factor_col, date_col, asset_col
+    )
