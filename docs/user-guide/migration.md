@@ -1130,7 +1130,45 @@ zero exposure but undefined concentration, not HHI=0. Inspect normalization
 coverage before using averages. `snapshot_kind="intraday"` describes observed
 snapshots only; it does not reconstruct missing intraday holdings.
 
-This route does not yet provide sectors, intraday reconstruction, automatic
+#### Classify holdings by sector
+
+Pass `sector_mapping` to the same `compute_holdings_analysis()` call to request
+the typed `sectors` table. The existing `--task holdings` example checks this
+with both wide string IDs and canonical integer IDs. A static dictionary,
+pandas Series or `asset`, `sector` table applies labels to every observation.
+Add a `date` column or pandas DatetimeIndex for exact dated classifications.
+Dates use the holdings timezone and lossless storage precision. No calendar
+grouping, as-of lookup or forward/backward filling occurs. A future label
+cannot classify earlier observations. Provide labels actually known at each
+observation; this API does not infer publication history.
+
+Sector long/short magnitudes, gross/net values and nonzero counts come from
+the owned holdings. NAV fractions reuse their existing normalization status.
+Raw sector totals reconcile to the asset totals even when NAV is missing;
+their ratios then remain null. The returned `positions` also carries each
+matched sector. Sparse zero groups may be absent from the sector table; the
+complete snapshot timeline still supplies every observed date.
+
+Unmapped or missing labels form a visible null-sector group. A literal
+`"Unknown"` label stays distinct from null. Empty mappings request unknown
+groups for every holding; omitted `sector_mapping=None` does not request sector
+analysis. Sector labels may be homogeneous strings or finite numeric codes;
+NaN codes become missing labels, not zero. Ambiguous duplicate keys, missing
+asset/date keys, incompatible IDs, lossy timestamp conversion and unsupported
+extra mapping columns raise without changing inputs.
+
+Account cash remains in `timeline.cash` and `timeline.cash_fraction`, outside
+the sector table. A sector literally named `"cash"` can therefore hold net 100
+and gross 700 while the account separately reports cash 900. On the tested
+A=400/B=-300 example, pinned Pyfolio 0.9.9
+`pos.get_sector_exposures()` matches the fully mapped raw net sector totals,
+but it overwrites a `"cash"` sector with account cash and omits an unmapped
+short (with a warning when the key is absent). Diagnostic retains that short
+as null-sector net -300/gross 300. These differences are reconciled against the
+independent input values, not treated as parity targets. Cash-only complete
+snapshots have an empty requested sector table and unchanged cash in timeline.
+
+This route does not yet provide sector report panels, intraday reconstruction, automatic
 per-asset Backtest holdings exports, calendar/session-aware `from_pyfolio()` or
 `from_zipline()`, transaction costs/scenarios or complete portfolio reports.
 Those remain accepted coverage requirements. No full replacement is claimed.

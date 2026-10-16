@@ -367,7 +367,12 @@ def show_prepared_holdings() -> None:
     canonical["asset"] = canonical["asset"].map({"A": 1, "B": 2})
     for shape, snapshot, short_id in [("wide", positions, "B"), ("integer-ID long", canonical, 2)]:
         analysis = PortfolioAnalysis(returns, positions=snapshot)
-        holdings = analysis.compute_holdings_analysis(valuations, complete_snapshots=True)
+        long_id = "A" if shape == "wide" else 1
+        mapping = {long_id: "Technology", short_id: "Finance"}
+        holdings = analysis.compute_holdings_analysis(
+            valuations, complete_snapshots=True, sector_mapping=mapping
+        )
+        assert holdings.sectors is not None
         final = holdings.timeline.row(-1, named=True)
         np.testing.assert_allclose(
             [
@@ -388,11 +393,27 @@ def show_prepared_holdings() -> None:
         print(holdings.timeline)
         print(holdings.positions)
         print(holdings.coverage)
-        unavailable = analysis.compute_holdings_analysis(
-            valuations.drop(columns="equity"), complete_snapshots=True
+        final_sectors = holdings.sectors.filter(pl.col("date") == dates[-1])
+        assert final_sectors.filter(pl.col("sector") == "Technology")["net_exposure"][0] == 400
+        assert final_sectors.filter(pl.col("sector") == "Finance")["net_exposure"][0] == -300
+        print("Asset sectors only; account cash remains in timeline")
+        print(holdings.sectors)
+        unclassified = analysis.compute_holdings_analysis(
+            valuations, complete_snapshots=True, sector_mapping={long_id: "Technology"}
         )
+        assert unclassified.sectors is not None
+        unknown = unclassified.sectors.filter(
+            pl.col("sector").is_null() & (pl.col("date") == dates[-1])
+        )
+        assert unknown["net_exposure"][0] == -300
+        print("Unmapped short remains visible in the null-sector group")
+        unavailable = analysis.compute_holdings_analysis(
+            valuations.drop(columns="equity"), complete_snapshots=True, sector_mapping=mapping
+        )
+        assert unavailable.sectors is not None
         assert unavailable.timeline["gross_exposure_fraction"].null_count() == 3
         assert unavailable.timeline["gross_exposure"][-1] == 700
+        assert unavailable.sectors["gross_exposure_fraction"].null_count() == 6
         print("Without reported NAV, raw holdings remain available and NAV ratios are null")
 
 

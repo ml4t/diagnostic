@@ -19,6 +19,9 @@ class HoldingsAnalysisResult:
     negative for shorts. Concentration uses absolute invested capital, excluding
     cash. An all-cash observation has zero exposure but undefined concentration.
     Counts and averages describe supplied observations, not inferred sessions.
+    Optional sectors contains asset-sector aggregates; null labels retain unknown
+    classifications. Account cash stays in timeline, outside the sector namespace.
+    A None sector table means not requested; a requested all-cash table is empty.
     """
 
     positions: pl.DataFrame
