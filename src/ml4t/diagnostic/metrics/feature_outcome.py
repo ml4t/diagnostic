@@ -23,7 +23,10 @@ from ml4t.diagnostic.metrics.ic_inference import (
     compute_ic_summary_stats,
 )
 from ml4t.diagnostic.metrics.monotonicity import compute_monotonicity
-from ml4t.diagnostic.utils.validation import _validate_observation_keys
+from ml4t.diagnostic.utils.validation import (
+    _align_datetime_key_resolution,
+    _validate_observation_keys,
+)
 
 if TYPE_CHECKING:
     pass
@@ -262,6 +265,9 @@ def analyze_feature_outcome(
 
     # 2. Merge predictions with returns
     merge_cols = [date_col, group_col] if group_col else [date_col]
+    predictions_pl, prices_with_fwd_pl = _align_datetime_key_resolution(
+        predictions_pl, prices_with_fwd_pl, date_col
+    )
     merged = predictions_pl.join(prices_with_fwd_pl, on=merge_cols, how="inner").filter(
         pl.col("fwd_ret_1").is_not_null()
     )
