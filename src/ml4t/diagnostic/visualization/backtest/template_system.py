@@ -1391,7 +1391,7 @@ TEARSHEET_CSS = """
     }
 
     .section-detail-summary::before {
-        content: '\25b8';
+        content: '▸';
         display: inline-block;
         margin-right: 8px;
         font-size: 11px;
