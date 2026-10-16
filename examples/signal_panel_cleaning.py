@@ -51,6 +51,9 @@ def main(*, plots: bool = False) -> None:
     result = panel.analyze(min_assets=2, compute_turnover_flag=True, autocorrelation_lags=2)
     assert result.n_dates == 3 and result.n_assets == 4
     assert sum(result.count_by_quantile.values()) == 12
+    ic_component = result.to_ic_result()
+    for period, values in ic_component.ic_by_date.items():
+        assert abs(ic_component.ic_mean[period] - np.mean(values)) < 1e-14
     grouped_ic = panel.ic_by_date(group_adjust=True, by_group=True, min_obs=2)
     assert grouped_ic.height == 12
     assert grouped_ic["n_obs"].to_list() == [2] * 12
@@ -116,6 +119,7 @@ def main(*, plots: bool = False) -> None:
                 "retained_rows": panel.metadata["retained_rows"],
                 "loss_by_stage": panel.metadata["loss_by_stage"],
                 "ic": result.ic,
+                "aligned_ic_report_summary": ic_component.get_dataframe("summary").to_dicts(),
                 "group_adjusted_ic_by_date": grouped_ic.to_dicts(),
                 "group_adjusted_returns": adjusted.to_dicts(),
                 "factor_weights": weights.to_dicts(),

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import polars as pl
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from ml4t.diagnostic.results.base import BaseResult
 from ml4t.diagnostic.results.signal_results.validation import (
@@ -159,6 +159,24 @@ class SignalICResult(BaseResult):
     # ==========================================================================
     # Validation
     # ==========================================================================
+
+    @field_validator(
+        "ic_mean",
+        "ic_std",
+        "ic_t_stat",
+        "ic_p_value",
+        "ic_positive_pct",
+        "ic_ir",
+        mode="before",
+    )
+    @classmethod
+    def _restore_numeric_nulls(cls, value: Any) -> Any:
+        """Restore unavailable required statistics serialized as JSON null."""
+        if isinstance(value, dict):
+            return {
+                key: float("nan") if number is None else number for key, number in value.items()
+            }
+        return value
 
     @model_validator(mode="after")
     def _validate_period_keys(self) -> SignalICResult:

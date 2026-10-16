@@ -85,6 +85,18 @@ The package root re-exports the most common classes and configs for interactive 
         - compute_turnover
         - estimate_half_life
 
+### IC report sample selection
+
+`SignalResult.to_ic_result()` retains the common finite IC dates across its
+requested horizons. Its statistics describe that retained sample; original
+per-horizon `SignalResult.ic` and related maps stay unchanged. Use
+`to_ic_result(period=1)` to retain one horizon's full finite IC sample. Empty
+intersections have unavailable statistics; a singleton has a defined mean but
+no sample inference. The IC time-series plot displays `CI unavailable` rather
+than a confidence band when variance is undefined. Required numeric summary fields round-trip JSON nulls as
+NaN without changing optional HAC/RAS fields. See the
+[IC report how-to](../user-guide/migration.md#match-ic-report-statistics-to-selected-dates).
+
 ### Dated persistence result views
 
 Persistence-enabled signal analyses retain independent dated observation tables

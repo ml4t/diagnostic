@@ -247,6 +247,10 @@ class SignalResult:
         -------
         SignalICResult
             Pydantic model compatible with plot_ic_ts, plot_ic_histogram, etc.
+            Its statistics describe the retained common-date observations, not
+            the original per-horizon samples. Select one period to retain that
+            horizon's complete finite IC sample. Empty intersections have
+            unavailable summaries; singletons retain only defined point values.
 
         Raises
         ------
@@ -260,6 +264,7 @@ class SignalResult:
         >>> plot_ic_ts(result.to_ic_result(period=21))
         """
         from ml4t.diagnostic.results.signal_results.ic import SignalICResult
+        from ml4t.diagnostic.signal.signal_ic import compute_ic_summary
 
         if not self.ic_dates:
             raise ValueError("ic_dates not available. Re-run analyze_signal() to capture dates.")
@@ -294,15 +299,21 @@ class SignalResult:
             date_to_ic = dict(zip(self.ic_dates[key], self.ic_series[key], strict=False))
             ic_by_date[key] = [date_to_ic[d] for d in common_dates if d in date_to_ic]
 
+        summaries = {key: compute_ic_summary(values) for key, values in ic_by_date.items()}
         return SignalICResult(
             ic_by_date=ic_by_date,
             dates=common_dates,
-            ic_mean={k: self.ic[k] for k in period_keys},
-            ic_std={k: self.ic_std[k] for k in period_keys},
-            ic_t_stat={k: self.ic_t_stat[k] for k in period_keys},
-            ic_p_value={k: self.ic_p_value[k] for k in period_keys},
-            ic_positive_pct={k: self.ic_positive_pct.get(k, 0.0) for k in period_keys},
-            ic_ir={k: self.ic_ir.get(k, 0.0) for k in period_keys},
+            ic_mean={key: summary["mean"] for key, summary in summaries.items()},
+            ic_std={key: summary["std"] for key, summary in summaries.items()},
+            ic_t_stat={key: summary["t_stat"] for key, summary in summaries.items()},
+            ic_p_value={key: summary["p_value"] for key, summary in summaries.items()},
+            ic_positive_pct={
+                key: summary["pct_positive"] * 100 for key, summary in summaries.items()
+            },
+            ic_ir={
+                key: summary["mean"] / summary["std"] if summary["std"] > 0 else float("nan")
+                for key, summary in summaries.items()
+            },
         )
 
     def to_quantile_result(self) -> QuantileAnalysisResult:
