@@ -159,6 +159,7 @@ def test_explicit_grid_retains_unscored_dates_without_calendar_inference_or_rewe
     ]
     assert actual["n_obs"].to_list() == [4, 0, 4]
     assert actual["weighted_return"][1] is None
+    assert actual["compounding_clock"].to_list() == ["explicit_grid"] * 3
     np.testing.assert_allclose(
         actual["wealth"], [49 / 48, 49 / 48, (49 / 48) ** 2], rtol=0, atol=1e-14
     )

@@ -685,7 +685,8 @@ weights, contributions and Empyrical 0.5.12 compounding with a matching clock.
 Without date-level frequency metadata, its `asfreq(None)` can expand civil-day
 dates or collapse a subday sample. Diagnostic defaults to observed keys; an
 explicit `date_grid` reproduces a requested reference clock, including null
-holes. Neither behavior validates sessions or bars. Compounding overlapping
+holes, and labels `compounding_clock="explicit_grid"` instead of `"observed"`.
+Neither behavior validates sessions or bars. Compounding overlapping
 forward outcomes is a mathematical horizon-return path, not self-financing
 daily holdings. Capital, expiration accounting, cumulative quantile report
 panels and full Alphalens/Pyfolio report workflows remain separate accepted work.

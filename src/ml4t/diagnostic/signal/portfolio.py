@@ -337,7 +337,7 @@ def compute_factor_cumulative_returns(
     return returns.with_columns(
         pl.Series("wealth", wealth),
         pl.lit("wealth").alias("representation"),
-        pl.lit("observed").alias("compounding_clock"),
+        pl.lit("observed" if date_grid is None else "explicit_grid").alias("compounding_clock"),
         pl.lit("flat_wealth").alias("missing_return_policy"),
     )
 
