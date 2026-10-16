@@ -16,8 +16,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from ml4t.diagnostic.backends.polars_backend import PolarsBackend
-from ml4t.diagnostic.signal._prepared import positive_count
+from ml4t.diagnostic.backends.polars_backend import PolarsBackend, _bucket_parameters
 from ml4t.diagnostic.utils.validation import (
     _align_datetime_key_resolution,
     _validate_observation_keys,
@@ -114,7 +113,9 @@ def prepare_signal_panel(
     factor: pl.DataFrame | pd.DataFrame | pd.Series,
     forward_returns: pl.DataFrame | pd.DataFrame,
     *,
-    quantiles: int = 5,
+    quantiles: int | Sequence[float] | np.ndarray | None = 5,
+    bins: int | Sequence[float] | np.ndarray | None = None,
+    zero_aware: bool = False,
     return_columns: Sequence[str] | None = None,
     groups: Mapping | pl.DataFrame | pd.DataFrame | pd.Series | None = None,
     group_labels: Mapping | None = None,
@@ -124,7 +125,7 @@ def prepare_signal_panel(
     date_col: str = "date",
     asset_col: str = "asset",
 ) -> PreparedSignalPanel:
-    """Select one complete supplied-return sample, then assign integer qcut buckets.
+    """Select one complete supplied-return sample, then assign qcut/cut buckets.
 
     Losses use the original factor count and disjoint factor, return, group and
     bucketing stages. Nonfinite factors/returns and missing group observations
@@ -132,7 +133,10 @@ def prepare_signal_panel(
     when max_loss>0; max_loss=0 exposes its actual error. No returns or calendar
     are inferred. Existing price-based preparation defaults remain unchanged.
     """
-    quantiles = positive_count(quantiles, "quantiles")
+    specification, bucket_count = _bucket_parameters(quantiles, bins, zero_aware)
+    quantiles, bins = (specification, None) if bins is None else (None, specification)
+    if not isinstance(binning_by_group, bool | np.bool_):
+        raise ValueError("binning_by_group must be boolean")
     if (
         isinstance(max_loss, bool)
         or not isinstance(max_loss, Real)
@@ -152,7 +156,9 @@ def prepare_signal_panel(
     )
     if not columns or len(set(columns)) != len(columns):
         raise ValueError("return_columns must be nonempty and unique")
-    if set(columns).intersection([*keys, factor_col, "group", "quantile"]):
+    if set(columns).intersection(
+        [*keys, factor_col, f"{factor_col}_quantile", "group", "quantile"]
+    ):
         raise ValueError("return columns must be distinct from signal keys and values")
     for frame, names in [(factors, [factor_col]), (returns, columns)]:
         for column in names:
@@ -199,9 +205,12 @@ def prepare_signal_panel(
         raise ValueError("group binning/labels require groups")
     bucket_keys = [date_col, "group"] if binning_by_group else [date_col]
     parts, failures = [], []
+    out_of_range_rows = 0
     for part in data.sort(keys).partition_by(bucket_keys, maintain_order=True):
         try:
-            assigned = PolarsBackend.fast_quantile_assignment(part, factor_col, quantiles)
+            assigned = PolarsBackend.fast_quantile_assignment(
+                part, factor_col, quantiles, bins=bins, zero_aware=zero_aware
+            )
         except (ValueError, pl.exceptions.DuplicateError) as exc:
             if max_loss == 0:
                 raise
@@ -216,11 +225,13 @@ def prepare_signal_panel(
             )
             continue
         label = f"{factor_col}_quantile"
-        parts.append(
-            assigned.with_columns(
-                pl.col(label).cast(pl.String).cast(pl.Int32).alias("quantile")
-            ).drop(label)
-        )
+        assigned = assigned.with_columns(
+            pl.col(label).cast(pl.String).cast(pl.Int32).alias("quantile")
+        ).drop(label)
+        retained = assigned.filter(pl.col("quantile").is_not_null())
+        out_of_range_rows += assigned.height - retained.height
+        losses["bucketing"] += assigned.height - retained.height
+        parts.append(retained)
     data = (
         pl.concat(parts).sort(keys)
         if parts
@@ -239,9 +250,18 @@ def prepare_signal_panel(
         "loss_by_stage": losses,
         "bucket_failures": failures,
         "return_columns": columns,
-        "bucket_method": "pandas.qcut",
-        "bucket_count": quantiles,
-        "binning_by_group": binning_by_group,
+        "bucket_method": "pandas.cut" if bins is not None else "pandas.qcut",
+        "bucket_count": bucket_count,
+        "bucket_specification": specification
+        if isinstance(specification, int)
+        else [
+            value if np.isfinite(value) else "-inf" if value < 0 else "+inf"
+            for value in specification
+        ],
+        "infinite_edge_encoding": "-inf/+inf strings denote unbounded cut endpoints",
+        "out_of_range_rows": out_of_range_rows,
+        "zero_aware": bool(zero_aware),
+        "binning_by_group": bool(binning_by_group),
         "frame_sha256": sha256(payload).hexdigest(),
         "pandas_version": version("pandas"),
         "numpy_version": version("numpy"),

@@ -5,7 +5,8 @@ when working with Polars DataFrames, leveraging Polars' lazy evaluation
 and columnar operations for improved performance.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from numbers import Integral, Real
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -14,6 +15,74 @@ import polars as pl
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+
+def _bucket_specification(
+    specification: int | Sequence[float] | np.ndarray, name: str, *, probabilities: bool
+) -> tuple[int | list[float], int]:
+    if isinstance(specification, Integral) and not isinstance(specification, bool | np.bool_):
+        if specification < 1:
+            raise ValueError(f"{name} must be a positive integer")
+        return int(specification), int(specification)
+    if isinstance(specification, str | bytes | bool | np.bool_):
+        raise ValueError(f"{name} must be a positive integer or ordered numeric edges")
+    try:
+        values = list(specification)
+    except TypeError as exc:
+        raise ValueError(f"{name} must be a positive integer or ordered numeric edges") from exc
+    if len(values) < 2 or any(
+        not isinstance(value, Real) or isinstance(value, bool | np.bool_) for value in values
+    ):
+        raise ValueError(f"{name} requires at least two real numeric edges")
+    edges = [float(value) for value in values]
+    if any(np.isnan(value) for value in edges) or any(
+        left >= right for left, right in zip(edges, edges[1:], strict=False)
+    ):
+        raise ValueError(f"{name} edges must be strictly increasing and non-NaN")
+    if probabilities and (edges[0] < 0 or edges[-1] > 1):
+        raise ValueError(f"{name} probabilities must be in[0,1]")
+    return edges, len(edges) - 1
+
+
+def _bucket_codes(
+    values: np.ndarray, specification: int | list[float], *, bins: bool, zero_aware: bool
+) -> np.ndarray:
+    def assign(sample: np.ndarray, count: int | list[float]) -> np.ndarray:
+        cut = pd.cut(sample, count, labels=False) if bins else pd.qcut(sample, count, labels=False)
+        return np.asarray(cut, dtype=float) + 1
+
+    if not zero_aware:
+        return assign(values, specification)
+    if not isinstance(specification, int) or specification < 2:
+        raise ValueError("zero_aware requires an integer bucket count of at least2")
+    half = specification // 2
+    codes = np.full(len(values), np.nan)
+    negative = values < 0
+    positive = values >= 0
+    codes[negative] = assign(values[negative], half)
+    codes[positive] = assign(values[positive], half) + half
+    return codes
+
+
+def _bucket_parameters(
+    quantiles: int | Sequence[float] | np.ndarray | None,
+    bins: int | Sequence[float] | np.ndarray | None,
+    zero_aware: bool,
+) -> tuple[int | list[float], int]:
+    if (quantiles is None) == (bins is None):
+        raise ValueError("provide exactly one of n_quantiles or bins")
+    if not isinstance(zero_aware, bool | np.bool_):
+        raise ValueError("zero_aware must be boolean")
+    specification, count = _bucket_specification(
+        bins if bins is not None else quantiles,
+        "bins" if bins is not None else "n_quantiles",
+        probabilities=bins is None,
+    )
+    if zero_aware:
+        if not isinstance(specification, int) or specification < 2:
+            raise ValueError("zero_aware requires an integer bucket count of at least2")
+        count = 2 * (specification // 2)
+    return specification, count
 
 
 class PolarsBackend:
@@ -292,10 +361,13 @@ class PolarsBackend:
     def fast_quantile_assignment(
         data: pl.DataFrame,
         column: str,
-        n_quantiles: int,
+        n_quantiles: int | Sequence[float] | np.ndarray | None,
         by_group: str | None = None,
+        *,
+        bins: int | Sequence[float] | np.ndarray | None = None,
+        zero_aware: bool = False,
     ) -> pl.DataFrame:
-        """Assign qcut labels with the installed pandas boundary semantics.
+        """Assign qcut/cut labels with the installed pandas boundary semantics.
 
         Polars 2's quantile bins do not reproduce every pandas interpolation
         boundary or duplicate-endpoint rejection. Keep one bucket implementation
@@ -307,26 +379,32 @@ class PolarsBackend:
             Input data
         column : str
             Column to compute quantiles on
-        n_quantiles : int
-            Number of quantiles
+        n_quantiles : int or sequence, optional
+            Positive quantile count or ordered probabilities. None selects bins.
         by_group : str, optional
             Column to group by before quantile assignment
+        bins : int or sequence, optional
+            Width-bin count or ordered edges, mutually exclusive with quantiles.
+        zero_aware : bool
+            Split negative and nonnegative values, with floor(count/2) buckets
+            on each side. Requires an integer count of at least two.
 
         Returns:
         -------
         pl.DataFrame
             Data with quantile labels added
         """
-        if isinstance(n_quantiles, bool) or not isinstance(n_quantiles, int | np.integer):
-            raise ValueError("n_quantiles must be a positive integer")
-        if n_quantiles < 1:
-            raise ValueError("n_quantiles must be a positive integer")
-        labels = [str(i) for i in range(1, int(n_quantiles) + 1)]
+        specification, count = _bucket_parameters(n_quantiles, bins, zero_aware)
+        labels = [str(i) for i in range(1, count + 1)]
         output = f"{column}_quantile"
 
         def cut(values: pl.Series) -> pl.Series:
             try:
-                assigned = pd.qcut(values.to_numpy(), int(n_quantiles), labels=labels)
+                codes = _bucket_codes(
+                    values.to_numpy(), specification, bins=bins is not None, zero_aware=zero_aware
+                )
+                integer_codes = np.where(np.isnan(codes), -1, codes - 1).astype(int)
+                assigned = pd.Categorical.from_codes(integer_codes, categories=labels, ordered=True)
             except ValueError as exc:
                 if str(exc).startswith("Bin edges must be unique"):
                     raise pl.exceptions.DuplicateError(str(exc)) from exc

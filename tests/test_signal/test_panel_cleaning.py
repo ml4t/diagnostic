@@ -153,3 +153,75 @@ def test_panel_and_analysis_own_cleaned_values_and_audit_through_json(tmp_path):
     restored = SignalResult.from_json(str(path))
     assert restored.prepared_data.equals(result.prepared_data)
     assert restored.preparation_metadata["cleaning"] == panel.metadata
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "probabilities",
+        "partial_probabilities",
+        "width",
+        "edges",
+        "infinite_edges",
+        "zero_q4",
+        "zero_q3",
+        "zero_width",
+    ],
+)
+def test_supported_bucket_options_preserve_independent_membership_and_account_for_outside_edges(
+    case,
+):
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, _ = _inputs()
+    factor = factor - factor.groupby(level="date").transform("mean")
+    options = {"quantiles": 2}
+    expected_sorted = [1, 1, 2, 2]
+    expected_count = 2
+    if case == "probabilities":
+        options["quantiles"] = [0.0, 0.25, 0.75, 1.0]
+        expected_sorted, expected_count = [1, 2, 2, 3], 3
+    elif case == "partial_probabilities":
+        options["quantiles"] = [0.25, 0.75]
+        expected_sorted, expected_count = [1, 1], 1
+    elif case in ["width", "edges", "infinite_edges", "zero_width"]:
+        options = {
+            "quantiles": None,
+            "bins": 2
+            if case == "width"
+            else [-1.0, 0.0, 1.0]
+            if case == "edges"
+            else [-np.inf, 0.0, np.inf]
+            if case == "infinite_edges"
+            else 4,
+        }
+        if case == "zero_width":
+            options["zero_aware"] = True
+            expected_sorted, expected_count = [1, 2, 3, 4], 4
+    else:
+        options = {"quantiles": 4 if case == "zero_q4" else 3, "zero_aware": True}
+        if case == "zero_q4":
+            expected_sorted, expected_count = [1, 2, 3, 4], 4
+    panel = prepare_signal_panel(factor, forward, max_loss=0.8, **options)
+    data = panel.data.to_pandas().set_index(["date", "asset"])
+    assert len(data) == (6 if case == "partial_probabilities" else 12)
+    assert panel.metadata["bucket_count"] == expected_count
+    assert panel.metadata["bucket_method"] == ("pandas.cut" if "bins" in options else "pandas.qcut")
+    assert panel.metadata["loss_by_stage"] == {
+        "factor": 4,
+        "returns": 8,
+        "groups": 0,
+        "bucketing": 6 if case == "partial_probabilities" else 0,
+    }
+    for day in dates[1:4]:
+        actual = data.loc[day].sort_values("factor")
+        available = factor.loc[day].sort_values()
+        if case == "partial_probabilities":
+            available = available.iloc[1:3]
+        assert actual.index.tolist() == available.index.tolist()
+        if case == "width":
+            midpoint = (available.iloc[0] + available.iloc[-1]) / 2
+            expected = np.where(available <= midpoint, 1, 2)
+        else:
+            expected = expected_sorted
+        np.testing.assert_array_equal(actual["quantile"], expected)
