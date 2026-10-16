@@ -507,20 +507,23 @@ class BaseDashboard(ABC):
         return """
         <script>
             function switchTab(event, sectionId) {
-                // Hide all tab contents
-                const contents = document.getElementsByClassName('tab-content');
+                const selected = document.getElementById(sectionId);
+                // Switch sibling panels without hiding a containing tab.
+                const contents = selected.parentElement.children;
                 for (let content of contents) {
-                    content.classList.remove('active');
+                    if (content.classList.contains('tab-content')) {
+                        content.classList.remove('active');
+                    }
                 }
 
                 // Deactivate all tab buttons
-                const buttons = document.getElementsByClassName('tab-button');
+                const buttons = event.currentTarget.parentElement.getElementsByClassName('tab-button');
                 for (let button of buttons) {
                     button.classList.remove('active');
                 }
 
                 // Show selected tab
-                document.getElementById(sectionId).classList.add('active');
+                selected.classList.add('active');
                 event.currentTarget.classList.add('active');
             }
 
