@@ -3,8 +3,10 @@
 import json
 from importlib.metadata import version
 
+import numpy as np
 import pandas as pd
 
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
 from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import prepare_signal_panel
 
@@ -54,6 +56,16 @@ def main() -> None:
     adjusted = panel.demean_returns(by_group=True)
     unchanged = [name for name in panel.data.columns if name not in ["1D", "2D"]]
     assert adjusted.select(unchanged).equals(panel.data.select(unchanged))
+    weights = panel.factor_weights(group_adjust=True)
+    gross = weights.to_pandas().groupby("date")["weight"].agg(lambda values: values.abs().sum())
+    np.testing.assert_allclose(gross, [1.0] * 3, atol=1e-14, rtol=0)
+    portfolio_returns = panel.factor_returns(group_adjust=True)
+    one_period = portfolio_returns.to_pandas()
+    one_period = one_period[one_period["return_column"] == "1D"].set_index("date")[
+        "weighted_return"
+    ]
+    portfolio_summary = PortfolioAnalysis(one_period, periods_per_year=252).compute_summary_stats()
+    assert abs(portfolio_summary.total_return - ((1 + one_period).prod() - 1)) < 1e-14
     print(
         json.dumps(
             {
@@ -66,6 +78,9 @@ def main() -> None:
                 "ic": result.ic,
                 "group_adjusted_ic_by_date": grouped_ic.to_dicts(),
                 "group_adjusted_returns": adjusted.to_dicts(),
+                "factor_weights": weights.to_dicts(),
+                "factor_returns": portfolio_returns.to_dicts(),
+                "arithmetic_series_total_return": portfolio_summary.total_return,
             },
             indent=2,
             default=str,

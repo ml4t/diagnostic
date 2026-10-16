@@ -10,6 +10,7 @@ Factor-style signal analysis with a clean public surface.
 - `result.py` - `SignalResult`
 - `signal_ic.py` - per-date/group IC observations and legacy finite-series extraction
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
+- `portfolio.py` - shared factor-weight normalization and supplied-return contributions
 - `quantile.py` - quantile-return and spread analysis
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
@@ -35,3 +36,6 @@ Use `panel.ic_by_date(group_adjust=..., by_group=...)` for explicit adjusted/gro
 counts and undefined statuses. `panel.demean_returns(by_group=...)` exposes the shared adjusted
 outcomes without changing keys or buckets. The direct `compute_signal_ic` and `demean_signal_returns`
 routes accept explicit supplied return-column selectors, without interpreting them as durations.
+`panel.factor_weights` and `panel.factor_returns` expose shared magnitude/equal-sign/group-normalized
+weights and their supplied-horizon contributions. Weights ignore horizon-specific future missingness;
+zero signal means zero exposure. These are not dated holdings/expiration accounting or full reports.
