@@ -50,19 +50,22 @@ class _Cards(HTMLParser):
         self.part = None
         self.label = None
         self.values = {}
+        self.text = []
 
     def handle_starttag(self, tag, attrs):
         css = dict(attrs).get("class")
-        if css == "executive-kpi-label":
+        if css in ("executive-kpi-label", "metrics-sidebar-label"):
             self.part = "label"
-        elif css == "executive-kpi-value":
+        elif css in ("executive-kpi-value", "metrics-sidebar-value"):
             self.part = "value"
 
     def handle_endtag(self, tag):
-        if tag == "div":
+        if tag in ("div", "span"):
             self.part = None
 
     def handle_data(self, text):
+        if text.strip():
+            self.text.append(text.strip())
         if self.part == "label":
             self.label = text.strip()
         elif self.part == "value":
@@ -79,3 +82,43 @@ def test_actual_one_bar_three_day_trade_is_reported_in_bars_without_changing_tra
     assert cards.values["AVG HOLDING"] == "1.0 bars"
     assert result.to_fills_dataframe().equals(fills)
     assert result.to_trades_dataframe().equals(trades)
+
+
+def test_actual_overview_sidebar_preserves_the_producer_holding_bar_unit():
+    result = _actual_result()
+    cards = _Cards()
+    cards.feed(generate_tearsheet_from_result(result, include_statistical=False))
+    assert cards.values["Avg Holding"] == "1.0 bars"
+
+
+@pytest.mark.parametrize("renderer", ["figure", "html"])
+def test_actual_trade_executive_summary_declares_bars_without_changing_the_count(renderer):
+    from ml4t.diagnostic.integration import compute_metrics_from_result
+    from ml4t.diagnostic.visualization.backtest import (
+        create_executive_summary,
+        create_executive_summary_html,
+    )
+
+    result = _actual_result()
+    metrics = compute_metrics_from_result(result)
+    assert metrics["avg_bars_held"] == 1
+    if renderer == "figure":
+        figure = create_executive_summary(metrics, selected_metrics=["avg_bars_held"], cols=1)
+        assert figure.data[0].value == 1
+        cards = _Cards()
+        cards.feed(figure.data[0].title.text)
+        assert cards.text == ["Avg Holding Period (bars)"]
+    else:
+        cards = _Cards()
+        cards.feed(create_executive_summary_html(metrics, selected_metrics=["avg_bars_held"]))
+        assert "Avg Holding Period (bars)" in cards.text
+        assert "1" in cards.text
+    assert result.trades[0].bars_held == 1
+
+
+def test_actual_holding_count_without_declared_grading_ranges_has_neutral_color():
+    from ml4t.diagnostic.integration import compute_metrics_from_result
+    from ml4t.diagnostic.visualization.backtest import get_traffic_light_color
+
+    metrics = compute_metrics_from_result(_actual_result())
+    assert get_traffic_light_color(metrics["avg_bars_held"], "avg_bars_held") == "neutral"

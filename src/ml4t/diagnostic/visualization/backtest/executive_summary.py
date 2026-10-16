@@ -223,7 +223,7 @@ DEFAULT_THRESHOLDS: dict[str, dict[str, Any]] = {
     },
     "avg_bars_held": {
         "format": "{:.0f}",
-        "label": "Avg Holding Period",
+        "label": "Avg Holding Period (bars)",
     },
     "best_trade": {
         "format": "${:,.0f}",
@@ -375,6 +375,8 @@ def get_traffic_light_color(
 
     # Check which range the value falls into
     for color in ["green", "yellow", "red"]:
+        if color not in config:
+            continue
         low, high = config[color]
         if low <= numeric_value < high:
             return color
