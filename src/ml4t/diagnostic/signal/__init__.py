@@ -51,6 +51,7 @@ from ml4t.diagnostic.signal.signal_ic import (
 )
 from ml4t.diagnostic.signal.turnover import (
     compute_autocorrelation,
+    compute_quantile_turnover,
     compute_turnover,
     estimate_half_life,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "monotonicity_score",
     # Turnover functions
     "compute_turnover",
+    "compute_quantile_turnover",
     "compute_autocorrelation",
     "estimate_half_life",
 ]

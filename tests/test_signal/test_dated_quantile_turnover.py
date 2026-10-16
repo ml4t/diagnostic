@@ -10,7 +10,7 @@ from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import compute_turnover, prepare_signal_panel
 
 
-def _inputs(nanoseconds=False):
+def _inputs(nanoseconds=False, profile="departures"):
     dates = pd.bdate_range("2025-01-02", periods=5, tz="UTC")
     if nanoseconds:
         dates = pd.DatetimeIndex([dates[0] + pd.Timedelta(i * 100, unit="ns") for i in range(5)])
@@ -23,6 +23,13 @@ def _inputs(nanoseconds=False):
         },
         index=dates,
     )
+    if profile == "mixed":
+        prices["E"] = [128.0, 320.0, 128.0, 320.0, 128.0]
+        prices["F"] = [128.0, 384.0, 128.0, 384.0, 128.0]
+    if profile == "partial":
+        prices.loc[dates[3], ["B", "C"]] = [210.0, 360.0]
+    elif profile == "full":
+        prices.loc[dates[3]] = prices.loc[dates[2]] * [0.875, 0.75, 0.5, 0.25]
     factor = (
         prices.pct_change(fill_method=None)
         .loc[dates[[1, 3]]]
@@ -30,7 +37,12 @@ def _inputs(nanoseconds=False):
         .rename("factor")
     )
     factor.index = factor.index.set_names(["date", "asset"])
-    factor = factor.drop((dates[3], "C"))
+    if profile == "departures":
+        factor = factor.drop((dates[3], "C"))
+    elif profile == "expansion":
+        factor = factor.drop([(dates[1], "C"), (dates[1], "D")])
+    elif profile == "mixed":
+        factor = factor.drop([(dates[3], "B"), (dates[3], "C")])
     marks = (
         prices.stack(future_stack=True).rename("close").rename_axis(["date", "asset"]).reset_index()
     )
@@ -49,6 +61,25 @@ def _inputs(nanoseconds=False):
         (dates[3].value, "B"): 1,
         (dates[3].value, "D"): 2,
     }
+    if profile in {"partial", "full", "expansion"}:
+        expected = {key: value for key, value in expected.items() if key[0] != dates[3].value}
+        expected.update(
+            {
+                (dates[3].value, asset): 1
+                if asset in ("AC" if profile == "partial" else "CD" if profile == "full" else "AB")
+                else 2
+                for asset in "ABCD"
+            }
+        )
+        if profile == "expansion":
+            expected.pop((dates[1].value, "C"))
+            expected.pop((dates[1].value, "D"))
+            expected[(dates[1].value, "B")] = 2
+    elif profile == "mixed":
+        expected = {
+            **{(dates[1].value, asset): 1 if asset in "ABC" else 2 for asset in "ABCDEF"},
+            **{(dates[3].value, asset): 1 if asset in "AD" else 2 for asset in "ADEF"},
+        }
     assert {
         (pd.Timestamp(row["date"]).value, row["asset"]): row["quantile"]
         for row in panel.data.to_pandas().to_dict(orient="records")
@@ -87,6 +118,13 @@ def test_quote_derived_departures_do_not_become_entrants_or_close_clock_gaps(
     if supplied and representation == "polars":
         grid = pl.from_pandas(grid)
     before = panel.data
+    grid_before = (
+        grid.copy(deep=True)
+        if isinstance(grid, pd.DataFrame)
+        else grid.clone()
+        if grid is not None
+        else None
+    )
     result = _call(panel, representation, route, quantiles=[2, 1], lags=[2, 1], date_grid=grid)
     assert result.height == len(clock) * 4
     assert result.select("lag", "quantile").unique(maintain_order=True).rows() == [
@@ -142,11 +180,40 @@ def test_quote_derived_departures_do_not_become_entrants_or_close_clock_gaps(
         assert row["clock_source"] == ("supplied" if supplied else "observed")
     assert compute_turnover(panel.data, n_quantiles=2) == 0.25
     assert panel.data.equals(before)
+    if isinstance(grid, pd.DataFrame):
+        pd.testing.assert_frame_equal(grid, grid_before)
+    elif grid is not None:
+        assert grid.equals(grid_before)
 
 
 def test_existing_scalar_larger_membership_definition_remains_available():
     panel, _ = _inputs()
     assert compute_turnover(panel.data, n_quantiles=2) == 0.25
+
+
+@pytest.mark.parametrize(
+    "profile,expected",
+    [
+        ("partial", [(1, 0.5, 2, 2, 1, 1), (2, 0.5, 2, 2, 1, 1)]),
+        ("full", [(1, 1.0, 2, 2, 0, 2), (2, 1.0, 2, 2, 0, 2)]),
+        ("expansion", [(1, 0.5, 2, 1, 1, 1), (2, 1.0, 2, 1, 0, 2)]),
+        ("mixed", [(1, 0.5, 2, 3, 1, 1), (2, 0.0, 2, 3, 2, 0)]),
+    ],
+)
+@pytest.mark.parametrize(
+    "representation,route", list(itertools.product(["pandas", "polars"], ["panel", "direct"]))
+)
+def test_real_quote_entrants_use_current_not_previous_or_larger_membership(
+    profile, expected, representation, route
+):
+    panel, _ = _inputs(nanoseconds=True, profile=profile)
+    result = _call(panel, representation, route)
+    actual = (
+        result.filter(pl.col("status") == "defined")
+        .select("quantile", "turnover", "n_current", "n_previous", "n_overlap", "n_entered")
+        .rows()
+    )
+    assert actual == expected
 
 
 @pytest.mark.parametrize("representation", ["pandas", "polars"])
@@ -178,7 +245,7 @@ def test_custom_names_noncontiguous_labels_and_explicit_grid_keep_membership(rep
     assert result["quantile"].unique(maintain_order=True).to_list() == [4, 2]
 
 
-@pytest.mark.parametrize("bad", [(), (0,), (-1,), (True,), (1.5,), (1, 1), "1"])
+@pytest.mark.parametrize("bad", [(), (0,), (-1,), (True,), (1.5,), (1, 1), "1", None, 1])
 @pytest.mark.parametrize("route", ["panel", "direct"])
 def test_invalid_lag_declarations_reject_without_changing_owned_sample(bad, route):
     panel, _ = _inputs()

@@ -64,6 +64,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
+| Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
 | Dated holdings and the complete Alphalens tear sheet | No complete equivalent | Analytical factor weights and supplied-return contributions do not establish capital/expiry accounting, event paths or the complete tear sheet. |
 
@@ -404,6 +405,50 @@ square root; the new helper uses `hypot` to avoid intermediate overflow and
 underflow when the final error is representable. This numerical reconciliation
 does not imply full reference parity. Plot bands, period conversion and complete
 report/event/portfolio workflows remain separate capabilities.
+
+### Inspect dated quantile turnover
+
+Use the owned sample's bucket assignments without recomputing returns or
+buckets. This unreleased method after 0.1.9 reports dimensionless fractions:
+
+```python
+dated_turnover = panel.quantile_turnover(lags=(1, 2))
+assert set(dated_turnover["turnover_method"].to_list()) == {"entrants_over_current"}
+assert set(dated_turnover["lag_unit"].to_list()) == {"observations"}
+print(dated_turnover)
+```
+
+Each date/bucket/lag observation retains `n_current`, `n_previous`,
+`n_entered`, `n_overlap` and both date-level universe sizes. Turnover is the
+number of entrants divided by current bucket membership, as in Alphalens
+0.4.6. A bucket shrinking from `{C, D}` to `{D}` has no entrants and turnover
+zero. The native scalar helper's larger-membership definition instead gives
+that bucket `0.5`; if the other bucket is unchanged, its two-bucket mean is
+`0.25`. Neither definition is silently substituted for the other.
+
+The default clock contains sorted observed input dates. A unique, explicitly
+supplied `date_grid` must cover every observed date and defines lag positions,
+including missing observations. Its date column uses the panel's physical date
+name. It does not infer holidays, choose an exchange calendar or substitute the
+next observed date for a missing one. Lags count clock observations, not days or
+sessions. `clock_source` distinguishes observed and supplied grids.
+
+Insufficient history has null previous counts. Empty current/previous buckets
+have zero membership counts; their turnover, overlap and entrant estimates stay
+null, with explicit statuses rather than zero turnover. Missing interchange
+bucket labels are excluded from membership while their dates and universe sizes
+remain visible. Positive noncontiguous labels and requested lag/bucket order
+are preserved. `quantiles=None` selects observed labels; explicit selections
+can retain unavailable buckets on a supplied clock even for a cleaned-empty
+sample.
+
+The direct `signal.compute_quantile_turnover` accepts native or pandas
+date/asset-indexed bucket tables, including an Alphalens bucket Series converted
+to a DataFrame. Physical column selectors are explicit, inputs stay unchanged,
+and duplicate keys or incomplete grids fail before computation. No factors or
+future return columns are required by this consumer. Dated full-date-rank
+correlation, report/plot integration and authoritative calendar/time contracts
+remain separate capabilities.
 
 ### Construct factor weights and supplied-return contributions
 

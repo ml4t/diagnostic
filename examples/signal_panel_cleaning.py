@@ -75,6 +75,9 @@ def main() -> None:
     )
     assert spreads.height == 6
     assert spreads["upper_n_obs"].to_list() == spreads["lower_n_obs"].to_list() == [2] * 6
+    dated_turnover = panel.quantile_turnover(lags=(1, 2))
+    assert dated_turnover.height == 12
+    assert set(dated_turnover["lag_unit"].to_list()) == {"observations"}
     print(
         json.dumps(
             {
@@ -93,6 +96,7 @@ def main() -> None:
                 "daily_quantiles": daily_quantiles.to_dicts(),
                 "equal_date_quantiles": equal_date_quantiles.to_dicts(),
                 "quantile_spreads": spreads.to_dicts(),
+                "dated_quantile_turnover": dated_turnover.to_dicts(),
             },
             indent=2,
             default=str,
