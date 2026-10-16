@@ -273,6 +273,14 @@ The integration surface focuses on contracts and the `ml4t-backtest` bridge:
 | Backtest bridge | `compute_metrics_from_result`, `analyze_backtest_result`, `portfolio_analysis_from_result` |
 | Tearsheet generation | `generate_tearsheet_from_result`, `profile_from_run_artifacts`, `generate_tearsheet_from_run_artifacts` |
 
+`analyze_backtest_result(result).occupancy` provides `timeline`, `metrics` and
+`coverage`. Exposure fractions require finite positive equity and finite
+exposures. Undefined ratios remain null; normalized aggregates use defined
+snapshots only. Raw exposure amounts and position counts remain available.
+Coverage names the total and normalized sample sizes; an empty observed window
+has no estimates. See the [executed exposure workflow](../user-guide/migration.md#retain-raw-exposure-when-equity-cannot-normalize-it)
+for the zero/negative-equity behavior and full performance-report restriction.
+
 ## Visualization
 
 The visualization namespace is Plotly-first and grouped by workflow:

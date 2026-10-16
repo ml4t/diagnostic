@@ -1071,6 +1071,48 @@ Single-series uncertainty retains its finite-value filter; neither route validat
 a calendar grid or records excluded dates in its result. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
 intervals; matching point estimates does not establish interval equivalence.
 
+### Retain raw exposure when equity cannot normalize it
+
+For an actual `ml4t-backtest` result, use
+`analyze_backtest_result(result).occupancy`. Its `timeline` retains observed
+timestamps, equity, cash, gross/net exposure in account-currency units, and open
+position counts. Gross and net exposure fractions are dimensionless. Ratios
+require finite positive equity and finite exposures; nonpositive equity leaves
+them null rather than reporting zero risk. Positive-equity cash-only snapshots
+still have known zero exposure. The input/result state is not mutated.
+
+`coverage` reports `n_observations`, `n_normalized_observations`,
+`normalization_coverage` and `status`. Normalized averages/maxima use defined
+ratios only; position counts and time in market use the observed state. An empty
+selected window has no estimates, not cash-only zero estimates. Inspect coverage
+before comparing windows. The exposure plot retains gaps and raw-state hover
+details, and the full report states its normalization sample explicitly.
+
+The existing migration example runs a real short order through the Backtest
+engine, verifies the actual fill, and checks marks of 150, 200 and 250 after
+shorting 10 shares at 100 from initial equity 1000:
+
+```bash
+uv run --with ml4t-backtest==0.1.12 --with plotly \
+  python examples/legacy_migration_comparison.py --task exposure
+```
+
+Cash is 2000 after the fill. At the final marks, equity is respectively 500, 0
+and -500 while gross exposure is 1500, 2000 and 2500. The first case has gross
+ratio 3 and net ratio -3. The other final ratios are unavailable; each window
+has two defined snapshots out of three. This capability reuses Backtest's
+observed state and Diagnostic's common profile/report analysis.
+
+This is an unreleased correction after 0.1.9, not direct ingestion of a Pyfolio
+positions table. For the same positive-equity positions/cash, pinned Pyfolio
+0.9.9 `timeseries.gross_lev()` and `pos.get_long_short_pos()` agree on gross/net
+ratios. At zero equity Pyfolio produces infinite ratios, and at negative equity
+its division reverses their signs; Diagnostic deliberately leaves these ratios
+unavailable. The full performance report still rejects simple returns below
+-100%, including the mark-250 case. Standalone occupancy support does not remove
+that restriction or qualify complete positions, transactions or round-trip
+reports.
+
 Pyfolio's full sheet can additionally include return cones, significant
 events, round trips reconstructed from fills, capacity analysis using
 market data, and optional factor-attribution panels. Diagnostic has related

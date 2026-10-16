@@ -110,7 +110,9 @@ def compare_signals(factor: pd.Series, prices: pd.DataFrame) -> None:
     try:
         from ml4t.diagnostic import analyze_prepared_signal
     except ImportError:
-        print("Installed Diagnostic has no prepared-panel route; the original comparison above ran.")
+        print(
+            "Installed Diagnostic has no prepared-panel route; the original comparison above ran."
+        )
         return
     prepared = analyze_prepared_signal(cleaned, periods=(1,), quantiles=5, min_assets=2)
     canonical = (
@@ -130,7 +132,8 @@ def compare_signals(factor: pd.Series, prices: pd.DataFrame) -> None:
     )
     for bucket in range(1, 6):
         np.testing.assert_allclose(
-            prepared.quantile_returns["1D"][bucket], legacy_quantiles.loc[bucket, "1D"],
+            prepared.quantile_returns["1D"][bucket],
+            legacy_quantiles.loc[bucket, "1D"],
             atol=1e-12,
         )
     print(f"Prepared rows/buckets retained exactly: {prepared.prepared_data.height}")
@@ -231,15 +234,81 @@ def compare_metrics(strategy: pd.Series) -> None:
     np.testing.assert_allclose(legacy_sharpe, current_sharpe)
 
 
+def show_backtest_exposure() -> None:
+    from datetime import UTC, datetime
+
+    import polars as pl
+    from ml4t.backtest import BacktestConfig, DataFeed, Engine, Strategy
+
+    from ml4t.diagnostic.integration import analyze_backtest_result, generate_tearsheet_from_result
+
+    class OnceShort(Strategy):
+        def __init__(self):
+            self.submitted = False
+
+        def on_data(self, timestamp, data, context, broker):
+            if "A" in data and not self.submitted:
+                broker.submit_order("A", -10)
+                self.submitted = True
+
+    for final_price in [150.0, 200.0, 250.0]:
+        marks = [100.0, 100.0, final_price]
+        prices = pl.DataFrame(
+            {
+                "timestamp": [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6]],
+                "asset": ["A"] * 3,
+                **dict.fromkeys(["open", "high", "low", "close"], marks),
+                "volume": [10000.0] * 3,
+            }
+        )
+        result = Engine(
+            DataFeed(prices_df=prices),
+            OnceShort(),
+            BacktestConfig(initial_cash=1000, allow_short_selling=True),
+        ).run()
+        assert len(result.fills) == 1
+        assert result.fills[0].quantity == 10 and result.fills[0].price == 100
+        assert result.fills[0].timestamp == prices["timestamp"][1]
+        occupancy = analyze_backtest_result(result).occupancy
+        last = occupancy["timeline"].row(-1, named=True)
+        assert last["cash"] == 2000
+        assert last["equity"] == 2000 - 10 * final_price
+        assert last["gross_exposure"] == 10 * final_price
+        assert last["net_exposure"] == -10 * final_price
+        assert last["open_positions"] == 1
+        if final_price == 150:
+            assert last["gross_exposure_fraction"] == 3
+            assert last["net_exposure_fraction"] == -3
+        else:
+            assert last["gross_exposure_fraction"] is None
+            assert last["net_exposure_fraction"] is None
+            assert occupancy["coverage"]["n_normalized_observations"] == 2
+        print(f"Final mark {final_price}: {last}")
+        print(f"Coverage: {occupancy['coverage']}")
+        if final_price == 200:
+            html = generate_tearsheet_from_result(result, include_statistical=False)
+            assert "2 of 3 snapshots" in html and "defined ratios only" in html
+        elif final_price == 250:
+            try:
+                generate_tearsheet_from_result(result, include_statistical=False)
+            except ValueError as exc:
+                assert "simple returns below -1" in str(exc)
+                print(f"Full performance report remains unsupported: {exc}")
+            else:
+                raise AssertionError("Expected the explicit simple-return domain restriction")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--task",
-        choices=("diagnostic", "all", "pyfolio", "alphalens", "empyrical"),
+        choices=("diagnostic", "all", "pyfolio", "alphalens", "empyrical", "exposure"),
         default="diagnostic",
     )
     task = parser.parse_args().task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
+    if task == "exposure":
+        packages.extend(["ml4t-backtest", "plotly"])
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
     if task in ("all", "pyfolio"):
@@ -248,6 +317,9 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
+    if task == "exposure":
+        show_backtest_exposure()
+        return
     if task == "diagnostic":
         show_diagnostic_only()
         return
