@@ -178,14 +178,20 @@ class TestToICResult:
         ic_result = signal_result.to_ic_result(period="5D")
         assert list(ic_result.ic_mean.keys()) == ["5D"]
 
-    def test_field_mapping(self, signal_result):
-        """Fields are correctly mapped from SignalResult to SignalICResult."""
+    def test_summaries_describe_the_common_dates_kept_by_the_bridge(self, signal_result):
+        """Discarded horizon observations must not remain in report statistics."""
+        from scipy.stats import ttest_1samp
+
         ic_result = signal_result.to_ic_result()
         for pk in ("1D", "5D", "21D"):
-            assert ic_result.ic_mean[pk] == signal_result.ic[pk]
-            assert ic_result.ic_std[pk] == signal_result.ic_std[pk]
-            assert ic_result.ic_t_stat[pk] == signal_result.ic_t_stat[pk]
-            assert ic_result.ic_p_value[pk] == signal_result.ic_p_value[pk]
+            values = np.asarray(ic_result.ic_by_date[pk])
+            np.testing.assert_allclose(ic_result.ic_mean[pk], np.mean(values), rtol=0, atol=1e-14)
+            np.testing.assert_allclose(
+                ic_result.ic_std[pk], np.std(values, ddof=1), rtol=0, atol=1e-14
+            )
+            expected_t, expected_p = ttest_1samp(values, 0)
+            np.testing.assert_allclose(ic_result.ic_t_stat[pk], expected_t, rtol=0, atol=1e-14)
+            np.testing.assert_allclose(ic_result.ic_p_value[pk], expected_p, rtol=0, atol=1e-14)
 
     def test_dates_aligned(self, signal_result):
         """IC series aligned to common date intersection."""

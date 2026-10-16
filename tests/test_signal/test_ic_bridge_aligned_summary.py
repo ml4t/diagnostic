@@ -155,6 +155,8 @@ def test_actual_result_json_and_tearsheet_preserve_aligned_summary_consistency(
     model = restored.to_tear_sheet().ic_analysis
     assert model is not None
     decoded = type(model).model_validate_json(model.model_dump_json())
+    assert decoded.ic_t_stat_hac is None and decoded.ic_p_value_hac is None
+    assert decoded.ras_adjusted_ic is None and decoded.ras_significant is None
     expected = {"1D": [1.0, -1.0], "2D": [1.0, 0.0]} if profile == "full" else {"1D": [], "2D": []}
     for period, values in expected.items():
         _assert_statistics(decoded, period, values)
