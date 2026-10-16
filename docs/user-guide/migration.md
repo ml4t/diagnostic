@@ -61,6 +61,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
 | Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | Unreleased after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
 | Daily quantile means/errors and equal-date summaries | `panel.quantile_statistics(by_date=..., by_group=..., demeaned=..., group_adjust=...)` | Unreleased after 0.1.9. Reports sample standard deviation, standard error and asset/date counts; does not change the native pooled `SignalResult` fields or spread inference. |
+| Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
@@ -358,6 +359,51 @@ the sample deviation exceeds Float64 range. Ordinary finite NumPy means retain
 their existing result. The pooled spread and its existing two-sample Student
 test use common scaled, shifted observations to avoid intermediate overflow
 or underflow; their estimand and test method are unchanged.
+
+### Inspect arbitrary quantile spreads and propagated errors
+
+Select the buckets explicitly. This unreleased method after 0.1.9 delegates to
+`quantile_statistics` and preserves its date/group sampling and adjustment flags:
+
+```python
+spreads = panel.quantile_spread(
+    upper_quantile=2,
+    lower_quantile=1,
+    by_date=True,
+    demeaned=False,
+)
+assert set(spreads["sample_unit"].to_list()) == {"asset"}
+assert set(spreads["exposure_convention"].to_list()) == {
+    "long_upper_short_lower_unit_each"
+}
+print(spreads)
+```
+
+Each row retains the upper/lower means, sample errors and observation counts.
+The difference is upper minus lower. Its standard error is
+`hypot(upper_standard_error, lower_standard_error)`, the independent-error
+propagation used by Alphalens 0.4.6. Selecting the same bucket twice gives zero
+difference but still propagates the two reported errors independently; it does
+not estimate their covariance. `include_standard_error=False` leaves joint
+error null, not zero. Missing counterpart legs and undefined singleton errors
+remain unavailable. Across-date group/bucket combinations with no observations
+retain zero leg counts; absent per-date legs have null counts.
+
+The direct `signal.compute_quantile_spread(statistics, ...)` consumes the
+existing canonical statistics table, including positive noncontiguous bucket
+labels, without resampling. Requested horizon order and precise timestamp keys
+survive the join. Entirely absent requested buckets in nonempty statistics fail
+clearly; a cleaned empty sample returns a typed empty table. Caller inputs stay
+unchanged.
+
+The raw spread represents +1 upper / -1 lower exposure, gross two. It is not a
+unit-gross portfolio return, a self-financing wealth path or a time-series t
+test. The native pooled `SignalResult.spread_t_stat` still uses its existing
+two-sample method. Released Alphalens squares its error inputs before taking a
+square root; the new helper uses `hypot` to avoid intermediate overflow and
+underflow when the final error is representable. This numerical reconciliation
+does not imply full reference parity. Plot bands, period conversion and complete
+report/event/portfolio workflows remain separate capabilities.
 
 ### Construct factor weights and supplied-return contributions
 

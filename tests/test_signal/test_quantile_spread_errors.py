@@ -135,13 +135,15 @@ def _spread(panel, representation, route, **options):
 
 @pytest.mark.parametrize(
     "representation,route,by_date,by_group,demeaned,group_adjust",
-    itertools.product(
-        ["pandas", "polars"],
-        ["panel", "statistics"],
-        [False, True],
-        [False, True],
-        [False, True],
-        [False, True],
+    list(
+        itertools.product(
+            ["pandas", "polars"],
+            ["panel", "statistics"],
+            [False, True],
+            [False, True],
+            [False, True],
+            [False, True],
+        )
     ),
 )
 def test_spread_preserves_quote_derived_bucket_samples_and_independent_adjustments(
@@ -185,7 +187,7 @@ def test_spread_preserves_quote_derived_bucket_samples_and_independent_adjustmen
 
 
 @pytest.mark.parametrize(
-    "representation,route", itertools.product(["pandas", "polars"], ["panel", "statistics"])
+    "representation,route", list(itertools.product(["pandas", "polars"], ["panel", "statistics"]))
 )
 def test_optional_errors_and_same_bucket_keep_reference_independent_error_convention(
     representation, route
@@ -219,7 +221,7 @@ def test_optional_errors_and_same_bucket_keep_reference_independent_error_conven
 
 @pytest.mark.parametrize("scale", [1e-308, 1e308])
 @pytest.mark.parametrize(
-    "representation,route", itertools.product(["pandas", "polars"], ["panel", "statistics"])
+    "representation,route", list(itertools.product(["pandas", "polars"], ["panel", "statistics"]))
 )
 def test_propagated_error_remains_representable_for_actual_pnl_nav_outcomes(
     scale, representation, route
@@ -269,3 +271,62 @@ def test_duplicate_statistics_batches_reject_instead_of_multiplying_spread_rows(
     with pytest.raises(ValueError, match="duplicate"):
         compute_quantile_spread(batch, upper_quantile=3, lower_quantile=1)
     assert batch.height == 2 * frame.height
+
+
+@pytest.mark.parametrize("representation", ["pandas", "polars"])
+def test_noncontiguous_bucket_labels_and_requested_horizon_order_survive_spread_join(
+    representation,
+):
+    from ml4t.diagnostic.signal import compute_quantile_spread, compute_quantile_statistics
+
+    panel, _ = _inputs(representation, nanoseconds=True)
+    source = panel.data.with_columns((pl.col("quantile") * 2).alias("quantile"))
+    statistics_frame = compute_quantile_statistics(
+        source, return_columns=["2D", "1D"], by_date=True, demeaned=False
+    )
+    actual = compute_quantile_spread(
+        statistics_frame.to_pandas() if representation == "pandas" else statistics_frame,
+        upper_quantile=6,
+        lower_quantile=2,
+    )
+    expected = panel.quantile_spread(
+        upper_quantile=3, lower_quantile=1, by_date=True, demeaned=False
+    )
+    assert actual["return_column"].unique(maintain_order=True).to_list() == ["2D", "1D"]
+    assert (
+        actual.drop("upper_quantile", "lower_quantile")
+        .sort("return_column", "date")
+        .equals(expected.drop("upper_quantile", "lower_quantile").sort("return_column", "date"))
+    )
+
+
+def test_empty_prepared_sample_returns_typed_empty_spread_without_inventing_legs():
+    panel, _ = _inputs()
+    data = panel.data
+    warmup = data.select("date", "asset", "factor").with_columns(
+        pl.col("factor").shift(20).over("asset")
+    )
+    empty = prepare_signal_panel(
+        warmup,
+        data.select("date", "asset", "1D", "2D"),
+        quantiles=3,
+        max_loss=1,
+    )
+    result = empty.quantile_spread(upper_quantile=3, lower_quantile=1, by_date=True)
+    assert result.is_empty()
+    assert result.schema["date"] == data.schema["date"]
+    assert result.schema["spread"] == result.schema["standard_error"] == pl.Float64
+
+
+def test_mean_only_statistics_support_omitted_errors_without_zero_uncertainty():
+    from ml4t.diagnostic.signal import compute_quantile_spread
+
+    panel, _ = _inputs()
+    frame = panel.quantile_statistics().drop("standard_error")
+    result = compute_quantile_spread(
+        frame, upper_quantile=3, lower_quantile=1, include_standard_error=False
+    )
+    assert result["spread"].null_count() == 0
+    assert result["standard_error"].null_count() == result.height
+    with pytest.raises(ValueError, match="standard_error"):
+        compute_quantile_spread(frame, upper_quantile=3, lower_quantile=1)
