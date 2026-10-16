@@ -7,7 +7,7 @@ import pytest
 from ml4t.specs import FeedSpec
 
 from ml4t.diagnostic.core.purging import calculate_purge_indices
-from ml4t.diagnostic.splitters import WalkForwardConfig, WalkForwardCV
+from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardConfig, WalkForwardCV
 
 
 def test_explicit_none_keeps_actual_holiday_and_weekend_observations_in_row_folds():
@@ -15,7 +15,7 @@ def test_explicit_none_keeps_actual_holiday_and_weekend_observations_in_row_fold
         {"feature": [1.0, 2.0, 3.0, 4.0]},
         index=pd.to_datetime(["2025-07-04", "2025-07-05", "2025-07-06", "2025-07-07"]),
     )
-    cv = WalkForwardCV(n_splits=2, test_size=1, calendar=None)
+    cv = WalkForwardCV(n_splits=2, test_size=1, train_size=2, consecutive=True, calendar=None)
     assert cv.calendar is None
     assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == [
         ([0, 1], [2]),
@@ -89,3 +89,29 @@ def test_explicit_calendar_can_override_config_without_mutating_caller_configura
     cv = WalkForwardCV(config=config, calendar=None)
     assert cv.calendar is None and cv.config.calendar is None
     assert config.calendar == "NYSE"
+
+
+def test_panel_purge_uses_each_assets_next_observation_across_holiday_and_other_assets():
+    dates = pd.to_datetime(
+        [
+            "2025-07-01T15:00Z",
+            "2025-07-02T15:00Z",
+            "2025-07-03T15:00Z",
+            "2025-07-07T15:00Z",
+            "2025-07-08T15:00Z",
+            "2025-07-09T15:00Z",
+        ]
+    )
+    panel = pd.DataFrame(
+        {"asset": ["A", "B", "C"] * 6, "feature": list(range(18))},
+        index=dates.repeat(3),
+    )
+    cv = CombinatorialCV(n_groups=6, n_test_groups=1, label_horizon=1, isolate_groups=False)
+    for train, test in cv.split(panel[["feature"]], groups=panel["asset"]):
+        for asset in ["A", "B", "C"]:
+            asset_rows = [row for row, name in enumerate(panel["asset"]) if name == asset]
+            for row, next_observation in zip(asset_rows, asset_rows[1:]):
+                if next_observation in test:
+                    assert row not in train, (
+                        f"{asset}: label endpoint at test row{next_observation} leaked from train row{row}"
+                    )

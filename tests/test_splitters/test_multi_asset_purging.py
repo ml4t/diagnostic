@@ -10,8 +10,8 @@ from ml4t.diagnostic.splitters.combinatorial import CombinatorialCV
 class TestMultiAssetPurging:
     """Test multi-asset data leakage prevention in CPCV."""
 
-    def test_multi_asset_purging_basic(self):
-        """Test basic multi-asset purging functionality."""
+    def test_per_asset_row_horizons_remove_leakage_without_dropping_safe_observations(self):
+        """Sort asset identity with rows and check each label's actual observation endpoints."""
         # Create multi-asset test data
         n_assets = 3
         n_samples_per_asset = 60
@@ -20,7 +20,6 @@ class TestMultiAssetPurging:
         # Create time-ordered data for each asset
         dates = pd.date_range("2020-01-01", periods=n_samples_per_asset, freq="D", tz="UTC")
         asset_data = []
-        groups = []
 
         for asset_id in range(n_assets):
             asset_dates = dates + pd.Timedelta(days=asset_id * 10)  # Slight offset
@@ -29,17 +28,17 @@ class TestMultiAssetPurging:
                     "feature1": np.random.randn(n_samples_per_asset),
                     "feature2": np.random.randn(n_samples_per_asset),
                     "returns": np.random.randn(n_samples_per_asset) * 0.01,
+                    "asset": asset_id,
                 },
                 index=asset_dates,
             )
             asset_data.append(asset_df)
-            groups.extend([asset_id] * n_samples_per_asset)
 
         # Combine all assets
         X = pd.concat(asset_data).sort_index()
+        groups = X.pop("asset").to_numpy()
         y = X["returns"]
         X = X[["feature1", "feature2"]]
-        groups = np.array(groups)[X.index.argsort()]  # Sort to match sorted index
 
         # Create CPCV with multi-asset groups
         cv = CombinatorialCV(
@@ -64,29 +63,17 @@ class TestMultiAssetPurging:
                 asset_train = np.intersect1d(train_idx, asset_indices)
                 asset_test = np.intersect1d(test_idx, asset_indices)
 
-                if len(asset_test) > 0 and len(asset_train) > 0:
-                    # Check purging: no training data should overlap with
-                    # test data plus label horizon and embargo
-                    train_times = X.index[asset_train]
-                    test_times = X.index[asset_test]
-
-                    min_test_time = test_times.min()
-                    max_test_time = test_times.max()
-
-                    # Check that training data doesn't leak into test period
-                    # accounting for label horizon and embargo
-                    purge_start = min_test_time - pd.Timedelta(days=cv.label_horizon)
-                    embargo_end = max_test_time + pd.Timedelta(days=cv.embargo_size)
-
-                    # No training data should fall in the purged/embargoed period
-                    leaked_train = train_times[
-                        (train_times >= purge_start) & (train_times <= embargo_end)
-                    ]
-
-                    assert len(leaked_train) == 0, (
-                        f"Asset {asset_id}: Found {len(leaked_train)} leaked training samples "
-                        f"in purged/embargo period [{purge_start}, {embargo_end}]"
-                    )
+                test_local = {i for i, row in enumerate(asset_indices) if row in asset_test}
+                expected = {
+                    row
+                    for i, row in enumerate(asset_indices)
+                    if i not in test_local
+                    and not any(i < j <= i + cv.label_horizon for j in test_local)
+                    and not any(j < i <= j + cv.embargo_size for j in test_local)
+                }
+                assert set(asset_train) == expected, (
+                    f"{asset_id}: per-asset label or embargo ownership differs"
+                )
 
     # TODO: Add test_multi_asset_vs_single_asset_purging when multi-asset purging is implemented
     # Currently, multi-asset purging falls back to single-asset behavior

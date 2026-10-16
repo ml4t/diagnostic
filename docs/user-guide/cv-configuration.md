@@ -18,7 +18,7 @@ config = WalkForwardConfig(
     train_size=120,
     test_size=40,
     label_horizon=5,
-    calendar_id=None,
+    calendar=None,
 )
 
 path = Path("walk_forward.json")
@@ -41,6 +41,45 @@ such as `5D` or `1W`. Monthly research configurations may use `1M` or the ISO
 form `P1M`; each month is deliberately normalized to 30 calendar days because
 purging requires a fixed duration. Use `30D` directly when you want that
 approximation to be explicit.
+
+## Select the walk-forward calendar
+
+Use `calendar` in `WalkForwardConfig` and `WalkForwardCV`. `calendar_id` remains
+a supported configuration input/property alias, but serialized output uses
+`calendar`. Supplying both names with conflicting values raises an error.
+An undeclared calendar stays absent on configuration serialization; explicit
+`None` stays explicit, including when other null fields are excluded.
+
+Walk-forward selection uses an explicit `calendar` argument first, then an
+explicit configuration declaration, then the supplied `FeedSpec` metadata,
+then `NYSE`. Explicit `None` disables calendar filtering. A named `24/7`
+calendar still uses a schedule; it does not mean observation order.
+
+```python
+from ml4t.specs import FeedSpec
+
+feed = FeedSpec(time_contract_version=2, calendar="24/7")
+assert WalkForwardCV(feed_spec=feed).calendar.config.exchange == "24/7"
+assert WalkForwardCV(feed_spec=feed, calendar=None).calendar is None
+assert WalkForwardCV(
+    feed_spec=FeedSpec(time_contract_version=2, calendar=None)
+).calendar is None
+```
+
+Without a calendar, integer label horizons count observed rows, even across
+weekends, holidays or missing dates. An explicit `pd.Timedelta` still means
+elapsed time. Row-count splitting does not need timezone-aware timestamps;
+elapsed-time calculations retain their timezone checks. With a selected
+calendar, the existing session-aware walk-forward path remains active.
+
+These are unreleased walk-forward changes. Qualification pins merged Specs
+source `701bde68744035050ede386efce498234c661c21`, not the published Specs
+0.1.5 package, which lacks the v2 interface. A published dependency must replace
+that source pin before release. See the
+[shared time contract](https://github.com/ml4t/specs/blob/701bde68744035050ede386efce498234c661c21/docs/contracts.md).
+This does not establish schedule-grid, expected-bar or elapsed-unit conformance
+for every Diagnostic workflow. Combinatorial and Backtest metadata adoption
+remain separate parts of the calendar audit.
 
 ## Persist generated folds
 
@@ -72,4 +111,6 @@ assert all(
 | `CombinatorialCV` | `CombinatorialConfig` |
 
 Do not pass individual splitter parameters together with `config`. The
-constructor rejects conflicting sources of settings.
+constructor rejects conflicting sources of settings, except the explicit
+walk-forward `calendar` override, which leaves the caller's configuration
+unchanged. `feed_spec` supplies metadata rather than another splitter config.

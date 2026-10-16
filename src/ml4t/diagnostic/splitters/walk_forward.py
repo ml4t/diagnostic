@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
 from ml4t.diagnostic.core.purging import (
     _searchsorted_timestamp_ns,
@@ -180,7 +181,8 @@ class WalkForwardCV(BaseSplitter):
         embargo_pct: float | None = None,
         expanding: bool = True,
         consecutive: bool = False,
-        calendar: str | CalendarConfig | TradingCalendar | None = None,
+        calendar: str | CalendarConfig | TradingCalendar | CalendarUnset | None = UNSET_CALENDAR,
+        feed_spec: FeedSpec | None = None,
         align_to_sessions: bool = False,
         session_col: str = "session_date",
         timestamp_col: str | None = None,
@@ -250,8 +252,6 @@ class WalkForwardCV(BaseSplitter):
                 non_default_params.append("expanding")
             if consecutive:
                 non_default_params.append("consecutive")
-            if calendar is not None:
-                non_default_params.append("calendar")
             if align_to_sessions:
                 non_default_params.append("align_to_sessions")
             if session_col != "session_date":
@@ -279,9 +279,6 @@ class WalkForwardCV(BaseSplitter):
         else:
             # Create config from individual parameters
             # Note: embargo_size maps to embargo_td in config
-            # Determine calendar_id: explicit str overrides default,
-            # CalendarConfig/TradingCalendar handled separately,
-            # None means use config default ("NYSE")
             config_kwargs: dict[str, Any] = {
                 "n_splits": n_splits,
                 "test_size": test_size,
@@ -297,23 +294,29 @@ class WalkForwardCV(BaseSplitter):
                 "test_end": test_end,
                 "fold_direction": fold_direction,
             }
-            if isinstance(calendar, str):
-                config_kwargs["calendar_id"] = calendar
-            elif calendar is not None:
-                # CalendarConfig or TradingCalendar — extract exchange name
-                if isinstance(calendar, CalendarConfig):
-                    config_kwargs["calendar_id"] = calendar.exchange
-                elif isinstance(calendar, TradingCalendar):
-                    config_kwargs["calendar_id"] = calendar.config.exchange
-            # When calendar is None, omit calendar_id to use config default ("NYSE")
-
             self.config = WalkForwardConfig(**config_kwargs)
 
-        # Handle calendar initialization
-        # Use calendar_id from config if no calendar parameter provided
-        effective_calendar = calendar
-        if effective_calendar is None and self.config.calendar_id is not None:
-            effective_calendar = self.config.calendar_id
+        if feed_spec is not None and not isinstance(feed_spec, FeedSpec):
+            raise TypeError("feed_spec must be a FeedSpec or None")
+        metadata = feed_spec if feed_spec is not None else FeedSpec(time_contract_version=2)
+        declaration = calendar
+        if isinstance(declaration, CalendarConfig):
+            declaration = declaration.exchange
+        elif isinstance(declaration, TradingCalendar):
+            declaration = declaration.config.exchange
+        elif (
+            declaration is not UNSET_CALENDAR
+            and declaration is not None
+            and not isinstance(declaration, str)
+        ):
+            raise TypeError("calendar must be str, CalendarConfig, TradingCalendar, or None")
+        if declaration is UNSET_CALENDAR and "calendar" in self.config.model_fields_set:
+            declaration = self.config.calendar
+        resolved = metadata.resolve_calendar(calendar=declaration)
+        self.config = self.config.model_copy(deep=True, update={"calendar": resolved})
+        effective_calendar = (
+            calendar if isinstance(calendar, CalendarConfig | TradingCalendar) else resolved
+        )
 
         if effective_calendar is None:
             self.calendar = None
@@ -852,11 +855,17 @@ class WalkForwardCV(BaseSplitter):
             # Initial train indices (before purging/embargo)
             train_indices = np.arange(train_start, train_end)
 
-            # Convert test boundaries to timestamps if needed
+            purge_timestamps = timestamps
+            if (
+                self.calendar is None
+                and not isinstance(self.label_horizon, pd.Timedelta)
+                and not isinstance(self.embargo_size, pd.Timedelta)
+            ):
+                purge_timestamps = None
             test_start_time, test_end_time = convert_indices_to_timestamps(
                 test_start,
                 test_end,
-                timestamps,
+                purge_timestamps,
             )
 
             # Apply purging and embargo
@@ -868,7 +877,7 @@ class WalkForwardCV(BaseSplitter):
                 embargo_size=self.embargo_size,
                 embargo_pct=self.embargo_pct,
                 n_samples=n_samples,
-                timestamps=timestamps,
+                timestamps=purge_timestamps,
                 calendar=self.calendar,
             )
 

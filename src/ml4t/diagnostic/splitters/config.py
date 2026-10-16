@@ -44,7 +44,7 @@ import warnings
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_serializer, model_validator
 
 from ml4t.diagnostic.config.base import BaseConfig
 
@@ -326,7 +326,7 @@ class WalkForwardConfig(SplitterConfig):
     )
 
     # Calendar for trading-day-aware calculations
-    calendar_id: str | None = Field(
+    calendar: str | None = Field(
         "NYSE",
         description=(
             "Trading calendar for calendar-first splitting and gap calculations. "
@@ -360,10 +360,28 @@ class WalkForwardConfig(SplitterConfig):
                 data["test_end"] = data.pop("holdout_end")
             elif "holdout_end" in data:
                 data.pop("holdout_end")
-            if "calendar" in data and "calendar_id" not in data:
-                data["calendar_id"] = data.pop("calendar")
-            elif "calendar" in data:
-                data.pop("calendar")
+            if "calendar_id" in data:
+                if "calendar" in data and data["calendar"] != data["calendar_id"]:
+                    raise ValueError("calendar and calendar_id must agree when both are supplied")
+                data["calendar"] = data.pop("calendar_id")
+        return data
+
+    @property
+    def calendar_id(self) -> str | None:
+        """Compatibility alias for the canonical calendar field."""
+        return self.calendar
+
+    @calendar_id.setter
+    def calendar_id(self, value: str | None) -> None:
+        self.calendar = value
+
+    @model_serializer(mode="wrap")
+    def _serialize_calendar_declaration(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        if "calendar" not in self.model_fields_set:
+            data.pop("calendar", None)
+        else:
+            data["calendar"] = self.calendar
         return data
 
     @property

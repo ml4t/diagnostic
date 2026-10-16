@@ -10,7 +10,6 @@ Based on López de Prado (2018) "Advances in Financial Machine Learning".
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
@@ -85,7 +84,7 @@ def calculate_purge_indices(
 
     label_horizon : int or pandas.Timedelta, default=0
         Forward-looking period of labels. For example, if predicting
-        20-day returns, label_horizon=20 (days).
+        20-observation returns, label_horizon=20 (rows without a calendar).
 
         When timestamps and calendar are provided and label_horizon is int,
         it is interpreted as trading days (not calendar days).
@@ -96,7 +95,8 @@ def calculate_purge_indices(
     calendar : TradingCalendar, optional
         Trading calendar for trading-day-aware conversion.
         When provided with integer label_horizon and timestamps,
-        label_horizon is interpreted as trading days.
+        label_horizon is interpreted as trading days. Without a calendar,
+        integers count observed rows; pd.Timedelta always means elapsed time.
 
     Returns:
     -------
@@ -159,18 +159,11 @@ def calculate_purge_indices(
                     direction="backward",
                 )
             else:
-                # Fallback to calendar days with warning
-                if label_horizon > 0:
-                    warnings.warn(
-                        f"label_horizon={label_horizon} (int) with timestamps but no calendar. "
-                        "Interpreting as calendar days. For trading days, provide a calendar.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                label_horizon = pd.Timedelta(days=label_horizon)
+                start = _searchsorted_timestamp_ns(timestamps, test_start, side="left")
+                return list(range(max(0, start - label_horizon), start))
 
         # Calculate purge start time
-        purge_start_time = test_start - cast(pd.Timedelta, label_horizon)
+        purge_start_time = test_start - label_horizon
 
         # Find indices to purge
         purge_mask = (timestamps >= purge_start_time) & (timestamps < test_start)
