@@ -133,6 +133,10 @@ class BaseDashboard(ABC):
         - generate(): Transform raw results into complete HTML
     """
 
+    _font_family = (
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif"
+    )
+
     def __init__(
         self,
         title: str,
@@ -258,7 +262,7 @@ class BaseDashboard(ABC):
         return f"""
         <style>
             body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+                font-family: {self._font_family};
                 margin: 0;
                 padding: 20px;
                 background-color: {bg_color};
@@ -525,13 +529,20 @@ class BaseDashboard(ABC):
                 // Show selected tab
                 selected.classList.add('active');
                 event.currentTarget.classList.add('active');
+                if (typeof Plotly !== 'undefined') {
+                    selected.querySelectorAll('.js-plotly-plot').forEach(plot => {
+                        Plotly.relayout(plot, {autosize: true});
+                    });
+                }
             }
 
             // Plotly responsive resizing
             window.addEventListener('resize', function() {
                 const plots = document.querySelectorAll('.js-plotly-plot');
                 plots.forEach(plot => {
-                    Plotly.Plots.resize(plot);
+                    if (plot.getClientRects().length && typeof Plotly !== 'undefined') {
+                        Plotly.Plots.resize(plot);
+                    }
                 });
             });
 
