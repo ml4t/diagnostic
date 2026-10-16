@@ -109,6 +109,10 @@ silently choose first or last. The lower-level
 `metrics.compute_forward_returns(..., date_col=None)` retains explicit input-row
 order instead, including repeated timestamps within an asset. These are
 unreleased input-boundary changes after 0.1.9, not calendar/grid validation.
+For metrics-layer IC, decay and feature-outcome panels, pass the asset key as
+`group_col`; `None` denotes one series per date. These workflows validate
+prediction keys and forward the declared `date_col` to the return producer,
+including custom time-column names.
 
 For an already-cleaned panel, current source can retain its sample and supplied
 buckets directly. This example does not need Alphalens at runtime:

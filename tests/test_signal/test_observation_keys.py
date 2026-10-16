@@ -9,7 +9,12 @@ import pytest
 from polars.testing import assert_frame_equal
 
 from ml4t.diagnostic import analyze_signal
-from ml4t.diagnostic.metrics import compute_forward_returns
+from ml4t.diagnostic.metrics import (
+    analyze_feature_outcome,
+    compute_forward_returns,
+    compute_ic_by_horizon,
+    compute_ic_decay,
+)
 from ml4t.diagnostic.signal import prepare_data
 
 
@@ -33,10 +38,31 @@ def _panel() -> tuple[pl.DataFrame, pl.DataFrame]:
     return factor, prices
 
 
+def _metric_route(route, predictions, prices, *, date_col="date", group_col="asset"):
+    options = {
+        "pred_col": "factor",
+        "price_col": "price",
+        "date_col": date_col,
+        "group_col": group_col,
+    }
+    if route == "horizon":
+        return compute_ic_by_horizon(predictions, prices, horizons=[1], **options)
+    if route == "decay":
+        return compute_ic_decay(predictions, prices, horizons=[1], **options)
+    return analyze_feature_outcome(
+        predictions,
+        prices,
+        include_decay=False,
+        include_monotonicity=False,
+        include_hac=False,
+        **options,
+    )
+
+
 @pytest.mark.parametrize("side", ["factor", "price"])
 @pytest.mark.parametrize("conflicting", [False, True])
 @pytest.mark.parametrize("pandas_input", [False, True])
-@pytest.mark.parametrize("route", ["prepare", "analyze"])
+@pytest.mark.parametrize("route", ["prepare", "analyze", "horizon", "decay", "feature"])
 def test_overlapping_batches_cannot_duplicate_a_factor_sample(
     side, conflicting, pandas_input, route
 ):
@@ -56,10 +82,10 @@ def test_overlapping_batches_cannot_duplicate_a_factor_sample(
     factor_input = factor.to_pandas() if pandas_input else factor
     price_input = prices.to_pandas() if pandas_input else prices
 
-    with pytest.raises(ValueError, match="duplicate"):
+    with pytest.raises(ValueError, match="(?i)duplicate"):
         if route == "prepare":
             prepare_data(factor_input, price_input, periods=(1,), filter_zscore=None)
-        else:
+        elif route == "analyze":
             analyze_signal(
                 factor_input,
                 price_input,
@@ -67,6 +93,8 @@ def test_overlapping_batches_cannot_duplicate_a_factor_sample(
                 filter_zscore=None,
                 compute_turnover_flag=False,
             )
+        else:
+            _metric_route(route, factor_input, price_input)
 
     assert_frame_equal(factor, before_factor)
     assert_frame_equal(prices, before_prices)
@@ -74,6 +102,56 @@ def test_overlapping_batches_cannot_duplicate_a_factor_sample(
         pd.testing.assert_frame_equal(factor_input, before_factor.to_pandas())
         pd.testing.assert_frame_equal(price_input, before_prices.to_pandas())
     assert original_factor.height == 24 and original_prices.height == 36
+
+
+@pytest.mark.parametrize("route", ["horizon", "decay", "feature"])
+@pytest.mark.parametrize("pandas_input", [False, True])
+def test_custom_time_axis_sorts_each_asset_before_ic(route, pandas_input):
+    dates = pd.bdate_range("2025-01-02", periods=4)
+    prices = pl.DataFrame(
+        {
+            "timestamp": [day for day in dates for _ in range(2)],
+            "asset": ["A", "B"] * 4,
+            "price": [256.0, 512.0, 288.0, 640.0, 270.0, 720.0, 337.5, 675.0],
+        }
+    ).reverse()
+    predictions = pl.DataFrame(
+        {
+            "timestamp": [day for day in dates[:3] for _ in range(2)],
+            "asset": ["A", "B"] * 3,
+            "factor": [0.125, 0.25, -0.0625, 0.125, 0.25, -0.0625],
+        }
+    )
+    result = _metric_route(
+        route,
+        predictions.to_pandas() if pandas_input else predictions,
+        prices.to_pandas() if pandas_input else prices,
+        date_col="timestamp",
+    )
+
+    if route == "horizon":
+        assert result[1] == pytest.approx(1.0)
+    elif route == "decay":
+        assert result["ic_by_horizon"][1] == pytest.approx(1.0)
+    else:
+        assert result["ic_summary"]["mean_ic"] == pytest.approx(1.0)
+        assert len(result["ic_series"]) == 3
+        np.testing.assert_array_equal(result["ic_series"]["n_obs"], [2, 2, 2])
+        np.testing.assert_allclose(result["ic_series"]["ic"], [1.0, 1.0, 1.0])
+
+
+@pytest.mark.parametrize("route", ["horizon", "decay", "feature"])
+@pytest.mark.parametrize("pandas_input", [False, True])
+def test_multi_asset_ic_requires_its_declared_entity_key(route, pandas_input):
+    predictions, prices = _panel()
+
+    with pytest.raises(ValueError, match="(?i)duplicate"):
+        _metric_route(
+            route,
+            predictions.to_pandas() if pandas_input else predictions,
+            prices.to_pandas() if pandas_input else prices,
+            group_col=None,
+        )
 
 
 @pytest.mark.parametrize("grouped", [False, True])
