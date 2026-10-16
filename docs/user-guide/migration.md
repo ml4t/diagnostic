@@ -1106,9 +1106,11 @@ observed state and Diagnostic's common profile/report analysis.
 This is an unreleased correction after 0.1.9, not direct ingestion of a Pyfolio
 positions table. For the same positive-equity positions/cash, pinned Pyfolio
 0.9.9 `timeseries.gross_lev()` and `pos.get_long_short_pos()` agree on gross/net
-ratios. At zero equity Pyfolio produces infinite ratios, and at negative equity
-its division reverses their signs; Diagnostic deliberately leaves these ratios
-unavailable. The full performance report still rejects simple returns below
+ratios. In the zero-equity short example, Pyfolio produces infinite gross
+leverage, negative-infinite short allocation and NaN net exposure (the long
+allocation is 0/0). At negative equity its division reverses the gross/net signs;
+Diagnostic deliberately leaves these ratios unavailable. The full performance
+report still rejects simple returns below
 -100%, including the mark-250 case. Standalone occupancy support does not remove
 that restriction or qualify complete positions, transactions or round-trip
 reports.
