@@ -64,7 +64,9 @@ class TestComputeShapImportanceLightGBM:
     def trained_lgbm_classifier(cls, simple_binary_data):
         """Train a LightGBM classifier."""
         X, y = simple_binary_data
-        model = lgb.LGBMClassifier(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(
+            n_estimators=50, max_depth=3, random_state=42, verbose=-1, n_jobs=1
+        )
         model.fit(X, y)
         return model
 
@@ -73,7 +75,9 @@ class TestComputeShapImportanceLightGBM:
     def trained_lgbm_regressor(cls, simple_regression_data):
         """Train a LightGBM regressor."""
         X, y = simple_regression_data
-        model = lgb.LGBMRegressor(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
+        model = lgb.LGBMRegressor(
+            n_estimators=50, max_depth=3, random_state=42, verbose=-1, n_jobs=1
+        )
         model.fit(X, y)
         return model
 
@@ -251,7 +255,7 @@ class TestComputeShapImportanceXGBoost:
         """Train an XGBoost classifier."""
         X, y = simple_binary_data
         model = xgb.XGBClassifier(
-            n_estimators=50, max_depth=3, random_state=42, eval_metric="logloss"
+            n_estimators=50, max_depth=3, random_state=42, eval_metric="logloss", n_jobs=1
         )
         model.fit(X, y)
         return model
@@ -298,7 +302,7 @@ class TestComputeShapImportanceErrors:
         # Create dummy model
         X_train = np.random.randn(100, 5)
         y_train = np.random.randint(0, 2, 100)
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X_train, y_train)
 
         with pytest.raises(ValueError, match="X must be 2D array"):
@@ -309,7 +313,7 @@ class TestComputeShapImportanceErrors:
         """Test error when feature names count doesn't match."""
         X_train = np.random.randn(100, 5)
         y_train = np.random.randint(0, 2, 100)
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X_train, y_train)
 
         X_test = np.random.randn(20, 5)
@@ -352,7 +356,9 @@ class TestShapComparison:
         y = (X[:, 0] * 2 + X[:, 1] * 3 > 0).astype(int)
 
         # Train model
-        model = lgb.LGBMClassifier(n_estimators=100, max_depth=5, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(
+            n_estimators=100, max_depth=5, random_state=42, verbose=-1, n_jobs=1
+        )
         model.fit(X, y)
 
         return model, X
@@ -516,7 +522,9 @@ class TestGetExplainerAutoSelection:
     def tree_model(cls, simple_data):
         """Create and train tree-based model."""
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=50, max_depth=3, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(
+            n_estimators=50, max_depth=3, random_state=42, verbose=-1, n_jobs=1
+        )
         model.fit(X, y)
         return model
 
@@ -803,7 +811,7 @@ class TestComputeShapImportanceV11API:
         from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         result = compute_shap_importance(model, X, explainer_type="tree")
@@ -833,7 +841,7 @@ class TestComputeShapImportanceV11API:
         from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         result = compute_shap_importance(model, X, explainer_type="auto")
@@ -861,7 +869,7 @@ class TestComputeShapImportanceV11API:
         from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         # Old API signature - should still work with defaults
@@ -899,7 +907,7 @@ class TestComputeShapImportanceV11API:
         from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         # Pass custom kwargs (feature_perturbation is a TreeExplainer parameter)
@@ -948,7 +956,7 @@ class TestTradeShapAnalyzerV11Integration:
 
         # Train model
         X_train = features_df.select(["feature1", "feature2", "feature3"]).to_numpy()
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X_train, y)
 
         # Create analyzer (auto-select explainer)
@@ -1038,7 +1046,7 @@ class TestTradeShapAnalyzerV11Integration:
 
         # Train model
         X_train = features_df.select(["feature1", "feature2"]).to_numpy()
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X_train, y)
 
         # Old API signature (no v1.1 parameters)
@@ -1077,7 +1085,7 @@ class TestTradeShapAnalyzerV11Integration:
 
         # Train model
         X_train = features_df.select(["feature1"]).to_numpy()
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X_train, y)
 
         # Create analyzer with performance_warning=False
@@ -1116,7 +1124,7 @@ class TestTradeShapAnalyzerV11Integration:
 
         # Train model
         X_train = features_df.select(["feature1"]).to_numpy()
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X_train, y)
 
         # Create analyzer with custom explainer kwargs
@@ -1204,7 +1212,7 @@ class TestKernelExplainerIntegration:
         X_train, y_train = X[:400], y[:400]
         X_test = X[400:410]  # 10 samples for speed
 
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X_train, y_train)
 
         # Force KernelExplainer even though TreeExplainer would work
@@ -1352,7 +1360,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         result = compute_shap_importance(model, X[:100], explainer_type="auto")
@@ -1401,7 +1409,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         # Force kernel even though tree would be better
@@ -1419,7 +1427,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         from ml4t.diagnostic.metrics import compute_shap_importance
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         # Old API signature with no explainer selection parameters.
@@ -1443,7 +1451,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         X_test = X[:50]
 
         # Train tree model
-        tree_model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        tree_model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         tree_model.fit(X, y)
 
         # Train linear model
@@ -1470,7 +1478,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         from ml4t.diagnostic.metrics.importance_shap import _get_explainer
 
         X, y = simple_data
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         X_test = X[:100]
@@ -1499,7 +1507,7 @@ class TestAutoSelectionAndBackwardCompatibility:
         y_small = y[:100]
 
         # Test tree path
-        tree_model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        tree_model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         tree_model.fit(X_small, y_small)
         explainer1, type1, _ = _get_explainer(tree_model, X_small[:50], explainer_type="auto")
         assert type1 == "tree"
@@ -1603,7 +1611,7 @@ class TestPerformanceWarnings:
         X, y = simple_data
         X_test = X[:500]  # Large dataset
 
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         # TreeExplainer should not warn even with large dataset
@@ -1726,7 +1734,7 @@ class TestDeepExplainerIntegration:
         X, y = simple_data
 
         # Train tree model
-        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
+        model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1, n_jobs=1)
         model.fit(X, y)
 
         # Auto-selection should pick TreeExplainer, not DeepExplainer
