@@ -61,6 +61,9 @@ def compute_quantile_statistics(
     n_obs counts assets or dates as identified by sample_unit, never pooled
     asset-date rows. Singleton samples have a defined mean but null sample
     dispersion/error. Empty observed samples retain zero counts and null means.
+    Across-date group summaries retain observed group/bucket label combinations
+    even when a combination has no defined dates. Horizon order follows the
+    explicit return_columns, not alphabetical labels.
 
     Group adjustment takes precedence over date demeaning. This uses the same
     paired outcome transform as grouped IC. Factors, buckets and callers are
@@ -163,12 +166,29 @@ def compute_quantile_statistics(
             if parts
             else pl.DataFrame(schema={key: value for key, value in schema.items() if key != "date"})
         )
-    return result.with_columns(
-        pl.lit("asset" if by_date else "date").alias("sample_unit"),
-        pl.lit("date_group_mean" if group_adjust else "date_mean" if demeaned else "none").alias(
-            "return_adjustment"
-        ),
-    ).sort(["return_column", *[key for key in keys if by_date or key != "date"]])
+        if by_group:
+            grid = (
+                values.select("group")
+                .unique()
+                .join(values.select("quantile").unique(), how="cross")
+            )
+            grid = grid.join(pl.DataFrame({"return_column": columns}), how="cross")
+            result = grid.join(result, on=summary_keys, how="left").with_columns(
+                pl.col("n_obs").fill_null(0)
+            )
+    return (
+        result.with_columns(
+            pl.lit("asset" if by_date else "date").alias("sample_unit"),
+            pl.lit(
+                "date_group_mean" if group_adjust else "date_mean" if demeaned else "none"
+            ).alias("return_adjustment"),
+            pl.col("return_column")
+            .replace_strict({column: index for index, column in enumerate(columns)})
+            .alias("__horizon_order"),
+        )
+        .sort(["__horizon_order", *[key for key in keys if by_date or key != "date"]])
+        .drop("__horizon_order")
+    )
 
 
 def _compute_quantile_return_statistics(

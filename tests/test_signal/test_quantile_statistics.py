@@ -10,7 +10,7 @@ from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import prepare_signal_panel
 
 
-def _panel(representation="multiindex", nanoseconds=False):
+def _panel(representation="multiindex", nanoseconds=False, static=False):
     dates = pd.bdate_range("2025-01-02", periods=5, tz="UTC")
     if nanoseconds:
         dates = pd.DatetimeIndex([dates[0] + pd.Timedelta(i * 100, unit="ns") for i in range(5)])
@@ -41,6 +41,11 @@ def _panel(representation="multiindex", nanoseconds=False):
         index=factor.index,
         name="group",
     )
+    if static:
+        groups = pd.Series(
+            {key: "L" if key[1] in ["A", "B"] else "H" for key in factor.index}, name="group"
+        )
+        groups.index = groups.index.set_names(["date", "asset"])
     if representation != "multiindex":
         factor, forward, groups = factor.reset_index(), forward.reset_index(), groups.reset_index()
         if representation == "polars":
@@ -239,3 +244,26 @@ def test_string_boolean_never_silently_changes_the_quantile_adjustment_policy(op
     panel, _ = _panel()
     with pytest.raises(ValueError, match=option):
         panel.quantile_statistics(**{option: "false"})
+
+
+def test_across_date_group_summary_keeps_empty_group_bucket_cells_with_zero_dates():
+    panel, _ = _panel(static=True)
+    result = panel.quantile_statistics(by_group=True, demeaned=False)
+    assert result.select("group", "quantile").rows() == [("H", 1), ("H", 2), ("L", 1), ("L", 2)]
+    assert result["n_obs"].to_list() == [0, 2, 2, 0]
+    assert result["mean"].to_list() == [None, pytest.approx(0.40625), pytest.approx(0.0625), None]
+    assert result["standard_error"].to_list() == [
+        None,
+        pytest.approx(0.09375),
+        pytest.approx(0),
+        None,
+    ]
+
+
+def test_quantile_horizon_order_follows_requested_selectors_not_alphabetical_labels():
+    from ml4t.diagnostic.signal import compute_quantile_statistics
+
+    panel, _ = _panel()
+    supplied = panel.data.with_columns(pl.col("1D").alias("next_quote"))
+    result = compute_quantile_statistics(supplied, return_columns=["next_quote", "1D"])
+    assert result["return_column"].unique(maintain_order=True).to_list() == ["next_quote", "1D"]

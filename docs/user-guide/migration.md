@@ -324,7 +324,9 @@ standard error `std / sqrt(n_obs)`. With `by_date=False` (the default), the
 method reduces those daily means instead. Each date gets equal weight and
 `n_obs` counts defined dates, not pooled asset-date rows. A singleton has a
 defined mean but null sample deviation/error; an observed empty sample has
-zero count and null mean. Buckets absent from a date are not invented.
+zero count and null mean. Daily tables do not invent missing buckets. Across-date
+group summaries retain the product of observed group and bucket labels, including
+empty combinations with zero dates and null statistics, as in Alphalens 0.4.6.
 
 The new method defaults to `demeaned=True`, subtracting each date's paired
 mean return. `group_adjust=True` takes precedence and subtracts date/group
@@ -335,7 +337,8 @@ constructs portfolio weights or changes bucket assignments.
 
 The direct `signal.compute_quantile_statistics` route accepts explicit return
 selectors and physical column names. Both routes preserve timestamp precision
-and accept positive bucket labels even when some labels are absent.
+and accept positive bucket labels even when some labels are absent. Horizon
+rows follow the requested return-column order, not alphabetical labels.
 `SignalResult.quantile_returns` remains the existing pooled result. In a
 quote-derived changing-universe sample, upper-bucket daily means of `0.3125`
 and `0.5` give an equal-date mean of `0.40625` and a standard error of `0.09375`.
