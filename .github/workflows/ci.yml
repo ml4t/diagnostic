@@ -250,6 +250,14 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)"
           --with "polars==0.20.0" --with "pandas==2.3.3"
           python -I examples/legacy_migration_comparison.py --task holdings
+      - name: Execute prepared portfolio report in a notebook from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with nbclient --with ipykernel --with pytest
+          pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
+          tests/test_evaluation/test_portfolio_notebook_report.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist

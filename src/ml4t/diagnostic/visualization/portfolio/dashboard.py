@@ -53,6 +53,21 @@ class PortfolioTearSheet:
     holdings: HoldingsAnalysisResult | None = None
     availability: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    def _availability_html(self) -> str:
+        if not self.availability:
+            return ""
+        notes = "".join(
+            f"<li><strong>{escape(name.replace('_', ' '))}</strong>: "
+            f"{escape(info['status'])}. {escape(info.get('reason') or '')}</li>"
+            for name, info in self.availability.items()
+            if info.get("reason") or info["status"] != "available"
+        )
+        return (
+            '<section class="metrics-summary"><h2>Analysis availability</h2>'
+            "<p>Panels describe the supplied observations. Missing analysis is not zero risk.</p>"
+            f"<ul>{notes}</ul></section>"
+        )
+
     def show(self, compact: bool = False) -> None:
         """Display tear sheet in Jupyter notebook or browser.
 
@@ -75,12 +90,17 @@ class PortfolioTearSheet:
         try:
             from IPython.display import HTML, display
 
-            display(HTML(f"<pre>{self.metrics.summary()}</pre>"))
+            display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
+            if self.availability:
+                display(HTML(self._availability_html()))
             for fig in self.figures.values():
                 fig.show()
         except ImportError:
             # Terminal fallback: print metrics, show each figure
             print(self.metrics.summary())
+            for name, info in self.availability.items():
+                if info.get("reason") or info["status"] != "available":
+                    print(f"{name.replace('_', ' ')}: {info['status']}. {info.get('reason') or ''}")
             print()
             for name, fig in self.figures.items():
                 print(f"\n  {name}")
@@ -175,18 +195,7 @@ class PortfolioTearSheet:
     </div>
 """)
 
-        if self.availability:
-            notes = "".join(
-                f"<li><strong>{escape(name.replace('_', ' '))}</strong>: "
-                f"{escape(info['status'])}. {escape(info.get('reason') or '')}</li>"
-                for name, info in self.availability.items()
-                if info.get("reason") or info["status"] != "available"
-            )
-            html_parts.append(
-                '<section class="metrics-summary"><h2>Analysis availability</h2>'
-                "<p>Panels describe the supplied observations. Missing analysis is not zero risk.</p>"
-                f"<ul>{notes}</ul></section>"
-            )
+        html_parts.append(self._availability_html())
 
         # Add each figure
         for name, fig in self.figures.items():

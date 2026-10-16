@@ -1269,6 +1269,11 @@ write fails. Default-width HTML reflows at phone width; explicitly fixed-width
 figures can scroll within their panels. `include_plotlyjs=True` embeds the
 runtime for offline use; the default `"cdn"` instead needs network access.
 
+In a notebook, `report.show()` displays each figure and the same availability
+reasons as HTML. Install IPython and nbformat in the notebook kernel and use a
+Plotly-compatible frontend. `report.show(compact=True)` remains the four-panel
+returns overview; it does not display the prepared holdings panels.
+
 These are observed prepared-holdings panels, not the complete Pyfolio positions
 tear sheet or all portfolio reports. Calendar-aware ingestion, intraday
 reconstruction, transactions/cost scenarios, risk/capacity/round-trip workflows
