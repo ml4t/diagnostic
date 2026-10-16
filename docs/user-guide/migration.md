@@ -300,6 +300,21 @@ date. Native episode thresholds and observation-count durations still differ
 from Pyfolio's top-only selection and business-date recovery durations. This
 focused correction does not qualify every episode option or the full report.
 
+For uncertainty estimates, current source
+`evaluation.compute_backtest_uncertainty()` retains observed zero-return cash
+sessions instead of treating them as warmup. In a tested NAV-to-return sample,
+100 observations include 20 initial cash sessions. Their annualized Sharpe is
+1.910147 at 252 periods per year; silently removing those sessions gave
+2.136821. Explicitly slicing the dated input to the last 80 observations still
+analyzes that shorter window. Retain the window-selection reason with your
+research inputs; the result does not record it. The shared correction also
+preserves zeros in selection adjustment and automatic bootstrap block selection.
+This is unreleased source work after 0.1.9. The uncertainty helpers still filter
+nonfinite values and do not validate dated paired/cohort alignment, unlike
+`PortfolioAnalysis`'s strict input boundary. Align and validate those inputs
+before use. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
+intervals; matching point estimates does not establish interval equivalence.
+
 Pyfolio's full sheet can additionally include return cones, significant
 events, round trips reconstructed from fills, capacity analysis using
 market data, and optional factor-attribution panels. Diagnostic has related
