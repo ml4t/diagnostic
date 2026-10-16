@@ -7,6 +7,7 @@ an existing return panel and its buckets. Both use the same analysis functions.
 from __future__ import annotations
 
 from dataclasses import replace
+from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -182,7 +183,7 @@ def analyze_signal(
         asset_col,
         price_col,
     )
-    return _analyze_data(
+    result = _analyze_data(
         data,
         periods,
         quantiles,
@@ -194,6 +195,17 @@ def analyze_signal(
         date_col,
         asset_col,
     )
+    if quantile_method == QuantileMethod.QCUT:
+        result = replace(
+            result,
+            preparation_metadata={
+                "bucket_method": "pandas.qcut",
+                "pandas_version": version("pandas"),
+                "numpy_version": version("numpy"),
+                "sample_policy": "existing price path; no complete-case cleaner or loss audit",
+            },
+        )
+    return result
 
 
 def analyze_prepared_signal(

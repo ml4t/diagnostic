@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -57,6 +59,10 @@ def test_high_level_qcut_analysis_uses_exact_bucket_return_membership():
     assert result.count_by_quantile == {1: 3, 2: 2, 3: 2, 4: 2, 5: 3}
     for quantile, expected in {1: 0.01, 2: 0.035, 3: 0.055, 4: 0.075, 5: 0.1}.items():
         assert result.quantile_returns["1D"][quantile] == pytest.approx(expected)
+    assert result.preparation_metadata["bucket_method"] == "pandas.qcut"
+    assert result.preparation_metadata["pandas_version"] == pd.__version__
+    assert result.preparation_metadata["numpy_version"] == np.__version__
+    assert json.loads(result.to_json())["preparation_metadata"] == result.preparation_metadata
 
 
 def test_qcut_keeps_equal_values_together_at_interpolated_boundaries():
@@ -69,13 +75,41 @@ def test_qcut_keeps_equal_values_together_at_interpolated_boundaries():
     assert result["quantile"].to_list() == [1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
 
 
-def test_qcut_rejects_duplicate_edges_instead_of_inventing_uniform_buckets():
+@pytest.mark.parametrize("count", [2, 3, 5])
+def test_qcut_rejects_duplicate_edges_instead_of_inventing_uniform_buckets(count):
     factor, prices = _priced_factor([1.0] * 12)
 
     with pytest.raises((pl.exceptions.DuplicateError, ValueError)):
         prepare_data(
-            factor, prices, periods=(1,), quantiles=5, filter_zscore=None, quantile_method="qcut"
+            factor,
+            prices,
+            periods=(1,),
+            quantiles=count,
+            filter_zscore=None,
+            quantile_method="qcut",
         )
+
+
+def test_qcut_rejects_a_repeated_endpoint_even_with_one_interior_edge():
+    factor, prices = _priced_factor([0.0, 0.0, 1.0])
+
+    with pytest.raises((pl.exceptions.DuplicateError, ValueError)):
+        prepare_data(
+            factor, prices, periods=(1,), quantiles=2, filter_zscore=None, quantile_method="qcut"
+        )
+
+
+@pytest.mark.parametrize("scale", [1.0, 1e-14])
+def test_qcut_matches_runtime_reference_edges_at_fractional_quantile_boundaries(scale):
+    values = np.arange(4, dtype=float) * scale
+    factor, prices = _priced_factor(values.tolist())
+    expected = (pd.qcut(values, 3, labels=False) + 1).tolist()
+
+    result = prepare_data(
+        factor, prices, periods=(1,), quantiles=3, filter_zscore=None, quantile_method="qcut"
+    )
+
+    assert result["quantile"].to_list() == expected
 
 
 def test_qcut_one_bucket_keeps_a_constant_cross_section():
