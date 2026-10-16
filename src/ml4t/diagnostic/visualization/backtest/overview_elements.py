@@ -409,7 +409,7 @@ def create_activity_strip_html(metrics: dict[str, Any]) -> str:
 
     avg_holding = _get(metrics, "avg_bars_held")
     if avg_holding is not None:
-        cards.append(_kpi_card("AVG HOLDING", f"{float(avg_holding):.1f} days"))
+        cards.append(_kpi_card("AVG HOLDING", f"{float(avg_holding):.1f} bars"))
 
     avg_turnover = _get(metrics, "avg_turnover")
     if avg_turnover is not None:
