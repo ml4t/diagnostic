@@ -273,6 +273,9 @@ def test_offline_report_browser_renders_actual_empirical_arrays_with_its_own_run
         marker.id = 'empirical-browser-check';
         marker.textContent = JSON.stringify({
             runtime: typeof Plotly === 'undefined' ? null : Plotly.version,
+            proseFont:getComputedStyle(panel.querySelector('p')).fontFamily,
+            proseSize:parseFloat(getComputedStyle(panel.querySelector('p')).fontSize),
+            labels:Array.from(panel.querySelectorAll('.gtitle,.xtick text,.ytick text,.legendtext,.annotation-text')).map(node => ({font:getComputedStyle(node).fontFamily,size:parseFloat(getComputedStyle(node).fontSize)})),
             documentWidth:document.documentElement.scrollWidth, viewportWidth:innerWidth,
             traces:Array.from(panel.querySelectorAll('.js-plotly-plot')).flatMap(plot => Array.from(plot._fullData || []).filter(trace => trace.type === 'violin').map(trace => ({name:trace.name,y:Array.from(trace.y || []),customdata:Array.from(trace.customdata || [])})))
         });
@@ -311,3 +314,40 @@ def test_offline_report_browser_renders_actual_empirical_arrays_with_its_own_run
     assert [row[1] for row in actual["Q2"]["customdata"]] == [2, 1]
     assert actual["Q2"]["customdata"][0][0].endswith("000000100+00:00")
     assert measured["documentWidth"] <= measured["viewportWidth"]
+    assert measured["labels"]
+    assert measured["proseSize"] == 16
+    assert all(label["font"] == measured["proseFont"] for label in measured["labels"])
+    assert all(13 <= label["size"] <= measured["proseSize"] for label in measured["labels"])
+
+
+@pytest.mark.parametrize("representation", ["pandas", "polars"])
+def test_actual_grouped_statistics_require_explicit_selection_not_cross_group_pooling(
+    representation,
+):
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    statistics = panel.quantile_statistics(by_date=True, by_group=True, demeaned=False)
+    with pytest.raises(ValueError, match="select one group"):
+        plot_quantile_returns_violin(model, observations=statistics)
+    selected = statistics.filter(pl.col("group") == "growth")
+    before = selected.clone()
+    figure = plot_quantile_returns_violin(
+        model,
+        observations=selected.to_pandas() if representation == "pandas" else selected,
+        period="1D",
+    )
+    np.testing.assert_allclose(_values(figure)["Q1"], [0.25, 0.25], rtol=0, atol=1e-14)
+    np.testing.assert_allclose(_values(figure)["Q2"], [0.5], rtol=0, atol=1e-14)
+    assert selected.equals(before)
+
+
+def test_empty_actual_date_query_remains_unavailable_instead_of_generated_samples():
+    factor, marks, panel, dates = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    selected = panel.quantile_statistics(by_date=True).filter(pl.col("date") < dates[0])
+    assert selected.is_empty()
+    figure = plot_quantile_returns_violin(model, observations=selected, period="1D")
+    assert all(len(values) == 0 for values in _values(figure).values())
+    assert any(
+        "No defined empirical observations" in item.text for item in figure.layout.annotations
+    )

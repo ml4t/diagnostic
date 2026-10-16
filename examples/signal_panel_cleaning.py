@@ -67,6 +67,9 @@ def main() -> None:
     portfolio_summary = PortfolioAnalysis(one_period, periods_per_year=252).compute_summary_stats()
     assert abs(portfolio_summary.total_return - ((1 + one_period).prod() - 1)) < 1e-14
     daily_quantiles = panel.quantile_statistics(by_date=True, demeaned=False)
+    empirical = result.to_quantile_result().get_dataframe("observations")
+    assert empirical.equals(daily_quantiles)
+    assert result.quantile_observations.equals(daily_quantiles)
     equal_date_quantiles = panel.quantile_statistics(demeaned=False)
     assert daily_quantiles.height == 12 and equal_date_quantiles.height == 4
     assert equal_date_quantiles["n_obs"].to_list() == [3] * 4

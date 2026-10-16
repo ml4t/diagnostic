@@ -61,6 +61,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
 | Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | Unreleased after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
 | Daily quantile means/errors and equal-date summaries | `panel.quantile_statistics(by_date=..., by_group=..., demeaned=..., group_adjust=...)` | Unreleased after 0.1.9. Reports sample standard deviation, standard error and asset/date counts; does not change the native pooled `SignalResult` fields or spread inference. |
+| Empirical quantile return distributions | `plot_quantile_returns_violin(result.to_quantile_result(), period=...)` | Unreleased after 0.1.9. Uses actual dated bucket means retained by the analysis/report bridge, with explicit adjustment and percentile options. No summary-derived simulation. Pooled bars and density presentation remain distinct. |
 | Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
@@ -541,6 +542,46 @@ tear sheets. Quantile cumulative paths, holdings and event workflows remain
 separate accepted work. Persistence-disabled analyses and historical saved
 results without dated observations return no turnover component; scalar means
 cannot reconstruct missing dates, buckets or reference ranks.
+
+### Plot empirical dated quantile observations
+
+Unreleased after 0.1.9, the actual raw, prepared and owned analysis routes retain
+`result.quantile_observations`. Each row identifies a date, bucket and supplied
+return column, its mean, asset count and adjustment. The independent table
+survives `SignalResult` JSON, `to_quantile_result()` and `to_tear_sheet()`.
+With the visualization extra installed:
+
+```python
+from ml4t.diagnostic.visualization.signal import SignalDashboard, plot_quantile_returns_violin
+
+quantiles = report_result.to_quantile_result()
+observations = quantiles.get_dataframe("observations")
+fig = plot_quantile_returns_violin(quantiles, period="1D", ylim_percentiles=(10, 90))
+adjusted = panel.quantile_statistics(by_date=True, demeaned=True, group_adjust=True)
+adjusted_fig = plot_quantile_returns_violin(quantiles, observations=adjusted, period="1D")
+html = SignalDashboard().generate(report_result.to_tear_sheet())
+```
+
+The default violin sample contains actual date/bucket means, not pooled asset
+returns or normal samples inferred from scalar summaries. Unequal bucket sizes
+can make its equally weighted date mean differ from the existing pooled bar.
+Neither the plot nor report changes NumPy's global random state. Select one
+group explicitly before plotting grouped statistics; missing observations are
+unavailable, not fabricated. Historical summary-only results need an explicit
+observations table or supplied values. The existing `factor_data=` path remains
+an explicit raw-value sample, not an implicit date reduction.
+
+Alphalens Reloaded 0.4.6 accepts dated quantile means and displays basis points.
+Diagnostic trace values remain decimal returns with percentage axis labels;
+`ylim_percentiles` uses the selected horizon without dropping trace samples.
+Group adjustment takes precedence over date demeaning, as in the shared
+statistics method. Both density renderers stop at the observed sample bounds,
+but Plotly and Seaborn smoothing/box presentation are not claimed identical.
+Plot separate horizons explicitly; the current dashboard renders its first
+horizon and labels its selector as not interactive. A matching bundled Plotly
+runtime makes its HTML self-contained, including NumPy-backed trace arrays.
+Full multi-horizon chart composition, cumulative paths, event/portfolio
+workflows and all seven Alphalens tear sheets remain separate accepted work.
 
 ### Construct factor weights and supplied-return contributions
 

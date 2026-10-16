@@ -337,6 +337,7 @@ def plot_quantile_returns_violin(
                 else None,
                 box_visible=show_box,
                 meanline_visible=True,
+                spanmode="hard",
                 fillcolor=colors[i],
                 line_color=colors[i],
                 opacity=0.6,
