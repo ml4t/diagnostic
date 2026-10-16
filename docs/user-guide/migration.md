@@ -102,6 +102,14 @@ The assertion establishes the expected direction on these synthetic data;
 it is not a significance test for a real factor. Use the
 [signal quickstart](../getting-started/quickstart.md) to interpret IC and spread.
 
+Current source rejects duplicate or missing date/asset keys in factor and price
+inputs before computing or joining forward returns. Deduplicate overlapping
+batches upstream with an explicit quote/aggregation policy; Diagnostic does not
+silently choose first or last. The lower-level
+`metrics.compute_forward_returns(..., date_col=None)` retains explicit input-row
+order instead, including repeated timestamps within an asset. These are
+unreleased input-boundary changes after 0.1.9, not calendar/grid validation.
+
 For an already-cleaned panel, current source can retain its sample and supplied
 buckets directly. This example does not need Alphalens at runtime:
 

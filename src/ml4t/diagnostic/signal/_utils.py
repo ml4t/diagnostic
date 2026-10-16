@@ -13,6 +13,7 @@ from ml4t.diagnostic.config.signal_config import QuantileMethod
 from ml4t.diagnostic.metrics.basic import (
     compute_forward_returns as compute_forward_returns_core,
 )
+from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -184,6 +185,8 @@ def compute_forward_returns(
     pl.DataFrame
         Data with forward return columns (e.g., "1D_fwd_return").
     """
+    _validate_observation_keys(data, [date_col, asset_col], "factor")
+
     # Compute forward returns on full price history for each asset/date.
     price_with_returns = compute_forward_returns_core(
         prices,
