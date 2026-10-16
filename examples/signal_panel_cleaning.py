@@ -70,9 +70,12 @@ def main() -> None:
     assert factor_wealth.height == 3
     assert abs(factor_wealth["wealth"][-1] - (1 + portfolio_summary.total_return)) < 1e-14
     daily_quantiles = panel.quantile_statistics(by_date=True, demeaned=False)
-    empirical = result.to_quantile_result().get_dataframe("observations")
+    quantile_result = result.to_quantile_result()
+    empirical = quantile_result.get_dataframe("observations")
     assert empirical.equals(daily_quantiles)
     assert result.quantile_observations.equals(daily_quantiles)
+    assert quantile_result.get_monotonicity("1D") == (None, "unavailable")
+    assert quantile_result.get_dataframe("spread")["is_monotonic"].to_list() == [None, None]
     equal_date_quantiles = panel.quantile_statistics(demeaned=False)
     assert daily_quantiles.height == 12 and equal_date_quantiles.height == 4
     assert equal_date_quantiles["n_obs"].to_list() == [3] * 4
@@ -110,6 +113,10 @@ def main() -> None:
                 "factor_wealth": factor_wealth.to_dicts(),
                 "arithmetic_series_total_return": portfolio_summary.total_return,
                 "daily_quantiles": daily_quantiles.to_dicts(),
+                "monotonicity": {
+                    period: quantile_result.get_monotonicity(period)
+                    for period in quantile_result.periods
+                },
                 "equal_date_quantiles": equal_date_quantiles.to_dicts(),
                 "quantile_spreads": spreads.to_dicts(),
                 "dated_quantile_turnover": dated_turnover.to_dicts(),
