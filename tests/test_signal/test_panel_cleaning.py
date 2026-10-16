@@ -237,7 +237,8 @@ def test_supported_bucket_options_preserve_independent_membership_and_account_fo
         np.testing.assert_array_equal(actual["quantile"], expected)
 
 
-def test_real_dated_group_gap_and_unbucketable_remainder_have_separate_losses():
+@pytest.mark.parametrize("labels", [None, {"g1": "sector one", "g2": "sector two"}])
+def test_real_dated_group_gap_and_unbucketable_remainder_have_separate_losses(labels):
     from ml4t.diagnostic.signal import prepare_signal_panel
 
     factor, forward, dates, assets = _inputs()
@@ -247,7 +248,13 @@ def test_real_dated_group_gap_and_unbucketable_remainder_have_separate_losses():
     )
     groups = groups.drop((dates[2], "A")).reindex(factor.index)
     panel = prepare_signal_panel(
-        factor, forward, quantiles=2, groups=groups, binning_by_group=True, max_loss=0.6
+        factor,
+        forward,
+        quantiles=2,
+        groups=groups,
+        group_labels=labels,
+        binning_by_group=True,
+        max_loss=0.6,
     )
     assert panel.data.height == 10
     assert panel.metadata["loss_by_stage"] == {
@@ -369,3 +376,65 @@ def test_float32_feed_values_use_float64_analysis_not_float32_accumulation():
             assert result.quantile_returns_std[column][bucket] == pytest.approx(
                 std, rel=0.0, abs=1e-15
             )
+
+
+def test_requested_return_columns_determine_the_common_sample_not_unused_tails():
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, _ = _inputs()
+    one = prepare_signal_panel(factor, forward, return_columns=["1D"], quantiles=2, max_loss=1 / 3)
+    both = prepare_signal_panel(
+        factor, forward, return_columns=["2D", "1D"], quantiles=2, max_loss=0.5
+    )
+    assert one.data.height == 16 and both.data.height == 12
+    assert one.metadata["loss_by_stage"] == {"factor": 4, "returns": 4, "groups": 0, "bucketing": 0}
+    assert one.data["date"].n_unique() == 4
+    assert both.analyze(min_assets=2).periods == (2, 1)
+    assert pd.Timestamp(one.data["date"].max()) == dates[4]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"quantiles": None, "bins": None},
+        {"quantiles": 2, "bins": 2},
+        {"quantiles": [0.0, 0.5, 0.5, 1.0]},
+        {"quantiles": [-0.1, 1.0]},
+        {"quantiles": [0.0, 1.1]},
+        {"quantiles": None, "bins": [0.0, 1.0, 1.0]},
+        {"zero_aware": "yes"},
+        {"quantiles": [0.0, 0.5, 1.0], "zero_aware": True},
+        {"binning_by_group": "no"},
+        {"quantiles": np.array([[0.0, 0.5], [0.6, 1.0]])},
+        {"max_loss": np.nan},
+        {"max_loss": np.inf},
+        {"max_loss": True},
+        {"max_loss": -0.1},
+        {"max_loss": 1.1},
+        {"return_columns": []},
+        {"return_columns": ["1D", "1D"]},
+    ],
+)
+def test_invalid_policy_is_rejected_not_suppressed_as_a_total_bucket_loss(options):
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, _, _ = _inputs()
+    kwargs = {"quantiles": 2, "max_loss": 1.0}
+    kwargs.update(options)
+    if "max_loss" in options:
+        message = "max_loss"
+    elif "return_columns" in options:
+        message = "return_columns"
+    elif "binning_by_group" in options:
+        message = "binning_by_group"
+    elif "zero_aware" in options:
+        message = "zero_aware"
+    elif "bins" in options and options["bins"] is not None and options["quantiles"] is None:
+        message = "bins.*edges"
+    elif options.get("quantiles", 2) is None or options.get("bins") is not None:
+        message = "exactly one"
+    else:
+        message = "edges|probabilities"
+    groups = {"A": "g1", "B": "g1", "C": "g2", "D": "g2"}
+    with pytest.raises(ValueError, match=message):
+        prepare_signal_panel(factor, forward, groups=groups, **kwargs)
