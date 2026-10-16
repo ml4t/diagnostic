@@ -94,6 +94,53 @@ class PreparedSignalPanel:
             result, preparation_metadata={**result.preparation_metadata, "cleaning": self.metadata}
         )
 
+    def ic_by_date(
+        self,
+        *,
+        method: str = "spearman",
+        group_adjust: bool = False,
+        by_group: bool = False,
+        min_obs: int = 2,
+        date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Inspect ICs for this owned sample, with optional outcome/group adjustment.
+
+        Unlike analyze(), arbitrary supplied return selectors are supported;
+        they do not imply a calendar or duration. See compute_signal_ic for
+        counts, undefined statuses and explicit requested-grid behavior.
+        """
+        from ml4t.diagnostic.signal.signal_ic import compute_signal_ic
+
+        return compute_signal_ic(
+            self.data,
+            return_columns=self.metadata["return_columns"],
+            method=method,
+            group_adjust=group_adjust,
+            by_group=by_group,
+            min_obs=min_obs,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+            date_grid=date_grid,
+        )
+
+    def demean_returns(self, *, by_group: bool = False) -> pl.DataFrame:
+        """Inspect date- or date/group-demeaned outcomes without changing this panel.
+
+        Rows, keys, factors and buckets are retained. This uses the same paired
+        outcome adjustment as group-adjusted IC, not portfolio-weight construction.
+        """
+        from ml4t.diagnostic.signal.returns import demean_signal_returns
+
+        return demean_signal_returns(
+            self.data,
+            return_columns=self.metadata["return_columns"],
+            by_group=by_group,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
 
 def _frame(
     data: pl.DataFrame | pd.DataFrame | pd.Series,

@@ -59,9 +59,10 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Already-cleaned factor table | `analyze_prepared_signal(data, ...)` | Accepts the ordinary pandas `(date, asset)` index, `factor_quantile` and `1D`/`5D` columns, or native flat columns. Preserves supplied buckets; rejects duplicate keys and incomplete requested data rather than cleaning it. Unreleased after 0.1.9. |
 | Unbucketed factors plus supplied returns | `signal.prepare_signal_panel(factor, forward_returns, ...)` | Owns one complete finite sample, then assigns qcut/cut buckets and records factor/return/group/bucketing losses. Supports static or dated groups and group-relative/zero-aware buckets. Unreleased after 0.1.9; does not compute returns or validate a calendar. |
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
+| Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | Unreleased after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
-| Group-neutral analytics and the complete Alphalens tear sheet | No complete equivalent | Preparing group-relative or zero-aware buckets does not implement group-adjusted IC/returns, group-neutral portfolios or the complete tear sheet. |
+| Group-neutral portfolios and the complete Alphalens tear sheet | No complete equivalent | Grouped IC and return demeaning do not implement portfolio weights, holdings, event paths or the complete tear sheet. |
 
 </div>
 
@@ -131,9 +132,9 @@ legacy rank method, and `uniform` remains the legacy epsilon-adjusted width
 method. These are not pandas qcut/cut aliases. Unknown method names now raise
 instead of silently selecting uniform bins. The qcut option requires a positive
 integer count and finite factors, and rejects duplicate edges rather than
-splitting ties. It is not a cleaner: explicit probability/cut edges, zero-aware
-group buckets, complete-case filtering and loss provenance still require
-separate implementation. Other native signal statistics retain their stated
+splitting ties. It is not a cleaner: use `prepare_signal_panel` for explicit
+probability/cut edges, zero-aware group buckets, complete-case filtering and
+loss provenance. Other native signal statistics retain their stated
 aggregation conventions.
 
 Qcut boundary rounding depends on pandas/NumPy versions. For values `[0,1,2,3]`
@@ -216,7 +217,7 @@ null for unavailable values and restores them as NaN on the result round trip.
 For an unbucketed factor Series and a precomputed return panel, unreleased
 source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
 It does not need Alphalens or prices at runtime. From a source checkout, run the
-[self-contained example](https://github.com/ml4t/diagnostic/blob/675f289bc7de5abe4d0eeed5d734aaf6f9dec42a/examples/signal_panel_cleaning.py):
+[self-contained example](https://github.com/ml4t/diagnostic/blob/ca2ddf537d07483c43b9d918406a86bd73d28009/examples/signal_panel_cleaning.py):
 
 ```bash
 uv run python examples/signal_panel_cleaning.py
@@ -226,6 +227,8 @@ The example constructs its supplied outcomes with the existing return producer.
 It starts with 24 factor observations and retains 12: four initial feature
 warmup observations and eight incomplete forward tails are excluded. It asserts
 those losses, then passes the owned panel to the existing analysis engine.
+It also prints group-adjusted outcomes and twelve grouped IC observations
+(three dates, two groups and two horizons), each with two paired assets.
 The printed IC values describe synthetic data, not evidence of a profitable factor.
 
 Inspect `panel.data`, `panel.excluded_data` and `panel.metadata["loss_by_stage"]`
@@ -239,11 +242,64 @@ caller or recovering precision already lost in Float32 inputs.
 
 The [signal API](../api/index.md#signal-analysis) documents static/dated groups,
 probability qcut, cut edges and zero-aware options. Preparing group-relative
-buckets is separate from group-neutral inference. The analysis shortcut currently
+buckets alone does not provide group-neutral inference. The analysis shortcut currently
 requires positive integer `D` selectors and contiguous buckets starting at one.
 Other supplied labels and bucket sets remain inspectable in `panel.data`; the
 shortcut rejects them before writing a report. No calendar grid is inferred or
 validated, and the native pooled/equal-date/report differences below still apply.
+
+### Inspect grouped IC and adjusted outcomes
+
+Use the same owned panel to compare the observations underlying a grouped IC.
+These unreleased methods after 0.1.9 do not require Alphalens. Using `prepared`
+from the earlier example, first attach explicit asset groups:
+
+```python
+from ml4t.diagnostic.signal import prepare_signal_panel
+
+panel = prepare_signal_panel(
+    prepared["factor"],
+    prepared[["1D"]],
+    groups={f"A{i:02}": "first" if i < 6 else "second" for i in range(12)},
+    quantiles=3,
+    max_loss=0.0,
+)
+adjusted = panel.demean_returns(by_group=True)
+ic = panel.ic_by_date(group_adjust=True, by_group=True, min_obs=2)
+print(adjusted)
+print(ic.select("date", "group", "return_column", "ic", "n_obs", "status"))
+```
+
+`group_adjust=True` subtracts each date/group's paired mean return before
+correlation. `by_group=True` computes separate correlations for each date/group.
+The flags are independent of each other and of `binning_by_group`, which only
+assigns buckets. Factors are not demeaned, and no portfolio weights are created.
+The default method is Spearman. Pearson is an explicit option, not an Alphalens
+default. Both correlation methods use the existing cross-sectional IC engine.
+
+`panel.demean_returns(by_group=True)` exposes the same adjusted outcomes used by
+IC. With `by_group=False`, it subtracts date means instead. Keys, factors,
+groups, buckets and row order remain unchanged. The standalone
+`signal.demean_signal_returns` and `signal.compute_signal_ic` accept raw unique
+date/asset inputs and explicit `return_columns`. Each horizon uses its own
+finite factor/outcome pairs; unavailable pairs do not enter another asset's
+group mean. Demeaning retains those rows with NaN outcomes. A prepared panel
+already has one common finite sample across all selected horizons.
+
+IC observations retain undefined dates with null IC, actual `n_obs` and a
+reason such as `no_pairs`, `insufficient_pairs`, `constant_factor` or
+`constant_outcome`. The minimum is applied within each output group.
+`ic_by_date` accepts arbitrary supplied return selectors; the integer-D and
+contiguous-bucket restrictions apply to the separate `analyze()` shortcut.
+Output dimensions are canonical `date` and, when requested, `group`, even with
+custom physical input names.
+
+By default, Diagnostic reports supplied observed dates. Alphalens 0.4.6 can
+regularize global IC to its inferred frequency and insert undefined dates.
+Pass an explicit `date_grid` DataFrame (`date`, or `date` and `group`) to request
+particular output keys, including empty dates with zero pairs and null IC.
+This grid controls output keys only. It does not validate sessions, construct
+returns, fill observations or establish an exchange calendar.
 
 ### Quantiles, turnover, and report boundaries
 
@@ -280,11 +336,12 @@ paths. Do not infer those panels from a successful HTML render or the presence
 of related plotting functions. Keep Alphalens when those report sections,
 factor-weighted portfolios, or event-aligned cumulative paths are required.
 
-Alphalens also supports grouped/group-adjusted IC and its own complete factor
-tear sheet. Those capabilities are not implied by a Diagnostic signal result.
+Alphalens also supplies grouped summaries and its own complete factor tear
+sheet. Those capabilities are not implied by grouped IC observations or by a Diagnostic signal result.
 Diagnostic's default global quantiles do not mean `group_adjust=True` or
 `binning_by_group=True`; the latter can now be requested explicitly during
-supplied-panel preparation. Retain the legacy route for the missing analytical
+supplied-panel preparation. Request grouped IC explicitly through `ic_by_date`.
+Retain the legacy route for the missing analytical
 and report sections, not merely for constructing those buckets.
 
 Factor *construction* is a separate task. If needed,

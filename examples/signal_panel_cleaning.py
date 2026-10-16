@@ -31,7 +31,13 @@ def main() -> None:
     forward = forward.set_index(["date", "asset"])[["fwd_ret_1", "fwd_ret_2"]].rename(
         columns={"fwd_ret_1": "1D", "fwd_ret_2": "2D"}
     )
-    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0.5)
+    panel = prepare_signal_panel(
+        factor,
+        forward,
+        quantiles=2,
+        groups={"A": "first", "B": "first", "C": "second", "D": "second"},
+        max_loss=0.5,
+    )
     assert panel.data.height == 12
     assert panel.metadata["loss_by_stage"] == {
         "factor": 4,
@@ -42,6 +48,12 @@ def main() -> None:
     result = panel.analyze(min_assets=2)
     assert result.n_dates == 3 and result.n_assets == 4
     assert sum(result.count_by_quantile.values()) == 12
+    grouped_ic = panel.ic_by_date(group_adjust=True, by_group=True, min_obs=2)
+    assert grouped_ic.height == 12
+    assert grouped_ic["n_obs"].to_list() == [2] * 12
+    adjusted = panel.demean_returns(by_group=True)
+    unchanged = [name for name in panel.data.columns if name not in ["1D", "2D"]]
+    assert adjusted.select(unchanged).equals(panel.data.select(unchanged))
     print(
         json.dumps(
             {
@@ -52,8 +64,11 @@ def main() -> None:
                 "retained_rows": panel.metadata["retained_rows"],
                 "loss_by_stage": panel.metadata["loss_by_stage"],
                 "ic": result.ic,
+                "group_adjusted_ic_by_date": grouped_ic.to_dicts(),
+                "group_adjusted_returns": adjusted.to_dicts(),
             },
             indent=2,
+            default=str,
         )
     )
 
