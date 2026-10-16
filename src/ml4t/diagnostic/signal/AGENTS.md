@@ -10,7 +10,7 @@ Factor-style signal analysis with a clean public surface.
 - `result.py` - `SignalResult`
 - `signal_ic.py` - per-date/group IC observations and legacy finite-series extraction
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
-- `quantile.py` - quantile-return and spread analysis
+- `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
 
@@ -35,3 +35,6 @@ Use `panel.ic_by_date(group_adjust=..., by_group=...)` for explicit adjusted/gro
 counts and undefined statuses. `panel.demean_returns(by_group=...)` exposes the shared adjusted
 outcomes without changing keys or buckets. The direct `compute_signal_ic` and `demean_signal_returns`
 routes accept explicit supplied return-column selectors, without interpreting them as durations.
+`panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
+reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse
+`returns.py`; existing `analyze()` pooled defaults and two-sample spread inference are unchanged.

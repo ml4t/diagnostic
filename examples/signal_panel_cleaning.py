@@ -54,6 +54,10 @@ def main() -> None:
     adjusted = panel.demean_returns(by_group=True)
     unchanged = [name for name in panel.data.columns if name not in ["1D", "2D"]]
     assert adjusted.select(unchanged).equals(panel.data.select(unchanged))
+    daily_quantiles = panel.quantile_statistics(by_date=True, demeaned=False)
+    equal_date_quantiles = panel.quantile_statistics(demeaned=False)
+    assert daily_quantiles.height == 12 and equal_date_quantiles.height == 4
+    assert equal_date_quantiles["n_obs"].to_list() == [3] * 4
     print(
         json.dumps(
             {
@@ -66,6 +70,8 @@ def main() -> None:
                 "ic": result.ic,
                 "group_adjusted_ic_by_date": grouped_ic.to_dicts(),
                 "group_adjusted_returns": adjusted.to_dicts(),
+                "daily_quantiles": daily_quantiles.to_dicts(),
+                "equal_date_quantiles": equal_date_quantiles.to_dicts(),
             },
             indent=2,
             default=str,

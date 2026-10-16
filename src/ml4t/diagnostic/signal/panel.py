@@ -124,6 +124,34 @@ class PreparedSignalPanel:
             date_grid=date_grid,
         )
 
+    def quantile_statistics(
+        self,
+        *,
+        by_date: bool = False,
+        by_group: bool = False,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+    ) -> pl.DataFrame:
+        """Inspect date/bucket sample statistics or equal-date aggregates.
+
+        See compute_quantile_statistics for explicit asset/date counts, sample
+        standard errors and group adjustment. The pooled analyze() defaults
+        and its spread inference remain unchanged.
+        """
+        from ml4t.diagnostic.signal.quantile import compute_quantile_statistics
+
+        return compute_quantile_statistics(
+            self.data,
+            return_columns=self.metadata["return_columns"],
+            by_date=by_date,
+            by_group=by_group,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
     def demean_returns(self, *, by_group: bool = False) -> pl.DataFrame:
         """Inspect date- or date/group-demeaned outcomes without changing this panel.
 

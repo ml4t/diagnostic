@@ -60,6 +60,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Unbucketed factors plus supplied returns | `signal.prepare_signal_panel(factor, forward_returns, ...)` | Owns one complete finite sample, then assigns qcut/cut buckets and records factor/return/group/bucketing losses. Supports static or dated groups and group-relative/zero-aware buckets. Unreleased after 0.1.9; does not compute returns or validate a calendar. |
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
 | Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | Unreleased after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
+| Daily quantile means/errors and equal-date summaries | `panel.quantile_statistics(by_date=..., by_group=..., demeaned=..., group_adjust=...)` | Unreleased after 0.1.9. Reports sample standard deviation, standard error and asset/date counts; does not change the native pooled `SignalResult` fields or spread inference. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
 | Group-neutral portfolios and the complete Alphalens tear sheet | No complete equivalent | Grouped IC and return demeaning do not implement portfolio weights, holdings, event paths or the complete tear sheet. |
@@ -184,7 +185,9 @@ cleaner or produce a loss audit for excluded rows: it excludes no rows.
 Precomputed `1D`/`5D` labels are selectors here, not newly calculated durations
 or evidence of exchange-session/bar completeness. Native pooled quantile
 statistics and two-sample spread inference still differ from Alphalens'
-equal-date aggregation and propagated standard errors. Turnover is disabled by
+equal-date aggregation and propagated spread errors. The separate
+`panel.quantile_statistics()` route below exposes daily/equal-date bucket
+statistics without changing those native defaults. Turnover is disabled by
 default on this prepared route; enabling it uses the existing observed-date
 lag method. Group-adjusted/neutral calculations and complete reports remain
 unsupported by this route. No full-replacement claim follows from retaining a
@@ -217,7 +220,7 @@ null for unavailable values and restores them as NaN on the result round trip.
 For an unbucketed factor Series and a precomputed return panel, unreleased
 source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
 It does not need Alphalens or prices at runtime. From a source checkout, run the
-[self-contained example](https://github.com/ml4t/diagnostic/blob/ca2ddf537d07483c43b9d918406a86bd73d28009/examples/signal_panel_cleaning.py):
+[self-contained example](https://github.com/ml4t/diagnostic/blob/3ff496a079e73d03b4c6cf716c142441693ce097/examples/signal_panel_cleaning.py):
 
 ```bash
 uv run python examples/signal_panel_cleaning.py
@@ -300,6 +303,50 @@ Pass an explicit `date_grid` DataFrame (`date`, or `date` and `group`) to reques
 particular output keys, including empty dates with zero pairs and null IC.
 This grid controls output keys only. It does not validate sessions, construct
 returns, fill observations or establish an exchange calendar.
+
+### Inspect daily and equal-date quantile statistics
+
+The owned panel also exposes a separate bucket-statistics table. Using the
+`panel` constructed above:
+
+```python
+daily = panel.quantile_statistics(by_date=True, demeaned=False)
+equal_date = panel.quantile_statistics(demeaned=False)
+assert set(daily["sample_unit"].to_list()) == {"asset"}
+assert set(equal_date["sample_unit"].to_list()) == {"date"}
+print(daily)
+print(equal_date)
+```
+
+Daily rows retain date, bucket, horizon and optional group. Each mean uses
+finite factor/outcome pairs, with sample standard deviation (`ddof=1`) and
+standard error `std / sqrt(n_obs)`. With `by_date=False` (the default), the
+method reduces those daily means instead. Each date gets equal weight and
+`n_obs` counts defined dates, not pooled asset-date rows. A singleton has a
+defined mean but null sample deviation/error; an observed empty sample has
+zero count and null mean. Daily tables do not invent missing buckets. Across-date
+group summaries retain the product of observed group and bucket labels, including
+empty combinations with zero dates and null statistics, as in Alphalens 0.4.6.
+
+The new method defaults to `demeaned=True`, subtracting each date's paired
+mean return. `group_adjust=True` takes precedence and subtracts date/group
+means even when `demeaned=False`. `by_group=True` retains group dimensions
+independently. Use `demeaned=False, group_adjust=False` for raw returns.
+Inspect the same adjusted observations with `demean_returns`; neither route
+constructs portfolio weights or changes bucket assignments.
+
+The direct `signal.compute_quantile_statistics` route accepts explicit return
+selectors and physical column names. Both routes preserve timestamp precision
+and accept positive bucket labels even when some labels are absent. Horizon
+rows follow the requested return-column order, not alphabetical labels.
+`SignalResult.quantile_returns` remains the existing pooled result. In a
+quote-derived changing-universe sample, upper-bucket daily means of `0.3125`
+and `0.5` give an equal-date mean of `0.40625` and a standard error of `0.09375`.
+Pooling its three asset-date returns instead gives `0.375`. Choose the
+estimand explicitly; neither number establishes a self-financing portfolio.
+This bucket standard error is not a propagated spread error or a replacement
+for the existing two-sample spread test. Full portfolio/event/report paths
+remain separate work.
 
 ### Quantiles, turnover, and report boundaries
 
