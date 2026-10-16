@@ -57,7 +57,7 @@ def compute_ic_summary_stats(
     ic_clean: NDArray[Any] = ic_values[~np.isnan(ic_values)]
     n = len(ic_clean)
 
-    if n < 2:
+    if n == 0:
         return {
             "mean_ic": np.nan,
             "std_ic": np.nan,
@@ -68,7 +68,7 @@ def compute_ic_summary_stats(
         }
 
     mean_ic = float(np.mean(ic_clean))
-    std_ic = float(np.std(ic_clean, ddof=1))
+    std_ic = float(np.std(ic_clean, ddof=1)) if n > 1 else np.nan
     t_stat = mean_ic / (std_ic / np.sqrt(n)) if std_ic > 0 else np.nan
     p_value = 2 * stats.t.sf(abs(t_stat), df=n - 1) if not np.isnan(t_stat) else np.nan
 
