@@ -32,7 +32,7 @@ from ml4t.diagnostic.signal._utils import (
     filter_outliers,
     quantize_factor,
 )
-from ml4t.diagnostic.signal.core import analyze_signal, prepare_data
+from ml4t.diagnostic.signal.core import analyze_prepared_signal, analyze_signal, prepare_data
 from ml4t.diagnostic.signal.quantile import (
     compute_quantile_returns,
     compute_spread,
@@ -49,6 +49,7 @@ from ml4t.diagnostic.signal.turnover import (
 __all__ = [
     # Main entry point
     "analyze_signal",
+    "analyze_prepared_signal",
     "SignalResult",
     # Data preparation
     "prepare_data",

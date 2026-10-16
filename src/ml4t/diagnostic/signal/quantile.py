@@ -100,7 +100,7 @@ def compute_spread(
     """
     return_col = f"{period}D_fwd_return"
 
-    if return_col not in data.columns:
+    if n_quantiles < 2 or return_col not in data.columns:
         return {
             "spread": float("nan"),
             "t_stat": float("nan"),

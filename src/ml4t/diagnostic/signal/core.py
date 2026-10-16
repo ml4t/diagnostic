@@ -1,20 +1,23 @@
 """Core signal analysis functions.
 
-The main entry point is `analyze_signal()` - one function for 95% of use cases.
-For power users, `prepare_data()` allows custom workflows.
+`analyze_signal()` starts from factors/prices; `analyze_prepared_signal()` retains
+an existing return panel and its buckets. Both use the same analysis functions.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import polars as pl
 
+from ml4t.diagnostic.signal._prepared import positive_count, prepared_snapshot
 from ml4t.diagnostic.signal._utils import (
     QuantileMethod,
     compute_forward_returns,
     ensure_polars,
     filter_outliers,
+    precise_dates,
     quantize_factor,
 )
 from ml4t.diagnostic.signal.quantile import (
@@ -175,11 +178,91 @@ def analyze_signal(
         asset_col,
         price_col,
     )
+    return _analyze_data(
+        data,
+        periods,
+        quantiles,
+        ic_method,
+        compute_turnover_flag,
+        autocorrelation_lags,
+        min_assets,
+        factor_col,
+        date_col,
+        asset_col,
+    )
 
+
+def analyze_prepared_signal(
+    data: pl.DataFrame | pd.DataFrame,
+    *,
+    periods: tuple[int, ...] = (1, 5, 21),
+    quantiles: int = 5,
+    ic_method: str = "spearman",
+    compute_turnover_flag: bool = False,
+    autocorrelation_lags: int = 10,
+    min_assets: int = 10,
+    factor_col: str = "factor",
+    date_col: str = "date",
+    asset_col: str = "asset",
+) -> SignalResult:
+    """Analyze an owned prepared sample without prices or reassigned buckets.
+
+    Required columns are date, asset, factor, quantile and ``{period}D_fwd_return``
+    for every requested period. An Alphalens pandas MultiIndex table can instead
+    supply ``factor_quantile`` and ``{period}D`` columns. Both representations
+    together are ambiguous and rejected. Duplicate keys, missing/nonfinite values
+    and invalid buckets raise before calculations; this route does not clean data.
+
+    Supplied horizon labels are selectors, not computed durations. No calendar,
+    session grid or return endpoint is inferred or validated. Optional turnover
+    retains the existing observed-factor-date lag convention. IC/quantile/spread
+    calculations retain their native definitions, including pooled quantile
+    statistics and two-sample spread inference, not all Alphalens conventions.
+
+    The result exposes an independent ``prepared_data`` snapshot and records its
+    sample metadata. JSON preserves that snapshot through an Arrow IPC payload.
+    This ingestion route does not implement grouped/neutral analytics or complete
+    legacy report workflows.
+    """
+    periods = tuple(positive_count(period, "periods") for period in periods)
+    quantiles = positive_count(quantiles, "quantiles")
+    min_assets = positive_count(min_assets, "min_assets")
+    if compute_turnover_flag:
+        autocorrelation_lags = positive_count(autocorrelation_lags, "autocorrelation_lags")
+    owned, payload, metadata = prepared_snapshot(
+        data, periods, quantiles, factor_col, date_col, asset_col
+    )
+    result = _analyze_data(
+        owned,
+        tuple(periods),
+        quantiles,
+        ic_method,
+        compute_turnover_flag,
+        autocorrelation_lags,
+        min_assets,
+        factor_col,
+        date_col,
+        asset_col,
+    )
+    return replace(result, _prepared_data=payload, preparation_metadata=metadata)
+
+
+def _analyze_data(
+    data: pl.DataFrame,
+    periods: tuple[int, ...],
+    quantiles: int,
+    ic_method: str,
+    compute_turnover_flag: bool,
+    autocorrelation_lags: int,
+    min_assets: int,
+    factor_col: str,
+    date_col: str,
+    asset_col: str,
+) -> SignalResult:
     # Extract metadata
     n_assets = data.select(asset_col).n_unique()
     n_dates = data.select(date_col).n_unique()
-    all_dates = data.select(date_col).unique().sort(date_col).to_series().to_list()
+    all_dates = precise_dates(data.select(date_col).unique().sort(date_col).to_series())
     date_range = (str(all_dates[0]), str(all_dates[-1])) if all_dates else ("", "")
 
     # Count by quantile (period-independent, compute once)
@@ -294,4 +377,4 @@ def analyze_signal(
     )
 
 
-__all__ = ["prepare_data", "analyze_signal"]
+__all__ = ["prepare_data", "analyze_signal", "analyze_prepared_signal"]

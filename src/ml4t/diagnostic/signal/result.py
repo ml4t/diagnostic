@@ -6,14 +6,18 @@ No Pydantic, no inheritance - just a frozen dataclass.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 from dataclasses import asdict, dataclass, field
+from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 from ml4t.diagnostic.utils.formatting import format_finite
 
 if TYPE_CHECKING:
+    import polars as pl
+
     from ml4t.diagnostic.results.signal_results.ic import SignalICResult
     from ml4t.diagnostic.results.signal_results.quantile import QuantileAnalysisResult
     from ml4t.diagnostic.results.signal_results.tearsheet import SignalTearSheet
@@ -106,6 +110,17 @@ class SignalResult:
     date_range: tuple[str, str] = ("", "")
     periods: tuple[int, ...] = ()
     quantiles: int = 5
+    preparation_metadata: dict[str, Any] = field(default_factory=dict)
+    _prepared_data: bytes | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def prepared_data(self) -> pl.DataFrame | None:
+        """Return an independent prepared snapshot, when this result owns one."""
+        if self._prepared_data is None:
+            return None
+        import polars as pl
+
+        return pl.read_ipc(BytesIO(self._prepared_data))
 
     def summary(self) -> str:
         """Human-readable summary of results."""
@@ -369,7 +384,16 @@ class SignalResult:
 
     def to_dict(self) -> dict[str, Any]:
         """Export to dictionary."""
-        return asdict(self)
+        data = asdict(self)
+        payload = data.pop("_prepared_data")
+        if payload is not None:
+            data["prepared_data"] = {
+                "format": "arrow-ipc-base64",
+                "data": base64.b64encode(payload).decode("ascii"),
+            }
+        if not data["preparation_metadata"]:
+            data.pop("preparation_metadata")
+        return data
 
     def to_json(self, path: str | None = None, indent: int = 2) -> str:
         """Export to JSON string or file.
@@ -427,6 +451,21 @@ class SignalResult:
         """
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
+
+        if "_prepared_data" in data:
+            raise ValueError("private prepared data is not a supported JSON field")
+        encoded = data.pop("prepared_data", None)
+        if encoded is not None:
+            if not isinstance(encoded, dict) or encoded.get("format") != "arrow-ipc-base64":
+                raise ValueError("unsupported prepared_data format")
+            import polars as pl
+
+            try:
+                payload = base64.b64decode(encoded["data"], validate=True)
+                pl.read_ipc(BytesIO(payload))
+            except (KeyError, ValueError, TypeError, pl.exceptions.PolarsError) as exc:
+                raise ValueError("invalid prepared_data payload") from exc
+            data["_prepared_data"] = payload
 
         # Convert lists back to tuples for immutable fields
         if "date_range" in data:

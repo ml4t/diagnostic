@@ -5,7 +5,7 @@ Simple, pure functions for data preparation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -16,6 +16,13 @@ from ml4t.diagnostic.metrics.basic import (
 
 if TYPE_CHECKING:
     import pandas as pd
+
+
+def precise_dates(series: pl.Series) -> list[Any]:
+    """Keep nanosecond keys distinct when exposing dates as Python objects."""
+    if isinstance(series.dtype, pl.Datetime) and series.dtype.time_unit == "ns":
+        return series.to_pandas().tolist()
+    return series.to_list()
 
 
 def ensure_polars(df: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
