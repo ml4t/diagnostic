@@ -37,9 +37,11 @@ def position_snapshot(frame: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
         raise TypeError("wide position columns must be string asset IDs; use long format otherwise")
     owned = pl.from_pandas(frame.copy(deep=True))
     if isinstance(frame.index, pd.DatetimeIndex):
-        dates = date_snapshot(frame.index.copy(deep=True), len(frame), "positions dates")
+        dates = pl.from_pandas(frame.index.copy(deep=True)).rename("date")
         if "date" in owned.columns:
-            _same_dates(owned["date"], dates, "position index and date column")
+            actual, expected = date_index(owned["date"]), date_index(dates)
+            if actual.tz != expected.tz or not (actual == expected).all():
+                raise ValueError("position index and date column must agree")
         owned = owned.with_columns(dates)
     return owned
 

@@ -56,7 +56,7 @@ def _actual_prepared_inputs():
     return returns, positions, valuations, account
 
 
-@pytest.mark.parametrize("shape", ["wide", "long"])
+@pytest.mark.parametrize("shape", ["wide", "long", "pandas_long"])
 def test_actual_prepared_long_short_holdings_match_account_and_independent_concentration(shape):
     returns, wide, valuations, account = _actual_prepared_inputs()
     positions = (
@@ -64,6 +64,8 @@ def test_actual_prepared_long_short_holdings_match_account_and_independent_conce
         if shape == "wide"
         else pl.from_pandas(wide.reset_index()).unpivot(index="date", variable_name="asset")
     )
+    if shape == "pandas_long":
+        positions = positions.to_pandas().set_index("date")
     analysis = PortfolioAnalysis(returns, positions=positions)
     result = analysis.compute_holdings_analysis(valuations, complete_snapshots=True)
     timeline = result.timeline
