@@ -10,6 +10,8 @@ Lopez de Prado, M. (2018). "Advances in Financial Machine Learning"
 
 from __future__ import annotations
 
+import base64
+from io import BytesIO
 from typing import Any
 
 import polars as pl
@@ -17,6 +19,7 @@ from pydantic import Field, model_validator
 
 from ml4t.diagnostic.results.base import BaseResult
 from ml4t.diagnostic.utils.formatting import format_finite
+from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 
 class TurnoverAnalysisResult(BaseResult):
@@ -86,6 +89,47 @@ class TurnoverAnalysisResult(BaseResult):
         description="Signal half-life in periods (time for AC to decay by 50%)",
     )
 
+    dated_turnover_ipc_base64: str | None = Field(
+        default=None, description="Owned dated turnover observations, encoded Arrow IPC/base64"
+    )
+    dated_autocorrelation_ipc_base64: str | None = Field(
+        default=None, description="Owned full-date-rank observations, encoded Arrow IPC/base64"
+    )
+
+    @staticmethod
+    def _observations(payload: str) -> pl.DataFrame:
+        try:
+            return pl.read_ipc(BytesIO(base64.b64decode(payload, validate=True)))
+        except (ValueError, TypeError, OSError, pl.exceptions.PolarsError) as exc:
+            raise ValueError("invalid dated persistence Arrow IPC/base64 payload") from exc
+
+    @classmethod
+    def from_observations(
+        cls, turnover: pl.DataFrame, autocorrelation: pl.DataFrame
+    ) -> TurnoverAnalysisResult:
+        """Retain actual dated results, without reconstructing or duplicating horizons.
+
+        Legacy summary maps remain empty. DataFrame views derive means only from
+        defined observations, labelled by observation lag, never by return horizon.
+        No half-life or sampling uncertainty is inferred from these series.
+        """
+        return cls(
+            quantile_turnover={},
+            mean_turnover={},
+            top_quantile_turnover={},
+            bottom_quantile_turnover={},
+            autocorrelation={},
+            autocorrelation_lags=autocorrelation["lag"].unique(maintain_order=True).to_list(),
+            mean_autocorrelation={},
+            half_life={},
+            dated_turnover_ipc_base64=base64.b64encode(turnover.write_ipc(None).getvalue()).decode(
+                "ascii"
+            ),
+            dated_autocorrelation_ipc_base64=base64.b64encode(
+                autocorrelation.write_ipc(None).getvalue()
+            ).decode("ascii"),
+        )
+
     # ==========================================================================
     # Validation
     # ==========================================================================
@@ -120,6 +164,49 @@ class TurnoverAnalysisResult(BaseResult):
                     f"expected {n_lags} (len(autocorrelation_lags)), got {len(ac_values)}"
                 )
 
+        if (self.dated_turnover_ipc_base64 is None) != (
+            self.dated_autocorrelation_ipc_base64 is None
+        ):
+            raise ValueError("dated turnover and autocorrelation observations must both be present")
+        if self.dated_turnover_ipc_base64 is not None:
+            if any(
+                [
+                    self.quantile_turnover,
+                    self.mean_turnover,
+                    self.top_quantile_turnover,
+                    self.bottom_quantile_turnover,
+                    self.autocorrelation,
+                    self.mean_autocorrelation,
+                    self.half_life,
+                ]
+            ):
+                raise ValueError(
+                    "dated observations and legacy summary maps are distinct representations"
+                )
+            for payload, keys, required in [
+                (
+                    self.dated_turnover_ipc_base64,
+                    ["date", "quantile", "lag"],
+                    ["turnover", "turnover_method", "lag_unit", "clock_source"],
+                ),
+                (
+                    self.dated_autocorrelation_ipc_base64,
+                    ["date", "lag"],
+                    [
+                        "autocorrelation",
+                        "n_obs",
+                        "rank_scope",
+                        "correlation_method",
+                        "lag_unit",
+                        "clock_source",
+                    ],
+                ),
+            ]:
+                frame = self._observations(payload)
+                _validate_observation_keys(frame, keys, "dated persistence")
+                if set(required).difference(frame.columns):
+                    raise ValueError("dated persistence payload is missing observation columns")
+
         return self
 
     # ==========================================================================
@@ -142,6 +229,59 @@ class TurnoverAnalysisResult(BaseResult):
         pl.DataFrame
             Requested DataFrame
         """
+        if self.dated_turnover_ipc_base64 is not None:
+            turnover = self._observations(self.dated_turnover_ipc_base64)
+            rank = self._observations(self.dated_autocorrelation_ipc_base64)
+            if name == "dated_turnover":
+                return turnover
+            if name == "dated_autocorrelation":
+                return rank
+            if name is None or name == "turnover":
+                return (
+                    turnover.group_by("lag", "quantile")
+                    .agg(pl.col("turnover").mean(), pl.col("turnover").count().alias("n_dates"))
+                    .sort("lag", "quantile")
+                )
+            if name == "autocorrelation":
+                return (
+                    rank.group_by("lag")
+                    .agg(
+                        pl.col("autocorrelation").mean(),
+                        pl.col("autocorrelation").count().alias("n_dates"),
+                    )
+                    .sort("lag")
+                )
+            if name == "summary":
+                buckets = self.get_dataframe("turnover")
+                means = buckets.group_by("lag").agg(
+                    pl.col("turnover").mean().alias("mean_turnover"),
+                    pl.col("turnover")
+                    .filter(pl.col("quantile") == pl.col("quantile").max())
+                    .first()
+                    .alias("top_turnover"),
+                    pl.col("turnover")
+                    .filter(pl.col("quantile") == pl.col("quantile").min())
+                    .first()
+                    .alias("bottom_turnover"),
+                )
+                return (
+                    means.join(
+                        self.get_dataframe("autocorrelation").rename(
+                            {"autocorrelation": "mean_autocorrelation", "n_dates": "n_rank_dates"}
+                        ),
+                        on="lag",
+                        how="full",
+                        coalesce=True,
+                    )
+                    .sort("lag")
+                    .with_columns(
+                        (pl.col("lag").cast(pl.String) + pl.lit("obs")).alias("period"),
+                        pl.lit(None, dtype=pl.Float64).alias("half_life"),
+                    )
+                )
+            raise ValueError(
+                f"Unknown DataFrame name: {name}. Available: {self.list_available_dataframes()}"
+            )
         if name is None or name == "turnover":
             periods = list(self.quantile_turnover.keys())
             if not periods:
@@ -193,11 +333,20 @@ class TurnoverAnalysisResult(BaseResult):
 
     def list_available_dataframes(self) -> list[str]:
         """List available DataFrame views."""
-        return ["turnover", "autocorrelation", "summary"]
+        names = ["turnover", "autocorrelation", "summary"]
+        if self.dated_turnover_ipc_base64 is not None:
+            names.extend(["dated_turnover", "dated_autocorrelation"])
+        return names
 
     def summary(self) -> str:
         """Get human-readable summary of turnover analysis results."""
         lines = ["=" * 60, "Turnover Analysis Summary", "=" * 60, ""]
+        if self.dated_turnover_ipc_base64 is not None:
+            lines.append(
+                "Entrants/current membership; full-date average ranks / Pearson; observation lags."
+            )
+            lines.append(str(self.get_dataframe("summary")))
+            return "\n".join(lines)
 
         for period in self.mean_turnover:
             lines.append(f"Period: {period}")

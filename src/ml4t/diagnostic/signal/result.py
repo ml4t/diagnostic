@@ -21,6 +21,14 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.results.signal_results.ic import SignalICResult
     from ml4t.diagnostic.results.signal_results.quantile import QuantileAnalysisResult
     from ml4t.diagnostic.results.signal_results.tearsheet import SignalTearSheet
+    from ml4t.diagnostic.results.signal_results.turnover import TurnoverAnalysisResult
+
+
+_OWNED_FRAMES = (
+    ("_prepared_data", "prepared_data"),
+    ("_dated_turnover", "dated_turnover"),
+    ("_dated_autocorrelation", "dated_autocorrelation"),
+)
 
 
 @dataclass(frozen=True)
@@ -112,6 +120,8 @@ class SignalResult:
     quantiles: int = 5
     preparation_metadata: dict[str, Any] = field(default_factory=dict)
     _prepared_data: bytes | None = field(default=None, repr=False, compare=False)
+    _dated_turnover: bytes | None = field(default=None, repr=False, compare=False)
+    _dated_autocorrelation: bytes | None = field(default=None, repr=False, compare=False)
 
     @property
     def prepared_data(self) -> pl.DataFrame | None:
@@ -121,6 +131,39 @@ class SignalResult:
         import polars as pl
 
         return pl.read_ipc(BytesIO(self._prepared_data))
+
+    @property
+    def dated_turnover(self) -> pl.DataFrame | None:
+        """Return owned entrants/current observations, not native scalar means."""
+        if self._dated_turnover is None:
+            return None
+        import polars as pl
+
+        return pl.read_ipc(BytesIO(self._dated_turnover))
+
+    @property
+    def dated_autocorrelation(self) -> pl.DataFrame | None:
+        """Return owned full-date-rank Pearson observations and actual counts."""
+        if self._dated_autocorrelation is None:
+            return None
+        import polars as pl
+
+        return pl.read_ipc(BytesIO(self._dated_autocorrelation))
+
+    def to_turnover_result(self) -> TurnoverAnalysisResult | None:
+        """Convert actual dated observations without synthesizing data from means.
+
+        Native scalar summaries retain their separate definitions. Older results
+        without dated observations and analyses with persistence disabled return
+        None; neither missing dates/buckets nor reference ranks can be recovered
+        from their scalar summaries.
+        """
+        turnover, rank = self.dated_turnover, self.dated_autocorrelation
+        if turnover is None or rank is None:
+            return None
+        from ml4t.diagnostic.results.signal_results.turnover import TurnoverAnalysisResult
+
+        return TurnoverAnalysisResult.from_observations(turnover, rank)
 
     def summary(self) -> str:
         """Human-readable summary of results."""
@@ -344,9 +387,10 @@ class SignalResult:
         )
 
     def to_tear_sheet(self, signal_name: str = "signal") -> SignalTearSheet:
-        """Convert to full SignalTearSheet for dashboard display.
+        """Convert available analysis components for dashboard display.
 
-        Bundles to_ic_result() and to_quantile_result() into a SignalTearSheet.
+        Bundle IC, quantile summaries and actual dated persistence when retained.
+        This does not establish cumulative paths or complete legacy tear sheets.
 
         Parameters
         ----------
@@ -356,7 +400,7 @@ class SignalResult:
         Returns
         -------
         SignalTearSheet
-            Pydantic model with IC and quantile analysis components.
+            Pydantic model with available IC, quantile and persistence components.
 
         Examples
         --------
@@ -376,6 +420,7 @@ class SignalResult:
             date_range=self.date_range,
             ic_analysis=ic_result,
             quantile_analysis=quantile_result,
+            turnover_analysis=self.to_turnover_result(),
         )
 
     # =========================================================================
@@ -385,12 +430,13 @@ class SignalResult:
     def to_dict(self) -> dict[str, Any]:
         """Export to dictionary."""
         data = asdict(self)
-        payload = data.pop("_prepared_data")
-        if payload is not None:
-            data["prepared_data"] = {
-                "format": "arrow-ipc-base64",
-                "data": base64.b64encode(payload).decode("ascii"),
-            }
+        for private, public in _OWNED_FRAMES:
+            payload = data.pop(private)
+            if payload is not None:
+                data[public] = {
+                    "format": "arrow-ipc-base64",
+                    "data": base64.b64encode(payload).decode("ascii"),
+                }
         if not data["preparation_metadata"]:
             data.pop("preparation_metadata")
         return data
@@ -452,20 +498,25 @@ class SignalResult:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
-        if "_prepared_data" in data:
-            raise ValueError("private prepared data is not a supported JSON field")
-        encoded = data.pop("prepared_data", None)
-        if encoded is not None:
-            if not isinstance(encoded, dict) or encoded.get("format") != "arrow-ipc-base64":
-                raise ValueError("unsupported prepared_data format")
-            import polars as pl
+        for private, public in _OWNED_FRAMES:
+            if private in data:
+                raise ValueError(f"private {public} data is not a supported JSON field")
+            encoded = data.pop(public, None)
+            if encoded is not None:
+                if not isinstance(encoded, dict) or encoded.get("format") != "arrow-ipc-base64":
+                    raise ValueError(f"unsupported {public} format")
+                import polars as pl
 
-            try:
-                payload = base64.b64decode(encoded["data"], validate=True)
-                pl.read_ipc(BytesIO(payload))
-            except (KeyError, ValueError, TypeError, pl.exceptions.PolarsError) as exc:
-                raise ValueError("invalid prepared_data payload") from exc
-            data["_prepared_data"] = payload
+                try:
+                    payload = base64.b64decode(encoded["data"], validate=True)
+                    pl.read_ipc(BytesIO(payload))
+                except (KeyError, ValueError, TypeError, OSError, pl.exceptions.PolarsError) as exc:
+                    raise ValueError(f"invalid {public} payload") from exc
+                data[private] = payload
+        if (data.get("_dated_turnover") is None) != (data.get("_dated_autocorrelation") is None):
+            raise ValueError(
+                "dated persistence requires both turnover and autocorrelation observations"
+            )
 
         # Convert lists back to tuples for immutable fields
         if "date_range" in data:

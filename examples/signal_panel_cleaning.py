@@ -47,7 +47,7 @@ def main() -> None:
         "groups": 0,
         "bucketing": 0,
     }
-    result = panel.analyze(min_assets=2)
+    result = panel.analyze(min_assets=2, compute_turnover_flag=True, autocorrelation_lags=2)
     assert result.n_dates == 3 and result.n_assets == 4
     assert sum(result.count_by_quantile.values()) == 12
     grouped_ic = panel.ic_by_date(group_adjust=True, by_group=True, min_obs=2)
@@ -82,6 +82,11 @@ def main() -> None:
     assert dated_rank.height == 6
     assert set(dated_rank["rank_scope"].to_list()) == {"date"}
     assert set(dated_rank["correlation_method"].to_list()) == {"pearson"}
+    persistence = result.to_turnover_result()
+    assert persistence is not None
+    assert persistence.get_dataframe("dated_turnover").equals(dated_turnover)
+    assert persistence.get_dataframe("dated_autocorrelation").equals(dated_rank)
+    assert result.to_tear_sheet().turnover_analysis is not None
     print(
         json.dumps(
             {
@@ -102,6 +107,7 @@ def main() -> None:
                 "quantile_spreads": spreads.to_dicts(),
                 "dated_quantile_turnover": dated_turnover.to_dicts(),
                 "dated_rank_autocorrelation": dated_rank.to_dicts(),
+                "persistence_summary": persistence.get_dataframe("summary").to_dicts(),
             },
             indent=2,
             default=str,
