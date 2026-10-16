@@ -31,7 +31,7 @@ calendar or session/bar validation; native pooled quantile/spread definitions st
 `prepare_signal_panel` cleans one common factor/return/group sample before shared qcut/cut
 bucketing. Its owned panel exposes independent data/audit copies; `analyze()` delegates to the
 existing prepared analysis engine for integer-D selectors and contiguous buckets. Do not infer
-group-neutral portfolios, calendar validation or full report coverage from that preparation route.
+group-neutral weights, calendar validation or full report coverage from bucketing alone.
 Use `panel.ic_by_date(group_adjust=..., by_group=...)` for explicit adjusted/grouped IC observations,
 counts and undefined statuses. `panel.demean_returns(by_group=...)` exposes the shared adjusted
 outcomes without changing keys or buckets. The direct `compute_signal_ic` and `demean_signal_returns`

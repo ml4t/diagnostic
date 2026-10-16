@@ -298,7 +298,8 @@ def prepare_signal_panel(
         Replace group codes before bucketing, as in Alphalens' groupby_labels.
     binning_by_group : bool
         Assign buckets within date/group rather than date alone. This does not
-        provide group-neutral inference or factor portfolio analytics.
+        alone provide group-neutral inference or factor portfolios. Request
+        factor_weights(group_adjust=True) explicitly for group-normalized exposure.
     max_loss : float
         Maximum excluded fraction of original factor rows; equality passes.
         One permits an empty owned panel; analyze() still rejects empty samples.
