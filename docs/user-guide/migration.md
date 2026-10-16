@@ -1038,6 +1038,13 @@ availability explain why the normal curve is absent. Tiny but genuinely varying
 returns are not discarded by a dispersion tolerance. This optional normal
 reference is not evidence that returns follow a normal distribution.
 
+For dated returns, `plot_monthly_returns_heatmap(portfolio)` retains every
+observed year, including zero or tiny returns, without inventing intervening
+years. Missing months stay blank, not zero. Pyfolio 0.9.9's plot rounds monthly
+returns to three decimal places and fills missing cells with zero for display;
+Diagnostic retains the unrounded values and missing cells. Compare the dated
+monthly aggregates before those presentation differences.
+
 Use the [portfolio workflow](workflows.md) and
 [backtest report guide](backtest-tearsheets.md) for the supported output checks.
 The shared-input comparison passes 252 aligned business-day returns and benchmark

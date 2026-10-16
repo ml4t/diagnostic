@@ -345,14 +345,6 @@ def plot_monthly_returns_heatmap(
 
     z_array = np.array(z_values)
 
-    # Crop years where all monthly returns are effectively zero
-    row_activity = np.nansum(np.abs(z_array), axis=1)
-    active_mask = row_activity > 1e-8
-    if active_mask.any() and not active_mask.all():
-        first_active = int(np.argmax(active_mask))
-        z_array = z_array[first_active:]
-        years = years[first_active:]
-
     # Add Annual total column (compounded monthly returns)
     annual_returns = []
     for row in z_array:
