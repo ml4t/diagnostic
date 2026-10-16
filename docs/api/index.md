@@ -115,6 +115,16 @@ for adjustment, units, missing-data and report limits.
     options:
       show_root_heading: true
 
+`plot_spread_timeseries` consumes those dated means through the shared quantile
+spread/error calculation. Its bands describe independent propagated standard
+error, not confidence coverage; smoothing windows count observations. Historical
+cumulative-only inputs cannot establish that empirical sample. See the
+[dated spread how-to](../user-guide/migration.md#plot-dated-spreads-and-propagated-errors).
+
+::: ml4t.diagnostic.visualization.signal.plot_spread_timeseries
+    options:
+      show_root_heading: true
+
 ::: ml4t.diagnostic.results.signal_results.QuantileAnalysisResult
     options:
       show_root_heading: true
