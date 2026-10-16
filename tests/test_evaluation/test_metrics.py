@@ -588,6 +588,7 @@ class TestComputeICSeriesAndRelated:
             pred_col="prediction",
             ret_col="forward_return",
             date_col="date",
+            entity_col="asset",
         )
 
         # Should return a DataFrame with IC per date
@@ -601,6 +602,7 @@ class TestComputeICSeriesAndRelated:
             pred_col="prediction",
             ret_col="forward_return",
             date_col="date",
+            entity_col="asset",
             method="spearman",
         )
 
@@ -1612,6 +1614,7 @@ class TestComputeICSeriesPandas:
             pred_col="prediction",
             ret_col="returns",
             date_col="date",
+            entity_col="symbol",
         )
 
         assert isinstance(result, pd.DataFrame | pl.DataFrame)
@@ -1628,6 +1631,7 @@ class TestComputeICSeriesPandas:
             pred_col="prediction",
             ret_col="returns",
             date_col="date",
+            entity_col="symbol",
             method="pearson",
         )
 
@@ -2328,6 +2332,7 @@ class TestICSeriesEdgeCases:
             pred_col="prediction",
             ret_col="returns",
             date_col="date",
+            entity_col="symbol",
             min_obs=1,  # Low threshold
         )
 
@@ -2362,6 +2367,7 @@ class TestICSeriesEdgeCases:
             pred_col="prediction",
             ret_col="returns",
             date_col="date",
+            entity_col="symbol",
         )
 
         assert isinstance(result, pd.DataFrame | pl.DataFrame)

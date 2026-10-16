@@ -159,19 +159,22 @@ class TestComputeICSeriesPerformance:
         predictions = pl.DataFrame(
             {
                 "date": [d for d in dates for _ in range(n_assets)],
+                "asset": list(range(n_assets)) * n_dates,
                 "prediction": np.random.randn(n_rows),
             }
         )
         returns = pl.DataFrame(
             {
                 "date": [d for d in dates for _ in range(n_assets)],
+                "asset": list(range(n_assets)) * n_dates,
                 "forward_return": np.random.randn(n_rows) * 0.02,
             }
         )
 
         start = time.perf_counter()
-        result = cross_sectional_ic_series(predictions, returns)
+        result = cross_sectional_ic_series(predictions, returns, entity_col="asset")
         elapsed = time.perf_counter() - start
 
         assert elapsed < 5.0, f"cross_sectional_ic_series took {elapsed:.2f}s (expected <5s)"
         assert result.height == n_dates
+        assert result["n_obs"].to_list() == [n_assets] * n_dates
