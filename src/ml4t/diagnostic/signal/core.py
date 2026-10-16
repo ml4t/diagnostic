@@ -7,6 +7,7 @@ an existing return panel and its buckets. Both use the same analysis functions.
 from __future__ import annotations
 
 from dataclasses import replace
+from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -67,7 +68,9 @@ def prepare_data(
     filter_zscore : float | None
         Z-score threshold for outlier filtering. None disables.
     quantile_method : str
-        "quantile" (equal frequency) or "uniform" (equal width).
+        "qcut" uses interpolated equal-frequency edges on finite factors.
+        "quantile" (default) retains legacy rank buckets; "uniform" retains
+        legacy epsilon-adjusted equal-width buckets. Unknown methods raise.
     factor_col, date_col, asset_col, price_col : str
         Column names.
 
@@ -76,6 +79,8 @@ def prepare_data(
     pl.DataFrame
         Prepared data with: date, asset, factor, quantile, {period}D_fwd_return.
     """
+    method = QuantileMethod(quantile_method)
+
     # Convert to Polars
     factor_pl = ensure_polars(factor)
     prices_pl = ensure_polars(prices)
@@ -88,7 +93,6 @@ def prepare_data(
         data = filter_outliers(data, filter_zscore, factor_col, date_col)
 
     # Assign quantiles
-    method = QuantileMethod.QUANTILE if quantile_method == "quantile" else QuantileMethod.UNIFORM
     data = quantize_factor(data, quantiles, method, factor_col, date_col)
 
     return data
@@ -130,7 +134,8 @@ def analyze_signal(
     filter_zscore : float | None
         Z-score threshold for outlier filtering. None disables.
     quantile_method : str
-        "quantile" (equal frequency) or "uniform" (equal width).
+        "qcut" uses interpolated equal-frequency edges on finite factors.
+        "quantile" (default) and "uniform" retain their distinct legacy methods.
     ic_method : str
         "spearman" (rank correlation) or "pearson" (linear correlation).
     compute_turnover_flag : bool
@@ -178,7 +183,7 @@ def analyze_signal(
         asset_col,
         price_col,
     )
-    return _analyze_data(
+    result = _analyze_data(
         data,
         periods,
         quantiles,
@@ -190,6 +195,17 @@ def analyze_signal(
         date_col,
         asset_col,
     )
+    if quantile_method == QuantileMethod.QCUT:
+        result = replace(
+            result,
+            preparation_metadata={
+                "bucket_method": "pandas.qcut",
+                "pandas_version": version("pandas"),
+                "numpy_version": version("numpy"),
+                "sample_policy": "existing price path; no complete-case cleaner or loss audit",
+            },
+        )
+    return result
 
 
 def analyze_prepared_signal(

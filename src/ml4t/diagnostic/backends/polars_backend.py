@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import polars as pl
 
 if TYPE_CHECKING:
@@ -294,7 +295,11 @@ class PolarsBackend:
         n_quantiles: int,
         by_group: str | None = None,
     ) -> pl.DataFrame:
-        """Assign quantile labels efficiently.
+        """Assign qcut labels with the installed pandas boundary semantics.
+
+        Polars 2's quantile bins do not reproduce every pandas interpolation
+        boundary or duplicate-endpoint rejection. Keep one bucket implementation
+        here and preserve Polars grouping, row order and categorical output.
 
         Parameters
         ----------
@@ -312,23 +317,36 @@ class PolarsBackend:
         pl.DataFrame
             Data with quantile labels added
         """
-        if by_group is not None:
-            # Group-wise quantile assignment
-            result = data.with_columns(
-                pl.col(column)
-                .qcut(n_quantiles, labels=[str(i) for i in range(1, n_quantiles + 1)])
-                .over(by_group)
-                .alias(f"{column}_quantile"),
-            )
-        else:
-            # Global quantile assignment
-            result = data.with_columns(
-                pl.col(column)
-                .qcut(n_quantiles, labels=[str(i) for i in range(1, n_quantiles + 1)])
-                .alias(f"{column}_quantile"),
-            )
+        if isinstance(n_quantiles, bool) or not isinstance(n_quantiles, int | np.integer):
+            raise ValueError("n_quantiles must be a positive integer")
+        if n_quantiles < 1:
+            raise ValueError("n_quantiles must be a positive integer")
+        labels = [str(i) for i in range(1, int(n_quantiles) + 1)]
+        output = f"{column}_quantile"
 
-        return result
+        def cut(values: pl.Series) -> pl.Series:
+            try:
+                assigned = pd.qcut(values.to_numpy(), int(n_quantiles), labels=labels)
+            except ValueError as exc:
+                if str(exc).startswith("Bin edges must be unique"):
+                    raise pl.exceptions.DuplicateError(str(exc)) from exc
+                raise
+            return pl.from_pandas(pd.Series(assigned)).rename(output)
+
+        if data.is_empty():
+            assigned = pl.Series(output, [], dtype=pl.Categorical)
+        elif by_group is None:
+            assigned = cut(data[column])
+        else:
+            projected = data.select(
+                pl.col(column).alias("_values"), pl.col(by_group).alias("_group")
+            ).with_row_index("_row")
+            parts = [
+                group.select("_row").with_columns(cut(group["_values"]))
+                for group in projected.partition_by("_group", maintain_order=True)
+            ]
+            assigned = pl.concat(parts).sort("_row")[output]
+        return data.with_columns(assigned)
 
     @staticmethod
     def fast_time_aware_split(

@@ -102,6 +102,32 @@ The assertion establishes the expected direction on these synthetic data;
 it is not a significance test for a real factor. Use the
 [signal quickstart](../getting-started/quickstart.md) to interpret IC and spread.
 
+For exact integer-count qcut membership, unreleased source after 0.1.9 accepts
+`quantile_method="qcut"` in both `prepare_data` and `analyze_signal`. The existing
+backend uses pandas qcut for boundary semantics while retaining Polars grouping,
+row order and categorical output. Twelve
+distinct ordered assets and five buckets have counts `3,2,2,2,3`; legacy
+`quantile` rank buckets instead have counts `3,2,3,2,2`. The default remains the
+legacy rank method, and `uniform` remains the legacy epsilon-adjusted width
+method. These are not pandas qcut/cut aliases. Unknown method names now raise
+instead of silently selecting uniform bins. The qcut option requires a positive
+integer count and finite factors, and rejects duplicate edges rather than
+splitting ties. It is not a cleaner: explicit probability/cut edges, zero-aware
+group buckets, complete-case filtering and loss provenance still require
+separate implementation. Other native signal statistics retain their stated
+aggregation conventions.
+
+Qcut boundary rounding depends on pandas/NumPy versions. For values `[0,1,2,3]`
+and three buckets, the tested pandas 2.3.3/NumPy 2.5.4 environment assigns
+`[1,2,3,3]`; pandas 3.0.5 corrects quantile rounding and assigns `[1,1,2,3]`.
+Both retain right-closed bins, but the floating-point edge differs. Alphalens
+0.4.6 declares `pandas<3`, so its actual comparisons use pandas 2.3.3. Diagnostic
+on pandas 3 is checked separately against runtime qcut and the independent
+boundary expectations, not an unsupported Alphalens installation. Qcut analysis records
+the method and pandas/NumPy versions in `result.preparation_metadata` and JSON.
+Do not replace this path with Polars 2's floor-selected quantile bins: tested
+membership and duplicate-endpoint rejection differ.
+
 For an already-cleaned panel, current source can retain its sample and supplied
 buckets directly. This example does not need Alphalens at runtime:
 
