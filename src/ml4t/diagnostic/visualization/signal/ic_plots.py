@@ -222,11 +222,13 @@ def plot_ic_ts(
 
     fig.update_layout(
         legend={
+            "orientation": "h",
             "yanchor": "top",
-            "y": 0.99,
-            "xanchor": "right",
-            "x": 0.99,
+            "y": -0.25,
+            "xanchor": "left",
+            "x": 0,
         },
+        margin={"b": 120},
         showlegend=True,
     )
 

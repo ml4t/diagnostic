@@ -195,7 +195,9 @@ def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
     const plot=Array.from(document.querySelectorAll('#ic .js-plotly-plot')).find(plot=>Array.from(plot.data||[]).some(trace=>trace.name==='Daily IC'));
     const marker=document.createElement('output');marker.id='ic-bridge-browser-check';
     const rect=plot.getBoundingClientRect();
-    marker.textContent=JSON.stringify({values:Array.from(plot._fullData[0].y||[]),annotations:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,left:box.left-rect.left,right:box.right-rect.left}}),plot_width:rect.width});document.body.appendChild(marker);});</script>"""
+    const box=node=>{const rect=node.getBoundingClientRect();return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}};
+    const summary=Array.from(plot.querySelectorAll('.annotation-text')).find(node=>node.textContent.includes('Summary:'));
+    marker.textContent=JSON.stringify({values:Array.from(plot._fullData[0].y||[]),summary:box(summary),legend:box(plot.querySelector('.legend')),annotations:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,left:box.left-rect.left,right:box.right-rect.left}}),plot_width:rect.width});document.body.appendChild(marker);});</script>"""
     path = tmp_path / "report.html"
     path.write_text(html.replace("</body>", probe + "</body>"))
     completed = subprocess.run(
@@ -228,6 +230,10 @@ def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
         if annotation["text"] == f"Mean IC: {mean:.4f}"
     )
     assert label["left"] >= -1 and label["right"] <= measured["plot_width"] + 1
+    legend, summary = measured["legend"], measured["summary"]
+    overlap_width = min(legend["right"], summary["right"]) - max(legend["left"], summary["left"])
+    overlap_height = min(legend["bottom"], summary["bottom"]) - max(legend["top"], summary["top"])
+    assert overlap_width <= 0 or overlap_height <= 0, measured
     if profile == "missing_tail":
         assert any(annotation["text"] == "CI unavailable" for annotation in measured["annotations"])
 
