@@ -120,8 +120,10 @@ aggregation conventions.
 Qcut boundary rounding depends on pandas/NumPy versions. For values `[0,1,2,3]`
 and three buckets, the tested pandas 2.3.3/NumPy 2.5.4 environment assigns
 `[1,2,3,3]`; pandas 3.0.5 corrects quantile rounding and assigns `[1,1,2,3]`.
-Both retain right-closed bins, but the floating-point edge differs. Compare
-Alphalens and Diagnostic in the same pinned environment. Qcut analysis records
+Both retain right-closed bins, but the floating-point edge differs. Alphalens
+0.4.6 declares `pandas<3`, so its actual comparisons use pandas 2.3.3. Diagnostic
+on pandas 3 is checked separately against runtime qcut and the independent
+boundary expectations, not an unsupported Alphalens installation. Qcut analysis records
 the method and pandas/NumPy versions in `result.preparation_metadata` and JSON.
 Do not replace this path with Polars 2's floor-selected quantile bins: tested
 membership and duplicate-endpoint rejection differ.
