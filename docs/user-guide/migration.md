@@ -1030,6 +1030,14 @@ observation-based analysis. These boundary corrections are
 unreleased source changes after 0.1.9; earlier published behavior is not a
 supported missing-data or positional-alignment policy.
 
+The returns-distribution normal reference uses the supplied returns' sample
+mean and sample standard deviation, without annualization. Fewer than two
+observations or identical returns do not define that fit. The histogram and
+quantiles remain available; the plot, dashboard, HTML, notebook and exported
+availability explain why the normal curve is absent. Tiny but genuinely varying
+returns are not discarded by a dispersion tolerance. This optional normal
+reference is not evidence that returns follow a normal distribution.
+
 Use the [portfolio workflow](workflows.md) and
 [backtest report guide](backtest-tearsheets.md) for the supported output checks.
 The shared-input comparison passes 252 aligned business-day returns and benchmark

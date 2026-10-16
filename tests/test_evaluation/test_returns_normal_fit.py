@@ -1,6 +1,7 @@
 """Real account returns must not imply a normal fit without sample dispersion."""
 
 import math
+import shutil
 import warnings
 from datetime import UTC, datetime
 
@@ -32,6 +33,7 @@ def _produced_returns(case):
         "constant_positive": ([100.0, 100.0, 125.0, 152.5, 182.75], 3),
         "single": ([100.0], 1),
         "varying": ([100.0, 100.0, 110.0, 90.0], 4),
+        "tiny_varying": ([100.0, 100.0, 100.0000000001, 100.0], 4),
     }[case]
     dates = [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6, 7, 8]][: len(prices)]
     bars = pl.DataFrame(
@@ -91,6 +93,15 @@ def test_real_varying_returns_retain_unannualized_sample_normal_density():
     assert fig.layout.meta["normal_fit"] == {"status": "available", "reason": None}
 
 
+def test_tiny_genuine_account_changes_are_not_suppressed_by_a_dispersion_tolerance():
+    analysis = _produced_returns("tiny_varying")
+    assert 0 < np.ptp(analysis.returns) < 1e-10
+    fig = plot_returns_distribution(analysis)
+    (curve,) = [trace for trace in fig.data if trace.name.startswith("Normal")]
+    assert np.isfinite(curve.y).all() and max(curve.y) > 0
+    assert fig.layout.meta["normal_fit"] == {"status": "available", "reason": None}
+
+
 @pytest.mark.parametrize("case", ["flat", "constant_positive"])
 def test_dashboard_html_and_export_share_the_actual_unavailable_fit_reason(case, tmp_path):
     report = create_portfolio_dashboard(
@@ -102,3 +113,49 @@ def test_dashboard_html_and_export_share_the_actual_unavailable_fit_reason(case,
     output = tmp_path / "normal-fit.html"
     report.save_html(output, include_plotlyjs=True)
     assert info["reason"] in output.read_text()
+
+
+@pytest.mark.parametrize("width", [1280, 375])
+def test_actual_html_displays_fit_reason_without_clipping_or_shrinking_notes(width, tmp_path):
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
+    if chrome is None:
+        pytest.skip("Installed Chrome/Chromium required for actual report checks")
+    playwright = pytest.importorskip("playwright.sync_api")
+    report = create_portfolio_dashboard(
+        _produced_returns("flat"), include_positions=False, include_transactions=False
+    )
+    output = tmp_path / "unavailable-fit.html"
+    report.save_html(output, include_plotlyjs=True)
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            page = browser.new_page(
+                viewport={"width": width, "height": 1000},
+                is_mobile=width == 375,
+                has_touch=width == 375,
+                offline=True,
+            )
+            page.goto(output.as_uri(), wait_until="load")
+            page.wait_for_function(
+                "Array.from(document.querySelectorAll('.js-plotly-plot')).every(p=>p._fullLayout)"
+            )
+            panel = page.locator(".plot-container").filter(
+                has=page.get_by_role("heading", name="Returns Distribution", exact=True)
+            )
+            assert "zero dispersion" in panel.inner_text()
+            actual = panel.locator(".js-plotly-plot").evaluate("""p=>({
+                normal:p._fullData.filter(t=>t.name.startsWith('Normal')).length,
+                annotations:Array.from(p.querySelectorAll('.annotation-text'))
+                    .filter(t=>t.textContent.includes('Normal fit unavailable'))
+                    .map(t=>({text:t.textContent,size:parseFloat(getComputedStyle(t).fontSize),
+                        left:t.getBoundingClientRect().left,right:t.getBoundingClientRect().right})),
+                body:parseFloat(getComputedStyle(document.body).fontSize),
+                overflow:document.documentElement.scrollWidth>innerWidth
+            })""")
+            assert actual["normal"] == 0 and actual["body"] == 16
+            (note,) = actual["annotations"]
+            assert note["size"] >= 13 and "Zero observed dispersion" in note["text"]
+            assert 0 <= note["left"] < note["right"] <= width
+            assert not actual["overflow"]
+        finally:
+            browser.close()
