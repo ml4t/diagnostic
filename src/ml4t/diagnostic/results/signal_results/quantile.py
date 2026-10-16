@@ -11,6 +11,7 @@ Lopez de Prado, M. (2018). "Advances in Financial Machine Learning"
 from __future__ import annotations
 
 import base64
+import math
 from io import BytesIO
 from typing import Any
 
@@ -281,6 +282,7 @@ class QuantileAnalysisResult(BaseResult):
             return pl.DataFrame(mean_return_rows)
 
         if name == "spread":
+            monotonicity = [self.get_monotonicity(period) for period in self.periods]
             return pl.DataFrame(
                 {
                     "period": self.periods,
@@ -290,10 +292,10 @@ class QuantileAnalysisResult(BaseResult):
                     "spread_p_value": [self.spread_p_value[p] for p in self.periods],
                     "spread_ci_lower": [self.spread_ci_lower[p] for p in self.periods],
                     "spread_ci_upper": [self.spread_ci_upper[p] for p in self.periods],
-                    "is_monotonic": [self.is_monotonic[p] for p in self.periods],
-                    "monotonicity_direction": [
-                        self.monotonicity_direction[p] for p in self.periods
-                    ],
+                    "is_monotonic": pl.Series(
+                        "is_monotonic", [status for status, _ in monotonicity], dtype=pl.Boolean
+                    ),
+                    "monotonicity_direction": [direction for _, direction in monotonicity],
                     "rank_correlation": [self.rank_correlation[p] for p in self.periods],
                 }
             )
@@ -348,9 +350,9 @@ class QuantileAnalysisResult(BaseResult):
             lines.append(f"Spread (Top-Bottom): {spread_mean:>10}")
             lines.append(f"Spread t-stat:       {spread_t:>10}")
             lines.append(f"Spread p-value:      {spread_p:>10}")
-            lines.append(
-                f"Monotonic:           {self.is_monotonic[period]} ({self.monotonicity_direction[period]})"
-            )
+            monotonic, direction = self.get_monotonicity(period)
+            display = "N/A (unavailable)" if monotonic is None else f"{monotonic} ({direction})"
+            lines.append(f"Monotonic:           {display}")
             lines.append("")
 
         return "\n".join(lines)
@@ -380,6 +382,27 @@ class QuantileAnalysisResult(BaseResult):
         """
         key = _normalize_period(period)
         return self.mean_returns.get(key, {})
+
+    def get_monotonicity(self, period: int | str) -> tuple[bool | None, str]:
+        """Get a known period's decision and direction, or explicit unavailability.
+
+        A nonfinite rank correlation is unavailable, not a negative decision.
+        The native facade leaves its score undefined below three defined bucket
+        means or with constant means. This accessor does not recalculate that
+        rule or the existing decision threshold. Finite supplied decisions and
+        directions remain unchanged.
+
+        Legacy raw boolean/direction maps retain their saved-model shape. Use
+        this accessor or the spread DataFrame for availability-aware values;
+        they return None/"unavailable" for an undefined score. Unknown periods
+        raise ValueError rather than masquerading as unavailable analysis.
+        """
+        key = _normalize_period(period)
+        if key not in self.periods:
+            raise ValueError(f"Period {key!r} not found. Available: {self.periods}")
+        if not math.isfinite(self.rank_correlation[key]):
+            return None, "unavailable"
+        return self.is_monotonic[key], self.monotonicity_direction[key]
 
     def get_spread(self, period: int | str) -> tuple[float, float, float]:
         """Get spread statistics for a period.

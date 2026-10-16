@@ -389,7 +389,8 @@ class SignalDashboard(BaseDashboard):
 
             spread = qa.spread_mean.get(first_period, 0)
             spread_t = qa.spread_t_stat.get(first_period, 0)
-            monotonic = qa.is_monotonic.get(first_period, False)
+            monotonic = qa.get_monotonicity(first_period)[0] if periods else None
+            monotonic_display = "N/A" if monotonic is None else "Yes" if monotonic else "No"
             spread_display = format_finite(spread, ".4%")
             spread_t_display = format_finite(spread_t, ".2f")
 
@@ -406,7 +407,7 @@ class SignalDashboard(BaseDashboard):
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Monotonic</div>
-                    <div class="metric-value">{"Yes" if monotonic else "No"}</div>
+                    <div class="metric-value">{monotonic_display}</div>
                 </div>
             </div>
             """)

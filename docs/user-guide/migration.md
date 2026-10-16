@@ -585,6 +585,39 @@ runtime makes its HTML self-contained, including NumPy-backed trace arrays.
 Full multi-horizon chart composition, cumulative paths, event/portfolio
 workflows and all seven Alphalens tear sheets remain separate accepted work.
 
+### Distinguish unavailable monotonicity from a negative decision
+
+Unreleased after 0.1.9, use the structured result's availability-aware accessor
+before interpreting a quantile monotonicity flag. Construct two buckets
+explicitly from the supplied `prepared` observations above:
+
+```python
+two_bucket_panel = prepare_signal_panel(
+    prepared["factor"], prepared[["1D"]], quantiles=2, max_loss=0
+)
+quantiles = two_bucket_panel.analyze(min_assets=2).to_quantile_result()
+assert quantiles.get_monotonicity("1D") == (None, "unavailable")
+print(quantiles.get_dataframe("spread").select("period", "is_monotonic"))
+print(quantiles.summary())
+```
+
+The computed DataFrame uses a nullable Boolean; the text summary, bar annotation
+and dashboard summary card display `N/A`. Unknown periods raise `ValueError`.
+The native rule leaves rank correlation undefined below three defined bucket
+means or with constant means. This repair does not change that rule or the
+finite-score decision threshold. A finite negative decision still displays
+`False`/`No`; increasing and decreasing finite decisions retain their direction.
+
+Raw `is_monotonic` and `monotonicity_direction` maps retain their historical
+saved-model shape, including `False`/`"none"` for undefined scores. Use
+`get_monotonicity()` or the computed DataFrame instead of interpreting those
+raw flags without their rank correlation. Actual quote-derived samples,
+bucket membership and mean returns are checked against Alphalens Reloaded
+0.4.6; the native minimum-three-bucket decision is not an Alphalens definition
+or a statistical significance claim. The
+[runnable supplied-panel example](https://github.com/ml4t/diagnostic/blob/b94d7017b03353ad0f0b0c41f939217888106a90/examples/signal_panel_cleaning.py)
+prints the unavailable decisions alongside the actual observations.
+
 ### Plot dated spreads and propagated errors
 
 Unreleased after 0.1.9, the existing spread chart uses actual dated bucket means
