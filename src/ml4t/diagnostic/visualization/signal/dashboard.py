@@ -688,6 +688,16 @@ class SignalDashboard(BaseDashboard):
             html_parts.append(
                 f'<div style="overflow-x: auto;">{self._create_turnover_summary_table(ta)}</div>'
             )
+            theme_name = "dark" if self.theme == "dark" else "default"
+            html_parts.append(
+                "<p>The dated charts show the first recorded observation lag. "
+                "Select another recorded lag explicitly in the plotting API; "
+                "the tables below retain all recorded lags.</p>"
+            )
+            for function in [plot_top_bottom_turnover, plot_autocorrelation]:
+                html_parts.append('<div class="plot-container">')
+                html_parts.append(self._figure_html(function(ta, theme=theme_name)))
+                html_parts.append("</div>")
             for name, title in [
                 ("dated_turnover", "Dated quantile turnover"),
                 ("dated_autocorrelation", "Dated rank autocorrelation"),

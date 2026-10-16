@@ -101,11 +101,14 @@ def main(*, plots: bool = False) -> None:
     assert persistence.get_dataframe("dated_autocorrelation").equals(dated_rank)
     assert result.to_tear_sheet().turnover_analysis is not None
     spread_plot = None
+    persistence_plots = None
     monthly_ic_plot = None
     if plots:
         from ml4t.diagnostic.visualization.signal import (
+            plot_autocorrelation,
             plot_monthly_ic_heatmap,
             plot_spread_timeseries,
+            plot_top_bottom_turnover,
         )
 
         figure = plot_spread_timeseries(result.to_quantile_result(), rolling_window=2)
@@ -113,6 +116,26 @@ def main(*, plots: bool = False) -> None:
             "metadata": dict(figure.layout.meta),
             "traces": [{"name": trace.name, "values": list(trace.y)} for trace in figure.data],
         }
+        persistence_plots = {}
+        for name, function in [
+            ("membership", plot_top_bottom_turnover),
+            ("rank", plot_autocorrelation),
+        ]:
+            dated_figure = function(persistence, lag=1)
+            assert dated_figure.layout.meta["lag_unit"] == "observations"
+            assert len(dated_figure.data[0].x) == result.n_dates
+            persistence_plots[name] = {
+                "metadata": dict(dated_figure.layout.meta),
+                "traces": [
+                    {
+                        "name": trace.name,
+                        "dates": list(trace.x),
+                        "values": list(trace.y),
+                        "counts_and_status": list(trace.customdata),
+                    }
+                    for trace in dated_figure.data
+                ],
+            }
         monthly = plot_monthly_ic_heatmap(ic_component, period="1D")
         assert list(monthly.data[0].x) == ["Jan"]
         np.testing.assert_allclose(
@@ -151,6 +174,7 @@ def main(*, plots: bool = False) -> None:
                 "dated_rank_autocorrelation": dated_rank.to_dicts(),
                 "persistence_summary": persistence.get_dataframe("summary").to_dicts(),
                 "spread_plot": spread_plot,
+                "persistence_plots": persistence_plots,
                 "monthly_ic_plot": monthly_ic_plot,
             },
             indent=2,
@@ -162,6 +186,8 @@ def main(*, plots: bool = False) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--plots", action="store_true", help="Inspect actual spread and monthly IC data (viz extra)"
+        "--plots",
+        action="store_true",
+        help="Inspect actual spread, monthly IC and persistence data (viz extra)",
     )
     main(plots=parser.parse_args().plots)
