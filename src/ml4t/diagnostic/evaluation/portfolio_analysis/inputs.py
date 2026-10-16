@@ -95,7 +95,8 @@ def normalize_observations(
         owned_dates = date_snapshot(dates, len(values), "dates")
         if labels is not None:
             supplied = date_index(owned_dates)
-            if supplied.tz != labels.tz or not (supplied == labels).all():
+            expected = date_index(date_snapshot(labels, len(values), "returns index"))
+            if supplied.tz != expected.tz or not (supplied == expected).all():
                 raise ValueError("dates must agree with the labeled returns index")
 
     relative = None
