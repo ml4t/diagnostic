@@ -509,6 +509,11 @@ def plot_monthly_ic_heatmap(
 ) -> go.Figure:
     """Plot monthly IC heatmap for seasonality analysis.
 
+    Means use the selected IC observations and each supplied timestamp's civil
+    year/month, not an inferred session calendar. Entirely unobserved month
+    columns are omitted; missing year/month cells remain unavailable. An empty
+    sample displays an unavailable notice rather than fabricated zero values.
+
     Parameters
     ----------
     ic_result : SignalICResult
@@ -569,12 +574,11 @@ def plot_monthly_ic_heatmap(
 
     df = pd.DataFrame(
         {
-            "date": parsed_dates,
+            "year": [date.year for date in parsed_dates],
+            "month": [date.month for date in parsed_dates],
             "ic": ic_series,
         }
     )
-    df["year"] = df["date"].dt.year
-    df["month"] = df["date"].dt.month
 
     # Pivot to get mean IC by year-month
     pivot = df.pivot_table(values="ic", index="year", columns="month", aggfunc="mean")
@@ -605,6 +609,18 @@ def plot_monthly_ic_heatmap(
         height=height or 400 + 30 * len(pivot),
         theme=theme,
     )
+    if pivot.empty:
+        fig.add_annotation(
+            text="Monthly IC unavailable",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+        return fig
 
     # Get colorscale
     try:
@@ -625,8 +641,14 @@ def plot_monthly_ic_heatmap(
     fig.add_trace(
         go.Heatmap(
             z=pivot.values,
-            x=month_names[: int(pivot.columns.max())],
+            x=[month_names[int(month) - 1] for month in pivot.columns],
             y=pivot.index.astype(str).tolist(),
+            text=[
+                [f"{value:.3f}" if np.isfinite(value) else "" for value in row]
+                for row in pivot.values
+            ],
+            texttemplate="%{text}",
+            textfont={"size": 14},
             colorscale=colors if isinstance(colors, str) else "RdBu",
             zmid=0,
             zmin=zmin,
@@ -635,20 +657,6 @@ def plot_monthly_ic_heatmap(
             hovertemplate="Year: %{y}<br>Month: %{x}<br>IC: %{z:.4f}<extra></extra>",
         )
     )
-
-    # Add text annotations
-    for _i, year in enumerate(pivot.index):
-        for _j, month in enumerate(pivot.columns):
-            val = pivot.loc[year, month]
-            if not np.isnan(val):
-                text_color = "white" if abs(val) > max_abs * 0.5 else "black"
-                fig.add_annotation(
-                    x=month_names[int(month) - 1],
-                    y=str(year),
-                    text=f"{val:.3f}",
-                    showarrow=False,
-                    font={"size": 10, "color": text_color},
-                )
 
     fig.update_layout(
         xaxis={"side": "bottom", "tickangle": 0},
