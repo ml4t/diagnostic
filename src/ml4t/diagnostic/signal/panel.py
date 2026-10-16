@@ -132,6 +132,48 @@ def prepare_signal_panel(
     are excluded explicitly, not filled. A failed bucket group is excluded only
     when max_loss>0; max_loss=0 exposes its actual error. No returns or calendar
     are inferred. Existing price-based preparation defaults remain unchanged.
+
+    Parameters
+    ----------
+    factor : DataFrame or pandas Series
+        Numeric factor values with unique date/asset keys. Pandas MultiIndex
+        names must match the supplied key names; flat frames are also accepted.
+    forward_returns : DataFrame
+        Precomputed numeric outcomes with the same key schema. No prices are
+        needed. Missing/nonfinite requested outcomes are unavailable, not zeros.
+    quantiles : int or sequence, optional
+        Positive qcut count or increasing probabilities in [0,1]. Use None for
+        cut bins. Partial probability ranges exclude observations outside them.
+    bins : int or sequence, optional
+        Positive equal-width count or increasing edges, mutually exclusive with
+        quantiles. Unbounded endpoints use -inf/+inf strings in audit JSON.
+    zero_aware : bool
+        Bucket negative and nonnegative factors separately using floor(count/2)
+        buckets on each side. Requires an integer count of at least two.
+    return_columns : sequence of str, optional
+        Columns defining the common sample; defaults to all non-key columns in
+        forward_returns. Labels are selectors, not inferred calendar durations.
+    groups : mapping, DataFrame or pandas Series, optional
+        Static asset-to-group mapping or dated date/asset group values. Missing
+        static asset mappings raise; missing dated groups contribute group losses.
+    group_labels : mapping, optional
+        Replace group codes before bucketing, as in Alphalens' groupby_labels.
+    binning_by_group : bool
+        Assign buckets within date/group rather than date alone. This does not
+        provide group-neutral inference or factor portfolio analytics.
+    max_loss : float
+        Maximum excluded fraction of original factor rows; equality passes.
+        One permits an empty owned panel; analyze() still rejects empty samples.
+        Zero exposes bucket errors and allows no exclusions.
+    factor_col, date_col, asset_col : str
+        Explicit input column/index names.
+
+    Returns
+    -------
+    PreparedSignalPanel
+        Owned Float64 factor/outcome values, exact keys and loss provenance.
+        Float32 input quantization cannot be recovered. Original input hashes
+        precede Float64 conversion; caller objects are not modified.
     """
     specification, bucket_count = _bucket_parameters(quantiles, bins, zero_aware)
     quantiles, bins = (specification, None) if bins is None else (None, specification)

@@ -45,6 +45,8 @@ IC, quantile returns, spread, and turnover metrics. It recomputes forward
 returns from prices. Current unreleased source also provides
 `analyze_prepared_signal()` for an existing cleaned factor table, retaining its
 supplied forward returns and bucket assignments without fabricated prices.
+For unbucketed factors and supplied outcomes, `prepare_signal_panel()` selects
+one common sample and records exclusions before assigning buckets.
 See the [Alphalens input contract](https://github.com/quantopian/alphalens/blob/77084f1e4c2c0be407e032d444fb19e4be4b0f37/alphalens/utils.py)
 and the [Diagnostic signal API](../api/index.md#signal-analysis).
 
@@ -55,10 +57,11 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Factor Series with `(date, asset)` index | `analyze_signal(factor=...)` | Reset the index to columns `date`, `asset`, `factor`; keep one value per pair. |
 | Wide asset-price table | `analyze_signal(prices=...)` | Stack to `date`, `asset`, `price` rows, including enough future dates for the largest horizon. |
 | Already-cleaned factor table | `analyze_prepared_signal(data, ...)` | Accepts the ordinary pandas `(date, asset)` index, `factor_quantile` and `1D`/`5D` columns, or native flat columns. Preserves supplied buckets; rejects duplicate keys and incomplete requested data rather than cleaning it. Unreleased after 0.1.9. |
+| Unbucketed factors plus supplied returns | `signal.prepare_signal_panel(factor, forward_returns, ...)` | Owns one complete finite sample, then assigns qcut/cut buckets and records factor/return/group/bucketing losses. Supports static or dated groups and group-relative/zero-aware buckets. Unreleased after 0.1.9; does not compute returns or validate a calendar. |
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
-| Group-neutral or zero-aware bucketing and the complete Alphalens tear sheet | No complete equivalent | The prepared route can retain supplied buckets. It does not implement group-adjusted IC/returns, group-neutral portfolios or the complete tear sheet. |
+| Group-neutral analytics and the complete Alphalens tear sheet | No complete equivalent | Preparing group-relative or zero-aware buckets does not implement group-adjusted IC/returns, group-neutral portfolios or the complete tear sheet. |
 
 </div>
 
@@ -200,6 +203,39 @@ kept all 600 rows; its mean IC and Diagnostic's `SignalResult.ic["1D"]` were
 both `0.318881`. Diagnostic also returned a top-minus-bottom quantile spread
 of `0.004636`. The agreement is for this ungrouped input and definition.
 
+### Prepare and audit supplied returns
+
+For an unbucketed factor Series and a precomputed return panel, unreleased
+source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
+It does not need Alphalens or prices at runtime. From a source checkout, run the
+[self-contained example](https://github.com/ml4t/diagnostic/blob/675f289bc7de5abe4d0eeed5d734aaf6f9dec42a/examples/signal_panel_cleaning.py):
+
+```bash
+uv run python examples/signal_panel_cleaning.py
+```
+
+The example constructs its supplied outcomes with the existing return producer.
+It starts with 24 factor observations and retains 12: four initial feature
+warmup observations and eight incomplete forward tails are excluded. It asserts
+those losses, then passes the owned panel to the existing analysis engine.
+The printed IC values describe synthetic data, not evidence of a profitable factor.
+
+Inspect `panel.data` and `panel.metadata["loss_by_stage"]` before calling
+`panel.analyze()`. Both accessors return independent copies; analysis JSON retains
+the selected Arrow snapshot and cleaning audit. Loss limits use the original
+factor count. `max_loss=0` exposes bucket errors and permits no exclusions;
+values outside supplied bin/probability edges count as bucketing losses.
+Numeric factor/outcome columns are normalized to Float64 without modifying the
+caller or recovering precision already lost in Float32 inputs.
+
+The [signal API](../api/index.md#signal-analysis) documents static/dated groups,
+probability qcut, cut edges and zero-aware options. Preparing group-relative
+buckets is separate from group-neutral inference. The analysis shortcut currently
+requires positive integer `D` selectors and contiguous buckets starting at one.
+Other supplied labels and bucket sets remain inspectable in `panel.data`; the
+shortcut rejects them before writing a report. No calendar grid is inferred or
+validated, and the native pooled/equal-date/report differences below still apply.
+
 ### Quantiles, turnover, and report boundaries
 
 Quantile returns need not agree on other panels. In a separate shared-input
@@ -225,12 +261,12 @@ paths. Do not infer those panels from a successful HTML render or the presence
 of related plotting functions. Keep Alphalens when those report sections,
 factor-weighted portfolios, or event-aligned cumulative paths are required.
 
-Alphalens also supports grouped and group-adjusted IC, configurable
-zero-aware bucketing, and its own complete factor tear sheet. Those options
-are not implied by a Diagnostic signal result. In particular, do not interpret
-Diagnostic's default global quantiles as Alphalens `group_adjust=True` or
-`binning_by_group=True`. Keep the legacy path when those panels or conventions
-are required.
+Alphalens also supports grouped/group-adjusted IC and its own complete factor
+tear sheet. Those capabilities are not implied by a Diagnostic signal result.
+Diagnostic's default global quantiles do not mean `group_adjust=True` or
+`binning_by_group=True`; the latter can now be requested explicitly during
+supplied-panel preparation. Retain the legacy route for the missing analytical
+and report sections, not merely for constructing those buckets.
 
 Factor *construction* is a separate task. If needed,
 [ML4T Engineer's feature guide](https://github.com/ml4t/engineer/blob/145ccafd2ca36dc61f976cdbeaaf147af21e7c2e/docs/user-guide/features.md)
