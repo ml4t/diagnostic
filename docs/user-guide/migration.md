@@ -343,10 +343,13 @@ sessions instead of treating them as warmup. In a tested NAV-to-return sample,
 analyzes that shorter window. Retain the window-selection reason with your
 research inputs; the result does not record it. The shared correction also
 preserves zeros in selection adjustment and automatic bootstrap block selection.
-This is unreleased source work after 0.1.9. The uncertainty helpers still filter
-nonfinite values and do not validate dated paired/cohort alignment, unlike
-`PortfolioAnalysis`'s strict input boundary. Align and validate those inputs
-before use. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
+This is unreleased source work after 0.1.9. Paired uncertainty, selection adjustment
+and Reality Check align pandas DatetimeIndex inputs with the same unique date
+labels chronologically, then exclude nonfinite observations with one common mask.
+Entirely positional inputs require equal original lengths. Mixed dated/positional
+inputs and different dated windows raise instead of guessing observation identity.
+Single-series uncertainty retains its finite-value filter; neither route validates
+a calendar grid or records excluded dates in its result. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
 intervals; matching point estimates does not establish interval equivalence.
 
 Pyfolio's full sheet can additionally include return cones, significant
