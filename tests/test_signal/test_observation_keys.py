@@ -70,6 +70,9 @@ def test_overlapping_batches_cannot_duplicate_a_factor_sample(
 
     assert_frame_equal(factor, before_factor)
     assert_frame_equal(prices, before_prices)
+    if pandas_input:
+        pd.testing.assert_frame_equal(factor_input, before_factor.to_pandas())
+        pd.testing.assert_frame_equal(price_input, before_prices.to_pandas())
     assert original_factor.height == 24 and original_prices.height == 36
 
 
@@ -95,6 +98,8 @@ def test_public_forward_producer_rejects_duplicate_dated_price_observations(
         )
 
     assert_frame_equal(overlapping, before)
+    if pandas_input:
+        pd.testing.assert_frame_equal(supplied, before.to_pandas())
 
 
 @pytest.mark.parametrize("side", ["factor", "price"])
@@ -132,9 +137,10 @@ def test_explicit_row_order_mode_does_not_invent_uniqueness_of_timestamps(pandas
         }
     )
     before = prices.clone()
+    supplied = prices.to_pandas() if pandas_input else prices
 
     result = compute_forward_returns(
-        prices.to_pandas() if pandas_input else prices,
+        supplied,
         periods=1,
         price_col="price",
         group_col="asset",
@@ -147,6 +153,8 @@ def test_explicit_row_order_mode_does_not_invent_uniqueness_of_timestamps(pandas
     expected = [0.05, -0.1, 5 / 105, 40 / 180, -10 / 110, -20 / 220, np.nan, np.nan]
     np.testing.assert_allclose(result["fwd_ret_1"].to_numpy(), expected, atol=1e-14, equal_nan=True)
     assert_frame_equal(prices, before)
+    if pandas_input:
+        pd.testing.assert_frame_equal(supplied, before.to_pandas())
 
 
 def test_distinct_assets_at_one_time_are_not_duplicate_observations():
