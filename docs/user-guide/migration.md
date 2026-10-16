@@ -1094,7 +1094,8 @@ gross HHI 25/49. Per-asset `nav_weight` preserves signed shorts (-.3).
 Pyfolio 0.9.9's `pos.get_long_short_pos()` instead reports short exposure as
 a negative number. `pos.get_percent_alloc()` includes cash; Diagnostic's
 `gross_share` and concentration exclude cash and use absolute asset values.
-These are declared conventions, not interchangeable columns.
+These are declared conventions, not interchangeable columns. The example also
+checks canonical long inputs with integer asset IDs (A=1, B=2).
 
 Positions may be wide pandas/Polars tables or canonical long `date`, `asset`,
 `value` rows. Pandas DatetimeIndex labels are preserved. Wide tables reserve

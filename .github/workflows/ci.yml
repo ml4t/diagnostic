@@ -243,6 +243,13 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           python -I scripts/check_documentation_examples.py
+      - name: Run prepared holdings with minimum Polars from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "polars==0.20.0" --with "pandas==2.3.3"
+          python -I examples/legacy_migration_comparison.py --task holdings
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist

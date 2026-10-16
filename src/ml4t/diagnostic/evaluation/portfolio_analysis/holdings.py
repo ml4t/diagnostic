@@ -99,9 +99,9 @@ def analyze_holdings(
             raise ValueError("long positions require date, asset and value columns")
         long = positions.select("date", "asset", "value")
         asset = long["asset"]
-        if asset.dtype != pl.String and not asset.dtype.is_integer():
+        if asset.dtype != pl.Utf8 and not asset.dtype.is_integer():
             raise TypeError("asset IDs must be stable strings or integers")
-        if asset.null_count() or (asset.dtype == pl.String and (asset == "").any()):
+        if asset.null_count() or (asset.dtype == pl.Utf8 and (asset == "").any()):
             raise ValueError("asset IDs must be nonmissing and nonempty")
         snapshot_dates = long["date"].unique().sort()
     else:
@@ -115,11 +115,12 @@ def analyze_holdings(
             if ((supplied.is_not_null()) & (cash.is_null() | (supplied != cash))).any():
                 raise ValueError("cash in positions must agree with reported valuation cash")
             account = account.with_columns(pl.coalesce(supplied, cash).alias("cash"))
-        long = (
-            positions.unpivot(on=assets, index="date", variable_name="asset")
-            if assets
-            else pl.DataFrame(schema={"date": dates.dtype, "asset": pl.String, "value": pl.Float64})
-        )
+        if not assets:
+            long = pl.DataFrame(schema={"date": dates.dtype, "asset": pl.Utf8, "value": pl.Float64})
+        elif hasattr(positions, "unpivot"):
+            long = positions.unpivot(on=assets, index="date", variable_name="asset")
+        else:
+            long = positions.melt(id_vars="date", value_vars=assets, variable_name="asset")
         snapshot_dates = positions["date"]
     _same_dates(snapshot_dates, dates, "position observation")
     long = long.with_columns(pl.col("date").cast(dates.dtype))

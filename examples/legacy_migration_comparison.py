@@ -361,34 +361,39 @@ def show_prepared_holdings() -> None:
     returns = pd.Series([0.0, 0.0, 0.0], index=dates)
     positions = pd.DataFrame({"A": [0.0, 400.0, 400.0], "B": [0.0, -300.0, -300.0]}, index=dates)
     valuations = pd.DataFrame({"equity": [1000.0] * 3, "cash": [1000.0, 900.0, 900.0]}, index=dates)
-    analysis = PortfolioAnalysis(returns, positions=positions)
-    holdings = analysis.compute_holdings_analysis(valuations, complete_snapshots=True)
-    final = holdings.timeline.row(-1, named=True)
-    np.testing.assert_allclose(
-        [
-            final[name]
-            for name in [
-                "long_exposure_fraction",
-                "short_exposure_fraction",
-                "gross_exposure_fraction",
-                "net_exposure_fraction",
-                "largest_gross_share",
-                "gross_hhi",
-            ]
-        ],
-        [0.4, 0.3, 0.7, 0.1, 4 / 7, 25 / 49],
+    canonical = positions.reset_index(names="date").melt(
+        id_vars="date", var_name="asset", value_name="value"
     )
-    assert holdings.positions.filter(pl.col("asset") == "B")["nav_weight"][-1] == -0.3
-    print("Prepared complete observed snapshots; short exposure is a positive magnitude")
-    print(holdings.timeline)
-    print(holdings.positions)
-    print(holdings.coverage)
-    unavailable = analysis.compute_holdings_analysis(
-        valuations.drop(columns="equity"), complete_snapshots=True
-    )
-    assert unavailable.timeline["gross_exposure_fraction"].null_count() == 3
-    assert unavailable.timeline["gross_exposure"][-1] == 700
-    print("Without reported NAV, raw holdings remain available and NAV ratios are null")
+    canonical["asset"] = canonical["asset"].map({"A": 1, "B": 2})
+    for shape, snapshot, short_id in [("wide", positions, "B"), ("integer-ID long", canonical, 2)]:
+        analysis = PortfolioAnalysis(returns, positions=snapshot)
+        holdings = analysis.compute_holdings_analysis(valuations, complete_snapshots=True)
+        final = holdings.timeline.row(-1, named=True)
+        np.testing.assert_allclose(
+            [
+                final[name]
+                for name in [
+                    "long_exposure_fraction",
+                    "short_exposure_fraction",
+                    "gross_exposure_fraction",
+                    "net_exposure_fraction",
+                    "largest_gross_share",
+                    "gross_hhi",
+                ]
+            ],
+            [0.4, 0.3, 0.7, 0.1, 4 / 7, 25 / 49],
+        )
+        assert holdings.positions.filter(pl.col("asset") == short_id)["nav_weight"][-1] == -0.3
+        print(f"Complete {shape} snapshots; positive short magnitude, canonical IDs A=1/B=2")
+        print(holdings.timeline)
+        print(holdings.positions)
+        print(holdings.coverage)
+        unavailable = analysis.compute_holdings_analysis(
+            valuations.drop(columns="equity"), complete_snapshots=True
+        )
+        assert unavailable.timeline["gross_exposure_fraction"].null_count() == 3
+        assert unavailable.timeline["gross_exposure"][-1] == 700
+        print("Without reported NAV, raw holdings remain available and NAV ratios are null")
 
 
 def main() -> None:
