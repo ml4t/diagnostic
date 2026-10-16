@@ -66,6 +66,10 @@ def main() -> None:
     ]
     portfolio_summary = PortfolioAnalysis(one_period, periods_per_year=252).compute_summary_stats()
     assert abs(portfolio_summary.total_return - ((1 + one_period).prod() - 1)) < 1e-14
+    daily_quantiles = panel.quantile_statistics(by_date=True, demeaned=False)
+    equal_date_quantiles = panel.quantile_statistics(demeaned=False)
+    assert daily_quantiles.height == 12 and equal_date_quantiles.height == 4
+    assert equal_date_quantiles["n_obs"].to_list() == [3] * 4
     print(
         json.dumps(
             {
@@ -81,6 +85,8 @@ def main() -> None:
                 "factor_weights": weights.to_dicts(),
                 "factor_returns": portfolio_returns.to_dicts(),
                 "arithmetic_series_total_return": portfolio_summary.total_return,
+                "daily_quantiles": daily_quantiles.to_dicts(),
+                "equal_date_quantiles": equal_date_quantiles.to_dicts(),
             },
             indent=2,
             default=str,

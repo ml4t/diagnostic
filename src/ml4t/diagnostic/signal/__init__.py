@@ -37,6 +37,7 @@ from ml4t.diagnostic.signal.panel import PreparedSignalPanel, prepare_signal_pan
 from ml4t.diagnostic.signal.portfolio import compute_factor_returns, compute_factor_weights
 from ml4t.diagnostic.signal.quantile import (
     compute_quantile_returns,
+    compute_quantile_statistics,
     compute_spread,
     monotonicity_score,
 )
@@ -74,6 +75,7 @@ __all__ = [
     "demean_signal_returns",
     # Quantile functions
     "compute_quantile_returns",
+    "compute_quantile_statistics",
     "compute_spread",
     "monotonicity_score",
     # Turnover functions

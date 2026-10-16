@@ -11,7 +11,7 @@ Factor-style signal analysis with a clean public surface.
 - `signal_ic.py` - per-date/group IC observations and legacy finite-series extraction
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
 - `portfolio.py` - shared factor-weight normalization and supplied-return contributions
-- `quantile.py` - quantile-return and spread analysis
+- `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
 
@@ -39,3 +39,7 @@ routes accept explicit supplied return-column selectors, without interpreting th
 `panel.factor_weights` and `panel.factor_returns` expose shared magnitude/equal-sign/group-normalized
 weights and their supplied-horizon contributions. Weights ignore horizon-specific future missingness;
 zero signal means zero exposure. These are not dated holdings/expiration accounting or full reports.
+
+`panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
+reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse
+`returns.py`; existing `analyze()` pooled defaults and two-sample spread inference are unchanged.
