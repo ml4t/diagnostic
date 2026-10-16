@@ -218,7 +218,8 @@ def plot_overview_snapshot(profile: BacktestProfile, theme: str | None = None) -
 def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) -> go.Figure:
     """Plot occupancy and realized structure diagnostics."""
     theme = validate_theme(theme)
-    timeline = profile.occupancy["timeline"]
+    occupancy = profile.occupancy
+    timeline = occupancy["timeline"]
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -228,12 +229,22 @@ def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) 
     )
 
     if not timeline.is_empty():
+        customdata = timeline.select(
+            "equity", "gross_exposure", "net_exposure", "normalization_status"
+        ).rows()
+        hover = (
+            "%{x}<br>%{fullData.name}: %{y}<br>Equity: %{customdata[0]}"
+            "<br>Gross exposure: %{customdata[1]}<br>Net exposure: %{customdata[2]}"
+            "<br>Normalization: %{customdata[3]}<extra></extra>"
+        )
         fig.add_trace(
             go.Scatter(
                 x=timeline["timestamp"].to_list(),
                 y=timeline["gross_exposure_fraction"].to_list(),
-                mode="lines",
+                mode="lines+markers",
                 name="Gross Exposure",
+                customdata=customdata,
+                hovertemplate=hover,
             ),
             row=1,
             col=1,
@@ -242,8 +253,10 @@ def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) 
             go.Scatter(
                 x=timeline["timestamp"].to_list(),
                 y=timeline["net_exposure_fraction"].to_list(),
-                mode="lines",
+                mode="lines+markers",
                 name="Net Exposure",
+                customdata=customdata,
+                hovertemplate=hover,
             ),
             row=1,
             col=1,
@@ -252,8 +265,10 @@ def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) 
             go.Scatter(
                 x=timeline["timestamp"].to_list(),
                 y=timeline["open_positions"].to_list(),
-                mode="lines",
+                mode="lines+markers",
                 name="Open Positions",
+                customdata=customdata,
+                hovertemplate=hover,
             ),
             row=2,
             col=1,
@@ -261,7 +276,15 @@ def plot_occupancy_overview(profile: BacktestProfile, theme: str | None = None) 
 
     theme_config = get_theme_config(theme)
     fig.update_layout(theme_config["layout"])
-    fig.update_layout(title={"text": "Exposure", "font": {"size": 16}}, height=350)
+    fig.update_layout(
+        title={"text": "Exposure", "font": {"size": 13}},
+        height=400,
+        font={"size": 14},
+        showlegend=True,
+        legend={"orientation": "h", "y": -0.2, "font": {"size": 14}},
+        meta=occupancy["coverage"],
+    )
+    fig.update_annotations(font_size=13)
     return fig
 
 

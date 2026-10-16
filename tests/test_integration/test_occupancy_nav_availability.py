@@ -1,6 +1,7 @@
 """A real short-position producer must not become zero risk at nonpositive NAV."""
 
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 
 import polars as pl
 import pytest
@@ -8,6 +9,25 @@ from ml4t.backtest import BacktestConfig, DataFeed, Engine, Strategy
 
 from ml4t.diagnostic.integration import analyze_backtest_result
 from ml4t.diagnostic.integration.backtest_analytics import compute_occupancy_metrics
+
+
+class _ExposureCaption(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.active = False
+        self.text = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "p" and dict(attrs).get("data-exposure-normalization") == "partial":
+            self.active = True
+
+    def handle_endtag(self, tag):
+        if tag == "p":
+            self.active = False
+
+    def handle_data(self, text):
+        if self.active:
+            self.text.append(text)
 
 
 class _OnceShort(Strategy):
@@ -105,6 +125,21 @@ def test_real_invalid_nav_end_window_has_no_fabricated_average_or_zero_position_
     assert occupancy["coverage"]["n_normalized_observations"] == 0
 
 
+def test_real_outside_observation_window_reports_no_samples_instead_of_cash_zero():
+    raw = _actual_result(150).to_portfolio_state_dataframe()
+    selected = raw.filter(pl.col("timestamp") > pl.col("timestamp").max())
+    assert selected.height == 0
+    occupancy = compute_occupancy_metrics(selected)
+    assert all(value is None for value in occupancy["metrics"].values())
+    assert occupancy["coverage"] == {
+        "n_observations": 0,
+        "n_normalized_observations": 0,
+        "normalization_coverage": None,
+        "status": "unavailable",
+    }
+    assert occupancy["timeline"].select(selected.columns).equals(selected)
+
+
 @pytest.mark.parametrize("trade", [False, True])
 def test_actual_all_cash_zero_and_positive_nav_leverage_remain_defined(trade):
     profile = analyze_backtest_result(_actual_result(150.0, trade))
@@ -123,3 +158,29 @@ def test_real_profile_exposure_plot_preserves_unsupported_ratio_as_a_gap(final_p
     assert list(figure.data[0].y) == [0.0, 1.0, None]
     assert list(figure.data[1].y) == [0.0, -1.0, None]
     assert list(figure.data[2].y) == [0, 1, 1]
+    assert figure.layout.meta["normalization_coverage"] == pytest.approx(2 / 3)
+    for trace in figure.data:
+        assert list(trace.customdata[-1]) == [
+            2000 - 10 * final_price,
+            10 * final_price,
+            -10 * final_price,
+            "nonpositive_equity",
+        ]
+
+
+def test_actual_zero_nav_full_report_discloses_the_conditional_normalization_sample():
+    from ml4t.diagnostic.integration import generate_tearsheet_from_result
+
+    html = generate_tearsheet_from_result(_actual_result(200), include_statistical=False)
+    caption = _ExposureCaption()
+    caption.feed(html)
+    text = " ".join(caption.text)
+    assert "2 of 3 snapshots" in text
+    assert "defined ratios only" in text
+
+
+def test_actual_negative_nav_performance_report_retains_explicit_simple_return_limit():
+    from ml4t.diagnostic.integration import generate_tearsheet_from_result
+
+    with pytest.raises(ValueError, match="simple returns below -1"):
+        generate_tearsheet_from_result(_actual_result(250), include_statistical=False)

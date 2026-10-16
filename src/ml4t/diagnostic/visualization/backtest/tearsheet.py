@@ -1235,6 +1235,17 @@ def _generate_section(
             content.update_layout(title=None, autosize=True, width=None)
             content.update_layout(margin={"t": 20, "l": 48, "r": 24, "b": 40})
             body_html = '<div class="chart-container">' + _figure_to_clean_html(content) + "</div>"
+        if section_name == "occupancy_overview" and profile is not None:
+            coverage = profile.occupancy["coverage"]
+            status = html_mod.escape(coverage["status"])
+            body_html = (
+                f'<p data-exposure-normalization="{status}">Exposure normalization: '
+                f"{coverage['n_normalized_observations']} of "
+                f"{coverage['n_observations']} snapshots. "
+                "Ratios require finite positive equity and finite exposures. "
+                "Averages and maxima use defined ratios only; gaps are not zero exposure.</p>"
+                + body_html
+            )
         # Collapsible deep-dive sections
         if section_name in _COLLAPSIBLE_SECTIONS:
             return (

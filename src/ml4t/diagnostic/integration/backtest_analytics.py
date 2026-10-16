@@ -379,14 +379,14 @@ def compute_occupancy_metrics(portfolio_state_df: pl.DataFrame) -> dict[str, Any
     if portfolio_state_df.is_empty():
         return {
             "metrics": {
-                "time_in_market": 0.0,
+                "time_in_market": None,
                 "avg_invested_fraction": None,
                 "avg_gross_exposure": None,
                 "max_gross_exposure": None,
                 "avg_net_exposure": None,
                 "max_net_exposure": None,
-                "avg_open_positions": 0.0,
-                "max_open_positions": 0,
+                "avg_open_positions": None,
+                "max_open_positions": None,
             },
             "timeline": pl.DataFrame(
                 schema={
@@ -395,6 +395,7 @@ def compute_occupancy_metrics(portfolio_state_df: pl.DataFrame) -> dict[str, Any
                     "gross_exposure": pl.Float64(),
                     "net_exposure": pl.Float64(),
                     "open_positions": pl.Int32(),
+                    **portfolio_state_df.schema,
                     "invested_fraction": pl.Float64(),
                     "gross_exposure_fraction": pl.Float64(),
                     "net_exposure_fraction": pl.Float64(),
