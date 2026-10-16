@@ -13,7 +13,8 @@ import pandas as pd
 import polars as pl
 from scipy.stats import spearmanr, ttest_ind
 
-from ml4t.diagnostic.signal._utils import _signal_inputs
+from ml4t.diagnostic.signal._prepared import positive_count
+from ml4t.diagnostic.signal._utils import _signal_frame, _signal_inputs
 from ml4t.diagnostic.signal.returns import _paired_demean
 from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
@@ -210,6 +211,106 @@ def compute_quantile_statistics(
     )
 
 
+def compute_quantile_spread(
+    statistics: pl.DataFrame | pd.DataFrame,
+    *,
+    upper_quantile: int,
+    lower_quantile: int,
+    include_standard_error: bool = True,
+) -> pl.DataFrame:
+    """Subtract arbitrary bucket means from canonical quantile statistics.
+
+    Consume compute_quantile_statistics output without re-estimating samples.
+    Retain optional date/group keys, each leg's mean/error/count, sample unit
+    and adjustment. Missing counterpart legs remain null. Standard error uses
+    hypot(upper_error, lower_error), the independent-error propagation used by
+    Alphalens, even when the same bucket is selected twice. This is not a
+    covariance-aware estimate or the existing pooled two-sample Student test.
+
+    The raw difference represents +1 upper / -1 lower exposure (gross two),
+    not a unit-gross portfolio return. Return-column labels retain their input
+    order and are not interpreted as durations. Empty statistics retain an
+    empty typed output; absent requested buckets in a nonempty input fail.
+    Neither caller-owned Pandas/Polars statistics nor prepared panels change.
+    """
+    upper = positive_count(upper_quantile, "upper_quantile")
+    lower = positive_count(lower_quantile, "lower_quantile")
+    if not isinstance(include_standard_error, bool | np.bool_):
+        raise ValueError("include_standard_error must be boolean")
+    values = _signal_frame(statistics)
+    dimensions = [name for name in ["date", "group"] if name in values.columns]
+    keys = [*dimensions, "return_column", "sample_unit", "return_adjustment"]
+    _validate_observation_keys(values, [*keys, "quantile"], "quantile statistics")
+    for name in [
+        "quantile",
+        "mean",
+        "n_obs",
+        *(["standard_error"] if include_standard_error else []),
+    ]:
+        if name not in values.columns:
+            raise ValueError(f"quantile statistics is missing {name}")
+        if not (values[name].dtype.is_numeric() or values[name].dtype == pl.Null):
+            raise TypeError(f"quantile statistics {name} must be numeric")
+    buckets = values["quantile"].cast(pl.Float64)
+    if not ((buckets >= 1) & (buckets == buckets.floor()) & buckets.is_finite()).all():
+        raise ValueError("quantile statistics buckets must be positive integer labels")
+    counts = values["n_obs"].cast(pl.Float64)
+    if (
+        counts.null_count()
+        or not ((counts >= 0) & (counts == counts.floor()) & counts.is_finite()).all()
+    ):
+        raise ValueError("quantile statistics n_obs must be nonmissing nonnegative integer counts")
+    expected_unit = "asset" if "date" in dimensions else "date"
+    if not (values["sample_unit"] == expected_unit).all():
+        raise ValueError("quantile statistics sample_unit must agree with date dimensions")
+    if not values["return_adjustment"].is_in(["none", "date_mean", "date_group_mean"]).all():
+        raise ValueError("quantile statistics return_adjustment is not supported")
+    if values.height and not {upper, lower}.issubset(set(buckets.to_list())):
+        raise ValueError("requested quantile bucket is absent from statistics")
+    leg_columns = ["mean", "n_obs"]
+    if "standard_error" in values.columns:
+        leg_columns.append("standard_error")
+    legs = [
+        values.filter(pl.col("quantile") == bucket).select(
+            *keys,
+            *[pl.col(name).alias(f"{side}_{name}") for name in leg_columns],
+            *(
+                []
+                if "standard_error" in leg_columns
+                else [pl.lit(None, dtype=pl.Float64).alias(f"{side}_standard_error")]
+            ),
+        )
+        for side, bucket in [("upper", upper), ("lower", lower)]
+    ]
+    result = legs[0].join(legs[1], on=keys, how="full", coalesce=True)
+    error = (
+        np.hypot(
+            result["upper_standard_error"].cast(pl.Float64).to_numpy(),
+            result["lower_standard_error"].cast(pl.Float64).to_numpy(),
+        )
+        if include_standard_error
+        else np.full(result.height, np.nan)
+    )
+    order = (
+        values.select("return_column").unique(maintain_order=True).with_row_index("__horizon_order")
+    )
+    return (
+        result.with_columns(
+            (pl.col("upper_mean") - pl.col("lower_mean"))
+            .cast(pl.Float64)
+            .fill_nan(None)
+            .alias("spread"),
+            pl.Series("standard_error", error).fill_nan(None),
+            pl.lit(upper).alias("upper_quantile"),
+            pl.lit(lower).alias("lower_quantile"),
+            pl.lit("long_upper_short_lower_unit_each").alias("exposure_convention"),
+        )
+        .join(order, on="return_column", how="left")
+        .sort(["__horizon_order", *dimensions])
+        .drop("__horizon_order")
+    )
+
+
 def _compute_quantile_return_statistics(
     data: pl.DataFrame,
     period: int,
@@ -370,6 +471,7 @@ def monotonicity_score(
 
 __all__ = [
     "compute_quantile_statistics",
+    "compute_quantile_spread",
     "compute_quantile_returns",
     "compute_spread",
     "monotonicity_score",

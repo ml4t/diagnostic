@@ -43,3 +43,6 @@ zero signal means zero exposure. These are not dated holdings/expiration account
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse
 `returns.py`; existing `analyze()` pooled defaults and two-sample spread inference are unchanged.
+`panel.quantile_spread` delegates to those statistics and `compute_quantile_spread`, preserving
+arbitrary bucket pairs, per-leg counts and optional independent propagated errors. Its raw
+upper-minus-lower difference has +1/-1 (gross-two) exposure, not unit-gross portfolio accounting.
