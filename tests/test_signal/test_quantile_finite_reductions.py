@@ -23,11 +23,15 @@ def _inputs(profile):
         else ["A", "B"]
     )
     initial = (
-        0.5e-308 if profile in {"constant_large", "signed_large", "unrepresentable_std"} else 0.5
+        0.5e-308
+        if profile in {"constant_large", "constant_negative", "signed_large", "unrepresentable_std"}
+        else 0.5
     )
     middle = initial * 2
     if profile == "constant_large":
         closing, expected = [1.0, 1.0], (1e308, 0.0, 0.0)
+    elif profile == "constant_negative":
+        closing, expected = [-1.0, -1.0], (-1e308, 0.0, 0.0)
     elif profile == "signed_large":
         closing, expected = [1.0, -1.0], (0.0, math.sqrt(2) * 1e308, 1e308)
     elif profile == "unrepresentable_std":
@@ -75,6 +79,7 @@ CASES = [
     (profile, route, representation)
     for profile in [
         "constant_large",
+        "constant_negative",
         "signed_large",
         "unrepresentable_std",
         "near_constant",
