@@ -187,6 +187,9 @@ def cross_sectional_ic_series(
 
     This function computes the Information Coefficient for each time period
     (typically daily), enabling temporal analysis of prediction quality.
+    Declared observation keys must be unique and nonmissing on both inputs.
+    Only the selected value from each frame participates in the correlation;
+    extra columns and identical prediction/return column names are unambiguous.
     Parameters
     ----------
     predictions : Union[pl.DataFrame, pd.DataFrame]
@@ -241,6 +244,7 @@ def cross_sectional_ic_series(
             join_on.append(entity_col)
         else:
             join_on.extend(entity_col)
+    join_on = list(dict.fromkeys(join_on))
 
     predictions_pl = (
         predictions
@@ -253,8 +257,22 @@ def cross_sectional_ic_series(
         else pl.from_pandas(cast(pd.DataFrame, returns))
     )
 
-    # Merge predictions and returns
-    df = predictions_pl.join(returns_pl, on=join_on, how="inner")
+    _validate_observation_keys(predictions_pl, join_on, "predictions")
+    _validate_observation_keys(returns_pl, join_on, "returns")
+    predictions_pl, returns_pl = _align_datetime_key_resolution(
+        predictions_pl, returns_pl, date_col
+    )
+    prediction_value, return_value = "__ic_prediction", "__ic_return"
+    while prediction_value in join_on:
+        prediction_value = "_" + prediction_value
+    while return_value in join_on:
+        return_value = "_" + return_value
+    df = predictions_pl.select(*join_on, pl.col(pred_col).alias(prediction_value)).join(
+        returns_pl.select(*join_on, pl.col(ret_col).alias(return_value)),
+        on=join_on,
+        how="inner",
+    )
+    pred_col, ret_col = prediction_value, return_value
 
     if method not in ("spearman", "pearson"):
         raise ValueError(f"Unknown method: {method!r}. Use 'spearman' or 'pearson'.")
