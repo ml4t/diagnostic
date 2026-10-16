@@ -1224,8 +1224,18 @@ Pass the prepared result to the existing dashboard. Plotly is optional; no
 Backtest, Pyfolio or Empyrical runtime is required for caller-prepared inputs:
 
 ```python
+import pandas as pd
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
 from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
 
+dates = pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"])
+positions = pd.DataFrame(
+    {"A": [0.0, 400.0, 400.0], "B": [0.0, -300.0, -300.0]}, index=dates
+)
+valuations = pd.DataFrame(
+    {"equity": [1000.0] * 3, "cash": [1000.0, 900.0, 900.0]}, index=dates
+)
+analysis = PortfolioAnalysis(pd.Series([0.0] * 3, index=dates), positions=positions)
 holdings = analysis.compute_holdings_analysis(
     valuations, complete_snapshots=True, sector_mapping={"A": "Technology"}
 )
@@ -1234,6 +1244,8 @@ report = create_portfolio_dashboard(
 )
 report.save_html("portfolio-holdings.html", include_plotlyjs=True)
 data = report.to_dict()["holdings"]
+assert data["timeline"][-1]["cash"] == 900.0
+assert data["top_positions"]["short"] == [{"asset": "B", "value": -300.0}]
 ```
 
 Run the existing example from the source checkout:
