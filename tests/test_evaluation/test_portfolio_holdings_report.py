@@ -322,6 +322,7 @@ def test_real_export_uses_true_viewport_and_readable_leaf_text_for_returns_and_h
                 is_mobile=width == 375,
                 has_touch=width == 375,
             )
+            context.set_offline(True)
             page = context.new_page()
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.on("requestfailed", lambda request: requests.append(request.url))
@@ -330,13 +331,57 @@ def test_real_export_uses_true_viewport_and_readable_leaf_text_for_returns_and_h
                 "Array.from(document.querySelectorAll('.js-plotly-plot')).every(p=>p._fullLayout)"
             )
             actual = page.evaluate(
-                """()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,body:parseFloat(getComputedStyle(document.body).fontSize),plots:Array.from(document.querySelectorAll('.js-plotly-plot')).map(p=>({width:p._fullLayout.width,text:Array.from(p.querySelectorAll('.xtick text,.ytick text,.legendtext,.gtitle,.colorbar text')).filter(t=>t.getBoundingClientRect().width>0).map(t=>parseFloat(getComputedStyle(t).fontSize))}))})"""
+                """() => {
+                    const roles = '.xtick text,.ytick text,.legendtext,.gtitle,.xtitle,.ytitle,.colorbar text';
+                    return {
+                        width: innerWidth, scroll: document.documentElement.scrollWidth,
+                        body: parseFloat(getComputedStyle(document.body).fontSize),
+                        plots: Array.from(document.querySelectorAll('.js-plotly-plot')).map(p => {
+                            const b = p.getBoundingClientRect();
+                            const labels = Array.from(p.querySelectorAll(roles)).filter(t => t.getBoundingClientRect().width > 0);
+                            const axis = p.querySelector('.xtitle')?.getBoundingClientRect();
+                            const overlaps = axis && Array.from(p.querySelectorAll('.legendtext')).some(t => {
+                                const r = t.getBoundingClientRect();
+                                return Math.min(axis.right,r.right)-Math.max(axis.left,r.left)>1 && Math.min(axis.bottom,r.bottom)-Math.max(axis.top,r.top)>1;
+                            });
+                            return {
+                                name: p.closest('.plot-container').querySelector('h2').textContent,
+                                width: p._fullLayout.width, visible: b.width>0 && b.height>0,
+                                prepared: p.layout.meta?.analysis==='prepared_holdings',
+                                text: labels.map(t => parseFloat(getComputedStyle(t).fontSize)),
+                                clipped: labels.some(t => {
+                                    const r=t.getBoundingClientRect();
+                                    return r.left<b.left-1 || r.right>b.right+1 || r.top<b.top-1 || r.bottom>b.bottom+1;
+                                }),
+                                overlap: Boolean(overlaps),
+                                traces: p.layout.meta?.analysis==='prepared_holdings' ? p._fullData.map(t=>({name:t.name,x:Array.from(t.x||[]),y:Array.from(t.y||[])})) : []
+                            };
+                        })
+                    };
+                }"""
             )
             assert actual["width"] == width and actual["scroll"] <= width
+            assert len(actual["plots"]) == (15 if positions else 8)
+            assert all(plot["visible"] for plot in actual["plots"])
             assert all(plot["width"] <= width for plot in actual["plots"])
             assert all(
                 14 <= size <= actual["body"] for plot in actual["plots"] for size in plot["text"]
             )
+            assert all(
+                not plot["clipped"] and not plot["overlap"]
+                for plot in actual["plots"]
+                if plot["prepared"]
+            )
+            if positions:
+                exposure = next(
+                    plot for plot in actual["plots"] if plot["name"] == "Holdings Exposure"
+                )
+                assert next(
+                    trace["y"] for trace in exposure["traces"] if trace["name"] == "Gross"
+                ) == [0, 0.7, 0.7]
+                assert next(
+                    trace["y"] for trace in exposure["traces"] if trace["name"] == "Short (signed)"
+                ) == [0, -0.3, -0.3]
         finally:
             browser.close()
     assert not errors and not requests
