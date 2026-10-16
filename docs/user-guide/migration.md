@@ -251,9 +251,19 @@ validated, and the native pooled/equal-date/report differences below still apply
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.
-These unreleased methods after 0.1.9 do not require Alphalens:
+These unreleased methods after 0.1.9 do not require Alphalens. Using `prepared`
+from the earlier example, first attach explicit asset groups:
 
 ```python
+from ml4t.diagnostic.signal import prepare_signal_panel
+
+panel = prepare_signal_panel(
+    prepared["factor"],
+    prepared[["1D"]],
+    groups={f"A{i:02}": "first" if i < 6 else "second" for i in range(12)},
+    quantiles=3,
+    max_loss=0.0,
+)
 adjusted = panel.demean_returns(by_group=True)
 ic = panel.ic_by_date(group_adjust=True, by_group=True, min_obs=2)
 print(adjusted)
