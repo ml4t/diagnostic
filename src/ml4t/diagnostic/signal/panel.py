@@ -166,6 +166,12 @@ def prepare_signal_panel(
                 raise TypeError(f"signal panel {column} must contain numeric values")
     if factors.is_empty():
         raise ValueError("factor must contain observations")
+    input_factor_hash = sha256(
+        factors.select(*keys, factor_col).write_ipc(None).getvalue()
+    ).hexdigest()
+    input_returns_hash = sha256(
+        returns.select(*keys, *columns).write_ipc(None).getvalue()
+    ).hexdigest()
     input_rows = factors.height
     factors = factors.select(*keys, factor_col).filter(pl.col(factor_col).is_finite())
     losses = {"factor": input_rows - factors.height, "returns": 0, "groups": 0, "bucketing": 0}
@@ -176,18 +182,22 @@ def prepare_signal_panel(
     complete = data.filter(pl.all_horizontal(pl.col(column).is_finite() for column in columns))
     losses["returns"] = data.height - complete.height
     data = complete
+    group_source_hash = None
     if groups is not None:
         if isinstance(groups, Mapping):
             missing = set(factors[asset_col].unique().to_list()).difference(groups)
             if missing:
                 raise KeyError(f"assets missing from group mapping: {sorted(missing, key=str)}")
-            group_frame = pl.DataFrame({asset_col: list(groups), "group": list(groups.values())})
+            group_frame = factors.select(asset_col).unique(maintain_order=True)
+            codes = [groups[asset] for asset in group_frame[asset_col].to_list()]
+            group_frame = group_frame.with_columns(pl.Series("group", codes))
             group_keys = [asset_col]
         else:
             group_frame = _frame(groups, date_col, asset_col, "group").select(*keys, "group")
             data, group_frame = _align_datetime_key_resolution(data, group_frame, date_col)
             group_keys = keys
-        if group_labels is not None:
+        group_source_hash = sha256(group_frame.write_ipc(None).getvalue()).hexdigest()
+        if group_labels is not None and not group_frame.is_empty():
             codes = set(group_frame["group"].drop_nulls().unique().to_list())
             if missing := codes.difference(group_labels):
                 raise KeyError(f"groups missing from display labels: {sorted(missing, key=str)}")
@@ -247,6 +257,7 @@ def prepare_signal_panel(
         "input_rows": input_rows,
         "retained_rows": data.height,
         "loss_fraction": loss_fraction,
+        "max_loss": float(max_loss),
         "loss_by_stage": losses,
         "bucket_failures": failures,
         "return_columns": columns,
@@ -263,6 +274,15 @@ def prepare_signal_panel(
         "zero_aware": bool(zero_aware),
         "binning_by_group": bool(binning_by_group),
         "frame_sha256": sha256(payload).hexdigest(),
+        "input_factor_sha256": input_factor_hash,
+        "input_returns_sha256": input_returns_hash,
+        "prepared_group_source_sha256": group_source_hash,
+        "group_source": "none"
+        if groups is None
+        else "static"
+        if isinstance(groups, Mapping)
+        else "dated",
+        "groups_labeled": group_labels is not None,
         "pandas_version": version("pandas"),
         "numpy_version": version("numpy"),
         "sample_policy": "common finite factor/return/group sample before bucketing",

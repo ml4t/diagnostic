@@ -8,8 +8,12 @@ import pytest
 from ml4t.diagnostic.metrics import compute_forward_returns
 
 
-def _inputs():
+def _inputs(nanosecond=False):
     dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
+    if nanosecond:
+        dates = pd.DatetimeIndex(
+            [dates[0] + pd.Timedelta(100 * offset, unit="ns") for offset in range(6)]
+        )
     assets = ["A", "B", "C", "D"]
     wide = pd.DataFrame(
         {
@@ -32,6 +36,8 @@ def _inputs():
     forward = forward.set_index(["date", "asset"])[["fwd_ret_1", "fwd_ret_2"]].rename(
         columns={"fwd_ret_1": "1D", "fwd_ret_2": "2D"}
     )
+    if nanosecond:
+        forward = forward.rename(columns={"1D": "1bar", "2D": "2bar"})
     return factor, forward, dates, assets
 
 
@@ -225,3 +231,82 @@ def test_supported_bucket_options_preserve_independent_membership_and_account_fo
         else:
             expected = expected_sorted
         np.testing.assert_array_equal(actual["quantile"], expected)
+
+
+def test_real_dated_group_gap_and_unbucketable_remainder_have_separate_losses():
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, assets = _inputs()
+    groups = pd.Series(
+        ["g1" if asset in ["A", "B"] else "g2" for _ in dates for asset in assets],
+        index=factor.index,
+    )
+    groups = groups.drop((dates[2], "A")).reindex(factor.index)
+    panel = prepare_signal_panel(
+        factor, forward, quantiles=2, groups=groups, binning_by_group=True, max_loss=0.6
+    )
+    assert panel.data.height == 10
+    assert panel.metadata["loss_by_stage"] == {
+        "factor": 4,
+        "returns": 8,
+        "groups": 1,
+        "bucketing": 1,
+    }
+    assert panel.metadata["bucket_failures"][0]["rows"] == 1
+
+
+@pytest.mark.parametrize("empty_source", ["factor", "returns", "static_groups"])
+def test_explicit_total_loss_keeps_an_owned_empty_panel_not_a_schema_error(empty_source):
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, _, _ = _inputs()
+    groups = None
+    if empty_source in ["factor", "static_groups"]:
+        factor = factor.groupby(level="asset").transform(lambda series: series.rolling(20).mean())
+        if empty_source == "static_groups":
+            groups = {}
+    else:
+        forward = forward.shift(-len(forward))
+    panel = prepare_signal_panel(factor, forward, quantiles=2, groups=groups, max_loss=1.0)
+    assert panel.data.height == 0
+    assert sum(panel.metadata["loss_by_stage"].values()) == 24
+    with pytest.raises(ValueError, match="max_loss"):
+        prepare_signal_panel(
+            factor, forward, quantiles=2, groups=groups, max_loss=np.nextafter(1.0, 0.0)
+        )
+    with pytest.raises(ValueError, match="nonempty"):
+        panel.analyze(min_assets=2)
+
+
+def test_submicrosecond_observed_bar_keys_are_preserved_without_claiming_day_horizons(tmp_path):
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, dates, assets = _inputs(nanosecond=True)
+    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0.5)
+    data = panel.data
+    assert data.height == 12
+    assert data["date"].dtype == pl.Datetime("ns", "UTC")
+    expected = [day.value for day in dates[1:4] for _ in assets]
+    assert data["date"].cast(pl.Int64).to_list() == expected
+    assert panel.metadata["return_columns"] == ["1bar", "2bar"]
+    path = tmp_path / "existing.json"
+    path.write_text("existing report")
+    with pytest.raises(ValueError, match="horizon labels"):
+        panel.analyze(min_assets=2).to_json(str(path))
+    assert path.read_text() == "existing report"
+
+
+@pytest.mark.parametrize("side", ["factor", "returns", "groups"])
+def test_overlapping_input_batches_cannot_be_hidden_as_cleaning_losses(side):
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    factor, forward, _, _ = _inputs()
+    groups = pd.Series("sector", index=factor.index)
+    if side == "factor":
+        factor = pd.concat([factor, factor.iloc[[0]]])
+    elif side == "returns":
+        forward = pd.concat([forward, forward.iloc[[0]]])
+    else:
+        groups = pd.concat([groups, groups.iloc[[0]]])
+    with pytest.raises(ValueError, match="duplicate"):
+        prepare_signal_panel(factor, forward, quantiles=2, groups=groups, max_loss=1.0)
