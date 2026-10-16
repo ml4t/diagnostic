@@ -143,15 +143,17 @@ def plot_quantile_returns_bar(
         spread = quantile_result.spread_mean.get(period, 0)
         spread_t = quantile_result.spread_t_stat.get(period, 0)
         spread_p = quantile_result.spread_p_value.get(period, 1)
-        monotonic = quantile_result.is_monotonic.get(period, False)
-        direction = quantile_result.monotonicity_direction.get(period, "none")
+        monotonic, direction = quantile_result.get_monotonicity(period)
+        monotonic_display = (
+            "N/A" if monotonic is None else "✓ " + direction if monotonic else "✗ No"
+        )
 
         spread_text = (
             f"<b>Spread Analysis:</b><br>"
             f"Top - Bottom: {format_finite(spread, '.1%')}<br>"
             f"t-stat: {format_finite(spread_t, '.2f')} "
             f"(p={format_finite(spread_p, '.4f')})<br>"
-            f"Monotonic: {'✓ ' + direction if monotonic else '✗ No'}"
+            f"Monotonic: {monotonic_display}"
         )
 
         fig.add_annotation(
