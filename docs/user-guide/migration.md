@@ -588,11 +588,14 @@ workflows and all seven Alphalens tear sheets remain separate accepted work.
 ### Distinguish unavailable monotonicity from a negative decision
 
 Unreleased after 0.1.9, use the structured result's availability-aware accessor
-before interpreting a quantile monotonicity flag. The two-bucket `panel` above
-has no native rank-correlation decision:
+before interpreting a quantile monotonicity flag. Construct two buckets
+explicitly from the supplied `prepared` observations above:
 
 ```python
-quantiles = report_result.to_quantile_result()
+two_bucket_panel = prepare_signal_panel(
+    prepared["factor"], prepared[["1D"]], quantiles=2, max_loss=0
+)
+quantiles = two_bucket_panel.analyze(min_assets=2).to_quantile_result()
 assert quantiles.get_monotonicity("1D") == (None, "unavailable")
 print(quantiles.get_dataframe("spread").select("period", "is_monotonic"))
 print(quantiles.summary())
