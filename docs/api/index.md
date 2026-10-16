@@ -79,6 +79,7 @@ The package root re-exports the most common classes and configs for interactive 
         - compute_quantile_statistics
         - compute_quantile_spread
         - compute_quantile_turnover
+        - compute_rank_autocorrelation
         - compute_spread
         - compute_turnover
         - estimate_half_life

@@ -78,6 +78,10 @@ def main() -> None:
     dated_turnover = panel.quantile_turnover(lags=(1, 2))
     assert dated_turnover.height == 12
     assert set(dated_turnover["lag_unit"].to_list()) == {"observations"}
+    dated_rank = panel.rank_autocorrelation(lags=(1, 2))
+    assert dated_rank.height == 6
+    assert set(dated_rank["rank_scope"].to_list()) == {"date"}
+    assert set(dated_rank["correlation_method"].to_list()) == {"pearson"}
     print(
         json.dumps(
             {
@@ -97,6 +101,7 @@ def main() -> None:
                 "equal_date_quantiles": equal_date_quantiles.to_dicts(),
                 "quantile_spreads": spreads.to_dicts(),
                 "dated_quantile_turnover": dated_turnover.to_dicts(),
+                "dated_rank_autocorrelation": dated_rank.to_dicts(),
             },
             indent=2,
             default=str,
