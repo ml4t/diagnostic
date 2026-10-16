@@ -102,9 +102,11 @@ def main(*, plots: bool = False) -> None:
     assert result.to_tear_sheet().turnover_analysis is not None
     spread_plot = None
     persistence_plots = None
+    monthly_ic_plot = None
     if plots:
         from ml4t.diagnostic.visualization.signal import (
             plot_autocorrelation,
+            plot_monthly_ic_heatmap,
             plot_spread_timeseries,
             plot_top_bottom_turnover,
         )
@@ -134,6 +136,16 @@ def main(*, plots: bool = False) -> None:
                     for trace in dated_figure.data
                 ],
             }
+        monthly = plot_monthly_ic_heatmap(ic_component, period="1D")
+        assert list(monthly.data[0].x) == ["Jan"]
+        np.testing.assert_allclose(
+            monthly.data[0].z, [[np.mean(ic_component.ic_by_date["1D"])]], rtol=0, atol=1e-14
+        )
+        monthly_ic_plot = {
+            "months": list(monthly.data[0].x),
+            "years": list(monthly.data[0].y),
+            "values": np.asarray(monthly.data[0].z).tolist(),
+        }
     print(
         json.dumps(
             {
@@ -163,6 +175,7 @@ def main(*, plots: bool = False) -> None:
                 "persistence_summary": persistence.get_dataframe("summary").to_dicts(),
                 "spread_plot": spread_plot,
                 "persistence_plots": persistence_plots,
+                "monthly_ic_plot": monthly_ic_plot,
             },
             indent=2,
             default=str,
@@ -175,6 +188,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plots",
         action="store_true",
-        help="Inspect actual spread and persistence data (viz extra)",
+        help="Inspect actual spread, monthly IC and persistence data (viz extra)",
     )
     main(plots=parser.parse_args().plots)

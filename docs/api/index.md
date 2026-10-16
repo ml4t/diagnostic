@@ -97,6 +97,14 @@ than a confidence band when variance is undefined. Required numeric summary fiel
 NaN without changing optional HAC/RAS fields. See the
 [IC report how-to](../user-guide/migration.md#match-ic-report-statistics-to-selected-dates).
 
+`plot_monthly_ic_heatmap` groups that component's selected observations by each
+timestamp's supplied civil year/month, preserving dimensionless IC means and
+missing cells. It labels observed months, keeps defined zero means visible and
+marks an empty sample unavailable. It does not infer exchange sessions. See the
+[monthly IC how-to](../user-guide/migration.md#inspect-monthly-ic-on-the-selected-sample).
+
+::: ml4t.diagnostic.visualization.signal.plot_monthly_ic_heatmap
+
 ### Dated persistence result views
 
 Persistence-enabled signal analyses retain independent dated observation tables
