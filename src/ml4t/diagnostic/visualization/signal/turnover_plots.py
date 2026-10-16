@@ -164,7 +164,8 @@ def _plot_dated_persistence(
             xref="paper",
             yref="paper",
             xanchor="right",
-            yanchor="top",
+            yanchor="bottom",
+            yshift=8,
             showarrow=False,
         )
     return figure
