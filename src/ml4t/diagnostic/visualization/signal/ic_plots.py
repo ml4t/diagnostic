@@ -509,6 +509,11 @@ def plot_monthly_ic_heatmap(
 ) -> go.Figure:
     """Plot monthly IC heatmap for seasonality analysis.
 
+    Means use the selected IC observations and each supplied timestamp's civil
+    year/month, not an inferred session calendar. Entirely unobserved month
+    columns are omitted; missing year/month cells remain unavailable. An empty
+    sample displays an unavailable notice rather than fabricated zero values.
+
     Parameters
     ----------
     ic_result : SignalICResult

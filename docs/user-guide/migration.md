@@ -258,6 +258,43 @@ semantics and full report composition remain separate accepted work. The
 [runnable supplied-panel example](https://github.com/ml4t/diagnostic/blob/0ef65182e33fb661cb9cb8ccaf3aa0d01d123a63/examples/signal_panel_cleaning.py)
 checks report means against their actual series and prints the report summaries.
 
+### Inspect monthly IC on the selected sample
+
+With the visualization extra, unreleased source after 0.1.9 plots arithmetic
+monthly means of the IC observations already selected by the report bridge:
+
+```python
+from ml4t.diagnostic.visualization.signal import plot_monthly_ic_heatmap
+
+monthly_ic = plot_monthly_ic_heatmap(single_ic, period="1D")
+print(monthly_ic.data[0].x)
+print(monthly_ic.data[0].z)
+```
+
+IC and its means are dimensionless correlations. Each timestamp's supplied
+civil year and month determine its cell, including timestamps whose UTC offset
+changes. This grouping does not infer an exchange session or bar calendar.
+The plot labels actual observed months; January and March do not become
+January and February. Years run newest first. Missing year/month intersections
+stay unavailable rather than zero; a defined monthly mean of zero remains a
+visible cell. An empty retained sample displays `Monthly IC unavailable`.
+Cell labels are trace-native, avoiding numeric year annotations that previously
+collapsed the visible heatmap. These values and labels also reach the existing
+`SignalDashboard` through `result.to_tear_sheet()`.
+
+For Alphalens Reloaded 0.4.6, compare
+`performance.mean_information_coefficient(selected_factor_data, by_time="ME")`
+on the same explicitly selected factor/outcome rows and finite IC dates before
+calling its `plotting.plot_monthly_ic_heatmap`. Its month-end grouping inserts
+entirely absent months between observations; Diagnostic shows only observed
+month columns. Neither definition fabricates a zero IC for a missing month.
+Shared-input checks cover raw, prepared and owned workflows, their cleaning
+keys, buckets, counts and IC values before monthly reduction. They do not
+establish forward-calendar equivalence, identical renderer presentation or
+complete information tear-sheet coverage. The existing supplied-panel example
+checks and prints monthly plot values when run with
+`uv run --extra viz python examples/signal_panel_cleaning.py --plots`.
+
 ### Prepare and audit supplied returns
 
 For an unbucketed factor Series and a precomputed return panel, unreleased
