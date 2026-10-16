@@ -46,6 +46,8 @@ def test_actual_sector_values_and_ratios_reconcile_for_all_static_mapping_routes
     assert finance["short_exposure"] == finance["gross_exposure"] == 300
     assert finance["net_exposure"] == -300
     assert technology["open_positions"] == finance["open_positions"] == 1
+    assert technology["long_positions"] == finance["short_positions"] == 1
+    assert technology["short_positions"] == finance["long_positions"] == 0
     assert technology["net_exposure_fraction"] == pytest.approx(0.4)
     assert finance["net_exposure_fraction"] == pytest.approx(-0.3)
     assert finance["gross_exposure_fraction"] == pytest.approx(0.3)
@@ -283,3 +285,12 @@ def test_sector_requests_do_not_change_a_later_unclassified_result_or_cached_ret
             assert after[name] is None
         else:
             np.testing.assert_equal(after[name], value)
+
+
+def test_actual_empty_short_side_is_positive_zero_in_portfolio_and_sector_magnitudes():
+    analysis, _, _, valuations, _ = _analysis()
+    result = analysis.compute_holdings_analysis(
+        valuations, complete_snapshots=True, sector_mapping={"A": "Technology", "B": "Finance"}
+    )
+    assert not np.signbit(result.timeline["short_exposure"].to_numpy()).any()
+    assert not np.signbit(result.sectors["short_exposure"].to_numpy()).any()

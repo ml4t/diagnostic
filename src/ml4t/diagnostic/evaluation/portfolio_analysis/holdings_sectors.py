@@ -9,7 +9,7 @@ from numbers import Integral, Real
 import pandas as pd
 import polars as pl
 
-from .holdings import position_snapshot
+from .holdings import _exposure_aggregations, position_snapshot
 from .inputs import date_index, date_snapshot
 
 type SectorMapping = (
@@ -117,16 +117,9 @@ def analyze_sector_exposures(
     if frame.select(pl.struct(*keys).is_duplicated().any()).item():
         raise ValueError("sector mapping keys must be unique")
     labeled = positions.join(frame, on=keys, how="left")
-    values = pl.col("value")
     sectors = (
         labeled.group_by("date", "sector")
-        .agg(
-            values.clip(lower_bound=0).sum().alias("long_exposure"),
-            (-values.clip(upper_bound=0)).sum().alias("short_exposure"),
-            values.abs().sum().alias("gross_exposure"),
-            values.sum().alias("net_exposure"),
-            (values != 0).sum().alias("open_positions"),
-        )
+        .agg(_exposure_aggregations())
         .join(timeline.select("date", "equity", "normalization_status"), on="date", how="left")
     )
     sectors = sectors.with_columns(
@@ -148,6 +141,8 @@ def analyze_sector_exposures(
         "gross_exposure",
         "net_exposure",
         "open_positions",
+        "long_positions",
+        "short_positions",
         "long_exposure_fraction",
         "short_exposure_fraction",
         "gross_exposure_fraction",

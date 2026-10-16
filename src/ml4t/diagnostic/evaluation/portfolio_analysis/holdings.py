@@ -32,6 +32,20 @@ class HoldingsAnalysisResult:
     sectors: pl.DataFrame | None = None
 
 
+def _exposure_aggregations() -> list[pl.Expr]:
+    """Use the same marked-value totals for portfolios and their classifications."""
+    values = pl.col("value")
+    return [
+        values.clip(lower_bound=0).abs().sum().alias("long_exposure"),
+        values.clip(upper_bound=0).abs().sum().alias("short_exposure"),
+        values.abs().sum().alias("gross_exposure"),
+        values.sum().alias("net_exposure"),
+        (values != 0).sum().alias("open_positions"),
+        (values > 0).sum().alias("long_positions"),
+        (values < 0).sum().alias("short_positions"),
+    ]
+
+
 def position_snapshot(frame: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
     if isinstance(frame, pl.DataFrame):
         return frame.clone()
@@ -132,15 +146,7 @@ def analyze_holdings(
         raise ValueError("position date/asset pairs must be unique")
     long = _numeric(long, "value")
     values = pl.col("value")
-    aggregates = long.group_by("date").agg(
-        values.clip(lower_bound=0).sum().alias("long_exposure"),
-        (-values.clip(upper_bound=0)).sum().alias("short_exposure"),
-        values.abs().sum().alias("gross_exposure"),
-        values.sum().alias("net_exposure"),
-        (values != 0).sum().alias("open_positions"),
-        (values > 0).sum().alias("long_positions"),
-        (values < 0).sum().alias("short_positions"),
-    )
+    aggregates = long.group_by("date").agg(_exposure_aggregations())
     raw_columns = [name for name in aggregates.columns if name != "date"]
     state = account.join(aggregates, on="date", how="left").with_columns(
         pl.col(raw_columns).fill_null(0)
