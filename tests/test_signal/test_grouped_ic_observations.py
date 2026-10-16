@@ -10,7 +10,7 @@ from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import prepare_signal_panel
 
 
-def _inputs(nanosecond=False):
+def _inputs(nanosecond=False, zero_quote=False, constant_outcome=False):
     dates = pd.bdate_range("2025-01-02", periods=5, tz="UTC")
     if nanosecond:
         dates = pd.DatetimeIndex([dates[0] + pd.Timedelta(i * 100, unit="ns") for i in range(5)])
@@ -23,6 +23,11 @@ def _inputs(nanosecond=False):
         },
         index=dates,
     )
+    if zero_quote:
+        wide.loc[dates[2], "A"] = 0.0
+    if constant_outcome:
+        wide.loc[dates[2]] = wide.loc[dates[1]] * 1.125
+        wide.loc[dates[4]] = wide.loc[dates[3]] * 1.125
     factor = (
         wide.pct_change(fill_method=None)
         .loc[[dates[1], dates[3]]]
@@ -131,3 +136,171 @@ def test_arbitrary_return_selector_preserves_submicrosecond_keys_without_claimin
     assert result["date"].cast(pl.Int64).to_list() == [dates[1].value, dates[3].value]
     assert result["return_column"].to_list() == ["next_quote", "next_quote"]
     assert result["ic"].to_list() == pytest.approx([-1 / math.sqrt(5), 2 / math.sqrt(5)], abs=1e-14)
+
+
+@pytest.mark.parametrize("by_group", [False, True])
+def test_explicit_grid_holes_have_zero_pairs_and_null_ic_not_fabricated_observations(by_group):
+    factor, forward, groups, dates = _inputs()
+    panel = prepare_signal_panel(factor, forward[["1D"]], groups=groups, quantiles=2, max_loss=0.0)
+    requested = pd.date_range(dates[1], dates[3], freq="D")
+    grid = (
+        pd.DataFrame({"date": requested})
+        if not by_group
+        else pd.MultiIndex.from_product([requested, ["H", "L"]], names=["date", "group"]).to_frame(
+            index=False
+        )
+    )
+    grid["date"] = grid["date"].astype("datetime64[ns, UTC]")
+    before = grid.copy(deep=True)
+    observed = panel.ic_by_date(by_group=by_group, group_adjust=True, date_grid=grid)
+    assert len(observed) == len(grid)
+    assert observed["date"].dtype == pl.Datetime("ns", "UTC")
+    holes = observed.filter(
+        ~pl.col("date").dt.timestamp("ns").is_in([dates[1].value, dates[3].value])
+    )
+    assert holes.height == 3 * (2 if by_group else 1)
+    assert holes["n_obs"].to_list() == [0] * holes.height
+    assert holes["ic"].null_count() == holes.height
+    assert holes["status"].to_list() == ["no_pairs"] * holes.height
+    valid = observed.filter(pl.col("status") == "defined")
+    assert valid["n_obs"].to_list() == ([2] * 4 if by_group else [4, 4])
+    pd.testing.assert_frame_equal(grid, before)
+
+
+def test_actual_all_warmup_panel_can_expose_an_explicit_empty_group_grid():
+    factor, forward, _, dates = _inputs()
+    warmup = factor.groupby(level="asset").transform(lambda values: values.rolling(20).mean())
+    panel = prepare_signal_panel(warmup, forward[["1D"]], groups={}, quantiles=2, max_loss=1.0)
+    assert panel.ic_by_date(by_group=True).height == 0
+    grid = pd.DataFrame({"date": [dates[1]] * 2, "group": ["H", "L"]})
+    result = panel.ic_by_date(by_group=True, date_grid=grid)
+    assert result["group"].to_list() == ["H", "L"]
+    assert result["ic"].null_count() == 2
+    assert result["n_obs"].to_list() == [0, 0] and result["status"].to_list() == ["no_pairs"] * 2
+
+
+def test_categorical_feed_groups_match_explicit_string_grid_labels_without_changing_codes():
+    factor, forward, groups, dates = _inputs()
+    panel = prepare_signal_panel(
+        factor, forward[["1D"]], groups=groups.astype("category"), quantiles=2, max_loss=0.0
+    )
+    grid = pd.MultiIndex.from_product(
+        [dates[[1, 3]], ["H", "L"]], names=["date", "group"]
+    ).to_frame(index=False)
+    result = panel.ic_by_date(by_group=True, date_grid=grid)
+    assert result["group"].to_list() == ["H", "L", "H", "L"]
+    assert result["ic"].to_list() == pytest.approx([-1.0, -1.0, 1.0, 1.0])
+    assert result["n_obs"].to_list() == [2] * 4
+
+
+def test_group_ic_does_not_expose_owned_data_or_depend_on_later_caller_mutations():
+    from polars.testing import assert_frame_equal
+
+    factor, forward, groups, _ = _inputs()
+    passed_forward = forward[["1D"]].copy(deep=True)
+    panel = prepare_signal_panel(factor, passed_forward, groups=groups, quantiles=2, max_loss=0.0)
+    original = panel.ic_by_date(group_adjust=True, by_group=True)
+    accessed = panel.ic_by_date(group_adjust=True, by_group=True)
+    accessed.replace_column(accessed.get_column_index("ic"), accessed["ic"] * 0.0)
+    factor.iloc[:] = 0.0
+    passed_forward.iloc[:, :] = -1.0
+    groups.iloc[:] = "changed"
+    assert_frame_equal(panel.ic_by_date(group_adjust=True, by_group=True), original)
+
+
+def test_per_horizon_raw_input_counts_missing_future_tails_without_dropping_undefined_dates():
+    from ml4t.diagnostic.signal import compute_signal_ic
+
+    factor, forward, _, dates = _inputs()
+    frame = factor.to_frame().join(forward)
+    before = frame.copy(deep=True)
+    observed = compute_signal_ic(frame, return_columns=["2D", "1D"], min_obs=2)
+    assert observed["return_column"].to_list() == ["2D", "2D", "1D", "1D"]
+    assert observed["n_obs"].to_list() == [4, 0, 4, 4]
+    assert observed["ic"].to_list()[0] == pytest.approx(7 / math.sqrt(90), abs=1e-14)
+    assert observed["ic"].to_list()[1] is None
+    assert observed["status"].to_list() == ["defined", "no_pairs", "defined", "defined"]
+    assert observed["date"].dt.timestamp("ns").to_list() == [dates[1].value, dates[3].value] * 2
+    pd.testing.assert_frame_equal(frame, before)
+
+
+def test_zero_quote_nonfinite_feature_is_not_used_in_another_assets_group_mean():
+    from ml4t.diagnostic.signal import compute_signal_ic
+
+    factor, forward, groups, _ = _inputs(zero_quote=True)
+    raw = factor.to_frame().join(forward).join(groups)
+    before = raw.copy(deep=True)
+    result = compute_signal_ic(raw, return_columns=["1D"], group_adjust=True)
+    assert result["n_obs"].to_list() == [4, 3]
+    assert result["ic"].to_list() == pytest.approx([0.2, 1.0], abs=1e-14)
+    pd.testing.assert_frame_equal(raw, before)
+
+
+@pytest.mark.parametrize("constant", ["factor", "outcome"])
+def test_undefined_cross_section_retains_actual_pairs_and_the_specific_constant_reason(constant):
+    factor, forward, groups, dates = _inputs(constant_outcome=constant == "outcome")
+    if constant == "factor":
+        factor.loc[dates[1]] = factor.loc[dates[1]].mean()
+    panel = prepare_signal_panel(
+        factor,
+        forward[["1D"]],
+        groups=groups,
+        quantiles=2 if constant == "outcome" else 1,
+        max_loss=0.0,
+    )
+    result = panel.ic_by_date()
+    first = result.row(0, named=True)
+    assert first["ic"] is None and first["n_obs"] == 4
+    assert first["status"] == ("constant_factor" if constant == "factor" else "constant_outcome")
+
+
+def test_group_minimum_uses_actual_pairs_not_the_full_cross_section_count():
+    factor, forward, groups, _ = _inputs()
+    result = prepare_signal_panel(
+        factor, forward[["1D"]], groups=groups, quantiles=2, max_loss=0.0
+    ).ic_by_date(by_group=True, min_obs=3)
+    assert result["n_obs"].to_list() == [2] * 4
+    assert result["ic"].null_count() == 4
+    assert result["status"].to_list() == ["insufficient_pairs"] * 4
+
+
+def test_dated_group_gap_keeps_singletons_counted_but_does_not_invent_a_correlation():
+    factor, forward, groups, dates = _inputs()
+    groups = groups.drop((dates[1], "A")).reindex(factor.index)
+    panel = prepare_signal_panel(
+        factor, forward[["1D"]], groups=groups, quantiles=2, max_loss=0.125
+    )
+    result = panel.ic_by_date(by_group=True, group_adjust=True, min_obs=1)
+    singleton = result.filter((pl.col("date") == dates[1]) & (pl.col("group") == "L")).row(
+        0, named=True
+    )
+    assert singleton["n_obs"] == 1 and singleton["ic"] is None
+    assert singleton["status"] == "insufficient_pairs"
+    global_result = panel.ic_by_date(group_adjust=True)
+    assert global_result["n_obs"].to_list() == [3, 4]
+    assert global_result["ic"].to_list()[0] == pytest.approx(-0.5, abs=1e-14)
+
+
+@pytest.mark.parametrize(
+    "options,message",
+    [
+        ({"group_adjust": "false"}, "group_adjust"),
+        ({"by_group": "false"}, "by_group"),
+        ({"min_obs": 0}, "min_obs"),
+        ({"min_obs": True}, "min_obs"),
+        ({"min_obs": 1.5}, "min_obs"),
+        ({"method": "kendall"}, "Unknown method"),
+    ],
+)
+def test_invalid_ic_policy_is_rejected_on_an_otherwise_valid_grouped_panel(options, message):
+    factor, forward, groups, _ = _inputs()
+    panel = prepare_signal_panel(factor, forward[["1D"]], groups=groups, quantiles=2, max_loss=0.0)
+    with pytest.raises(ValueError, match=message):
+        panel.ic_by_date(**options)
+
+
+def test_grouped_grid_requires_explicit_group_keys_before_calculation():
+    factor, forward, groups, dates = _inputs()
+    panel = prepare_signal_panel(factor, forward[["1D"]], groups=groups, quantiles=2, max_loss=0.0)
+    with pytest.raises(ValueError, match="IC grid.*missing key"):
+        panel.ic_by_date(by_group=True, date_grid=pd.DataFrame({"date": dates[[1, 3]]}))

@@ -121,6 +121,11 @@ def compute_signal_ic(
             raise TypeError(f"IC {name} must contain numeric values")
     if group_adjust or by_group:
         _validate_observation_keys(values, [group_col], "IC groups", unique=False)
+    grid_keys = [date_col, group_col] if by_group else [date_col]
+    requested = frame(date_grid) if date_grid is not None else None
+    if requested is not None:
+        _validate_observation_keys(requested, grid_keys, "IC grid")
+        requested = requested.select(grid_keys)
     if group_adjust and not values.is_empty():
         grouped = values.select(date_col, group_col, factor_col, *columns).to_pandas()
         for column in columns:
@@ -133,10 +138,6 @@ def compute_signal_ic(
         values = values.with_columns(
             pl.Series(column, adjusted[column].to_numpy()) for column in columns
         )
-    grid_keys = [date_col, group_col] if by_group else [date_col]
-    requested = frame(date_grid).select(grid_keys) if date_grid is not None else None
-    if requested is not None:
-        _validate_observation_keys(requested, grid_keys, "IC grid")
     outputs = []
     partitions = values.partition_by(group_col, maintain_order=True) if by_group else [values]
     for column in columns:
@@ -176,6 +177,16 @@ def compute_signal_ic(
         )
         if requested is not None:
             observed, grid = _align_datetime_key_resolution(observed, requested, date_col)
+            if by_group:
+                if observed.is_empty() and observed.schema[group_col] == pl.Null:
+                    observed = observed.with_columns(pl.col(group_col).cast(grid.schema[group_col]))
+                label_types = (pl.String, pl.Categorical, pl.Enum)
+                if (
+                    observed.schema[group_col].base_type() in label_types
+                    and grid.schema[group_col].base_type() in label_types
+                ):
+                    observed = observed.with_columns(pl.col(group_col).cast(pl.String))
+                    grid = grid.with_columns(pl.col(group_col).cast(pl.String))
             observed = grid.join(observed, on=grid_keys, how="left")
         observed = observed.with_columns(pl.col("n_obs").fill_null(0))
         observed = observed.with_columns(
