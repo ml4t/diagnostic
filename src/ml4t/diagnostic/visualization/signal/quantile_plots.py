@@ -673,6 +673,7 @@ def plot_spread_timeseries(
             go.Scatter(
                 x=list(dates) + list(reversed(dates)),
                 y=list(upper) + list(reversed(lower)),
+                mode="lines",
                 fill="toself",
                 fillcolor="rgba(128, 128, 128, 0.2)",
                 line={"width": 0},
@@ -716,6 +717,8 @@ def plot_spread_timeseries(
             ticktext=[str(index + 1) for index in range(len(dates))],
         )
     fig.update_layout(
+        showlegend=True,
+        legend={"orientation": "h", "x": 0, "y": -0.2},
         meta={
             "return_unit": "decimal",
             "sample_unit": "date_bucket_mean_difference",
@@ -726,7 +729,7 @@ def plot_spread_timeseries(
             "return_adjustment": methods[0] if methods else None,
             "x_clock": "observation_order" if categories else "dated",
             "timestamp_keys": dates,
-        }
+        },
     )
 
     return fig
