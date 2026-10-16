@@ -1509,6 +1509,7 @@ class TestComputeICDecayExtended:
             pred_col="prediction",
             price_col="close",
             date_col="date",
+            group_col="symbol",
         )
 
         assert isinstance(result, dict)
@@ -1531,6 +1532,7 @@ class TestComputeICDecayExtended:
             pred_col="prediction",
             price_col="close",
             date_col="date",
+            group_col="symbol",
         )
 
         assert isinstance(result, dict)
@@ -1548,6 +1550,7 @@ class TestComputeICDecayExtended:
                 prices,
                 horizons=[1, 5],
                 method=method,
+                group_col="symbol",
             )
             assert isinstance(result, dict)
 
@@ -1760,6 +1763,7 @@ class TestComputeICByHorizonExtended:
             pred_col="prediction",
             price_col="close",
             date_col="date",
+            group_col="symbol",
         )
 
         assert isinstance(result, dict)
@@ -1783,6 +1787,7 @@ class TestComputeICByHorizonExtended:
             pred_col="prediction",
             price_col="close",
             date_col="date",
+            group_col="symbol",
         )
 
         assert isinstance(result, dict)
@@ -1886,6 +1891,7 @@ class TestEdgeCasesAndErrorHandling:
             pred_col="prediction",
             price_col="close",
             date_col="date",
+            group_col="symbol",
         )
 
         assert isinstance(result, dict)
@@ -2484,6 +2490,7 @@ class TestAnalyzeFeatureOutcomeExtended:
             pred_col="prediction",
             price_col="close",
             date_col="date",
+            group_col="symbol",
             horizons=[1, 5, 10],
         )
 
@@ -2503,6 +2510,7 @@ class TestAnalyzeFeatureOutcomeExtended:
             pred_col="prediction",
             price_col="close",
             date_col="date",
+            group_col="symbol",
             include_decay=False,
         )
 

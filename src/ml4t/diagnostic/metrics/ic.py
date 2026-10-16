@@ -14,6 +14,7 @@ from scipy.stats import spearmanr
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.metrics.basic import compute_forward_returns
+from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -393,7 +394,8 @@ def compute_ic_by_horizon(
     date_col : str, default "date"
         Column name for dates
     group_col : str | None, default None
-        Column for grouping (e.g., 'symbol')
+        Entity key (e.g., 'symbol'), required for multi-asset panels.
+        None denotes one prediction and price observation per date.
     method : str, default "spearman"
         Correlation method
 
@@ -419,11 +421,14 @@ def compute_ic_by_horizon(
     )
     prices_pl = prices if isinstance(prices, pl.DataFrame) else pl.from_pandas(prices)
 
+    keys = [date_col, group_col] if group_col is not None else [date_col]
+    _validate_observation_keys(predictions_pl, keys, "predictions")
+
     # Compute forward returns for all horizons
     if horizons is None:
         horizons = [1, 5, 21]
     prices_with_fwd = compute_forward_returns(
-        prices_pl, periods=horizons, price_col=price_col, group_col=group_col
+        prices_pl, periods=horizons, price_col=price_col, group_col=group_col, date_col=date_col
     )
     prices_with_fwd_pl = (
         prices_with_fwd

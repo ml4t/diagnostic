@@ -102,6 +102,18 @@ The assertion establishes the expected direction on these synthetic data;
 it is not a significance test for a real factor. Use the
 [signal quickstart](../getting-started/quickstart.md) to interpret IC and spread.
 
+Current source rejects duplicate or missing date/asset keys in factor and price
+inputs before computing or joining forward returns. Deduplicate overlapping
+batches upstream with an explicit quote/aggregation policy; Diagnostic does not
+silently choose first or last. The lower-level
+`metrics.compute_forward_returns(..., date_col=None)` retains explicit input-row
+order instead, including repeated timestamps within an asset. These are
+unreleased input-boundary changes after 0.1.9, not calendar/grid validation.
+For metrics-layer IC, decay and feature-outcome panels, pass the asset key as
+`group_col`; `None` denotes one series per date. These workflows validate
+prediction keys and forward the declared `date_col` to the return producer,
+including custom time-column names.
+
 For exact integer-count qcut membership, unreleased source after 0.1.9 accepts
 `quantile_method="qcut"` in both `prepare_data` and `analyze_signal`. The existing
 backend uses pandas qcut for boundary semantics while retaining Polars grouping,

@@ -23,6 +23,7 @@ from ml4t.diagnostic.metrics.ic_inference import (
     compute_ic_summary_stats,
 )
 from ml4t.diagnostic.metrics.monotonicity import compute_monotonicity
+from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 if TYPE_CHECKING:
     pass
@@ -146,7 +147,8 @@ def analyze_feature_outcome(
     date_col : str, default "date"
         Column name for dates
     group_col : str | None, default None
-        Column name for grouping (e.g., "symbol" for multi-asset)
+        Entity key (e.g., "symbol"), required for multi-asset panels.
+        None denotes one prediction and price observation per date.
     horizons : list[int] | None, default None
         List of forward horizons in days for multi-horizon analysis.
         If None, uses [1, 2, 5, 10, 21] for decay analysis
@@ -241,12 +243,16 @@ def analyze_feature_outcome(
     )
     prices_pl = prices if isinstance(prices, pl.DataFrame) else pl.from_pandas(prices)
 
+    keys = [date_col, group_col] if group_col is not None else [date_col]
+    _validate_observation_keys(predictions_pl, keys, "predictions")
+
     # 1. Compute forward returns from prices using compute_forward_returns
     prices_with_fwd = compute_forward_returns(
         prices=prices_pl,
         periods=1,  # 1-day forward returns for IC series
         price_col=price_col,
         group_col=group_col,
+        date_col=date_col,
     )
     prices_with_fwd_pl = (
         prices_with_fwd

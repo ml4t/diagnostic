@@ -9,6 +9,8 @@ from numbers import Integral
 import pandas as pd
 import polars as pl
 
+from ml4t.diagnostic.utils.validation import _validate_observation_keys
+
 
 def positive_count(value: int, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, Integral) or value < 1:
@@ -56,13 +58,7 @@ def prepared_snapshot(
         raise ValueError(f"prepared data is missing columns: {sorted(missing)}")
     if frame[date_col].dtype != pl.Date and not isinstance(frame[date_col].dtype, pl.Datetime):
         raise TypeError("prepared date column must contain Date or Datetime values")
-    for key in (date_col, asset_col):
-        if frame[key].null_count():
-            raise ValueError(f"prepared {key} keys must be nonmissing")
-    if frame[asset_col].dtype.is_numeric() and not frame[asset_col].is_finite().all():
-        raise ValueError(f"prepared {asset_col} keys must be finite")
-    if frame.select(date_col, asset_col).is_duplicated().any():
-        raise ValueError("duplicate prepared date/asset keys are not allowed")
+    _validate_observation_keys(frame, [date_col, asset_col], "prepared")
     for column in (factor_col, "quantile", *return_columns):
         if not frame[column].dtype.is_numeric():
             raise TypeError(f"prepared {column} must be numeric")

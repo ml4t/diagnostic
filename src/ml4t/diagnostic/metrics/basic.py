@@ -10,6 +10,7 @@ import pandas as pd
 import polars as pl
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
+from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -102,7 +103,8 @@ def compute_forward_returns(
         Column for grouping (e.g., 'symbol' for multi-asset)
     date_col : str | None, default "date"
         Optional date/timestamp column used to sort before computing
-        forward returns. Set to None to skip sorting.
+        forward returns. Present dated keys must be unique within each group.
+        Set to None to use input row order without timestamp-key uniqueness.
     output_col_template : str, default "fwd_ret_{period}"
         Template for generated forward return column names.
         Use ``{period}`` placeholder for the horizon integer.
@@ -135,6 +137,12 @@ def compute_forward_returns(
         if isinstance(prices, pl.DataFrame)
         else pl.from_pandas(cast(pd.DataFrame, prices))
     )
+
+    keys = [group_col] if group_col is not None else []
+    dated = date_col is not None and date_col in df.columns
+    if dated:
+        keys.insert(0, date_col)
+    _validate_observation_keys(df, keys, "price", unique=dated)
 
     if date_col is not None and date_col in df.columns:
         if group_col is not None and group_col in df.columns:
