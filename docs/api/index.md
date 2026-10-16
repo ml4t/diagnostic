@@ -114,6 +114,18 @@ not validate a calendar or infer uncertainty or half-life.
         - list_available_dataframes
         - summary
 
+For a dated component, the existing membership and rank plot functions select
+an observation `lag` and render actual dated estimates, gaps, counts and
+statuses. The turnover heatmap reduces its recorded bucket/lag observations;
+historical horizon-summary components retain their existing paths. See the
+[dated plotting how-to](../user-guide/migration.md#plot-dated-rank-and-membership-persistence).
+
+::: ml4t.diagnostic.visualization.signal.plot_top_bottom_turnover
+
+::: ml4t.diagnostic.visualization.signal.plot_autocorrelation
+
+::: ml4t.diagnostic.visualization.signal.turnover_plots.plot_turnover_heatmap
+
 ### Empirical quantile report observations
 
 Signal analyses retain actual dated bucket means in

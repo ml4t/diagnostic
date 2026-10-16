@@ -105,7 +105,8 @@ def _plot_dated_persistence(
             else ["n_current", "n_previous", "n_overlap", "n_entered", "status"]
         )
         custom = [
-            [day, *row] for day, row in zip(dates, rows.select(fields).iter_rows(), strict=True)
+            [day, *[row.get(field) for field in fields]]
+            for day, row in zip(dates, rows.iter_rows(named=True), strict=True)
         ]
         figure.add_trace(
             go.Scatter(
@@ -580,6 +581,10 @@ def plot_turnover_heatmap(
     height: int | None = None,
 ) -> go.Figure:
     """Plot turnover rates as a heatmap (quantile × period).
+
+    Dated components use their existing mean-of-defined-dates reducer by bucket
+    and observation lag, with defined-date counts on hover and blank missing
+    cells. Legacy components retain their original horizon summary inputs.
 
     Parameters
     ----------

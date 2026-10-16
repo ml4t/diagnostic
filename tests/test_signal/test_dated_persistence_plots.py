@@ -152,6 +152,20 @@ def test_plot_does_not_mutate_exported_dated_observations():
     assert all(trace.y[-1] == 0 for trace in figure.data)
 
 
+def test_valid_public_observation_projection_keeps_missing_optional_counts_unknown():
+    _, _, panel, _ = _inputs()
+    turnover = panel.quantile_turnover(lags=(1,))
+    rank = panel.rank_autocorrelation(lags=(1,))
+    component = TurnoverAnalysisResult.from_observations(
+        turnover.drop("n_current", "n_previous", "n_overlap", "n_entered", "status"),
+        rank.drop("n_current", "n_previous", "status"),
+    )
+    for function in [plot_top_bottom_turnover, plot_autocorrelation]:
+        figure = function(component)
+        assert len(figure.data[0].x) == 2
+        assert all(row[2] is None for trace in figure.data for row in trace.customdata)
+
+
 @pytest.mark.parametrize("supplied", [False, True])
 @pytest.mark.parametrize(
     "function", [plot_autocorrelation, plot_top_bottom_turnover, plot_turnover_heatmap]
