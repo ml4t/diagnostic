@@ -146,6 +146,28 @@ def test_empirical_observation_keys_counts_and_json_are_owned_and_exact(route, t
     assert result.quantile_observations["mean"].to_list() != observations["mean"].to_list()
 
 
+@pytest.mark.parametrize("one_bucket", [False, True])
+def test_actual_undefined_quantile_statistics_roundtrip_without_zero_substitution(one_bucket):
+    factor, marks, panel, _ = _inputs(one_bucket=one_bucket)
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    assert np.isnan(model.rank_correlation["1D"])
+    restored = type(model).model_validate_json(model.model_dump_json())
+    assert np.isnan(restored.rank_correlation["1D"])
+    for name in [
+        "mean_returns",
+        "std_returns",
+        "spread_mean",
+        "spread_std",
+        "spread_t_stat",
+        "spread_p_value",
+        "spread_ci_lower",
+        "spread_ci_upper",
+        "rank_correlation",
+    ]:
+        np.testing.assert_equal(getattr(restored, name), getattr(model, name))
+    assert restored.get_dataframe("observations").equals(model.get_dataframe("observations"))
+
+
 @pytest.mark.parametrize("representation", ["pandas", "polars", "dict"])
 def test_explicit_supplied_raw_values_are_not_silently_reduced_to_date_bucket_means(representation):
     factor, marks, panel, _ = _inputs()

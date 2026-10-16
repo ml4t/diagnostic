@@ -10,10 +10,12 @@ This module provides interactive Plotly visualizations for quantile analysis:
 from __future__ import annotations
 
 from datetime import datetime
+from numbers import Real
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 
 from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.core import (
@@ -24,6 +26,8 @@ from ml4t.diagnostic.visualization.core import (
 )
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from ml4t.diagnostic.results.signal_results import QuantileAnalysisResult
 
 
@@ -173,22 +177,32 @@ def plot_quantile_returns_bar(
 
 def plot_quantile_returns_violin(
     quantile_result: QuantileAnalysisResult,
-    factor_data: dict | None = None,
+    factor_data: dict | pl.DataFrame | pd.DataFrame | None = None,
     period: str | None = None,
     show_box: bool = True,
     theme: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    *,
+    observations: pl.DataFrame | pd.DataFrame | None = None,
+    ylim_percentiles: tuple[float, float] | None = None,
 ) -> go.Figure:
-    """Plot return distributions by quantile as violin plots.
+    """Plot actual observed-date bucket means, or explicitly supplied return values.
+
+    No normal samples are inferred from summary means/deviations. A result with
+    no empirical observations requires explicit input or raises ValueError.
+    The default result/report path uses dated bucket means, not asset samples.
+    Plotly's KDE rendering is a presentation choice, not a numerical density
+    equivalence claim; callers retain figure bandwidth/style/embedding control.
 
     Parameters
     ----------
     quantile_result : QuantileAnalysisResult
         Quantile analysis result from a signal analysis workflow.
-    factor_data : dict | None
-        Raw factor data dict with 'quantile' and return columns.
-        If None, uses synthetic data from result statistics.
+    factor_data : dict or DataFrame, optional
+        Explicit supplied values with quantile and {period}_fwd_return columns.
+        These values are not reduced to date/bucket means. Null/nonfinite values
+        are omitted, and the sample unit remains supplied_value.
     period : str | None
         Period to plot. If None, uses first period.
     show_box : bool, default True
@@ -199,6 +213,14 @@ def plot_quantile_returns_violin(
         Figure width
     height : int | None
         Figure height
+    observations : DataFrame, optional
+        Canonical by-date compute_quantile_statistics output, with return_column
+        matching the selected period. Shared adjustments/counts are retained.
+        Select one group before plotting grouped statistics. Cannot be combined
+        with factor_data. Otherwise use the result's owned observations.
+    ylim_percentiles : tuple[float, float], optional
+        Ordered percentiles in [0,100] of defined selected-period observations.
+        Sets visible y limits without discarding or modifying trace samples.
 
     Returns
     -------
@@ -208,12 +230,76 @@ def plot_quantile_returns_violin(
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
-    # Get period data
     periods = quantile_result.periods
+    if not periods:
+        raise ValueError("No return periods are available for empirical plotting")
     if period is None:
         period = periods[0]
     elif period not in periods:
         raise ValueError(f"Period '{period}' not found. Available: {periods}")
+
+    if factor_data is not None and observations is not None:
+        raise ValueError("supply observations or factor_data, not both")
+    from ml4t.diagnostic.signal._utils import _signal_frame
+    from ml4t.diagnostic.signal.quantile import _quantile_observations
+
+    empirical = factor_data is None
+    adjustment = None
+    if empirical:
+        data = (
+            _quantile_observations(observations)
+            if observations is not None
+            else quantile_result.get_dataframe("observations")
+        )
+        if "group" in data.columns and data["group"].n_unique() > 1:
+            raise ValueError("select one group before plotting empirical quantile observations")
+        if data.height and period not in data["return_column"].to_list():
+            raise ValueError(f"empirical observations do not contain selected period {period!r}")
+        data = data.filter(pl.col("return_column") == period)
+        methods = data["return_adjustment"].unique().to_list()
+        if len(methods) > 1:
+            raise ValueError("selected observations mix return-adjustment methods")
+        adjustment = methods[0] if methods else None
+        value_column = "mean"
+    else:
+        data = _signal_frame(
+            pl.DataFrame(factor_data) if isinstance(factor_data, dict) else factor_data
+        )
+        value_column = f"{period}_fwd_return"
+        if not {"quantile", value_column}.issubset(data.columns):
+            raise ValueError(f"supplied return values require quantile and {value_column} columns")
+    if not data["quantile"].dtype.is_numeric():
+        raise TypeError("supplied quantile labels must be numeric positive integers")
+    buckets = data["quantile"]
+    if (
+        buckets.null_count()
+        or not buckets.is_finite().all()
+        or not ((buckets >= 1) & (buckets == buckets.floor())).all()
+    ):
+        raise ValueError("supplied quantile labels must be positive integers")
+    if set(buckets.to_list()).difference(range(1, quantile_result.n_quantiles + 1)):
+        raise ValueError("observed buckets are not represented by the result's quantile labels")
+    if not (data[value_column].dtype.is_numeric() or data[value_column].dtype == pl.Null):
+        raise TypeError("supplied return observations must be numeric")
+    data = data.with_columns(pl.col(value_column).cast(pl.Float64)).filter(
+        pl.col(value_column).is_finite()
+    )
+    limits = None
+    if ylim_percentiles is not None:
+        try:
+            percentiles = tuple(ylim_percentiles)
+        except TypeError as exc:
+            raise ValueError(
+                "ylim_percentiles must contain two ordered percentiles in [0,100]"
+            ) from exc
+        if (
+            len(percentiles) != 2
+            or any(isinstance(value, bool) or not isinstance(value, Real) for value in percentiles)
+            or not 0 <= percentiles[0] <= percentiles[1] <= 100
+        ):
+            raise ValueError("ylim_percentiles must contain two ordered percentiles in [0,100]")
+        if data.height:
+            limits = np.percentile(data[value_column].to_numpy(), percentiles).tolist()
 
     n_quantiles = quantile_result.n_quantiles
     quantile_labels = quantile_result.quantile_labels
@@ -221,69 +307,53 @@ def plot_quantile_returns_violin(
 
     # Create figure
     fig = create_base_figure(
-        title=f"Return Distribution by Quantile ({period})",
+        title=f"{'Observed quantile means' if empirical else 'Supplied quantile returns'} ({period})",
         xaxis_title="Quantile",
-        yaxis_title="Forward Return",
+        yaxis_title="Date/bucket mean return" if empirical else "Supplied return",
         width=width or theme_config["defaults"]["bar_height"] + 200,
         height=height or theme_config["defaults"]["bar_height"],
         theme=theme,
     )
 
-    # If we have raw data, use it; otherwise generate synthetic
-    if factor_data is not None and "quantile" in factor_data:
-        import polars as pl
-
-        if isinstance(factor_data, pl.DataFrame):
-            # Extract return column for this period
-            return_col = period.replace("D", "D_fwd_return")
-            for i, q_label in enumerate(quantile_labels):
-                q_num = i + 1
-                q_data = factor_data.filter(pl.col("quantile") == q_num)
-                returns = q_data[return_col].to_numpy()
-                returns = returns[~np.isnan(returns)]
-
-                fig.add_trace(
-                    go.Violin(
-                        y=returns,
-                        name=q_label,
-                        box_visible=show_box,
-                        meanline_visible=True,
-                        fillcolor=colors[i],
-                        line_color=colors[i],
-                        opacity=0.6,
-                    )
-                )
-    else:
-        # Generate synthetic violin data from mean/std
-        # This is approximate but useful when raw data isn't available
-        mean_returns = quantile_result.mean_returns[period]
-        std_returns = quantile_result.std_returns[period]
-        counts = quantile_result.count_by_quantile
-
-        for i, q_label in enumerate(quantile_labels):
-            mean = mean_returns.get(q_label, 0)
-            std = std_returns.get(q_label, 0.01)
-            n = counts.get(q_label, 100)
-
-            # Generate synthetic sample
-            np.random.seed(42 + i)  # Reproducible
-            if not np.isfinite(mean) or n <= 0:
-                synthetic = np.array([], dtype=float)
-            else:
-                finite_std = std if np.isfinite(std) else 0.01
-                synthetic = np.random.normal(mean, finite_std, min(n, 1000))
-
-            fig.add_trace(
-                go.Violin(
-                    y=synthetic,
-                    name=q_label,
-                    box_visible=show_box,
-                    meanline_visible=True,
-                    fillcolor=colors[i],
-                    line_color=colors[i],
-                    opacity=0.6,
+    for i, q_label in enumerate(quantile_labels):
+        sample = data.filter(pl.col("quantile") == i + 1)
+        custom = None
+        if empirical:
+            sample = sample.sort("date")
+            custom = list(
+                zip(
+                    sample["date"].to_pandas().astype(str).to_list(),
+                    sample["n_obs"].to_list(),
+                    strict=True,
                 )
             )
+        fig.add_trace(
+            go.Violin(
+                y=sample[value_column].to_numpy(),
+                name=q_label,
+                customdata=custom,
+                hovertemplate="Date: %{customdata[0]}<br>Mean: %{y:.4%}<br>Assets: %{customdata[1]}<extra>%{fullData.name}</extra>"
+                if empirical
+                else None,
+                box_visible=show_box,
+                meanline_visible=True,
+                fillcolor=colors[i],
+                line_color=colors[i],
+                opacity=0.6,
+            )
+        )
+    if data.is_empty():
+        fig.add_annotation(text="No defined empirical observations", showarrow=False)
+    fig.update_layout(
+        meta={
+            "sample_unit": "date_bucket_mean" if empirical else "supplied_value",
+            "return_unit": "decimal",
+            "synthetic": False,
+            "return_adjustment": adjustment,
+        }
+    )
+    if limits is not None:
+        fig.update_yaxes(range=limits)
 
     # Zero line
     fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
