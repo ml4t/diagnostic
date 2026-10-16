@@ -113,6 +113,10 @@ For metrics-layer IC, decay and feature-outcome panels, pass the asset key as
 `group_col`; `None` denotes one series per date. These workflows validate
 prediction keys and forward the declared `date_col` to the return producer,
 including custom time-column names.
+Equivalent millisecond, microsecond and nanosecond datetime keys in the same
+timezone join at the finer unit without rounding. An unrepresentable conversion
+raises instead of wrapping timestamps; this does not infer a timezone policy or
+validate calendar sessions.
 
 For exact integer-count qcut membership, unreleased source after 0.1.9 accepts
 `quantile_method="qcut"` in both `prepare_data` and `analyze_signal`. The existing

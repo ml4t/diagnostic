@@ -15,7 +15,10 @@ from ml4t.diagnostic.metrics.basic import (
     compute_forward_returns as compute_forward_returns_core,
 )
 from ml4t.diagnostic.signal._prepared import positive_count
-from ml4t.diagnostic.utils.validation import _validate_observation_keys
+from ml4t.diagnostic.utils.validation import (
+    _align_datetime_key_resolution,
+    _validate_observation_keys,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -222,6 +225,7 @@ def compute_forward_returns(
     ret_cols = [f"{p}D_fwd_return" for p in periods]
     returns_lookup = price_with_returns.select(join_cols + ret_cols)
 
+    data, returns_lookup = _align_datetime_key_resolution(data, returns_lookup, date_col)
     return data.join(returns_lookup, on=join_cols, how="left")
 
 
