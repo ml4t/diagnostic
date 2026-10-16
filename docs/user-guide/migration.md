@@ -350,6 +350,15 @@ This bucket standard error is not a propagated spread error or a replacement
 for the existing two-sample spread test. Full portfolio/event/report paths
 remain separate work.
 
+Unreleased fixes after 0.1.9 stabilize the shared finite-return mean, sample
+deviation and standard error. Identical large finite returns retain their
+finite mean and observation count instead of overflowing into a missing daily
+mean. Standard error is rescaled separately, so it can remain finite even when
+the sample deviation exceeds Float64 range. Ordinary finite NumPy means retain
+their existing result. The pooled spread and its existing two-sample Student
+test use common scaled, shifted observations to avoid intermediate overflow
+or underflow; their estimand and test method are unchanged.
+
 ### Construct factor weights and supplied-return contributions
 
 Use the owned panel's factor observations to construct exposure independently of

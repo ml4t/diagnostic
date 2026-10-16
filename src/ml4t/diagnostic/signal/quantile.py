@@ -5,6 +5,7 @@ Simple, pure functions for analyzing returns by quantile.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 import numpy as np
@@ -17,23 +18,41 @@ from ml4t.diagnostic.signal.returns import _paired_demean
 from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 
-def _sample_return_statistics(values: np.ndarray) -> tuple[float, float, int]:
+def _finite_return_coordinates(values: np.ndarray) -> tuple[np.ndarray, float, float]:
+    floating = np.asarray(values, dtype=np.float64)
+    scale = float(np.max(np.abs(floating)))
+    scaled = floating / scale if scale > 0 else floating
+    offset = float(scaled[0])
+    return scaled - offset, scale, offset
+
+
+def _sample_return_statistics(values: np.ndarray) -> tuple[float, float, int, float]:
     count = len(values)
-    return (
-        float(np.mean(values)) if count else float("nan"),
-        float(np.std(values, ddof=1)) if count > 1 else float("nan"),
-        count,
-    )
+    if not count:
+        return float("nan"), float("nan"), 0, float("nan")
+    floating = np.asarray(values, dtype=np.float64)
+    if np.isfinite(floating).all():
+        shifted, scale, offset = _finite_return_coordinates(floating)
+        with np.errstate(over="ignore", invalid="ignore"):
+            mean = float(np.mean(values))
+        if not math.isfinite(mean):
+            mean = (float(np.mean(shifted)) + offset) * scale
+        scaled_std = float(np.std(shifted, ddof=1)) if count > 1 else float("nan")
+        std = scaled_std * scale
+        error = (scaled_std / math.sqrt(count)) * scale
+    else:
+        mean = float(np.mean(floating))
+        std = float(np.std(floating, ddof=1)) if count > 1 else float("nan")
+        error = std / math.sqrt(count)
+    return mean, std, count, error
 
 
 def _quantile_stat_frame(identity: pl.DataFrame, values: np.ndarray) -> pl.DataFrame:
-    mean, std, count = _sample_return_statistics(values)
+    mean, std, count, error = _sample_return_statistics(values)
     return identity.with_columns(
         pl.lit(mean if count else None, dtype=pl.Float64).alias("mean"),
         pl.lit(std if count > 1 else None, dtype=pl.Float64).alias("std"),
-        pl.lit(std / np.sqrt(count) if count > 1 else None, dtype=pl.Float64).alias(
-            "standard_error"
-        ),
+        pl.lit(error if count > 1 else None, dtype=pl.Float64).alias("standard_error"),
         pl.lit(count, dtype=pl.UInt32).alias("n_obs"),
     )
 
@@ -213,8 +232,8 @@ def _compute_quantile_return_statistics(
         quantile = partition.item(0, quantile_col)
         returns = partition.get_column(return_col).to_numpy()
         quantile_number = int(quantile)
-        means[quantile_number], standard_deviations[quantile_number], _ = _sample_return_statistics(
-            returns
+        means[quantile_number], standard_deviations[quantile_number], _, _ = (
+            _sample_return_statistics(returns)
         )
 
     # Fill missing quantiles
@@ -300,8 +319,16 @@ def compute_spread(
             "p_value": float("nan"),
         }
 
-    spread = float(np.mean(top_returns) - np.mean(bottom_returns))
-    t_stat, p_value = ttest_ind(top_returns, bottom_returns)
+    if np.isfinite(top_returns).all() and np.isfinite(bottom_returns).all():
+        combined = np.concatenate([top_returns, bottom_returns])
+        shifted, scale, _ = _finite_return_coordinates(combined)
+        top = shifted[: len(top_returns)]
+        bottom = shifted[len(top_returns) :]
+        spread = float(np.mean(top) - np.mean(bottom)) * scale
+        t_stat, p_value = ttest_ind(top, bottom)
+    else:
+        spread = float(np.mean(top_returns) - np.mean(bottom_returns))
+        t_stat, p_value = ttest_ind(top_returns, bottom_returns)
 
     return {
         "spread": spread,
