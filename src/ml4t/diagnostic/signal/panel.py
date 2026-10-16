@@ -177,6 +177,29 @@ class PreparedSignalPanel:
             asset_col=self.asset_col,
         )
 
+    def quantile_turnover(
+        self,
+        *,
+        lags: Sequence[int] = (1,),
+        quantiles: Sequence[int] | None = None,
+        date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Inspect dated entrants/current-membership turnover on an explicit row clock.
+
+        Reuse compute_quantile_turnover and preserve the owned common sample.
+        Existing analyze() scalar larger-membership turnover is unchanged.
+        """
+        from ml4t.diagnostic.signal.turnover import compute_quantile_turnover
+
+        return compute_quantile_turnover(
+            self.data,
+            lags=lags,
+            quantiles=quantiles,
+            date_grid=date_grid,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
     def quantile_statistics(
         self,
         *,
