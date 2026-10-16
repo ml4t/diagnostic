@@ -362,8 +362,8 @@ def cross_sectional_ic(
 
 
 def _nonmissing_ic_pairs(
-    predictions: NDArray[Any], returns: NDArray[Any]
-) -> tuple[NDArray[Any], NDArray[Any]]:
+    predictions: "NDArray[Any]", returns: "NDArray[Any]"
+) -> tuple["NDArray[Any]", "NDArray[Any]"]:
     valid = ~(np.isnan(predictions) | np.isnan(returns))
     return predictions[valid], returns[valid]
 
