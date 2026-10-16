@@ -9,6 +9,7 @@ import pytest
 from test_persistence_report_bridge import _analyze, _inputs
 
 from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+from ml4t.diagnostic.signal import prepare_signal_panel
 from ml4t.diagnostic.visualization.signal import plot_autocorrelation, plot_top_bottom_turnover
 from ml4t.diagnostic.visualization.signal.turnover_plots import plot_turnover_heatmap
 
@@ -148,3 +149,36 @@ def test_plot_does_not_mutate_exported_dated_observations():
     )
     figure = plot_top_bottom_turnover(component)
     assert all(trace.y[-1] == 0 for trace in figure.data)
+
+
+@pytest.mark.parametrize("supplied", [False, True])
+@pytest.mark.parametrize(
+    "function", [plot_autocorrelation, plot_top_bottom_turnover, plot_turnover_heatmap]
+)
+def test_real_long_lookback_warmup_displays_unavailable_not_fabricated_observations(
+    supplied, function
+):
+    _, _, panel, dates = _inputs(True)
+    data = panel.data
+    warmup = data.select("date", "asset", "factor").with_columns(
+        pl.col("factor").shift(20).over("asset")
+    )
+    empty = prepare_signal_panel(
+        warmup, data.select("date", "asset", "1D"), quantiles=2, max_loss=1
+    )
+    grid = pl.from_pandas(pd.DataFrame({"date": dates[[1, 3]]})) if supplied else None
+    component = TurnoverAnalysisResult.from_observations(
+        empty.quantile_turnover(lags=(1, 2), quantiles=[1, 2], date_grid=grid),
+        empty.rank_autocorrelation(lags=(1, 2), date_grid=grid),
+    )
+    figure = function(component)
+    assert any("unavailable" in note.text for note in figure.layout.annotations)
+    if supplied:
+        for trace in figure.data:
+            values = trace.z if trace.type == "heatmap" else trace.y
+            assert all(
+                value is None or math.isnan(value)
+                for value in np.asarray(values, dtype=object).flatten()
+            )
+    else:
+        assert not figure.data
