@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 from test_persistence_report_bridge import _analyze, _inputs
 
+from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
 from ml4t.diagnostic.visualization.signal import plot_autocorrelation, plot_top_bottom_turnover
 from ml4t.diagnostic.visualization.signal.turnover_plots import plot_turnover_heatmap
 
@@ -101,10 +102,10 @@ def test_recorded_membership_turnover_dates_and_unavailable_estimates_reach_plot
 def test_turnover_heatmap_uses_actual_bucket_lag_means_not_empty_legacy_maps(profile, route):
     _, component, _ = _component(profile, route, False, False)
     figure = plot_turnover_heatmap(component)
-    assert list(figure.data[0].x) == [1, 2]
+    assert list(figure.data[0].x) == [1]
     buckets = [1, 2] if profile in {"departures", "single_date"} else [1]
     assert list(figure.data[0].y) == [f"Q{bucket}" for bucket in buckets]
-    expected = [[np.nan, np.nan] if profile == "single_date" else [0.0, np.nan]] * len(buckets)
+    expected = [[np.nan] if profile == "single_date" else [0.0]] * len(buckets)
     np.testing.assert_allclose(
         np.asarray(figure.data[0].z, dtype=float), expected, rtol=0, atol=0, equal_nan=True
     )
@@ -113,8 +114,12 @@ def test_turnover_heatmap_uses_actual_bucket_lag_means_not_empty_legacy_maps(pro
 
 def test_explicit_observation_lag_keeps_insufficient_history_missing_and_rejects_bad_selection():
     _, component, dates = _component("departures", "owned", True, True)
+    _, _, panel, _ = _inputs(True)
+    supplied = TurnoverAnalysisResult.from_observations(
+        panel.quantile_turnover(lags=(1, 2)), panel.rank_autocorrelation(lags=(1, 2))
+    )
     for function in [plot_autocorrelation, plot_top_bottom_turnover]:
-        figure = function(component, lag=2)
+        figure = function(supplied, lag=2)
         assert figure.layout.meta["lag"] == 2
         for trace in figure.data:
             assert [pd.Timestamp(value).value for value in trace.x] == [
@@ -131,6 +136,8 @@ def test_explicit_observation_lag_keeps_insufficient_history_missing_and_rejects
         plot_autocorrelation(component, max_lags=1)
     figure = plot_autocorrelation(component, show_significance=False)
     assert not any("CI unavailable" in note.text for note in figure.layout.annotations)
+    with pytest.raises(ValueError, match="lag"):
+        plot_top_bottom_turnover(component, lag=2)
 
 
 def test_plot_does_not_mutate_exported_dated_observations():

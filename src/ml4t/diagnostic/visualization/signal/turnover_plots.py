@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 
 from ml4t.diagnostic.utils.formatting import format_finite
 from ml4t.diagnostic.visualization.core import (
@@ -23,12 +24,179 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
 
 
+def _plot_dated_persistence(
+    result: TurnoverAnalysisResult,
+    *,
+    rank: bool,
+    lag: int | None,
+    show_all_quantiles: bool,
+    show_significance: bool,
+    theme: str,
+    width: int | None,
+    height: int | None,
+) -> go.Figure:
+    import pandas as pd
+
+    from ml4t.diagnostic.signal._prepared import positive_count
+
+    observations = result.get_dataframe("dated_autocorrelation" if rank else "dated_turnover")
+    available = observations["lag"].unique().sort().to_list()
+    selected = (
+        positive_count(lag, "lag") if lag is not None else available[0] if available else None
+    )
+    if selected not in available:
+        raise ValueError(
+            f"lag {selected!r} not found in dated observations. Available: {available}"
+        )
+    observations = observations.filter(pl.col("lag") == selected).sort("date")
+    config = get_theme_config(theme)
+    figure = create_base_figure(
+        title=f"Dated {'Rank Autocorrelation' if rank else 'Quantile Turnover'} (Lag {selected} Observations)",
+        xaxis_title="Observed date",
+        yaxis_title="Rank autocorrelation" if rank else "Entrants / current membership",
+        theme=theme,
+        width=width or config["defaults"]["line_height"] + 300,
+        height=height or config["defaults"]["line_height"],
+    )
+    metadata = {"lag": selected, "lag_unit": "observations"}
+    for column in (
+        ["clock_source", "rank_scope", "correlation_method"]
+        if rank
+        else ["clock_source", "turnover_method"]
+    ):
+        values = observations[column].unique().to_list()
+        if len(values) != 1:
+            raise ValueError(f"dated observations mix {column} values")
+        metadata[column] = values[0]
+    buckets = [None] if rank else observations["quantile"].unique().sort().to_list()
+    if not rank and not show_all_quantiles:
+        buckets = list(dict.fromkeys([buckets[-1], buckets[0]])) if buckets else []
+    category_clock = False
+    for index, bucket in enumerate(buckets):
+        rows = observations if rank else observations.filter(pl.col("quantile") == bucket)
+        if rows["date"].dtype.is_temporal():
+            timestamps = [pd.Timestamp(value) for value in rows["date"].to_pandas()]
+            dates = [value.isoformat() for value in timestamps]
+            category_clock |= any(value.value % 1_000_000 for value in timestamps)
+        else:
+            dates = [str(value) for value in rows["date"]]
+            category_clock = True
+        fields = (
+            ["n_obs", "n_current", "n_previous", "status"]
+            if rank
+            else ["n_current", "n_previous", "n_overlap", "n_entered", "status"]
+        )
+        custom = [
+            [day, *row] for day, row in zip(dates, rows.select(fields).iter_rows(), strict=True)
+        ]
+        figure.add_trace(
+            go.Scatter(
+                x=dates,
+                y=rows["autocorrelation" if rank else "turnover"].to_list(),
+                name="Full-date rank correlation" if rank else f"Q{bucket}",
+                meta={"quantile": bucket} if not rank else None,
+                mode="lines+markers",
+                connectgaps=False,
+                customdata=custom,
+                line={"color": config["colorway"][index % len(config["colorway"])]},
+                marker={"size": 4},
+                hovertemplate="Date: %{customdata[0]}<br>"
+                + ("Correlation: %{y:.6f}" if rank else "Turnover: %{y:.2%}")
+                + "".join(
+                    f"<br>{field}: %{{customdata[{i + 1}]}}" for i, field in enumerate(fields)
+                )
+                + "<extra>%{fullData.name}</extra>",
+            )
+        )
+    figure.update_layout(meta=metadata, legend={"orientation": "h", "x": 0, "y": -0.2})
+    figure.update_xaxes(type="category" if category_clock else "date")
+    if not rank:
+        figure.update_yaxes(tickformat=".0%")
+    defined = observations["autocorrelation" if rank else "turnover"].drop_nulls()
+    if not len(defined):
+        figure.add_annotation(
+            text="Rank autocorrelation unavailable" if rank else "Turnover unavailable",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+    if rank and show_significance:
+        figure.add_annotation(
+            text="CI unavailable",
+            x=1,
+            y=1,
+            xref="paper",
+            yref="paper",
+            xanchor="right",
+            yanchor="top",
+            showarrow=False,
+        )
+    return figure
+
+
+def _plot_dated_turnover_heatmap(
+    result: TurnoverAnalysisResult, theme: str, width: int | None, height: int | None
+) -> go.Figure:
+    values = result.get_dataframe("turnover")
+    lags = values["lag"].unique().sort().to_list()
+    buckets = values["quantile"].unique().sort().to_list()
+    cells = {(row["quantile"], row["lag"]): row for row in values.to_dicts()}
+    z = [[cells[(bucket, lag)]["turnover"] for lag in lags] for bucket in buckets]
+    counts = [[cells[(bucket, lag)]["n_dates"] for lag in lags] for bucket in buckets]
+    figure = create_base_figure(
+        title="Dated Mean Turnover by Quantile and Observation Lag",
+        xaxis_title="Lag (Observations)",
+        yaxis_title="Quantile",
+        width=width,
+        height=height or 300 + 30 * len(buckets),
+        theme=theme,
+    )
+    figure.add_trace(
+        go.Heatmap(
+            x=lags,
+            y=[f"Q{bucket}" for bucket in buckets],
+            z=z,
+            customdata=counts,
+            text=[
+                [
+                    f"{value:.1%}" if value is not None and np.isfinite(value) else ""
+                    for value in row
+                ]
+                for row in z
+            ],
+            texttemplate="%{text}",
+            textfont={"size": 14},
+            colorscale="Oranges",
+            zmin=0,
+            zmax=1,
+            colorbar={"title": "Turnover", "tickformat": ".0%"},
+            hovertemplate="%{y}<br>Lag: %{x} observations<br>Mean turnover: %{z:.2%}<br>Defined dates: %{customdata}<extra></extra>",
+        )
+    )
+    figure.update_layout(
+        meta={
+            "lag_unit": "observations",
+            "turnover_method": "entrants_over_current",
+            "reduction": "mean_of_defined_dates",
+        }
+    )
+    if not values["turnover"].drop_nulls().len():
+        figure.add_annotation(
+            text="Turnover unavailable", x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False
+        )
+    return figure
+
+
 def plot_top_bottom_turnover(
     turnover_result: TurnoverAnalysisResult,
     show_all_quantiles: bool = False,
     theme: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    *,
+    lag: int | None = None,
 ) -> go.Figure:
     """Plot turnover rates for extreme (top/bottom) quantiles.
 
@@ -44,6 +212,9 @@ def plot_top_bottom_turnover(
         Figure width in pixels
     height : int | None
         Figure height in pixels
+    lag : int | None
+        Observation lag for dated results; defaults to the first recorded lag.
+        Dated inputs render actual time series, while legacy inputs retain bars.
 
     Returns
     -------
@@ -58,6 +229,19 @@ def plot_top_bottom_turnover(
     """
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
+    if turnover_result.dated_turnover_ipc_base64 is not None:
+        return _plot_dated_persistence(
+            turnover_result,
+            rank=False,
+            lag=lag,
+            show_all_quantiles=show_all_quantiles,
+            show_significance=False,
+            theme=theme,
+            width=width,
+            height=height,
+        )
+    if lag is not None:
+        raise ValueError("lag selects dated observations, not legacy horizon summaries")
 
     # Get periods and quantiles
     periods = list(turnover_result.quantile_turnover.keys())
@@ -180,6 +364,8 @@ def plot_autocorrelation(
     theme: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    *,
+    lag: int | None = None,
 ) -> go.Figure:
     """Plot signal rank autocorrelation by lag.
 
@@ -199,6 +385,10 @@ def plot_autocorrelation(
         Figure width
     height : int | None
         Figure height
+    lag : int | None
+        Observation lag for dated results; defaults to the first recorded lag.
+        Dated inputs render full-date-rank time series, without inferred confidence
+        bands. Their period and max_lags selectors do not apply.
 
     Returns
     -------
@@ -213,6 +403,25 @@ def plot_autocorrelation(
     """
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
+    if turnover_result.dated_turnover_ipc_base64 is not None:
+        if period is not None:
+            raise ValueError("period selects legacy horizons; use lag for dated observations")
+        if max_lags is not None:
+            raise ValueError(
+                "max_lags selects legacy lag summaries; use lag for dated observations"
+            )
+        return _plot_dated_persistence(
+            turnover_result,
+            rank=True,
+            lag=lag,
+            show_all_quantiles=False,
+            show_significance=show_significance,
+            theme=theme,
+            width=width,
+            height=height,
+        )
+    if lag is not None:
+        raise ValueError("lag selects dated observations, not legacy horizon summaries")
 
     # Get period data
     periods = list(turnover_result.autocorrelation.keys())
@@ -349,6 +558,8 @@ def plot_turnover_heatmap(
     """
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
+    if turnover_result.dated_turnover_ipc_base64 is not None:
+        return _plot_dated_turnover_heatmap(turnover_result, theme, width, height)
 
     # Build matrix
     periods = list(turnover_result.quantile_turnover.keys())
