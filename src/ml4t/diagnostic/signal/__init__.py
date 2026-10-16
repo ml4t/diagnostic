@@ -33,6 +33,7 @@ from ml4t.diagnostic.signal._utils import (
     quantize_factor,
 )
 from ml4t.diagnostic.signal.core import analyze_prepared_signal, analyze_signal, prepare_data
+from ml4t.diagnostic.signal.panel import PreparedSignalPanel, prepare_signal_panel
 from ml4t.diagnostic.signal.quantile import (
     compute_quantile_returns,
     compute_spread,
@@ -53,6 +54,8 @@ __all__ = [
     "SignalResult",
     # Data preparation
     "prepare_data",
+    "prepare_signal_panel",
+    "PreparedSignalPanel",
     "filter_outliers",
     "quantize_factor",
     "QuantileMethod",

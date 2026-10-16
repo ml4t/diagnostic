@@ -6,6 +6,7 @@ Factor-style signal analysis with a clean public surface.
 
 - `core.py` - `analyze_signal`
 - `_prepared.py` and `core.py` - strict `analyze_prepared_signal` input and shared calculations
+- `panel.py` - `prepare_signal_panel`, owned common supplied-return samples and staged losses
 - `result.py` - `SignalResult`
 - `signal_ic.py` - signal-specific IC extraction helpers
 - `quantile.py` - quantile-return and spread analysis
@@ -24,3 +25,8 @@ print(result.ic["1D"], result.ic_t_stat["1D"])
 `analyze_prepared_signal` accepts already-complete panels without prices or new bucket assignments.
 Its result retains an owned `prepared_data` snapshot. Supplied horizon labels do not establish a
 calendar or session/bar validation; native pooled quantile/spread definitions still apply.
+
+`prepare_signal_panel` cleans one common factor/return/group sample before shared qcut/cut
+bucketing. Its owned panel exposes independent data/audit copies; `analyze()` delegates to the
+existing prepared analysis engine for integer-D selectors and contiguous buckets. Do not infer
+group-neutral analytics, calendar validation or full report coverage from that preparation route.

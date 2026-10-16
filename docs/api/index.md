@@ -65,6 +65,8 @@ The package root re-exports the most common classes and configs for interactive 
       members:
         - analyze_signal
         - analyze_prepared_signal
+        - prepare_signal_panel
+        - PreparedSignalPanel
         - SignalResult
         - prepare_data
         - extract_signal_ic_series
