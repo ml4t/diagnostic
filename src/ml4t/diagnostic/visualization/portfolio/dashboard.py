@@ -188,6 +188,7 @@ class PortfolioTearSheet:
         # Add each figure
         for name, fig in self.figures.items():
             description = (fig.layout.meta or {}).get("description", "")
+            fig = go.Figure(fig).update_layout(title=None)
             fig_html = fig.to_html(
                 include_plotlyjs=include_plotlyjs
                 if name == list(self.figures.keys())[0]

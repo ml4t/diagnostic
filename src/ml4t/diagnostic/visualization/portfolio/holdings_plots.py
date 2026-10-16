@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import polars as pl
 
-from ml4t.diagnostic.visualization.core import create_base_figure
+from ml4t.diagnostic.visualization.core import create_base_figure, get_theme_config
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.portfolio_analysis import HoldingsAnalysisResult
@@ -61,13 +61,13 @@ def _holdings_figures(
     def figure(title: str, unit: str) -> go.Figure:
         fig = create_base_figure(
             title=title,
-            xaxis_title="Observation key",
             yaxis_title=unit,
             theme=theme,
             height=max(height, 320),
             width=width,
         )
         fig.update_layout(
+            colorway=get_theme_config(theme)["colorway"],
             showlegend=True,
             legend={"orientation": "h", "x": 0, "y": -0.3},
             margin={"l": 65, "r": 25, "t": 45, "b": 115},
@@ -76,7 +76,7 @@ def _holdings_figures(
                 "units": unit,
                 "snapshot_kind": result.snapshot_kind,
                 "n_observations": timeline.height,
-                "description": f"{timeline.height} supplied {result.snapshot_kind} observations; {unit}. No calendar grouping or intraday reconstruction. Exact observation keys and raw values remain in the export.",
+                "description": f"{timeline.height} supplied observations. Snapshot kind: {result.snapshot_kind}. Units: {unit}. No calendar grouping or intraday reconstruction. Export preserves exact observation keys and raw values.",
             },
         )
         figures[title] = fig
@@ -192,7 +192,7 @@ def _holdings_figures(
         )
         fig.update_layout(
             showlegend=False,
-            xaxis_title="Sample-extreme marked value (account currency)",
+            xaxis_title="Sample-extreme value<br>(account currency)",
             yaxis_title="Asset ID",
         )
         fig.update_yaxes(type="category", autorange="reversed")
