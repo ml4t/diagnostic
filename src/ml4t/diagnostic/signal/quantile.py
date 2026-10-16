@@ -5,9 +5,169 @@ Simple, pure functions for analyzing returns by quantile.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
+import pandas as pd
 import polars as pl
 from scipy.stats import spearmanr, ttest_ind
+
+from ml4t.diagnostic.signal._utils import _signal_inputs
+from ml4t.diagnostic.signal.returns import _paired_demean
+from ml4t.diagnostic.utils.validation import _validate_observation_keys
+
+
+def _sample_return_statistics(values: np.ndarray) -> tuple[float, float, int]:
+    count = len(values)
+    return (
+        float(np.mean(values)) if count else float("nan"),
+        float(np.std(values, ddof=1)) if count > 1 else float("nan"),
+        count,
+    )
+
+
+def compute_quantile_statistics(
+    data: pl.DataFrame | pd.DataFrame,
+    *,
+    return_columns: Sequence[str],
+    by_date: bool = False,
+    by_group: bool = False,
+    demeaned: bool = True,
+    group_adjust: bool = False,
+    factor_col: str = "factor",
+    date_col: str = "date",
+    asset_col: str = "asset",
+    quantile_col: str = "quantile",
+    group_col: str = "group",
+) -> pl.DataFrame:
+    """Inspect date/bucket return statistics or equal-date mean statistics.
+
+    Buckets and outcomes are supplied, not constructed. With by_date=True,
+    finite factor/outcome pairs within each date/bucket define the mean,
+    sample standard deviation and standard error. Otherwise the same sample
+    reduction operates on defined daily means, giving dates equal weight.
+    n_obs counts assets or dates as identified by sample_unit, never pooled
+    asset-date rows. Singleton samples have a defined mean but null sample
+    dispersion/error. Empty observed samples retain zero counts and null means.
+
+    Group adjustment takes precedence over date demeaning. This uses the same
+    paired outcome transform as grouped IC. Factors, buckets and callers are
+    unchanged; group-relative buckets do not imply adjusted returns.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Unique date/asset rows. Pandas MultiIndex input is accepted.
+    return_columns : sequence of str
+        Explicit supplied outcomes, not inferred duration labels.
+    by_date, by_group : bool
+        Retain date and/or group dimensions. Defaults aggregate daily means.
+    demeaned, group_adjust : bool
+        Subtract date or date/group paired return means. Defaults demean dates.
+    factor_col, date_col, asset_col, quantile_col, group_col : str
+        Explicit physical input names. Buckets must be positive integer labels;
+        they need not be contiguous or present on every date.
+
+    Returns
+    -------
+    polars.DataFrame
+        Canonical optional date/group, quantile, return_column, mean, std,
+        standard_error, n_obs, sample_unit and return_adjustment columns.
+        Raw observations remain inspectable in the supplied/owned input;
+        adjusted observations are exposed by demean_signal_returns.
+    """
+    for name, value in [
+        ("by_date", by_date),
+        ("by_group", by_group),
+        ("demeaned", demeaned),
+        ("group_adjust", group_adjust),
+    ]:
+        if not isinstance(value, bool | np.bool_):
+            raise ValueError(f"{name} must be boolean")
+    values, columns = _signal_inputs(
+        data,
+        return_columns,
+        factor_col,
+        date_col,
+        asset_col,
+        group_col if group_adjust or by_group else None,
+    )
+    _validate_observation_keys(values, [quantile_col], "signal buckets", unique=False)
+    if not values[quantile_col].dtype.is_numeric():
+        raise TypeError("signal buckets must contain numeric integer labels")
+    buckets = values[quantile_col].cast(pl.Float64)
+    if not (buckets.is_finite() & (buckets >= 1) & (buckets == buckets.floor())).all():
+        raise ValueError("signal buckets must contain positive integer labels")
+    if quantile_col in columns:
+        raise ValueError("return columns must be distinct from the bucket column")
+    outcomes = [f"__return_{index}" for index in range(len(columns))]
+    values = values.select(
+        pl.col(date_col).alias("date"),
+        pl.col(asset_col).alias("asset"),
+        pl.col(factor_col).alias("factor"),
+        pl.col(quantile_col).alias("quantile"),
+        *[pl.col(column).alias(alias) for column, alias in zip(columns, outcomes, strict=True)],
+        *([pl.col(group_col).alias("group")] if group_adjust or by_group else []),
+    )
+    if group_adjust or demeaned:
+        values = _paired_demean(
+            values, outcomes, "factor", "date", "group" if group_adjust else None
+        )
+    keys = ["date", *(["group"] if by_group else []), "quantile"]
+    rows = []
+    for part in values.partition_by(keys, maintain_order=True):
+        identity = part.select(keys).row(0, named=True)
+        for column, label in zip(outcomes, columns, strict=True):
+            returns = part.filter(pl.col("factor").is_finite() & pl.col(column).is_finite())[
+                column
+            ].to_numpy()
+            mean, std, count = _sample_return_statistics(returns)
+            rows.append(
+                {
+                    **identity,
+                    "return_column": label,
+                    "mean": mean if count else None,
+                    "std": std if count > 1 else None,
+                    "standard_error": std / np.sqrt(count) if count > 1 else None,
+                    "n_obs": count,
+                }
+            )
+    dimensions = {key: values.schema[key] for key in keys}
+    schema = {
+        **dimensions,
+        "return_column": pl.String,
+        "mean": pl.Float64,
+        "std": pl.Float64,
+        "standard_error": pl.Float64,
+        "n_obs": pl.UInt32,
+    }
+    result = pl.DataFrame(rows, schema=schema)
+    if not by_date:
+        summary_keys = [key for key in keys if key != "date"] + ["return_column"]
+        rows = []
+        for part in result.partition_by(summary_keys, maintain_order=True):
+            identity = part.select(summary_keys).row(0, named=True)
+            mean, std, count = _sample_return_statistics(
+                part.filter(pl.col("mean").is_finite())["mean"].to_numpy()
+            )
+            rows.append(
+                {
+                    **identity,
+                    "mean": mean if count else None,
+                    "std": std if count > 1 else None,
+                    "standard_error": std / np.sqrt(count) if count > 1 else None,
+                    "n_obs": count,
+                }
+            )
+        result = pl.DataFrame(
+            rows, schema={key: value for key, value in schema.items() if key != "date"}
+        )
+    return result.with_columns(
+        pl.lit("asset" if by_date else "date").alias("sample_unit"),
+        pl.lit("date_group_mean" if group_adjust else "date_mean" if demeaned else "none").alias(
+            "return_adjustment"
+        ),
+    ).sort(["return_column", *[key for key in keys if by_date or key != "date"]])
 
 
 def _compute_quantile_return_statistics(
@@ -32,9 +192,8 @@ def _compute_quantile_return_statistics(
         quantile = partition.item(0, quantile_col)
         returns = partition.get_column(return_col).to_numpy()
         quantile_number = int(quantile)
-        means[quantile_number] = float(np.mean(returns))
-        standard_deviations[quantile_number] = (
-            float(np.std(returns, ddof=1)) if len(returns) > 1 else float("nan")
+        means[quantile_number], standard_deviations[quantile_number], _ = _sample_return_statistics(
+            returns
         )
 
     # Fill missing quantiles
@@ -162,6 +321,7 @@ def monotonicity_score(
 
 
 __all__ = [
+    "compute_quantile_statistics",
     "compute_quantile_returns",
     "compute_spread",
     "monotonicity_score",
