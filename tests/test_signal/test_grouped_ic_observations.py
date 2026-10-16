@@ -347,3 +347,48 @@ def test_ic_tables_use_canonical_dimensions_without_losing_conflicting_input_nam
     assert result["return_column"].to_list() == ["1D"] * 2
     assert result["n_obs"].to_list() == [4] * 2
     assert result["ic"].to_list() == pytest.approx([0.0, 0.0], abs=1e-14)
+
+
+@pytest.mark.parametrize("by_group", [False, True])
+@pytest.mark.parametrize("route", ["panel", "frame"])
+def test_demeaned_outcomes_are_inspectable_and_shared_without_reassigning_rows_or_buckets(
+    by_group, route
+):
+    factor, forward, groups, _ = _inputs()
+    panel = prepare_signal_panel(factor, forward[["1D"]], groups=groups, quantiles=2, max_loss=0.0)
+    original = panel.data
+    if route == "panel":
+        adjusted = panel.demean_returns(by_group=by_group)
+    else:
+        from ml4t.diagnostic.signal import demean_signal_returns
+
+        supplied = original.to_pandas().set_index(["date", "asset"])
+        before = supplied.copy(deep=True)
+        adjusted = demean_signal_returns(supplied, return_columns=["1D"], by_group=by_group)
+        pd.testing.assert_frame_equal(supplied, before)
+    expected = (
+        [0.1875, -0.1875, 0.1875, -0.1875, -0.125, -0.125, 0.125, 0.125]
+        if by_group
+        else [0.0625, -0.3125, 0.3125, -0.0625] * 2
+    )
+    assert adjusted["1D"].to_list() == expected
+    assert adjusted.select("date", "asset", "factor", "quantile", "group").equals(
+        original.select("date", "asset", "factor", "quantile", "group")
+    )
+    assert panel.data.equals(original)
+
+
+def test_inspectable_group_demeaning_marks_the_actual_infinite_factor_pair_unavailable():
+    from ml4t.diagnostic.signal import demean_signal_returns
+
+    factor, forward, groups, dates = _inputs(zero_quote=True)
+    raw = factor.to_frame().join(forward[["1D"]]).join(groups)
+    before = raw.copy(deep=True)
+    result = demean_signal_returns(raw, return_columns=["1D"], by_group=True)
+    observed = result.to_pandas().set_index(["date", "asset"])
+    assert len(observed) == 8
+    assert math.isnan(observed.loc[(dates[3], "A"), "1D"])
+    assert observed.loc[(dates[3], "B"), "1D"] == -0.125
+    assert observed.loc[(dates[3], "C"), "1D"] == 0.0
+    assert observed.loc[(dates[3], "D"), "1D"] == 0.125
+    pd.testing.assert_frame_equal(raw, before)

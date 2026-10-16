@@ -5,8 +5,10 @@ Simple, pure functions for data preparation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from typing import Any
 
+import pandas as pd
 import polars as pl
 
 from ml4t.diagnostic.backends.polars_backend import PolarsBackend
@@ -20,8 +22,47 @@ from ml4t.diagnostic.utils.validation import (
     _validate_observation_keys,
 )
 
-if TYPE_CHECKING:
-    import pandas as pd
+
+def _signal_frame(value: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
+    if isinstance(value, pd.DataFrame):
+        return pl.from_pandas(
+            value.reset_index() if isinstance(value.index, pd.MultiIndex) else value
+        )
+    if isinstance(value, pl.DataFrame):
+        return value.clone()
+    raise TypeError("signal inputs and grids must be Pandas or Polars DataFrames")
+
+
+def _signal_inputs(
+    data: pl.DataFrame | pd.DataFrame,
+    return_columns: Sequence[str],
+    factor_col: str,
+    date_col: str,
+    asset_col: str,
+    group_col: str | None = None,
+) -> tuple[pl.DataFrame, list[str]]:
+    columns = list(return_columns) if not isinstance(return_columns, str) else []
+    if (
+        not columns
+        or any(not isinstance(column, str) for column in columns)
+        or len(set(columns)) != len(columns)
+    ):
+        raise ValueError("return_columns must be a nonempty sequence of distinct column names")
+    values = _signal_frame(data)
+    keys = list(dict.fromkeys([date_col, asset_col]))
+    _validate_observation_keys(values, keys, "signal")
+    if set(columns).intersection(
+        [*keys, factor_col, *([group_col] if group_col is not None else [])]
+    ):
+        raise ValueError("return columns must be distinct from observation/factor/group keys")
+    for name in [factor_col, *columns]:
+        if name not in values.columns:
+            raise pl.exceptions.ColumnNotFoundError(f"signal column {name!r} was not found")
+        if not values[name].dtype.is_numeric():
+            raise TypeError(f"signal {name} must contain numeric values")
+    if group_col is not None:
+        _validate_observation_keys(values, [group_col], "signal groups", unique=False)
+    return values, columns
 
 
 def precise_dates(series: pl.Series) -> list[Any]:

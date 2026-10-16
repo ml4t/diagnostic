@@ -40,6 +40,7 @@ from ml4t.diagnostic.signal.quantile import (
     monotonicity_score,
 )
 from ml4t.diagnostic.signal.result import SignalResult
+from ml4t.diagnostic.signal.returns import demean_signal_returns
 from ml4t.diagnostic.signal.signal_ic import (
     compute_ic_summary,
     compute_signal_ic,
@@ -67,6 +68,7 @@ __all__ = [
     "extract_signal_ic_series",
     "compute_ic_summary",
     "compute_signal_ic",
+    "demean_signal_returns",
     # Quantile functions
     "compute_quantile_returns",
     "compute_spread",

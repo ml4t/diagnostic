@@ -124,6 +124,23 @@ class PreparedSignalPanel:
             date_grid=date_grid,
         )
 
+    def demean_returns(self, *, by_group: bool = False) -> pl.DataFrame:
+        """Inspect date- or date/group-demeaned outcomes without changing this panel.
+
+        Rows, keys, factors and buckets are retained. This uses the same paired
+        outcome adjustment as group-adjusted IC, not portfolio-weight construction.
+        """
+        from ml4t.diagnostic.signal.returns import demean_signal_returns
+
+        return demean_signal_returns(
+            self.data,
+            return_columns=self.metadata["return_columns"],
+            by_group=by_group,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
 
 def _frame(
     data: pl.DataFrame | pd.DataFrame | pd.Series,

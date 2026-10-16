@@ -15,7 +15,8 @@ import polars as pl
 from ml4t.diagnostic.metrics.ic import cross_sectional_ic_series
 from ml4t.diagnostic.metrics.ic_inference import compute_ic_summary_stats
 from ml4t.diagnostic.signal._prepared import positive_count
-from ml4t.diagnostic.signal._utils import precise_dates
+from ml4t.diagnostic.signal._utils import _signal_frame, _signal_inputs, precise_dates
+from ml4t.diagnostic.signal.returns import _paired_demean
 from ml4t.diagnostic.utils.validation import (
     _align_datetime_key_resolution,
     _validate_observation_keys,
@@ -79,39 +80,16 @@ def compute_signal_ic(
     for name, flag in [("group_adjust", group_adjust), ("by_group", by_group)]:
         if not isinstance(flag, bool | np.bool_):
             raise ValueError(f"{name} must be boolean")
-    columns = list(return_columns) if not isinstance(return_columns, str) else []
-    if (
-        not columns
-        or any(not isinstance(column, str) for column in columns)
-        or len(set(columns)) != len(columns)
-    ):
-        raise ValueError("return_columns must be a nonempty sequence of distinct column names")
-
-    def frame(value: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
-        if isinstance(value, pd.DataFrame):
-            return pl.from_pandas(
-                value.reset_index() if isinstance(value.index, pd.MultiIndex) else value
-            )
-        if isinstance(value, pl.DataFrame):
-            return value.clone()
-        raise TypeError("IC inputs and date grids must be Pandas or Polars DataFrames")
-
-    values = frame(data)
-    keys = list(dict.fromkeys([date_col, asset_col]))
-    _validate_observation_keys(values, keys, "signal IC")
-    if set(columns).intersection(
-        [*keys, factor_col, *([group_col] if group_adjust or by_group else [])]
-    ):
-        raise ValueError("return columns must be distinct from observation/factor/group keys")
-    for name in [factor_col, *columns]:
-        if name not in values.columns:
-            raise pl.exceptions.ColumnNotFoundError(f"IC column {name!r} was not found")
-        if not values[name].dtype.is_numeric():
-            raise TypeError(f"IC {name} must contain numeric values")
-    if group_adjust or by_group:
-        _validate_observation_keys(values, [group_col], "IC groups", unique=False)
+    values, columns = _signal_inputs(
+        data,
+        return_columns,
+        factor_col,
+        date_col,
+        asset_col,
+        group_col if group_adjust or by_group else None,
+    )
     grid_keys = [date_col, group_col] if by_group else [date_col]
-    requested = frame(date_grid) if date_grid is not None else None
+    requested = _signal_frame(date_grid) if date_grid is not None else None
     if requested is not None:
         _validate_observation_keys(requested, grid_keys, "IC grid")
         requested = requested.select(
@@ -129,18 +107,8 @@ def compute_signal_ic(
     date_col, asset_col, factor_col, group_col = "date", "asset", "factor", "group"
     keys = [date_col, asset_col]
     grid_keys = [date_col, group_col] if by_group else [date_col]
-    if group_adjust and not values.is_empty():
-        grouped = values.select(date_col, group_col, factor_col, *outcome_names).to_pandas()
-        for column in outcome_names:
-            grouped[column] = grouped[column].where(
-                np.isfinite(grouped[factor_col]) & np.isfinite(grouped[column])
-            )
-        adjusted = grouped.groupby([date_col, group_col], observed=True, sort=False)[
-            outcome_names
-        ].transform(lambda outcome: outcome - outcome.mean())
-        values = values.with_columns(
-            pl.Series(column, adjusted[column].to_numpy()) for column in outcome_names
-        )
+    if group_adjust:
+        values = _paired_demean(values, outcome_names, factor_col, date_col, group_col)
     outputs = []
     partitions = values.partition_by(group_col, maintain_order=True) if by_group else [values]
     for column, label in zip(outcome_names, columns, strict=True):
