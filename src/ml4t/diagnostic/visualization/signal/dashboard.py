@@ -500,6 +500,13 @@ class SignalDashboard(BaseDashboard):
 
         ic = tear_sheet.ic_analysis
         theme_name = "dark" if self.theme == "dark" else "default"
+        html_parts.append(
+            f"<p>The current IC component contains {len(ic.dates)} aligned dates. "
+            "The SignalResult bridge retains common finite IC dates across requested "
+            "horizons and summarizes those observations. Select a single-period "
+            "component for that horizon's full finite sample. No calendar grid "
+            "or unavailable-date history is inferred.</p>"
+        )
 
         # Period selector
         periods = list(ic.ic_mean.keys())

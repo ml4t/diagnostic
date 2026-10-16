@@ -1,6 +1,10 @@
 """Report statistics must use the quote-derived IC dates their bridge retains."""
 
+import json
 import math
+import re
+import shutil
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -10,7 +14,7 @@ from scipy.stats import ttest_1samp
 from ml4t.diagnostic import analyze_prepared_signal, analyze_signal
 from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import SignalResult, prepare_signal_panel
-from ml4t.diagnostic.visualization.signal import plot_ic_ts
+from ml4t.diagnostic.visualization.signal import SignalDashboard, plot_ic_ts
 
 
 def _inputs(profile, periods=(1, 2)):
@@ -172,3 +176,49 @@ def test_missing_long_horizon_quote_tail_does_not_leave_discarded_short_horizon_
     assert model.ic_by_date == {"1D": [1.0], "2D": [1.0]}
     for period in ["1D", "2D"]:
         _assert_statistics(model, period, [1.0])
+
+
+@pytest.mark.parametrize(
+    "profile,periods,mean", [("full", (2, 1), 0.5), ("missing_tail", (1, 2), 1.0)]
+)
+@pytest.mark.parametrize("width", [1280, 375])
+def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
+    profile, periods, mean, width, tmp_path
+):
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
+    if chrome is None:
+        pytest.skip("Installed Chrome/Chromium required for actual report checks")
+    result, _ = _analysis(profile, "raw", periods)
+    html = SignalDashboard().generate(result.to_tear_sheet())
+    probe = """<script>document.addEventListener('DOMContentLoaded',()=>{
+    Array.from(document.querySelectorAll('button')).find(node=>node.textContent==='IC Analysis').click();
+    const plot=Array.from(document.querySelectorAll('#ic .js-plotly-plot')).find(plot=>Array.from(plot.data||[]).some(trace=>trace.name==='Daily IC'));
+    const marker=document.createElement('output');marker.id='ic-bridge-browser-check';
+    marker.textContent=JSON.stringify({values:Array.from(plot._fullData[0].y||[]),annotations:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.textContent)});document.body.appendChild(marker);});</script>"""
+    path = tmp_path / "report.html"
+    path.write_text(html.replace("</body>", probe + "</body>"))
+    completed = subprocess.run(
+        [
+            chrome,
+            "--headless",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-background-networking",
+            "--host-resolver-rules=MAP * ~NOTFOUND",
+            f"--user-data-dir={tmp_path / 'browser-profile'}",
+            f"--window-size={width},1000",
+            "--virtual-time-budget=1500",
+            "--dump-dom",
+            path.as_uri(),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    match = re.search(r'<output id="ic-bridge-browser-check">([^<]+)</output>', completed.stdout)
+    assert match, completed.stderr
+    measured = json.loads(match[1])
+    expected = [1.0, 0.0] if profile == "full" else [1.0]
+    np.testing.assert_allclose(measured["values"], expected, rtol=0, atol=1e-14)
+    assert any(f"Mean IC: {mean:.4f}" == annotation for annotation in measured["annotations"])
