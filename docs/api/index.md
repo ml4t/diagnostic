@@ -122,6 +122,13 @@ results cannot reconstruct that sample. Pooled bar summaries remain unchanged.
 See the [empirical quantile how-to](../user-guide/migration.md#plot-empirical-dated-quantile-observations)
 for adjustment, units, missing-data and report limits.
 
+Use `get_monotonicity(period)` for an availability-aware decision and direction.
+An undefined rank correlation yields `(None, "unavailable")`; the `spread`
+DataFrame uses a nullable Boolean, and summaries/charts show `N/A`. Historical
+raw boolean/direction maps keep their serialized shape. The existing native
+minimum of three defined bucket means and finite decision threshold are
+unchanged. See [unavailable monotonicity](../user-guide/migration.md#distinguish-unavailable-monotonicity-from-a-negative-decision).
+
 ::: ml4t.diagnostic.visualization.signal.plot_quantile_returns_violin
     options:
       show_root_heading: true
@@ -140,6 +147,7 @@ cumulative-only inputs cannot establish that empirical sample. See the
     options:
       show_root_heading: true
       members:
+        - get_monotonicity
         - get_dataframe
         - list_available_dataframes
 
