@@ -308,12 +308,10 @@ def test_missing_interchange_bucket_labels_keep_clock_and_unavailable_history():
     from ml4t.diagnostic.signal import compute_quantile_turnover
 
     panel, _ = _inputs()
-    data = panel.data.with_columns(
-        pl.when(pl.col("date") == pl.col("date").min())
-        .then(None)
-        .otherwise(pl.col("quantile"))
-        .alias("quantile")
+    labels = panel.data.filter(pl.col("date") > pl.col("date").min()).select(
+        "date", "asset", "quantile"
     )
+    data = panel.data.drop("quantile").join(labels, on=["date", "asset"], how="left")
     result = compute_quantile_turnover(data, quantiles=[2])
     assert result["n_current"].to_list() == [0, 1]
     assert result["status"].to_list() == ["insufficient_history", "empty_previous"]
