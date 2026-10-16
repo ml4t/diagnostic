@@ -225,7 +225,7 @@ null for unavailable values and restores them as NaN on the result round trip.
 For an unbucketed factor Series and a precomputed return panel, unreleased
 source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
 It does not need Alphalens or prices at runtime. From a source checkout, run the
-[self-contained example](https://github.com/ml4t/diagnostic/blob/7e38c80f7f5d5a1c4edec638f7e9f314518a0d00/examples/signal_panel_cleaning.py):
+[self-contained example](https://github.com/ml4t/diagnostic/blob/8863bb27eb2b394b5f9a5c7969f799f671c1c8d5/examples/signal_panel_cleaning.py):
 
 ```bash
 uv run python examples/signal_panel_cleaning.py
@@ -490,8 +490,9 @@ physical selectors, exact timestamps, caller ownership and supplied missing
 dates follow the dated turnover route above. In particular, lags count
 observations, not inferred sessions or days. Comparing Alphalens requires
 declaring the same observation frequency on its date index; default calendar
-parity is not established. These dated tables do not yet populate the report
-bridge by themselves or establish full Alphalens/Pyfolio replacement.
+parity is not established. Standalone dated calls return tables; the
+persistence-enabled analysis workflow below retains them in the report bridge.
+Neither route establishes full Alphalens/Pyfolio replacement.
 
 ### Inspect dated persistence in a result and report
 
