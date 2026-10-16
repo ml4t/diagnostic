@@ -46,6 +46,7 @@ def _empty_turnover_timeline() -> pl.DataFrame:
             "implementation_cost": pl.Float64(),
             "turnover": pl.Float64(),
             "cost_drag": pl.Float64(),
+            "normalization_status": pl.String(),
         }
     )
 
@@ -295,6 +296,15 @@ def compute_activity_metrics(
             },
             "turnover_timeline": _empty_turnover_timeline(),
             "rebalance_summary": _empty_rebalance_summary(),
+            "coverage": {
+                "n_observations": 0,
+                "n_normalized_observations": 0,
+                "normalization_coverage": None,
+                "status": "unavailable",
+                "n_active_observations": 0,
+                "n_normalized_active_observations": 0,
+                "active_normalization_coverage": None,
+            },
         }
 
     fills = fills_df.sort("timestamp").with_columns(
@@ -321,6 +331,15 @@ def compute_activity_metrics(
     turnover_timeline = _empty_turnover_timeline()
     avg_turnover: float | None = None
     max_turnover: float | None = None
+    coverage: dict[str, Any] = {
+        "n_observations": 0,
+        "n_normalized_observations": 0,
+        "normalization_coverage": None,
+        "status": "unavailable",
+        "n_active_observations": 0,
+        "n_normalized_active_observations": 0,
+        "active_normalization_coverage": None,
+    }
     if not portfolio_state_df.is_empty():
         fills_by_timestamp = fills.group_by("timestamp").agg(
             [
@@ -340,23 +359,46 @@ def compute_activity_metrics(
             )
             .with_columns(
                 [
-                    pl.when(pl.col("equity") > 0)
+                    pl.when(pl.col("equity").is_finite() & (pl.col("equity") > 0))
                     .then(pl.col("filled_notional") / pl.col("equity"))
-                    .otherwise(0.0)
+                    .otherwise(None)
                     .alias("turnover"),
-                    pl.when(pl.col("equity") > 0)
+                    pl.when(pl.col("equity").is_finite() & (pl.col("equity") > 0))
                     .then(pl.col("implementation_cost") / pl.col("equity"))
-                    .otherwise(0.0)
+                    .otherwise(None)
                     .alias("cost_drag"),
+                    pl.when(pl.col("equity").is_null() | ~pl.col("equity").is_finite())
+                    .then(pl.lit("unusable_equity"))
+                    .when(pl.col("equity") <= 0)
+                    .then(pl.lit("nonpositive_equity"))
+                    .otherwise(pl.lit("defined"))
+                    .alias("normalization_status"),
                 ]
             )
         )
-        # Average turnover on rebalance days only (not diluted by non-trading days)
+        # The mean uses active observations, not untraded timestamps or inferred sessions.
         rebalance_days = turnover_timeline.filter(pl.col("filled_notional") > 0)
-        avg_turnover = (
-            float(rebalance_days["turnover"].mean()) if rebalance_days.height > 0 else None
-        )
-        max_turnover = float(turnover_timeline["turnover"].max())
+        avg_turnover = rebalance_days["turnover"].mean()
+        max_turnover = turnover_timeline["turnover"].max()
+        n_normalized = turnover_timeline.filter(pl.col("normalization_status") == "defined").height
+        n_active_normalized = rebalance_days.filter(
+            pl.col("normalization_status") == "defined"
+        ).height
+        coverage = {
+            "n_observations": turnover_timeline.height,
+            "n_normalized_observations": n_normalized,
+            "normalization_coverage": n_normalized / turnover_timeline.height,
+            "status": "available"
+            if n_normalized == turnover_timeline.height
+            else "partial"
+            if n_normalized
+            else "unavailable",
+            "n_active_observations": rebalance_days.height,
+            "n_normalized_active_observations": n_active_normalized,
+            "active_normalization_coverage": n_active_normalized / rebalance_days.height
+            if rebalance_days.height
+            else None,
+        }
 
     metrics = {
         "num_fills": fills.height,
@@ -371,6 +413,7 @@ def compute_activity_metrics(
         "metrics": metrics,
         "turnover_timeline": turnover_timeline,
         "rebalance_summary": rebalance_summary,
+        "coverage": coverage,
     }
 
 

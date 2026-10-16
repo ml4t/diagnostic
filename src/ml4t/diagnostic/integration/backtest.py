@@ -241,7 +241,10 @@ def _normalize_tearsheet_metrics(
 
     computed = compute_metrics_from_result(result, calendar=calendar)
     for key, value in computed.items():
-        metrics.setdefault(key, value)
+        if key in ("avg_turnover", "max_turnover"):
+            metrics[key] = value
+        else:
+            metrics.setdefault(key, value)
 
     if "sharpe" not in metrics and "sharpe_ratio" in metrics:
         metrics["sharpe"] = metrics["sharpe_ratio"]

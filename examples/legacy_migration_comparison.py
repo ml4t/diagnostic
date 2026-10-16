@@ -298,16 +298,72 @@ def show_backtest_exposure() -> None:
                 raise AssertionError("Expected the explicit simple-return domain restriction")
 
 
+def show_backtest_activity() -> None:
+    from datetime import UTC, datetime
+
+    import polars as pl
+    from ml4t.backtest import BacktestConfig, DataFeed, Engine, Strategy
+
+    from ml4t.diagnostic.integration import analyze_backtest_result, generate_tearsheet_from_result
+
+    class ShortThenCover(Strategy):
+        def __init__(self):
+            self.observations = 0
+
+        def on_data(self, timestamp, data, context, broker):
+            self.observations += 1
+            if self.observations == 1:
+                broker.submit_order("A", -10)
+            elif self.observations == 2:
+                broker.submit_order("A", 10)
+
+    for mark in [150.0, 200.0, 250.0]:
+        prices = pl.DataFrame(
+            {
+                "timestamp": [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6]],
+                "asset": ["A"] * 3,
+                **dict.fromkeys(["open", "high", "low", "close"], [100.0, 100.0, mark]),
+                "volume": [10000.0] * 3,
+            }
+        )
+        result = Engine(
+            DataFeed(prices_df=prices),
+            ShortThenCover(),
+            BacktestConfig(initial_cash=1000, allow_short_selling=True),
+        ).run()
+        assert len(result.fills) == 2
+        assert [fill.price for fill in result.fills] == [100, mark]
+        assert [fill.quantity for fill in result.fills] == [10, 10]
+        assert result.fills[-1].timestamp == prices["timestamp"][-1]
+        activity = analyze_backtest_result(result).activity
+        last = activity["turnover_timeline"].row(-1, named=True)
+        assert last["equity"] == 2000 - 10 * mark
+        assert last["filled_notional"] == 10 * mark
+        assert activity["metrics"]["total_filled_notional"] == 1000 + 10 * mark
+        if mark == 150:
+            assert last["turnover"] == 3 and activity["metrics"]["avg_turnover"] == 2
+        else:
+            assert last["turnover"] is None and last["cost_drag"] is None
+            assert activity["metrics"]["avg_turnover"] == 1
+            assert activity["coverage"]["n_normalized_active_observations"] == 1
+        if mark == 200:
+            html = generate_tearsheet_from_result(result, include_statistical=False)
+            assert "2 of 3 observations" in html and "1 of 2 active observations" in html
+        print(f"Closing mark {mark}: {last}")
+        print(f"Activity metrics: {activity['metrics']}")
+        print(f"Normalization coverage: {activity['coverage']}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--task",
-        choices=("diagnostic", "all", "pyfolio", "alphalens", "empyrical", "exposure"),
+        choices=("diagnostic", "all", "pyfolio", "alphalens", "empyrical", "exposure", "activity"),
         default="diagnostic",
     )
     task = parser.parse_args().task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
-    if task == "exposure":
+    if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -319,6 +375,9 @@ def main() -> None:
         print(f"{package}=={version(package)}")
     if task == "exposure":
         show_backtest_exposure()
+        return
+    if task == "activity":
+        show_backtest_activity()
         return
     if task == "diagnostic":
         show_diagnostic_only()

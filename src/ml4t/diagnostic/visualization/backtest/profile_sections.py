@@ -59,8 +59,9 @@ def plot_activity_overview(
     import html as html_mod
 
     theme = validate_theme(theme)
-    timeline = profile.activity["turnover_timeline"]
-    rebalance = profile.activity["rebalance_summary"].head(15)
+    activity = profile.activity
+    timeline = activity["turnover_timeline"]
+    rebalance = activity["rebalance_summary"].head(15)
 
     fig = go.Figure()
 
@@ -69,9 +70,17 @@ def plot_activity_overview(
             go.Scatter(
                 x=timeline["timestamp"].to_list(),
                 y=timeline["turnover"].to_list(),
-                mode="lines",
+                mode="lines+markers",
                 name="Turnover",
                 line={"width": 1.5},
+                customdata=timeline.select(
+                    "equity", "filled_notional", "implementation_cost", "normalization_status"
+                ).rows(),
+                hovertemplate=(
+                    "%{x}<br>Turnover: %{y}<br>Equity: %{customdata[0]}"
+                    "<br>Filled notional: %{customdata[1]}<br>Cost: %{customdata[2]}"
+                    "<br>Normalization: %{customdata[3]}<extra></extra>"
+                ),
             ),
         )
         cost_drag = timeline["cost_drag"]
@@ -90,7 +99,9 @@ def plot_activity_overview(
     theme_config = get_theme_config(theme)
     fig.update_layout(theme_config["layout"])
     fig.update_layout(
-        title={"text": "Activity", "font": {"size": 16}},
+        title={"text": "Activity", "font": {"size": 13}},
+        font={"size": 14},
+        meta=activity["coverage"],
         height=350,
         yaxis={"title": "Turnover"},
         yaxis2={
@@ -133,7 +144,7 @@ def plot_activity_overview(
     # Serialize chart to HTML and combine with table
     from .tearsheet import _figure_to_clean_html
 
-    fig.update_layout(autosize=True, width=None, margin={"t": 40})
+    fig.update_layout(title=None, autosize=True, width=None, margin={"t": 40})
     chart_html = f'<div class="chart-container">{_figure_to_clean_html(fig)}</div>'
     return chart_html + table_html
 
