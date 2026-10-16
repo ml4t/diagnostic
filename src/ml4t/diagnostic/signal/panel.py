@@ -124,6 +124,59 @@ class PreparedSignalPanel:
             date_grid=date_grid,
         )
 
+    def factor_weights(
+        self,
+        *,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+    ) -> pl.DataFrame:
+        """Inspect factor exposure with explicit zero-signal handling.
+
+        See compute_factor_weights for the single shared weight calculation.
+        This constructs no dated holdings, capital or expiration accounting.
+        """
+        from ml4t.diagnostic.signal.portfolio import compute_factor_weights
+
+        return compute_factor_weights(
+            self.data,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
+    def factor_returns(
+        self,
+        *,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+        by_asset: bool = False,
+        date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Inspect per-asset contributions or aggregate supplied-horizon returns.
+
+        Weights do not depend on horizon-specific future availability. See
+        compute_factor_returns for counts, missing tails and explicit output grids.
+        """
+        from ml4t.diagnostic.signal.portfolio import compute_factor_returns
+
+        return compute_factor_returns(
+            self.data,
+            return_columns=self.metadata["return_columns"],
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            by_asset=by_asset,
+            date_grid=date_grid,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
     def quantile_statistics(
         self,
         *,
@@ -245,7 +298,8 @@ def prepare_signal_panel(
         Replace group codes before bucketing, as in Alphalens' groupby_labels.
     binning_by_group : bool
         Assign buckets within date/group rather than date alone. This does not
-        provide group-neutral inference or factor portfolio analytics.
+        alone provide group-neutral inference or factor portfolios. Request
+        factor_weights(group_adjust=True) explicitly for group-normalized exposure.
     max_loss : float
         Maximum excluded fraction of original factor rows; equality passes.
         One permits an empty owned panel; analyze() still rejects empty samples.

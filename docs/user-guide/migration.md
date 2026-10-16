@@ -61,9 +61,10 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
 | Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | Unreleased after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
 | Daily quantile means/errors and equal-date summaries | `panel.quantile_statistics(by_date=..., by_group=..., demeaned=..., group_adjust=...)` | Unreleased after 0.1.9. Reports sample standard deviation, standard error and asset/date counts; does not change the native pooled `SignalResult` fields or spread inference. |
+| Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
-| Group-neutral portfolios and the complete Alphalens tear sheet | No complete equivalent | Grouped IC and return demeaning do not implement portfolio weights, holdings, event paths or the complete tear sheet. |
+| Dated holdings and the complete Alphalens tear sheet | No complete equivalent | Analytical factor weights and supplied-return contributions do not establish capital/expiry accounting, event paths or the complete tear sheet. |
 
 </div>
 
@@ -189,8 +190,9 @@ equal-date aggregation and propagated spread errors. The separate
 `panel.quantile_statistics()` route below exposes daily/equal-date bucket
 statistics without changing those native defaults. Turnover is disabled by
 default on this prepared route; enabling it uses the existing observed-date
-lag method. Group-adjusted/neutral calculations and complete reports remain
-unsupported by this route. No full-replacement claim follows from retaining a
+lag method. Grouped IC, adjusted quantile statistics and factor weights require
+the explicit owned-panel methods below; they are not enabled by this shortcut.
+Complete reports remain unsupported by this route. No full-replacement claim follows from retaining a
 prepared panel.
 
 Timestamp grouping can also differ. On a prepared sample containing three
@@ -220,7 +222,7 @@ null for unavailable values and restores them as NaN on the result round trip.
 For an unbucketed factor Series and a precomputed return panel, unreleased
 source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
 It does not need Alphalens or prices at runtime. From a source checkout, run the
-[self-contained example](https://github.com/ml4t/diagnostic/blob/3ff496a079e73d03b4c6cf716c142441693ce097/examples/signal_panel_cleaning.py):
+[self-contained example](https://github.com/ml4t/diagnostic/blob/568d3d0c2514e9c8386b75780bb5137e47e6f1bb/examples/signal_panel_cleaning.py):
 
 ```bash
 uv run python examples/signal_panel_cleaning.py
@@ -348,6 +350,70 @@ This bucket standard error is not a propagated spread error or a replacement
 for the existing two-sample spread test. Full portfolio/event/report paths
 remain separate work.
 
+### Construct factor weights and supplied-return contributions
+
+Use the owned panel's factor observations to construct exposure independently of
+its bucket labels. These unreleased methods after 0.1.9 share one normalization
+calculation. Using the `panel` above:
+
+```python
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+weights = panel.factor_weights(group_adjust=True)
+contributions = panel.factor_returns(group_adjust=True, by_asset=True)
+aggregate = panel.factor_returns(group_adjust=True)
+one_period = aggregate.to_pandas()
+one_period = one_period[one_period["return_column"] == "1D"].set_index("date")["weighted_return"]
+summary = PortfolioAnalysis(one_period, periods_per_year=252).compute_summary_stats()
+print(weights)
+print(aggregate.select("date", "return_column", "weighted_return", "n_obs"))
+print(summary.total_return)
+```
+
+Magnitude weights default to `demeaned=True`, subtracting the factor mean and
+normalizing absolute exposure to one. With `equal_weight=True`, the method
+subtracts the median, assigns signs, normalizes each active sign side and then
+normalizes gross exposure. Exact zeros and median ties stay zero. If only one
+side remains after median ties, equal-sign weights are one-sided, not dollar
+neutral. With `demeaned=False`, signed magnitude or sign weights retain their
+net exposure.
+
+`group_adjust=True` first applies that rule within date/group, then normalizes
+across the date. Active groups receive equal gross exposure; inactive groups
+remain zero. This changes factor weights, unlike the date/group return
+demeaning used by IC and quantile statistics. It does not infer group-neutral
+holdings from group-relative bucket assignment.
+
+Weights are dimensionless exposures. `weighted_return` contains decimal
+supplied-horizon contributions, or their date-level sum with at least one
+defined contribution. `n_obs` counts defined contributions, including defined
+zero contributions. Unavailable future outcomes do not trigger weight
+reallocation; an entirely unavailable horizon/date has null return and zero
+count. The direct `signal.compute_factor_weights` route needs no forward
+returns. It and `signal.compute_factor_returns` require unique date/asset keys
+and finite factors rather than silently cleaning or filtering a weight universe.
+
+Zero signal produces zero weights and, when outcomes are finite, zero
+contributions. Alphalens 0.4.6 can return undefined weights for zero dispersion.
+The reference maintenance repair in
+[Alphalens PR 48](https://github.com/stefan-jansen/alphalens-reloaded/pull/48)
+corrects that behavior. Diagnostic follows the independently checked zero
+exposure rule; it does not claim those outputs match released 0.4.6.
+Normalization also rescales finite magnitudes and removes a common offset
+before centering. This avoids overflow or lost centered exposure for extreme
+or near-constant scores; raw reference differences are retained in the
+shared-input qualification rather than hidden by summary correlations.
+
+The example passes a one-horizon arithmetic series into the existing
+`PortfolioAnalysis` consumer. The illustrative `periods_per_year=252` is an
+explicit cadence assumption, not inferred from the label `1D` or validated by
+an exchange calendar. Overlapping supplied horizons are not automatically a
+self-financing daily wealth path. Output dates are observed dates unless the
+caller supplies an explicit aggregate `date_grid`; missing requested dates
+have null return and zero count. Capital, signal expirations, dated holdings,
+factor alpha/beta regression and the complete Alphalens/Pyfolio reports remain
+separate work.
+
 ### Quantiles, turnover, and report boundaries
 
 In unreleased source after 0.1.9, direct `metrics.cross_sectional_ic_series()`
@@ -381,7 +447,7 @@ not elapsed calendar days; insufficient history returns NaN.
 dashboard. It does not supply turnover analysis or cumulative quantile-return
 paths. Do not infer those panels from a successful HTML render or the presence
 of related plotting functions. Keep Alphalens when those report sections,
-factor-weighted portfolios, or event-aligned cumulative paths are required.
+dated holdings/expiration accounting, or event-aligned cumulative paths are required.
 
 Alphalens also supplies grouped summaries and its own complete factor tear
 sheet. Those capabilities are not implied by grouped IC observations or by a Diagnostic signal result.

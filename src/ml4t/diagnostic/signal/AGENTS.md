@@ -10,6 +10,7 @@ Factor-style signal analysis with a clean public surface.
 - `result.py` - `SignalResult`
 - `signal_ic.py` - per-date/group IC observations and legacy finite-series extraction
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
+- `portfolio.py` - shared factor-weight normalization and supplied-return contributions
 - `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
@@ -30,11 +31,15 @@ calendar or session/bar validation; native pooled quantile/spread definitions st
 `prepare_signal_panel` cleans one common factor/return/group sample before shared qcut/cut
 bucketing. Its owned panel exposes independent data/audit copies; `analyze()` delegates to the
 existing prepared analysis engine for integer-D selectors and contiguous buckets. Do not infer
-group-neutral portfolios, calendar validation or full report coverage from that preparation route.
+group-neutral weights, calendar validation or full report coverage from bucketing alone.
 Use `panel.ic_by_date(group_adjust=..., by_group=...)` for explicit adjusted/grouped IC observations,
 counts and undefined statuses. `panel.demean_returns(by_group=...)` exposes the shared adjusted
 outcomes without changing keys or buckets. The direct `compute_signal_ic` and `demean_signal_returns`
 routes accept explicit supplied return-column selectors, without interpreting them as durations.
+`panel.factor_weights` and `panel.factor_returns` expose shared magnitude/equal-sign/group-normalized
+weights and their supplied-horizon contributions. Weights ignore horizon-specific future missingness;
+zero signal means zero exposure. These are not dated holdings/expiration accounting or full reports.
+
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse
 `returns.py`; existing `analyze()` pooled defaults and two-sample spread inference are unchanged.
