@@ -244,4 +244,106 @@ def compute_factor_returns(
     return pl.concat(output)
 
 
-__all__ = ["compute_factor_weights", "compute_factor_returns"]
+def compute_factor_cumulative_returns(
+    data: pl.DataFrame | pd.DataFrame,
+    *,
+    return_column: str,
+    demeaned: bool = True,
+    group_adjust: bool = False,
+    equal_weight: bool = False,
+    quantiles: Sequence[int] | None = None,
+    groups: Sequence[str] | None = None,
+    date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    factor_col: str = "factor",
+    date_col: str = "date",
+    asset_col: str = "asset",
+    group_col: str = "group",
+    quantile_col: str = "quantile",
+) -> pl.DataFrame:
+    """Compound selected factor returns in observation order, starting at one.
+
+    Select buckets/groups before the existing shared weight calculation. Reuse
+    compute_factor_returns without outcome-dependent weight renormalization.
+    Nonfinite outcomes remain unavailable contributions; a date with no defined
+    return has null weighted_return, zero n_obs and a flat wealth step. This
+    matches the existing NaN-aware cumulative-product convention, not evidence
+    that an unobserved return was zero. Caller inputs remain unchanged.
+
+    return_column is an exact supplied selector, not a duration or calendar.
+    Overlapping forward horizons compound mathematically in observation order;
+    this is not self-financing daily holdings, expiration or capital accounting.
+    Wealth starts at one; zero signal retains zero exposure. No annualization
+    or calendar is inferred. Optional date_grid uses compute_factor_returns'
+    explicit output-grid contract, including null unscored dates.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Unique date/asset factors, supplied outcomes and optional group/bucket
+        labels. Pandas date/asset MultiIndex inputs are accepted.
+    return_column : str
+        One exact supplied outcome column to compound.
+    demeaned, group_adjust, equal_weight : bool
+        Shared factor-weight options, applied after selection.
+    quantiles, groups : sequence, optional
+        Keep rows matching both selections before normalization. Empty or
+        unmatched selections produce an empty path unless date_grid is supplied.
+    date_grid : DataFrame, optional
+        Explicit date_col keys for aggregate output. No schedule inferred.
+    factor_col, date_col, asset_col, group_col, quantile_col : str
+        Physical input column names.
+
+    Returns
+    -------
+    polars.DataFrame
+        Actual factor returns/counts/options plus wealth and explicit
+        representation, missing-return policy and observed compounding clock.
+    """
+    from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import _safe_cumprod
+    from ml4t.diagnostic.signal._prepared import positive_count
+
+    if not isinstance(return_column, str) or not return_column:
+        raise ValueError("return_column must name one supplied return column")
+    values = _signal_frame(data)
+    for name, selection, column in [
+        ("quantiles", quantiles, quantile_col),
+        ("groups", groups, group_col),
+    ]:
+        if selection is not None:
+            if isinstance(selection, str | bytes):
+                raise ValueError(f"{name} must be a sequence, not a string")
+            try:
+                selected = list(selection)
+            except TypeError as exc:
+                raise ValueError(f"{name} must be a sequence") from exc
+            if name == "quantiles":
+                selected = [positive_count(value, "quantile") for value in selected]
+            if column not in values.columns:
+                raise ValueError(f"{name} selection requires column {column!r}")
+            values = values.filter(pl.col(column).is_in(selected))
+    returns = compute_factor_returns(
+        values,
+        return_columns=[return_column],
+        demeaned=demeaned,
+        group_adjust=group_adjust,
+        equal_weight=equal_weight,
+        date_grid=date_grid,
+        factor_col=factor_col,
+        date_col=date_col,
+        asset_col=asset_col,
+        group_col=group_col,
+    )
+    wealth = _safe_cumprod(1 + returns["weighted_return"].to_numpy())
+    return returns.with_columns(
+        pl.Series("wealth", wealth),
+        pl.lit("wealth").alias("representation"),
+        pl.lit("observed").alias("compounding_clock"),
+        pl.lit("flat_wealth").alias("missing_return_policy"),
+    )
+
+
+__all__ = [
+    "compute_factor_weights",
+    "compute_factor_returns",
+    "compute_factor_cumulative_returns",
+]

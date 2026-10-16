@@ -108,7 +108,7 @@ def test_quote_factor_wealth_matches_independent_exposure_and_owns_exact_dates(
     ]
     np.testing.assert_allclose(actual["weighted_return"], expected_returns, rtol=0, atol=1e-14)
     np.testing.assert_allclose(actual["wealth"], expected_wealth, rtol=0, atol=1e-14)
-    assert actual["date"].cast(pl.Int64).to_list() == [day.value for day in dates[[1, 3]]]
+    assert [day.value for day in actual["date"].to_pandas()] == [day.value for day in dates[[1, 3]]]
     assert actual["n_obs"].to_list() == [4, 4]
     assert actual["compounding_clock"].to_list() == ["observed"] * 2
     assert actual["representation"].to_list() == ["wealth"] * 2
@@ -147,14 +147,16 @@ def test_real_missing_forward_quotes_keep_unavailable_return_and_flat_not_fabric
     assert actual["weighted_return"].to_list()[1] is None
     assert actual["n_obs"].to_list() == [4, 0]
     np.testing.assert_allclose(actual["wealth"], [49 / 48, 49 / 48], rtol=0, atol=1e-14)
-    assert actual["date"].cast(pl.Int64).to_list() == [day.value for day in dates[[1, 3]]]
+    assert [day.value for day in actual["date"].to_pandas()] == [day.value for day in dates[[1, 3]]]
 
 
 def test_explicit_grid_retains_unscored_dates_without_calendar_inference_or_reweighting():
     panel, dates = _panel(True)
     clock = pl.DataFrame({"date": dates[[1, 2, 3]]})
     actual = _call("owned", panel, date_grid=clock)
-    assert actual["date"].cast(pl.Int64).to_list() == [day.value for day in dates[[1, 2, 3]]]
+    assert [day.value for day in actual["date"].to_pandas()] == [
+        day.value for day in dates[[1, 2, 3]]
+    ]
     assert actual["n_obs"].to_list() == [4, 0, 4]
     assert actual["weighted_return"][1] is None
     np.testing.assert_allclose(
@@ -170,3 +172,37 @@ def test_supplied_return_selector_is_not_parsed_as_duration_or_annualized():
     actual = panel.factor_cumulative_returns(return_column="3h15m")
     assert actual["return_column"].to_list() == ["3h15m"] * 2
     np.testing.assert_allclose(actual["wealth"], [49 / 48, (49 / 48) ** 2], rtol=0, atol=1e-14)
+
+
+@pytest.mark.parametrize("selectors", [{"quantiles": []}, {"groups": []}, {"groups": ["absent"]}])
+def test_empty_real_selection_has_no_invented_dates_or_initial_capital_row(selectors):
+    panel, _ = _panel()
+    actual = _call("owned", panel, **selectors)
+    assert actual.is_empty()
+    assert actual["wealth"].dtype == pl.Float64
+
+
+@pytest.mark.parametrize(
+    "option,match",
+    [
+        ({"quantiles": "1"}, "sequence"),
+        ({"quantiles": True}, "sequence"),
+        ({"quantiles": [0]}, "positive integer"),
+        ({"quantiles": [True]}, "positive integer"),
+        ({"groups": "L"}, "sequence"),
+        ({"demeaned": 1}, "boolean"),
+        ({"group_adjust": "yes"}, "boolean"),
+        ({"equal_weight": None}, "boolean"),
+    ],
+)
+def test_invalid_public_selection_and_weight_options_fail_before_returning_wealth(option, match):
+    panel, _ = _panel()
+    with pytest.raises(ValueError, match=match):
+        _call("owned", panel, **option)
+
+
+@pytest.mark.parametrize("column", ["factor", "missing", "", None])
+def test_owned_panel_cannot_compound_factor_or_unknown_selector_as_supplied_outcome(column):
+    panel, _ = _panel()
+    with pytest.raises(ValueError, match="return_column"):
+        panel.factor_cumulative_returns(return_column=column)

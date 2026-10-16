@@ -177,6 +177,41 @@ class PreparedSignalPanel:
             asset_col=self.asset_col,
         )
 
+    def factor_cumulative_returns(
+        self,
+        *,
+        return_column: str,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+        quantiles: Sequence[int] | None = None,
+        groups: Sequence[str] | None = None,
+        date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Compound one selected supplied horizon after bucket/group selection.
+
+        Reuse the existing factor weights/returns and NaN-aware compounding.
+        See compute_factor_cumulative_returns for explicit observation-order
+        mathematical wealth, missingness and holdings/calendar limitations.
+        """
+        from ml4t.diagnostic.signal.portfolio import compute_factor_cumulative_returns
+
+        if return_column not in self.metadata["return_columns"]:
+            raise ValueError("return_column must select this panel's supplied return columns")
+        return compute_factor_cumulative_returns(
+            self.data,
+            return_column=return_column,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            quantiles=quantiles,
+            groups=groups,
+            date_grid=date_grid,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
     def rank_autocorrelation(
         self,
         *,
