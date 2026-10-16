@@ -366,7 +366,9 @@ def _analyze_data(
         autocorr = compute_autocorrelation(data, lags, date_col, asset_col, factor_col)
         half_life = estimate_half_life(autocorr)
         dated_turnover = (
-            compute_quantile_turnover(data, lags=periods, date_col=date_col, asset_col=asset_col)
+            compute_quantile_turnover(
+                data, lags=tuple(dict.fromkeys(periods)), date_col=date_col, asset_col=asset_col
+            )
             .write_ipc(None)
             .getvalue()
         )

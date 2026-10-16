@@ -66,7 +66,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
 | Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | Unreleased after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
-| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
+| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | Unreleased after 0.1.9, persistence-enabled analyses also retain dated turnover/rank tables and explicit method/count summaries. Quantile cumulative paths and complete reference chart/report composition remain unavailable. |
 | Dated holdings and the complete Alphalens tear sheet | No complete equivalent | Analytical factor weights and supplied-return contributions do not establish capital/expiry accounting, event paths or the complete tear sheet. |
 
 </div>
@@ -491,7 +491,52 @@ dates follow the dated turnover route above. In particular, lags count
 observations, not inferred sessions or days. Comparing Alphalens requires
 declaring the same observation frequency on its date index; default calendar
 parity is not established. These dated tables do not yet populate the report
-bridge or establish full Alphalens/Pyfolio replacement.
+bridge by themselves or establish full Alphalens/Pyfolio replacement.
+
+### Inspect dated persistence in a result and report
+
+Enable persistence in the actual analysis workflow to retain the dated tables
+as well as the existing native scalar summaries. This unreleased workflow after
+0.1.9 works through `analyze_signal`, `analyze_prepared_signal` or the owned panel:
+
+```python
+report_result = panel.analyze(
+    min_assets=2, compute_turnover_flag=True, autocorrelation_lags=2
+)
+persistence = report_result.to_turnover_result()
+assert persistence is not None
+turnover_observations = persistence.get_dataframe("dated_turnover")
+rank_observations = persistence.get_dataframe("dated_autocorrelation")
+print(persistence.get_dataframe("summary"))
+assert report_result.to_tear_sheet().turnover_analysis is not None
+```
+
+The properties `report_result.dated_turnover` and
+`report_result.dated_autocorrelation` return independent table copies with exact
+timestamps, counts, unavailable statuses and method/clock metadata. Signal JSON
+and the structured result's JSON preserve those observations as Arrow IPC/base64,
+including sub-microsecond timestamps and null estimates. Missing or malformed
+paired persistence payloads fail instead of silently discarding a report section.
+
+The existing native `turnover`, `autocorrelation` and `half_life` attributes keep
+their definitions. Dated turnover uses entrants/current membership, and dated
+rank persistence uses full-date ranks before paired Pearson correlation. The
+result's `turnover` DataFrame view averages defined date pairs within each
+bucket/lag; its `autocorrelation` view averages defined date pairs per lag with
+`n_dates` counts. The `summary` view averages bucket means and labels lags
+`1obs`, `2obs`, and so on, not as validated return horizons or sessions. No
+half-life or uncertainty is inferred for these dated summaries. Default analysis
+clocks remain observed dates; authoritative calendar adoption is separate.
+
+With the declared visualization extra, pass `report_result.to_tear_sheet()` to
+the existing `SignalDashboard` to render dated tables, method labels and summary
+values. Unavailable values display as `N/A`; the workflow does not create
+confidence bands from a fixed 252-observation assumption. These are numeric
+table/report paths, not complete dated chart composition or all seven Alphalens
+tear sheets. Quantile cumulative paths, holdings and event workflows remain
+separate accepted work. Persistence-disabled analyses and historical saved
+results without dated observations return no turnover component; scalar means
+cannot reconstruct missing dates, buckets or reference ranks.
 
 ### Construct factor weights and supplied-return contributions
 
@@ -586,10 +631,11 @@ horizon-labelled result to use the requested lag. It retains the normalization
 Alphalens when membership sizes change. Lags count observed factor dates,
 not elapsed calendar days; insufficient history returns NaN.
 
-`SignalResult.to_tear_sheet()` supplies IC and quantile analysis to the HTML
-dashboard. It does not supply turnover analysis or cumulative quantile-return
-paths. Do not infer those panels from a successful HTML render or the presence
-of related plotting functions. Keep Alphalens when those report sections,
+The published baseline's `SignalResult.to_tear_sheet()` supplies IC and quantile
+analysis but not turnover or cumulative quantile-return paths. The unreleased
+persistence-enabled workflow above adds actual dated turnover/rank tables and
+summaries, not cumulative paths or complete reference chart composition. Do not
+infer complete panels from a successful HTML render. Keep Alphalens when those report sections,
 dated holdings/expiration accounting, or event-aligned cumulative paths are required.
 
 Alphalens also supplies grouped summaries and its own complete factor tear

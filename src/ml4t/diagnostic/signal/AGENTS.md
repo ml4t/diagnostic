@@ -51,4 +51,7 @@ entrants/current-membership fractions, counts and explicit observed/supplied lag
 The scalar `compute_turnover` larger-membership definition is retained, not silently replaced.
 `panel.rank_autocorrelation` ranks each complete scored date before pairing assets for Pearson
 correlation, with counts/statuses and the same observed/supplied clocks. Native scalar paired-sample
-Spearman averaging remains distinct; neither dated table yet establishes complete report coverage.
+Spearman averaging remains distinct. Persistence-enabled analyses retain both dated tables in
+`SignalResult` and its JSON; `to_turnover_result` and `to_tear_sheet` expose actual dated observations
+and summaries in the existing report. Cumulative paths and complete chart/sheet coverage remain
+separate; no unavailable data or confidence bands are synthesized from scalar means.

@@ -387,9 +387,10 @@ class SignalResult:
         )
 
     def to_tear_sheet(self, signal_name: str = "signal") -> SignalTearSheet:
-        """Convert to full SignalTearSheet for dashboard display.
+        """Convert available analysis components for dashboard display.
 
-        Bundles to_ic_result() and to_quantile_result() into a SignalTearSheet.
+        Bundle IC, quantile summaries and actual dated persistence when retained.
+        This does not establish cumulative paths or complete legacy tear sheets.
 
         Parameters
         ----------
@@ -399,7 +400,7 @@ class SignalResult:
         Returns
         -------
         SignalTearSheet
-            Pydantic model with IC and quantile analysis components.
+            Pydantic model with available IC, quantile and persistence components.
 
         Examples
         --------

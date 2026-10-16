@@ -84,6 +84,23 @@ The package root re-exports the most common classes and configs for interactive 
         - compute_turnover
         - estimate_half_life
 
+### Dated persistence result views
+
+Persistence-enabled signal analyses retain independent dated observation tables
+through `SignalResult.to_turnover_result()` and the tear-sheet bridge. The
+structured result accepts paired dated observations separately from its legacy
+summary-map representation. Views label observation lags explicitly; they do
+not validate a calendar or infer uncertainty or half-life.
+
+::: ml4t.diagnostic.results.signal_results.TurnoverAnalysisResult
+    options:
+      show_root_heading: true
+      members:
+        - from_observations
+        - get_dataframe
+        - list_available_dataframes
+        - summary
+
 ## Metrics
 
 Use `ml4t.diagnostic.metrics` for reusable metric and feature-statistic helpers.
