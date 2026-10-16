@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class PortfolioTearSheet:
-    """Container for portfolio tear sheet with all figures and data.
+    """Portfolio figures, owned prepared holdings and availability.
 
     Provides methods to display in notebooks, export to HTML,
     and access individual figures.
@@ -42,6 +42,8 @@ class PortfolioTearSheet:
         metrics: Portfolio performance metrics
         figures: Dictionary of individual Plotly figures
         html_content: Pre-rendered HTML content (if generated)
+        holdings: Independent prepared snapshot, or None if absent or disabled
+        availability: Component statuses and reasons for unavailable/disabled analysis
     """
 
     metrics: PortfolioMetrics
@@ -56,7 +58,8 @@ class PortfolioTearSheet:
 
         In Jupyter: renders the 4-panel overview inline (compact=True) or
         displays all individual figures (compact=False).
-        In terminal: opens a single browser window with the overview.
+        Individual figures use Plotly's configured renderer. Compact mode is
+        the existing returns-only overview, not the prepared holdings report.
 
         Parameters
         ----------
@@ -278,9 +281,9 @@ def create_portfolio_dashboard(
     *,
     holdings: HoldingsAnalysisResult | None = None,
 ) -> PortfolioTearSheet:
-    """Create comprehensive portfolio tear sheet.
+    """Create a return dashboard with optional prepared holdings.
 
-    Generates a complete portfolio analysis dashboard with:
+    Includes:
     - Performance metrics summary
     - Cumulative returns chart
     - Drawdown underwater curve
@@ -288,6 +291,7 @@ def create_portfolio_dashboard(
     - Rolling volatility
     - Monthly returns heatmap
     - Returns distribution
+    - Prepared holdings panels when supplied and requested
 
     Parameters
     ----------
@@ -296,9 +300,9 @@ def create_portfolio_dashboard(
     theme : str, optional
         Plot theme ("default", "dark", "print", "presentation")
     include_positions : bool, default True
-        Include position analysis (if positions data available)
+        Render explicit holdings, or record why preparation is required
     include_transactions : bool, default True
-        Include transaction analysis (if transactions data available)
+        Record the request; transaction reporting here remains unavailable
     include_benchmark : bool, default True
         Include benchmark comparison (if benchmark available)
     height_per_row : int, default 300
@@ -313,7 +317,7 @@ def create_portfolio_dashboard(
     Returns
     -------
     PortfolioTearSheet
-        Complete tear sheet with all figures and metrics
+        Figures, metrics, owned holdings and explicit component availability
 
     Examples
     --------

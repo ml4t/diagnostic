@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 from importlib.metadata import version
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -354,13 +355,19 @@ def show_backtest_activity() -> None:
         print(f"Normalization coverage: {activity['coverage']}")
 
 
-def show_prepared_holdings() -> None:
-    import polars as pl
-
+def _prepared_holdings_inputs() -> tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
     dates = pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"])
     returns = pd.Series([0.0, 0.0, 0.0], index=dates)
     positions = pd.DataFrame({"A": [0.0, 400.0, 400.0], "B": [0.0, -300.0, -300.0]}, index=dates)
     valuations = pd.DataFrame({"equity": [1000.0] * 3, "cash": [1000.0, 900.0, 900.0]}, index=dates)
+    return returns, positions, valuations
+
+
+def show_prepared_holdings() -> None:
+    import polars as pl
+
+    returns, positions, valuations = _prepared_holdings_inputs()
+    dates = returns.index
     canonical = positions.reset_index(names="date").melt(
         id_vars="date", var_name="asset", value_name="value"
     )
@@ -432,6 +439,29 @@ def show_prepared_holdings() -> None:
         print("Without reported NAV, raw holdings remain available and NAV ratios are null")
 
 
+def show_prepared_holdings_report(output: Path) -> None:
+    from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
+
+    returns, positions, valuations = _prepared_holdings_inputs()
+    analysis = PortfolioAnalysis(returns, positions=positions)
+    holdings = analysis.compute_holdings_analysis(
+        valuations, complete_snapshots=True, sector_mapping={"A": "Technology"}
+    )
+    report = create_portfolio_dashboard(analysis, holdings=holdings, include_transactions=False)
+    exposure = {trace.name: list(trace.y) for trace in report.figures["Holdings Exposure"].data}
+    np.testing.assert_allclose(exposure["Gross"], [0, 0.7, 0.7])
+    np.testing.assert_allclose(exposure["Short (signed)"], [0, -0.3, -0.3])
+    data = report.to_dict()
+    assert data["holdings"]["timeline"][-1]["cash"] == 900
+    assert data["holdings"]["top_positions"]["short"] == [{"asset": "B", "value": -300.0}]
+    report.save_html(output, include_plotlyjs=True)
+    print(f"Prepared holdings HTML: {output}")
+    print("Embedded Plotly; no Backtest or legacy runtime dependency")
+    print("Unmapped short B remains visible; account cash stays separate from asset sectors")
+    print(report.availability)
+    print(list(report.figures))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -445,13 +475,23 @@ def main() -> None:
             "exposure",
             "activity",
             "holdings",
+            "holdings-report",
         ),
         default="diagnostic",
     )
-    task = parser.parse_args().task
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("holdings-report.html"),
+        help="HTML path for --task holdings-report",
+    )
+    arguments = parser.parse_args()
+    task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
+    if task == "holdings-report":
+        packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
     if task in ("all", "pyfolio"):
@@ -460,6 +500,9 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
+    if task == "holdings-report":
+        show_prepared_holdings_report(arguments.output)
+        return
     if task in ("all", "holdings"):
         show_prepared_holdings()
         if task == "holdings":

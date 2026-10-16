@@ -89,6 +89,17 @@ def test_partial_nav_retains_normalization_gaps_and_full_raw_account_in_export()
     assert report.availability["holdings_normalization"]["status"] == "partial"
 
 
+def test_missing_cash_is_explicitly_unavailable_not_inferred_from_nav_or_asset_values():
+    analysis, _, valuations = _prepared()
+    holdings = analysis.compute_holdings_analysis(valuations.drop("cash"), complete_snapshots=True)
+    report = create_portfolio_dashboard(analysis, holdings=holdings)
+    traces = _traces(report.figures["Holdings Exposure"])
+    assert traces["Account cash"] == [None, None, None]
+    assert traces["Gross"] == [0, 0.7, 0.7]
+    assert report.availability["cash"]["status"] == "unavailable"
+    assert report.to_dict()["holdings"]["timeline"][-1]["cash"] is None
+
+
 @pytest.mark.parametrize("mapping", [{"A": "cash", "B": "cash"}, {"A": "Technology"}])
 def test_sector_panels_keep_asset_cash_label_and_unknown_short_separate_from_account_cash(mapping):
     analysis, holdings, _ = _prepared(sector_mapping=mapping)
@@ -226,6 +237,17 @@ def test_mismatched_real_analysis_windows_raise_before_modifying_caller_holdings
     with pytest.raises(ValueError, match="observation|keys"):
         create_portfolio_dashboard(other, holdings=holdings)
     assert holdings.timeline.equals(before)
+
+
+def test_same_instants_in_a_different_declared_timezone_do_not_silently_match_report_keys():
+    analysis, holdings, _ = _prepared()
+    dates = pd.DatetimeIndex(analysis.dates.to_pandas())
+    other_dates = (
+        dates.tz_localize("UTC") if dates.tz is None else dates.tz_convert("America/New_York")
+    )
+    other = PortfolioAnalysis(pd.Series([0.0] * 3, index=other_dates))
+    with pytest.raises(ValueError, match="timezone"):
+        create_portfolio_dashboard(other, holdings=holdings)
 
 
 def test_cash_only_report_has_known_zero_exposure_and_explicit_no_capital_or_side_results():

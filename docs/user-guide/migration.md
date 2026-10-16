@@ -2,7 +2,8 @@
 
 Diagnostic is not a drop-in replacement for either package. Choose a task below,
 convert its input shape, and compare result definitions before comparing numbers.
-The examples use synthetic data and run with the base `ml4t-diagnostic` package.
+Core examples use synthetic data and the base package. HTML and real-Backtest
+tasks name their optional dependencies below.
 For selected performance metrics, see the separate
 [Empyrical migration assessment](empyrical-migration.md).
 
@@ -15,9 +16,10 @@ claims that the legacy tear sheets or factor panels are reproduced.
 
 ## Run the shared-input comparison
 
-The package-only examples below show each Diagnostic input shape. To compare the
-published legacy and Diagnostic APIs on the same deterministic inputs, run this
-script from a checkout of this repository on Python 3.12:
+The package-only examples below show each Diagnostic input shape. The recorded
+published 0.1.8 baseline uses this
+[frozen comparison script](https://github.com/ml4t/diagnostic/blob/942f367f2f6aff269804d2600ba34814c661bf61/examples/legacy_migration_comparison.py).
+Run it with Python 3.12 and the matching pandas/legacy dependencies:
 
 ```bash
 uv run --no-project --python 3.12 \
@@ -25,14 +27,25 @@ uv run --no-project --python 3.12 \
   --with 'pyfolio-reloaded==0.9.9' \
   --with 'alphalens-reloaded==0.4.6' \
   --with 'empyrical-reloaded==0.5.12' \
-  python examples/legacy_migration_comparison.py --task all
+  --with 'pandas==2.3.3' --with 'pytz==2026.5' \
+  https://raw.githubusercontent.com/ml4t/diagnostic/942f367f2f6aff269804d2600ba34814c661bf61/examples/legacy_migration_comparison.py \
+  --task all
 ```
 
-The comparison script at `examples/legacy_migration_comparison.py` uses the
-published packages, not the source checkout. It asserts the shared
-Sharpe, drawdown, and IC results and prints other measured values. The figures
-below are from that command with the stated versions; they are not performance
-benchmarks or a promise that every legacy output matches.
+That command uses published packages, not the source checkout. It asserts the
+shared Sharpe, drawdown and IC results and prints other measured values. The
+figures below describe that published baseline, not a performance benchmark or
+a promise that every legacy output matches.
+
+The current checkout's script also exercises unreleased prepared-input routes.
+Do not combine it with the older installed package. From the current checkout,
+run the complete source comparison instead:
+
+```bash
+uv run --with 'pyfolio-reloaded==0.9.9' --with 'alphalens-reloaded==0.4.6' \
+  --with 'empyrical-reloaded==0.5.12' --with 'pandas==2.3.3' \
+  python examples/legacy_migration_comparison.py --task all
+```
 
 ## Alphalens factor analysis
 
@@ -1198,10 +1211,68 @@ as null-sector net -300/gross 300. These differences are reconciled against the
 independent input values, not treated as parity targets. Cash-only complete
 snapshots have an empty requested sector table and unchanged cash in timeline.
 
-This route does not yet provide sector report panels, intraday reconstruction, automatic
+The [prepared holdings dashboard](#render-prepared-holdings-in-the-portfolio-dashboard)
+renders these sector tables. This route does not provide intraday reconstruction, automatic
 per-asset Backtest holdings exports, calendar/session-aware `from_pyfolio()` or
 `from_zipline()`, transaction costs/scenarios or complete portfolio reports.
 Those remain accepted coverage requirements. No full replacement is claimed.
+
+#### Render prepared holdings in the portfolio dashboard
+
+This unreleased source route is not included in published 0.1.9.
+Pass the prepared result to the existing dashboard. Plotly is optional; no
+Backtest, Pyfolio or Empyrical runtime is required for caller-prepared inputs:
+
+```python
+from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
+
+holdings = analysis.compute_holdings_analysis(
+    valuations, complete_snapshots=True, sector_mapping={"A": "Technology"}
+)
+report = create_portfolio_dashboard(
+    analysis, holdings=holdings, include_transactions=False
+)
+report.save_html("portfolio-holdings.html", include_plotlyjs=True)
+data = report.to_dict()["holdings"]
+```
+
+Run the existing example from the source checkout:
+
+```bash
+uv run --with plotly python examples/legacy_migration_comparison.py \
+  --task holdings-report --output portfolio-holdings.html
+```
+
+The report renders exposure, counts, gross-capital concentration, signed
+maximum/median NAV weights, top long/short/absolute marked values and requested
+sector net/gross exposure. It uses the prepared results without a second
+analytical engine. Top charts show up to ten sample extrema, not final holdings
+or time-weighted rankings. HHI is a dimensionless concentration index, not a
+return or NAV allocation. Account cash and unclassified asset sectors stay
+distinct.
+
+When some NAV fractions are unavailable, charts retain their gaps. If none are
+defined, exposure/sector charts show raw account-currency values with explicit
+units. Undefined concentration or absent sides have an explanation instead of
+an empty chart. `report.availability` distinguishes requested unavailable data
+from disabled analysis; `include_positions=True` without `holdings` supplies an
+actionable preparation reason. Transaction reporting in this dashboard remains
+explicitly unavailable, not silently implemented by the flag.
+
+The report owns its prepared snapshot and validates exact observation keys and
+timezone. Date labels cannot alias midnight timestamps; timestamp transport
+and exported tables preserve nanosecond keys. Browser date axes have their own
+display resolution; inspect the original keys in the exported data. The export
+contains positions, account timeline, sectors, top tables, coverage and snapshot
+kind. HTML uses atomic replacement, leaving an existing report intact if a
+write fails. Default-width HTML reflows at phone width; explicitly fixed-width
+figures can scroll within their panels. `include_plotlyjs=True` embeds the
+runtime for offline use; the default `"cdn"` instead needs network access.
+
+These are observed prepared-holdings panels, not the complete Pyfolio positions
+tear sheet or all portfolio reports. Calendar-aware ingestion, intraday
+reconstruction, transactions/cost scenarios, risk/capacity/round-trip workflows
+and full Alphalens/Pyfolio composition remain accepted work.
 
 ### Retain raw exposure when equity cannot normalize it
 
