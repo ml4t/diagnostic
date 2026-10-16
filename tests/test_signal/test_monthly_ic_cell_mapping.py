@@ -217,7 +217,9 @@ def test_actual_monthly_report_browser_renders_defined_cells_at_their_real_coord
                 const plot=Array.from(element.querySelectorAll('.js-plotly-plot')).find(plot=>plot._fullLayout.title.text.startsWith('Monthly IC Heatmap'));
                 if(!plot)return {width:innerWidth,plot:null};
                 const image=plot.querySelector('.heatmaplayer image');
-                return {width:innerWidth,plot:{x:plot._fullData[0]?.x||[],y:plot._fullData[0]?.y||[],z:plot.calcdata[0]?.[0]?.z||[],image_height:image?.getBoundingClientRect().height||0,image_width:image?.getBoundingClientRect().width||0,notes:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.textContent)}};
+                const rect=plot.getBoundingClientRect();
+                const cells=Array.from(plot.querySelectorAll('.heatmap-label text')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,font:parseFloat(getComputedStyle(node).fontSize),left:box.left-rect.left,right:box.right-rect.left,top:box.top-rect.top,bottom:box.bottom-rect.top}});
+                return {width:innerWidth,body_font:parseFloat(getComputedStyle(element.querySelector('p')).fontSize),plot:{width:rect.width,height:rect.height,x:plot._fullData[0]?.x||[],y:plot._fullData[0]?.y||[],z:plot.calcdata[0]?.[0]?.z||[],cells,image_height:image?.getBoundingClientRect().height||0,image_width:image?.getBoundingClientRect().width||0,notes:Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.textContent)}};
             }""")
         finally:
             browser.close()
@@ -234,3 +236,10 @@ def test_actual_monthly_report_browser_renders_defined_cells_at_their_real_coord
         assert actual["image_height"] > 100 and actual["image_width"] > 50
         restored = [[math.nan if value is None else value for value in row] for row in actual["z"]]
         np.testing.assert_allclose(restored, means, rtol=0, atol=1e-14, equal_nan=True)
+        assert sorted(cell["text"] for cell in actual["cells"]) == sorted(
+            f"{value:.3f}" for row in means for value in row if math.isfinite(value)
+        )
+        for cell in actual["cells"]:
+            assert 14 <= cell["font"] <= measured["body_font"]
+            assert 0 <= cell["left"] < cell["right"] <= actual["width"]
+            assert 0 <= cell["top"] < cell["bottom"] <= actual["height"]
