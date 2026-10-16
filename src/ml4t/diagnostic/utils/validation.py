@@ -6,6 +6,7 @@ import polars as pl
 def _validate_observation_keys(
     frame: pl.DataFrame, keys: list[str], name: str, *, unique: bool = True
 ) -> None:
+    keys = list(dict.fromkeys(keys))
     if missing := set(keys).difference(frame.columns):
         raise ValueError(f"{name} is missing key columns: {sorted(missing)}")
     for key in keys:

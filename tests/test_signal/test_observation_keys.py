@@ -159,6 +159,17 @@ def test_distinct_assets_at_one_time_are_not_duplicate_observations():
     np.testing.assert_allclose(first_asset["1D_fwd_return"], [0.05, 5 / 105], atol=1e-14)
 
 
+def test_zero_horizon_can_share_the_group_and_observation_key_column():
+    _, prices = _panel()
+    daily_marks = prices.group_by("date").agg(pl.col("price").mean()).sort("date")
+
+    result = compute_forward_returns(
+        daily_marks, periods=0, price_col="price", group_col="date", date_col="date"
+    )
+
+    np.testing.assert_array_equal(result["fwd_ret_0"], [0.0, 0.0, 0.0])
+
+
 def test_nanosecond_distinct_price_keys_are_not_collapsed_into_one_observation():
     factor, prices = (frame.to_pandas() for frame in _panel())
     dates = pd.bdate_range("2025-01-02", periods=3)
