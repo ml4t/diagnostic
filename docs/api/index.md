@@ -285,7 +285,9 @@ The profile's `activity` provides `metrics`, `turnover_timeline`,
 `rebalance_summary` and `coverage`. Turnover/cost-drag ratios require finite
 positive equity; raw execution totals remain available otherwise. The turnover
 mean uses defined active observations only. Coverage discloses both all-observation
-and active-observation sample sizes. The [executed transaction workflow](../user-guide/migration.md#retain-executed-turnover-when-equity-cannot-normalize-it)
+and active-observation sample sizes. The result-to-report bridge retains this
+definition instead of replacing it with a producer summary's turnover convention.
+The [executed transaction workflow](../user-guide/migration.md#retain-executed-turnover-when-equity-cannot-normalize-it)
 describes the current timestamp/NAV denominator and remaining session/cost gaps.
 
 ## Visualization

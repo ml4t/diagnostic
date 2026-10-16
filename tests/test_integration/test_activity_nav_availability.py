@@ -121,18 +121,32 @@ class _ActivityCaption(HTMLParser):
         self.active = False
         self.text = []
         self.has_turnover_section = False
+        self.kpis = {}
+        self.kpi_part = None
+        self.kpi_label = None
 
     def handle_starttag(self, tag, attrs):
+        css = dict(attrs).get("class", "")
+        if css == "executive-kpi-label":
+            self.kpi_part = "label"
+        elif css == "executive-kpi-value":
+            self.kpi_part = "value"
         if dict(attrs).get("data-section") == "activity_overview":
             self.has_turnover_section = True
         if tag == "p" and dict(attrs).get("data-activity-normalization") == "partial":
             self.active = True
 
     def handle_endtag(self, tag):
+        if tag == "div":
+            self.kpi_part = None
         if tag == "p":
             self.active = False
 
     def handle_data(self, text):
+        if self.kpi_part == "label":
+            self.kpi_label = text.strip()
+        elif self.kpi_part == "value":
+            self.kpis[self.kpi_label] = text.strip()
         if self.active:
             self.text.append(text)
 
@@ -150,3 +164,27 @@ def test_actual_zero_nav_closing_fill_full_report_states_its_active_normalizatio
     assert "1 of 2 active observations" in text
     assert "defined active observations only" in text
     assert parser.has_turnover_section
+    assert parser.kpis["AVG TURNOVER"] == "1.00"
+
+
+@pytest.mark.parametrize("mark,expected", [(150.0, "2.00"), (200.0, "1.00")])
+@pytest.mark.parametrize("template", ["full", "quant_trader", "hedge_fund"])
+@pytest.mark.parametrize("periods_per_year", [None, 12])
+def test_actual_report_kpi_uses_diagnostic_active_mean_without_mutating_engine_metrics(
+    mark, expected, template, periods_per_year
+):
+    from ml4t.diagnostic.integration import generate_tearsheet_from_result
+
+    result = _actual_result(mark, close_observation=2)
+    before = dict(result.metrics)
+    parser = _ActivityCaption()
+    parser.feed(
+        generate_tearsheet_from_result(
+            result,
+            template=template,
+            include_statistical=False,
+            periods_per_year=periods_per_year,
+        )
+    )
+    assert parser.kpis["AVG TURNOVER"] == expected
+    assert result.metrics == before

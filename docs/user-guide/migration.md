@@ -1131,9 +1131,11 @@ and normalized observation counts and the separate `n_active_observations`,
 `n_normalized_active_observations` and `active_normalization_coverage`. Inspect
 both sample sizes before comparing windows. Raw execution amounts/counts stay
 available when none of the selected ratios are defined. The full report's
-Activity strip states both normalization samples; the standalone
-`visualization.backtest.plot_activity_overview(profile)` preserves chart gaps
-and raw execution hover details.
+Activity strip states both normalization samples, and the Turnover & Costs
+panel reuses `visualization.backtest.plot_activity_overview(profile)` to retain
+chart gaps and raw execution hover details. Report turnover uses the same
+Diagnostic active-observation mean as the profile, even when the producer's
+summary uses another convention. The producer's metrics are not mutated.
 
 Run the existing migration example with actual next-bar short and cover fills:
 
