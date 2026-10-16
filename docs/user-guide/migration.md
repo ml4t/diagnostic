@@ -202,6 +202,16 @@ of `0.004636`. The agreement is for this ungrouped input and definition.
 
 ### Quantiles, turnover, and report boundaries
 
+In unreleased source after 0.1.9, direct `metrics.cross_sectional_ic_series()`
+and its summary route validate unique, nonmissing observation keys on both
+inputs. Multi-asset panels require `entity_col`; overlapping batches must be
+deduplicated upstream under an explicit policy. Each input supplies only its
+selected value column, so extra historical-return columns cannot replace the
+requested future outcomes, and both selected columns may share a name.
+Equivalent same-timezone datetime storage units align losslessly without
+rounding distinct observations. These boundary corrections do not change the
+finite-pair, minimum-sample or correlation definitions.
+
 Quantile returns need not agree on other panels. In a separate shared-input
 comparison with Alphalens 0.4.6 and Diagnostic 0.1.8, 40 assets on every date
 produced matching raw 1D/5D quantile means. With 12 assets in five quantiles,

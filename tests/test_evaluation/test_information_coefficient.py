@@ -321,16 +321,12 @@ class TestComputeICSeries:
         """Test IC series computation with Polars DataFrames."""
         pred_df, ret_df = sample_data_polars
 
-        # For panel data, we need to join on both date and asset first
-        # then compute IC per date. The function joins on date only.
-        # Create merged data with both columns
-        merged = pred_df.join(ret_df, on=["date", "asset"])
-
         result = cross_sectional_ic_series(
-            merged.select(["date", "prediction"]),
-            merged.select(["date", "forward_return"]),
+            pred_df,
+            ret_df,
             pred_col="prediction",
             ret_col="forward_return",
+            entity_col="asset",
             min_obs=5,
         )
 
@@ -339,6 +335,7 @@ class TestComputeICSeries:
         assert "ic" in result.columns
         assert "n_obs" in result.columns
         assert len(result) == 20  # One row per date
+        assert result["n_obs"].to_list() == [10] * 20
 
     def test_cross_sectional_ic_series_joins_on_entity(self, sample_data_polars):
         """Test explicit cross-sectional API avoids per-date Cartesian products."""
@@ -395,14 +392,12 @@ class TestComputeICSeries:
         """Test IC series computation with Pandas DataFrames."""
         pred_df, ret_df = sample_data_pandas
 
-        # Join on both date and asset for proper alignment
-        merged = pd.merge(pred_df, ret_df, on=["date", "asset"])
-
         result = cross_sectional_ic_series(
-            merged[["date", "prediction"]],
-            merged[["date", "forward_return"]],
+            pred_df,
+            ret_df,
             pred_col="prediction",
             ret_col="forward_return",
+            entity_col="asset",
             min_obs=5,
         )
 
@@ -411,6 +406,7 @@ class TestComputeICSeries:
         assert "ic" in result.columns
         assert "n_obs" in result.columns
         assert len(result) == 20
+        assert result["n_obs"].to_list() == [10] * 20
 
     def test_ic_series_min_obs_filtering(self):
         """Test that min_obs filters out dates with insufficient data."""
@@ -515,14 +511,12 @@ class TestComputeICSeries:
         """Test IC series with Pearson correlation."""
         pred_df, ret_df = sample_data_polars
 
-        # Merge on both keys
-        merged = pred_df.join(ret_df, on=["date", "asset"])
-
         result = cross_sectional_ic_series(
-            merged.select(["date", "prediction"]),
-            merged.select(["date", "forward_return"]),
+            pred_df,
+            ret_df,
             pred_col="prediction",
             ret_col="forward_return",
+            entity_col="asset",
             method="pearson",
             min_obs=5,
         )
