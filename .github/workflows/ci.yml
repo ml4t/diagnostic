@@ -250,6 +250,14 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)"
           --with "polars==0.20.0" --with "pandas==2.3.3"
           python -I examples/legacy_migration_comparison.py --task holdings
+      - name: Run prepared portfolio report at dependency floors from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "polars==0.20.0" --with "pandas==2.3.3" --with "plotly==5.15.0"
+          python -I examples/legacy_migration_comparison.py --task holdings-report
+          --output "$RUNNER_TEMP/prepared-holdings.html"
       - name: Execute prepared portfolio report in a notebook from installed wheel
         shell: bash
         run: >-

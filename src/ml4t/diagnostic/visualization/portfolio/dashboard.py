@@ -493,7 +493,7 @@ def create_portfolio_dashboard(
         )
         figures.update(position_figures)
         availability.update(position_availability)
-    for fig in figures.values():
+    for name, fig in figures.items():
         fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
         fig.update_xaxes(tickfont_size=14, title_font_size=14)
         fig.update_yaxes(tickfont_size=14, title_font_size=14)
@@ -501,8 +501,17 @@ def create_portfolio_dashboard(
         for trace in fig.data:
             if hasattr(trace, "colorbar"):
                 trace.update(colorbar_tickfont_size=14, colorbar_title_font_size=14)
+            if trace.type == "heatmap":
+                trace.update(textfont_size=14)
         if width is None:
-            fig.update_layout(width=None, autosize=True)
+            wide_matrix = name == "Monthly Returns Heatmap"
+            fig.update_layout(width=1000 if wide_matrix else None, autosize=not wide_matrix)
+        if name == "Monthly Returns Heatmap":
+            fig.update_layout(
+                meta={
+                    "description": "Monthly values compound the supplied observations. Scroll horizontally to read all months on narrow screens."
+                }
+            )
 
     return PortfolioTearSheet(
         metrics=metrics,

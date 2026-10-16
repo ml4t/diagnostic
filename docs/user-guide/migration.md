@@ -1277,8 +1277,9 @@ and exported tables preserve nanosecond keys. Browser date axes have their own
 display resolution; inspect the original keys in the exported data. The export
 contains positions, account timeline, sectors, top tables, coverage and snapshot
 kind. HTML uses atomic replacement, leaving an existing report intact if a
-write fails. Default-width HTML reflows at phone width; explicitly fixed-width
-figures can scroll within their panels. `include_plotlyjs=True` embeds the
+write fails. Default-width HTML reflows at phone width. The wide monthly-return
+matrix and explicitly fixed-width figures scroll within their panels to keep
+values readable without widening the page. `include_plotlyjs=True` embeds the
 runtime for offline use; the default `"cdn"` instead needs network access.
 
 In a notebook, `report.show()` displays each figure and the same availability

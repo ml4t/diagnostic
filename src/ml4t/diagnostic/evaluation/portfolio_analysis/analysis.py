@@ -20,6 +20,7 @@ Example:
 from __future__ import annotations
 
 from copy import deepcopy
+from inspect import signature
 from numbers import Integral, Real
 from typing import TYPE_CHECKING, Literal, Union
 
@@ -819,12 +820,13 @@ class PortfolioAnalysis:
             Pivoted DataFrame with years as rows, months as columns
         """
         monthly = self.compute_monthly_returns()
+        pivot_key = "on" if "on" in signature(monthly.pivot).parameters else "columns"
 
         # Pivot to matrix form
         return monthly.pivot(
             values="monthly_return",
             index="year",
-            on="month",
+            **{pivot_key: "month"},
         ).sort("year")
 
     def create_tear_sheet(

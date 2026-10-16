@@ -369,6 +369,8 @@ def test_real_export_uses_true_viewport_and_readable_leaf_text_for_returns_and_h
                             return {
                                 name: p.closest('.plot-container').querySelector('h2').textContent,
                                 width: p._fullLayout.width, visible: b.width>0 && b.height>0,
+                                parentWidth: p.closest('.plot-container').clientWidth,
+                                parentScroll: p.closest('.plot-container').scrollWidth,
                                 prepared: p.layout.meta?.analysis==='prepared_holdings',
                                 text: labels.map(t => parseFloat(getComputedStyle(t).fontSize)),
                                 clipped: labels.some(t => {
@@ -385,7 +387,15 @@ def test_real_export_uses_true_viewport_and_readable_leaf_text_for_returns_and_h
             assert actual["width"] == width and actual["scroll"] <= width
             assert len(actual["plots"]) == (15 if positions else 8)
             assert all(plot["visible"] for plot in actual["plots"])
-            assert all(plot["width"] <= width for plot in actual["plots"])
+            assert all(
+                plot["width"] <= width
+                or (
+                    plot["name"] == "Monthly Returns Heatmap"
+                    and plot["parentWidth"] <= width
+                    and plot["parentScroll"] >= plot["width"]
+                )
+                for plot in actual["plots"]
+            )
             assert all(
                 14 <= size <= actual["body"] for plot in actual["plots"] for size in plot["text"]
             )
