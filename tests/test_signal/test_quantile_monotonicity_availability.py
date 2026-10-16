@@ -165,7 +165,7 @@ def test_actual_report_browser_displays_unavailable_summary_card_and_bar_annotat
     const summary=card.querySelector('.metric-value').textContent;
     Array.from(document.querySelectorAll('button')).find(node=>node.textContent==='Quantile Analysis').click();
     const marker=document.createElement('output');marker.id='monotonicity-browser-check';
-    marker.textContent=JSON.stringify({summary,annotations:Array.from(document.querySelectorAll('#quantile .annotation-text')).map(node=>node.textContent)});document.body.appendChild(marker);});</script>"""
+    marker.textContent=JSON.stringify({viewportWidth:innerWidth,summary,annotations:Array.from(document.querySelectorAll('#quantile .annotation-text')).map(node=>node.textContent)});document.body.appendChild(marker);});</script>"""
     path = tmp_path / "report.html"
     path.write_text(html.replace("</body>", probe + "</body>"))
     completed = subprocess.run(
@@ -190,5 +190,6 @@ def test_actual_report_browser_displays_unavailable_summary_card_and_bar_annotat
     match = re.search(r'<output id="monotonicity-browser-check">([^<]+)</output>', completed.stdout)
     assert match, completed.stderr
     measured = json.loads(match[1])
+    assert measured["viewportWidth"] == width
     assert measured["summary"] == "N/A"
     assert any("Monotonic: N/A" in text for text in measured["annotations"])

@@ -256,6 +256,7 @@ def test_real_browser_tab_click_keeps_persistence_and_parent_report_visible(widt
     match = re.search(r'<output id="persistence-browser-check">([^<]+)</output>', completed.stdout)
     assert match, completed.stderr
     measured = json.loads(match[1])
+    assert measured["viewportWidth"] == width
     assert measured["panelWidth"] > 0 and measured["proseWidth"] > 0
     assert measured["cellFont"] >= 14
     assert measured["documentWidth"] <= measured["viewportWidth"]

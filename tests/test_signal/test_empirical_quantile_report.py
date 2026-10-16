@@ -306,6 +306,7 @@ def test_offline_report_browser_renders_actual_empirical_arrays_with_its_own_run
     match = re.search(r'<output id="empirical-browser-check">([^<]+)</output>', completed.stdout)
     assert match, completed.stderr
     measured = json.loads(match[1])
+    assert measured["viewportWidth"] == width
     assert measured["runtime"] is not None
     actual = {trace["name"]: trace for trace in measured["traces"]}
     assert set(actual) == {"Q1", "Q2"}

@@ -395,6 +395,7 @@ def test_actual_offline_report_browser_renders_spread_values_and_exact_nanosecon
     match = re.search(r'<output id="spread-browser-check">([^<]+)</output>', completed.stdout)
     assert match, completed.stderr
     measured = json.loads(match[1])
+    assert measured["width"] == width
     assert len(measured["traces"]) == 1
     np.testing.assert_allclose(measured["traces"][0]["y"], [0.25, 0.0625], rtol=0, atol=1e-14)
     assert measured["traces"][0]["customdata"][0][0].endswith("000000100+00:00")
