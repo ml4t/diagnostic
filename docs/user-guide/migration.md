@@ -226,7 +226,7 @@ null for unavailable values and restores them as NaN on the result round trip.
 For an unbucketed factor Series and a precomputed return panel, unreleased
 source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
 It does not need Alphalens or prices at runtime. From a source checkout, run the
-[self-contained example](https://github.com/ml4t/diagnostic/blob/8863bb27eb2b394b5f9a5c7969f799f671c1c8d5/examples/signal_panel_cleaning.py):
+[self-contained example](https://github.com/ml4t/diagnostic/blob/095e42260c268cf4ee262edd1a821f9377adf10f/examples/signal_panel_cleaning.py):
 
 ```bash
 uv run python examples/signal_panel_cleaning.py
