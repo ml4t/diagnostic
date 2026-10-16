@@ -177,6 +177,30 @@ class PreparedSignalPanel:
             asset_col=self.asset_col,
         )
 
+    def rank_autocorrelation(
+        self,
+        *,
+        lags: Sequence[int] = (1,),
+        min_obs: int = 2,
+        date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Inspect full-date average ranks before pairing assets on the lag clock.
+
+        Reuse compute_rank_autocorrelation on the owned cleaned common sample.
+        Existing analyze() paired-sample scalar autocorrelation is unchanged.
+        """
+        from ml4t.diagnostic.signal.turnover import compute_rank_autocorrelation
+
+        return compute_rank_autocorrelation(
+            self.data,
+            lags=lags,
+            min_obs=min_obs,
+            date_grid=date_grid,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
     def quantile_turnover(
         self,
         *,

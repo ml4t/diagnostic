@@ -65,6 +65,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
+| Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | Unreleased after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
 | Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | This bridge populates IC and quantile summaries, but leaves `turnover_analysis` and quantile `cumulative_returns` unavailable. Existing plotting components do not make these paths part of this workflow. |
 | Dated holdings and the complete Alphalens tear sheet | No complete equivalent | Analytical factor weights and supplied-return contributions do not establish capital/expiry accounting, event paths or the complete tear sheet. |
 
@@ -446,13 +447,51 @@ The direct `signal.compute_quantile_turnover` accepts native or pandas
 date/asset-indexed bucket tables, including an Alphalens bucket Series converted
 to a DataFrame. Physical column selectors are explicit, inputs stay unchanged,
 and duplicate keys or incomplete grids fail before computation. No factors or
-future return columns are required by this consumer. Dated full-date-rank
-correlation, report/plot integration and authoritative calendar/time contracts
-remain separate capabilities.
+future return columns are required by this consumer. Report/plot integration
+and authoritative calendar/time contracts remain separate capabilities.
 
 The shared membership cache also isolates caller column names from its internal
 aggregation names. A native `quantile_col="assets"` previously raised a duplicate
 column error; that valid selector now retains the same scalar definition.
+
+### Inspect dated full-date rank persistence
+
+Use the same owned sample to rank each date before intersecting assets. This
+unreleased route after 0.1.9 returns dimensionless correlations:
+
+```python
+dated_rank = panel.rank_autocorrelation(lags=(1, 2), min_obs=2)
+assert set(dated_rank["rank_scope"].to_list()) == {"date"}
+assert set(dated_rank["correlation_method"].to_list()) == {"pearson"}
+print(dated_rank)
+```
+
+As in Alphalens 0.4.6, average tied ranks are computed over each complete scored
+date, then Pearson correlation uses common ranked assets. For prior full ranks
+`A=1, B=2, C=3, D=4` and current ranks `A=1, B=2, D=3`, the paired vectors are
+`[1, 2, 4]` and `[1, 2, 3]`, giving `9 / sqrt(84) = 0.981980506...`.
+The existing `compute_autocorrelation` instead reranks the paired sample for
+Spearman correlation, giving `1.0`. Its scalar averaging, missing-value policy
+and default `min_obs=10` are unchanged. Neither definition replaces the other.
+
+The dated route retains `n_obs` common ranked assets, `n_current` and
+`n_previous` rankable counts, and both raw date-level universe sizes. Null/NaN
+scores are omitted before ranking; infinite raw scores retain ordered extreme
+ranks. The direct `signal.compute_rank_autocorrelation` needs only numeric
+factors and unique date/asset keys, not quantiles or future returns. Irrelevant
+missing future returns never select its raw sample. An owned panel has already
+removed nonfinite factors and incomplete common outcomes during preparation;
+its cleaned sample can therefore differ from the direct raw-factor route.
+
+`min_obs` must be at least two. Insufficient common assets or constant paired
+ranks yield null correlations with explicit statuses, not zero; actual counts
+remain visible. Insufficient history has null previous counts. Clock rules,
+physical selectors, exact timestamps, caller ownership and supplied missing
+dates follow the dated turnover route above. In particular, lags count
+observations, not inferred sessions or days. Comparing Alphalens requires
+declaring the same observation frequency on its date index; default calendar
+parity is not established. These dated tables do not yet populate the report
+bridge or establish full Alphalens/Pyfolio replacement.
 
 ### Construct factor weights and supplied-return contributions
 

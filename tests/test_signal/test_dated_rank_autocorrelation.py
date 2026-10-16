@@ -76,7 +76,7 @@ def _direct(data, **options):
     ],
 )
 @pytest.mark.parametrize(
-    "route,representation", itertools.product(["panel", "direct"], ["pandas", "polars"])
+    "route,representation", list(itertools.product(["panel", "direct"], ["pandas", "polars"]))
 )
 def test_quote_ranks_are_computed_before_asset_intersection_and_average_ties(
     profile, expected, n_previous, n_current, n_obs, route, representation
@@ -112,7 +112,7 @@ def test_legacy_paired_spearman_definition_remains_distinct():
 
 
 @pytest.mark.parametrize(
-    "nanoseconds,representation", itertools.product([False, True], ["pandas", "polars"])
+    "nanoseconds,representation", list(itertools.product([False, True], ["pandas", "polars"]))
 )
 def test_supplied_missing_observation_is_not_replaced_by_next_available_date(
     nanoseconds, representation
@@ -229,3 +229,65 @@ def test_repeated_feed_batches_cannot_multiply_asset_pairs():
     panel, _, _ = _inputs()
     with pytest.raises(ValueError, match="unique|duplicate"):
         _direct(pl.concat([panel.data, panel.data]))
+
+
+def test_zero_price_produced_infinite_score_is_ordered_before_pairing():
+    dates = pd.bdate_range("2025-01-02", periods=3)
+    prices = pd.DataFrame(
+        {"A": [2.0, 2.0, 2.0], "B": [1.0, 2.0, 4.0], "C": [0.0, 2.0, 0.0]}, index=dates
+    )
+    factor = (
+        prices.pct_change(fill_method=None)
+        .iloc[1:]
+        .stack(future_stack=True)
+        .rename("factor")
+        .rename_axis(["date", "asset"])
+    )
+    assert math.isinf(factor.loc[(dates[1], "C")])
+    row = _direct(factor.to_frame()).to_dicts()[-1]
+    assert row["n_obs"] == 3 and row["autocorrelation"] == pytest.approx(-0.5)
+
+
+@pytest.mark.parametrize("kind", ["missing_scores", "warmup"])
+def test_unavailable_model_outputs_retain_typed_empty_or_unrankable_observations(kind):
+    panel, raw, dates = _inputs()
+    if kind == "missing_scores":
+        keys = raw.reset_index()[["date", "asset"]]
+        empty_scores = raw.iloc[:0][["factor"]].reset_index()
+        data = keys.merge(empty_scores, on=["date", "asset"], how="left")
+        result = _direct(data)
+        assert result["n_current"].to_list() == [0, 0]
+        assert result["current_universe_size"].to_list() == [4, 3]
+        assert result["autocorrelation"].null_count() == 2
+    else:
+        warmup = raw[["factor"]].reset_index()
+        warmup["factor"] = warmup.groupby("asset")["factor"].transform(
+            lambda values: values.rolling(20).mean()
+        )
+        cleaned = prepare_signal_panel(warmup, raw[["1D"]], quantiles=1, max_loss=1)
+        assert cleaned.data.is_empty()
+        result = cleaned.rank_autocorrelation()
+        assert result.is_empty() and result.schema["autocorrelation"] == pl.Float64
+        grid = cleaned.rank_autocorrelation(date_grid=pd.DataFrame({"date": dates[[1, 3]]}))
+        assert grid["n_current"].to_list() == [0, 0]
+        assert grid["autocorrelation"].null_count() == 2
+    assert panel.data.height == 7
+
+
+@pytest.mark.parametrize(
+    "timezone,origin", [("America/New_York", "1969-12-31"), (None, "2025-01-02")]
+)
+def test_precise_negative_epoch_and_declared_timezone_survive_rank_pairing(timezone, origin):
+    panel, _, _ = _inputs(nanoseconds=True)
+    values = panel.data
+    new_dates = pd.DatetimeIndex(
+        [pd.Timestamp(origin, tz=timezone) + pd.Timedelta(i * 200, unit="ns") for i in range(2)]
+    )
+    old_dates = values["date"].unique().sort()
+    mapping = pl.DataFrame({"date": old_dates, "new_date": pl.from_pandas(pd.Series(new_dates))})
+    values = values.join(mapping, on="date").drop("date").rename({"new_date": "date"})
+    result = _direct(values).to_pandas()
+    assert [pd.Timestamp(value).value for value in result["date"]] == [
+        day.value for day in new_dates
+    ]
+    assert result.iloc[-1]["autocorrelation"] == pytest.approx(9 / math.sqrt(84))

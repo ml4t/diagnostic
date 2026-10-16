@@ -49,3 +49,6 @@ upper-minus-lower difference has +1/-1 (gross-two) exposure, not unit-gross port
 `panel.quantile_turnover` delegates to shared membership calculations with dated
 entrants/current-membership fractions, counts and explicit observed/supplied lag clocks.
 The scalar `compute_turnover` larger-membership definition is retained, not silently replaced.
+`panel.rank_autocorrelation` ranks each complete scored date before pairing assets for Pearson
+correlation, with counts/statuses and the same observed/supplied clocks. Native scalar paired-sample
+Spearman averaging remains distinct; neither dated table yet establishes complete report coverage.
