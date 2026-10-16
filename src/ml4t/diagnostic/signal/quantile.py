@@ -5,6 +5,7 @@ Simple, pure functions for analyzing returns by quantile.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 import numpy as np
@@ -17,23 +18,35 @@ from ml4t.diagnostic.signal.returns import _paired_demean
 from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 
-def _sample_return_statistics(values: np.ndarray) -> tuple[float, float, int]:
+def _sample_return_statistics(values: np.ndarray) -> tuple[float, float, int, float]:
     count = len(values)
-    return (
-        float(np.mean(values)) if count else float("nan"),
-        float(np.std(values, ddof=1)) if count > 1 else float("nan"),
-        count,
-    )
+    if not count:
+        return float("nan"), float("nan"), 0, float("nan")
+    floating = np.asarray(values, dtype=np.float64)
+    if np.isfinite(floating).all():
+        scale = float(np.max(np.abs(floating)))
+        scaled = floating / scale if scale > 0 else floating
+        shifted = scaled - scaled[0]
+        with np.errstate(over="ignore", invalid="ignore"):
+            mean = float(np.mean(values))
+        if not math.isfinite(mean):
+            mean = float(np.mean(scaled)) * scale
+        scaled_std = float(np.std(shifted, ddof=1)) if count > 1 else float("nan")
+        std = scaled_std * scale
+        error = (scaled_std / math.sqrt(count)) * scale
+    else:
+        mean = float(np.mean(floating))
+        std = float(np.std(floating, ddof=1)) if count > 1 else float("nan")
+        error = std / math.sqrt(count)
+    return mean, std, count, error
 
 
 def _quantile_stat_frame(identity: pl.DataFrame, values: np.ndarray) -> pl.DataFrame:
-    mean, std, count = _sample_return_statistics(values)
+    mean, std, count, error = _sample_return_statistics(values)
     return identity.with_columns(
         pl.lit(mean if count else None, dtype=pl.Float64).alias("mean"),
         pl.lit(std if count > 1 else None, dtype=pl.Float64).alias("std"),
-        pl.lit(std / np.sqrt(count) if count > 1 else None, dtype=pl.Float64).alias(
-            "standard_error"
-        ),
+        pl.lit(error if count > 1 else None, dtype=pl.Float64).alias("standard_error"),
         pl.lit(count, dtype=pl.UInt32).alias("n_obs"),
     )
 
@@ -213,8 +226,8 @@ def _compute_quantile_return_statistics(
         quantile = partition.item(0, quantile_col)
         returns = partition.get_column(return_col).to_numpy()
         quantile_number = int(quantile)
-        means[quantile_number], standard_deviations[quantile_number], _ = _sample_return_statistics(
-            returns
+        means[quantile_number], standard_deviations[quantile_number], _, _ = (
+            _sample_return_statistics(returns)
         )
 
     # Fill missing quantiles
