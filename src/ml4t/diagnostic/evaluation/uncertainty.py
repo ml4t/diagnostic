@@ -159,7 +159,12 @@ def compute_backtest_uncertainty(
     seed: int = 0,
     alpha: float = 0.05,
 ) -> BacktestUncertaintyResult:
-    """Compute uncertainty estimates for one strategy return series."""
+    """Compute uncertainty estimates without inferring warmup from zero returns.
+
+    Finite zero returns are observed sessions, including initial cash periods.
+    Select any intended analysis window before calling this function. Nonfinite
+    values are excluded by the existing finite-return policy.
+    """
     returns = _coerce_returns(daily_returns)
     if returns.size < 4:
         raise ValueError("compute_backtest_uncertainty() requires at least 4 finite returns")
@@ -234,8 +239,8 @@ def compute_paired_uncertainty(
     alpha: float = 0.05,
 ) -> PairedUncertaintyResult:
     """Compare aligned challenger and baseline returns with paired bootstrap."""
-    challenger_arr = _coerce_returns(challenger, strip_leading_zero=False)
-    baseline_arr = _coerce_returns(baseline, strip_leading_zero=False)
+    challenger_arr = _coerce_returns(challenger)
+    baseline_arr = _coerce_returns(baseline)
     if challenger_arr.size != baseline_arr.size:
         raise ValueError("challenger and baseline must have the same aligned length")
     if challenger_arr.size < 4:
@@ -351,11 +356,11 @@ def compute_reality_check(
     seed: int = 0,
 ) -> RealityCheckResult:
     """Run White's Reality Check for challengers against a benchmark."""
-    benchmark_arr = _coerce_returns(benchmark, strip_leading_zero=False)
+    benchmark_arr = _coerce_returns(benchmark)
     names: list[str] = []
     arrays: list[np.ndarray[Any, np.dtype[Any]]] = []
     for name, values in challengers.items():
-        arr = _coerce_returns(values, strip_leading_zero=False)
+        arr = _coerce_returns(values)
         if arr.size == benchmark_arr.size and float(np.std(arr, ddof=1)) > 1e-10:
             names.append(name)
             arrays.append(arr)
@@ -498,8 +503,6 @@ def _information_ratio(returns: np.ndarray[Any, np.dtype[Any]], periods_per_year
 
 def _coerce_returns(
     values: np.ndarray[Any, np.dtype[Any]] | pl.Series | pd.Series | pl.DataFrame | list[float],
-    *,
-    strip_leading_zero: bool = True,
 ) -> np.ndarray[Any, np.dtype[Any]]:
     if isinstance(values, pl.DataFrame):
         col = next(
@@ -513,10 +516,6 @@ def _coerce_returns(
         arr = np.asarray(values).flatten()
     arr = np.asarray(arr, dtype=np.float64)
     arr = arr[np.isfinite(arr)]
-    if strip_leading_zero and arr.size:
-        nonzero = np.flatnonzero(arr != 0.0)
-        if nonzero.size:
-            arr = arr[nonzero[0] :]
     return arr
 
 
