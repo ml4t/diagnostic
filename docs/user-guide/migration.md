@@ -102,6 +102,20 @@ The assertion establishes the expected direction on these synthetic data;
 it is not a significance test for a real factor. Use the
 [signal quickstart](../getting-started/quickstart.md) to interpret IC and spread.
 
+For exact integer-count qcut membership, unreleased source after 0.1.9 accepts
+`quantile_method="qcut"` in both `prepare_data` and `analyze_signal`. It reuses
+the Polars quantile backend and preserves ties at interpolated edges. Twelve
+distinct ordered assets and five buckets have counts `3,2,2,2,3`; legacy
+`quantile` rank buckets instead have counts `3,2,3,2,2`. The default remains the
+legacy rank method, and `uniform` remains the legacy epsilon-adjusted width
+method. These are not pandas qcut/cut aliases. Unknown method names now raise
+instead of silently selecting uniform bins. The qcut option requires a positive
+integer count and finite factors, and rejects duplicate edges rather than
+splitting ties. It is not a cleaner: explicit probability/cut edges, zero-aware
+group buckets, complete-case filtering and loss provenance still require
+separate implementation. Other native signal statistics retain their stated
+aggregation conventions.
+
 For an already-cleaned panel, current source can retain its sample and supplied
 buckets directly. This example does not need Alphalens at runtime:
 

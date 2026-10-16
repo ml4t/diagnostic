@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from ml4t.diagnostic.backends.polars_backend import PolarsBackend
 from ml4t.diagnostic.config.signal_config import QuantileMethod
 from ml4t.diagnostic.metrics.basic import (
     compute_forward_returns as compute_forward_returns_core,
 )
+from ml4t.diagnostic.signal._prepared import positive_count
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -106,7 +108,9 @@ def quantize_factor(
     n_quantiles : int, default 5
         Number of quantiles.
     method : QuantileMethod, default QUANTILE
-        QUANTILE = equal frequency, UNIFORM = equal width.
+        QUANTILE retains legacy rank buckets; UNIFORM retains legacy equal-width
+        buckets. QCUT uses interpolated equal-frequency edges on finite factors
+        and rejects duplicate edges. No input cleaning is inferred.
     factor_col : str, default "factor"
         Factor column name.
     date_col : str, default "date"
@@ -117,6 +121,21 @@ def quantize_factor(
     pl.DataFrame
         Data with "quantile" column (1 = lowest, n = highest).
     """
+    method = QuantileMethod(method)
+    if method == QuantileMethod.QCUT:
+        n_quantiles = positive_count(n_quantiles, "n_quantiles")
+        values = data[factor_col]
+        if not values.dtype.is_numeric():
+            raise ValueError("qcut factors must be finite numeric values")
+        if values.null_count() or not values.is_finite().all():
+            raise ValueError(
+                "qcut factors must be finite; select an explicit cleaning policy first"
+            )
+        assigned = PolarsBackend.fast_quantile_assignment(
+            data.select(date_col, factor_col), factor_col, n_quantiles, by_group=date_col
+        )
+        labels = assigned[f"{factor_col}_quantile"].cast(pl.String).cast(pl.Int32)
+        return data.with_columns(labels.alias("quantile"))
     if method == QuantileMethod.QUANTILE:
         # Rank-based (equal count per quantile)
         data = data.with_columns(

@@ -32,8 +32,9 @@ class ICMethod(StrEnum):
 class QuantileMethod(StrEnum):
     """Method for assigning quantile labels."""
 
-    QUANTILE = "quantile"  # pd.qcut - equal frequency
-    UNIFORM = "uniform"  # pd.cut - equal width bins
+    QUANTILE = "quantile"  # Legacy rank-based buckets
+    UNIFORM = "uniform"  # Legacy epsilon-adjusted equal-width buckets
+    QCUT = "qcut"  # Interpolated equal-frequency edges
 
 
 # =============================================================================

@@ -67,7 +67,9 @@ def prepare_data(
     filter_zscore : float | None
         Z-score threshold for outlier filtering. None disables.
     quantile_method : str
-        "quantile" (equal frequency) or "uniform" (equal width).
+        "qcut" uses interpolated equal-frequency edges on finite factors.
+        "quantile" (default) retains legacy rank buckets; "uniform" retains
+        legacy epsilon-adjusted equal-width buckets. Unknown methods raise.
     factor_col, date_col, asset_col, price_col : str
         Column names.
 
@@ -76,6 +78,8 @@ def prepare_data(
     pl.DataFrame
         Prepared data with: date, asset, factor, quantile, {period}D_fwd_return.
     """
+    method = QuantileMethod(quantile_method)
+
     # Convert to Polars
     factor_pl = ensure_polars(factor)
     prices_pl = ensure_polars(prices)
@@ -88,7 +92,6 @@ def prepare_data(
         data = filter_outliers(data, filter_zscore, factor_col, date_col)
 
     # Assign quantiles
-    method = QuantileMethod.QUANTILE if quantile_method == "quantile" else QuantileMethod.UNIFORM
     data = quantize_factor(data, quantiles, method, factor_col, date_col)
 
     return data
@@ -130,7 +133,8 @@ def analyze_signal(
     filter_zscore : float | None
         Z-score threshold for outlier filtering. None disables.
     quantile_method : str
-        "quantile" (equal frequency) or "uniform" (equal width).
+        "qcut" uses interpolated equal-frequency edges on finite factors.
+        "quantile" (default) and "uniform" retain their distinct legacy methods.
     ic_method : str
         "spearman" (rank correlation) or "pearson" (linear correlation).
     compute_turnover_flag : bool
