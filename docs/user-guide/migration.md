@@ -1130,6 +1130,36 @@ zero exposure but undefined concentration, not HHI=0. Inspect normalization
 coverage before using averages. `snapshot_kind="intraday"` describes observed
 snapshots only; it does not reconstruct missing intraday holdings.
 
+#### Rank holdings across observations
+
+Call `holdings.top_positions(top=10, side="absolute")` on the same result to
+rank each asset's largest absolute marked value across the supplied sample.
+`side="long"` selects each asset's largest positive value; `side="short"`
+selects its most negative value, retaining the negative sign. The returned
+`asset`, `value` table uses account-currency values, not NAV weights or
+time-weighted averages. An asset that changes side can appear in both signed
+rankings. Account cash is excluded; explicit zero-only assets appear only in
+the absolute ranking. Ties sort by stable asset ID, independently of input
+column order. `top=0` returns a typed empty table; other limits must be
+nonnegative integers, excluding booleans.
+
+The existing `--task holdings` example also checks the timeline's
+`max_long_weight`, `median_long_weight`, `median_short_weight` and
+`min_short_weight`. These dimensionless statistics use the reported NAV and
+the strictly positive or negative asset values at each observation. For
+A=400/C=100 and B=-300/D=-100 at NAV=1000, they are .4, .25, -.2 and -.3.
+Missing/nonpositive NAV or an empty side leaves its statistics null. Cash and
+zero assets do not enter either side's median. These signed NAV weights are
+distinct from `largest_gross_share` and `gross_hhi`, which use absolute
+invested capital and can remain defined without NAV.
+
+Pinned Pyfolio 0.9.9 `pos.get_top_long_short_abs()` and
+`pos.get_max_median_position_concentration()` provide the reference routes.
+Compare identical marked values and observation keys; Pyfolio derives NAV
+from holdings plus cash while Diagnostic uses reported equity. Diagnostic
+resolves tied top membership by stable ID; Pyfolio retains input-column order.
+Neither route implies a calendar/session conversion or an intraday estimate.
+
 #### Classify holdings by sector
 
 Pass `sector_mapping` to the same `compute_holdings_analysis()` call to request

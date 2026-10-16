@@ -393,6 +393,21 @@ def show_prepared_holdings() -> None:
         print(holdings.timeline)
         print(holdings.positions)
         print(holdings.coverage)
+        assert holdings.top_positions(side="short").rows() == [(short_id, -300.0)]
+        assert holdings.top_positions(top=1).rows() == [(long_id, 400.0)]
+        weight_columns = [
+            "max_long_weight",
+            "median_long_weight",
+            "median_short_weight",
+            "min_short_weight",
+        ]
+        np.testing.assert_allclose(
+            holdings.timeline.select(weight_columns).row(-1), [0.4, 0.4, -0.3, -0.3]
+        )
+        assert holdings.timeline.select(weight_columns).row(0) == (None,) * 4
+        print("Across-sample top marked values, not normalized weights")
+        print(holdings.top_positions())
+        print(holdings.timeline.select("date", *weight_columns))
         final_sectors = holdings.sectors.filter(pl.col("date") == dates[-1])
         assert final_sectors.filter(pl.col("sector") == "Technology")["net_exposure"][0] == 400
         assert final_sectors.filter(pl.col("sector") == "Finance")["net_exposure"][0] == -300
