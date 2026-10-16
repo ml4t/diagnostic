@@ -267,3 +267,20 @@ def test_quantile_horizon_order_follows_requested_selectors_not_alphabetical_lab
     supplied = panel.data.with_columns(pl.col("1D").alias("next_quote"))
     result = compute_quantile_statistics(supplied, return_columns=["next_quote", "1D"])
     assert result["return_column"].unique(maintain_order=True).to_list() == ["next_quote", "1D"]
+
+
+def test_explicit_cut_edges_keep_noncontiguous_bucket_labels_in_quantile_statistics():
+    panel, _ = _panel()
+    values = panel.data
+    sparse = prepare_signal_panel(
+        values.select("date", "asset", "factor"),
+        values.select("date", "asset", "1D"),
+        quantiles=None,
+        bins=[-math.inf, 0, 0.3, 0.4, math.inf],
+        max_loss=0,
+    )
+    assert set(sparse.data["quantile"].to_list()) == {2, 4}
+    result = sparse.quantile_statistics(demeaned=False)
+    assert result["quantile"].to_list() == [2, 4]
+    assert result["mean"].to_list() == pytest.approx([0.0625, 0.40625])
+    assert result["standard_error"].to_list() == pytest.approx([0, 0.09375])
