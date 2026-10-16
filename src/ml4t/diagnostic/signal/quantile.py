@@ -18,19 +18,25 @@ from ml4t.diagnostic.signal.returns import _paired_demean
 from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
 
+def _finite_return_coordinates(values: np.ndarray) -> tuple[np.ndarray, float, float]:
+    floating = np.asarray(values, dtype=np.float64)
+    scale = float(np.max(np.abs(floating)))
+    scaled = floating / scale if scale > 0 else floating
+    offset = float(scaled[0])
+    return scaled - offset, scale, offset
+
+
 def _sample_return_statistics(values: np.ndarray) -> tuple[float, float, int, float]:
     count = len(values)
     if not count:
         return float("nan"), float("nan"), 0, float("nan")
     floating = np.asarray(values, dtype=np.float64)
     if np.isfinite(floating).all():
-        scale = float(np.max(np.abs(floating)))
-        scaled = floating / scale if scale > 0 else floating
-        shifted = scaled - scaled[0]
+        shifted, scale, offset = _finite_return_coordinates(floating)
         with np.errstate(over="ignore", invalid="ignore"):
             mean = float(np.mean(values))
         if not math.isfinite(mean):
-            mean = float(np.mean(scaled)) * scale
+            mean = (float(np.mean(shifted)) + offset) * scale
         scaled_std = float(np.std(shifted, ddof=1)) if count > 1 else float("nan")
         std = scaled_std * scale
         error = (scaled_std / math.sqrt(count)) * scale
@@ -313,8 +319,16 @@ def compute_spread(
             "p_value": float("nan"),
         }
 
-    spread = float(np.mean(top_returns) - np.mean(bottom_returns))
-    t_stat, p_value = ttest_ind(top_returns, bottom_returns)
+    if np.isfinite(top_returns).all() and np.isfinite(bottom_returns).all():
+        combined = np.concatenate([top_returns, bottom_returns])
+        shifted, scale, _ = _finite_return_coordinates(combined)
+        top = shifted[: len(top_returns)]
+        bottom = shifted[len(top_returns) :]
+        spread = float(np.mean(top) - np.mean(bottom)) * scale
+        t_stat, p_value = ttest_ind(top, bottom)
+    else:
+        spread = float(np.mean(top_returns) - np.mean(bottom_returns))
+        t_stat, p_value = ttest_ind(top_returns, bottom_returns)
 
     return {
         "spread": spread,
