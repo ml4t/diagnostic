@@ -84,9 +84,7 @@ def information_coefficient(
         return np.nan
 
     # Remove NaN pairs
-    valid_mask = ~(np.isnan(pred_array) | np.isnan(ret_array))
-    pred_clean = pred_array[valid_mask]
-    ret_clean = ret_array[valid_mask]
+    pred_clean, ret_clean = _nonmissing_ic_pairs(pred_array, ret_array)
 
     if len(pred_clean) < 2:
         if confidence_intervals:
@@ -363,6 +361,13 @@ def cross_sectional_ic(
     }
 
 
+def _nonmissing_ic_pairs(
+    predictions: NDArray[Any], returns: NDArray[Any]
+) -> tuple[NDArray[Any], NDArray[Any]]:
+    valid = ~(np.isnan(predictions) | np.isnan(returns))
+    return predictions[valid], returns[valid]
+
+
 def compute_ic_by_horizon(
     predictions: pl.DataFrame | pd.DataFrame,
     prices: pl.DataFrame | pd.DataFrame,
@@ -415,6 +420,22 @@ def compute_ic_by_horizon(
     >>> print(f"1-day IC: {ic_by_horizon[1]:.3f}")
     >>> print(f"5-day IC: {ic_by_horizon[5]:.3f}")
     """
+    values, _ = _ic_by_horizon_with_counts(
+        predictions, prices, horizons, pred_col, price_col, date_col, group_col, method
+    )
+    return values
+
+
+def _ic_by_horizon_with_counts(
+    predictions: pl.DataFrame | pd.DataFrame,
+    prices: pl.DataFrame | pd.DataFrame,
+    horizons: list[int] | None,
+    pred_col: str,
+    price_col: str,
+    date_col: str,
+    group_col: str | None,
+    method: str,
+) -> tuple[dict[int, float], dict[int, int]]:
     output_as_pandas = isinstance(predictions, pd.DataFrame)
     predictions_pl = (
         predictions if isinstance(predictions, pl.DataFrame) else pl.from_pandas(predictions)
@@ -447,6 +468,7 @@ def compute_ic_by_horizon(
 
     # Compute IC for each horizon
     ic_results: dict[int, float] = {}
+    counts: dict[int, int] = {}
 
     for horizon in horizons:
         ret_col = f"fwd_ret_{horizon}"
@@ -468,8 +490,9 @@ def compute_ic_by_horizon(
             ic_val = float(ic_result)
 
         ic_results[horizon] = ic_val
+        counts[horizon] = len(_nonmissing_ic_pairs(pred_array, ret_array)[0])
 
-    return ic_results
+    return ic_results, counts
 
 
 def compute_ic_ir(
