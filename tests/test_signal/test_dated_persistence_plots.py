@@ -1,6 +1,7 @@
 """Existing plots must consume the real dated persistence producer without empty legacy maps."""
 
 import math
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -182,3 +183,74 @@ def test_real_long_lookback_warmup_displays_unavailable_not_fabricated_observati
             )
     else:
         assert not figure.data
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+@pytest.mark.parametrize("nanoseconds", [False, True])
+@pytest.mark.parametrize("width", [1280, 375])
+def test_actual_dated_report_contains_visible_plot_values_counts_and_exact_clock(
+    profile, nanoseconds, width, tmp_path
+):
+    from ml4t.diagnostic.visualization.signal import SignalDashboard
+
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
+    if chrome is None:
+        pytest.skip("Installed Chrome/Chromium required for actual report checks")
+    playwright = pytest.importorskip("playwright.sync_api")
+    result, _, dates = _component(profile, "owned", nanoseconds, False)
+    path = tmp_path / "report.html"
+    path.write_text(SignalDashboard().generate(result.to_tear_sheet()))
+    errors = []
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1000}, offline=True)
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(path.as_uri(), wait_until="networkidle")
+            page.get_by_role("button", name="Turnover", exact=True).click()
+            page.wait_for_function(
+                """()=>Array.from(document.querySelectorAll('#turnover .js-plotly-plot')).every(p=>Math.abs(p._fullLayout.width-p.getBoundingClientRect().width)<=1)"""
+            )
+            measured = page.locator("#turnover").evaluate("""e=>{
+                const plots=Array.from(e.querySelectorAll('.js-plotly-plot')).map(p=>{
+                    const r=p.getBoundingClientRect(),title=p.querySelector('.gtitle'),t=title.getBoundingClientRect();
+                    return {title:p._fullLayout.title.text,width:r.width,legend:Array.from(p.querySelectorAll('.legendtext')).map(n=>n.textContent),title_bounds:{left:t.left-r.left,right:t.right-r.left},traces:p._fullData.map(d=>({name:d.name,x:d.x,y:d.y,custom:d.customdata})),text:Array.from(p.querySelectorAll('text')).filter(n=>n.getBoundingClientRect().width>0).map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)}))};
+                });return {width:innerWidth,body_font:parseFloat(getComputedStyle(e.querySelector('p')).fontSize),plots};
+            }""")
+        finally:
+            browser.close()
+    assert not errors and measured["width"] == width
+    assert len(measured["plots"]) == 2
+    expected_dates = dates[[1]] if profile == "single_date" else dates[[1, 3]]
+    for plot in measured["plots"]:
+        assert 0 <= plot["title_bounds"]["left"] < plot["title_bounds"]["right"] <= plot["width"]
+        assert plot["legend"] == [trace["name"] for trace in plot["traces"]]
+        for text in plot["text"]:
+            assert 13 <= text["size"] <= measured["body_font"]
+        assert not any("95% CI" in text["text"] for text in plot["text"])
+        for trace in plot["traces"]:
+            assert [pd.Timestamp(day).value for day in trace["x"]] == [
+                day.value for day in expected_dates
+            ]
+            assert [pd.Timestamp(row[0]).value for row in trace["custom"]] == [
+                day.value for day in expected_dates
+            ]
+            expected = (
+                [None]
+                if profile == "single_date"
+                else [
+                    None,
+                    9 / math.sqrt(84)
+                    if plot["title"].startswith("Dated Rank") and profile == "departures"
+                    else None
+                    if plot["title"].startswith("Dated Rank")
+                    else 0.0,
+                ]
+            )
+            np.testing.assert_allclose(
+                np.asarray(trace["y"], dtype=float),
+                np.asarray(expected, dtype=float),
+                rtol=0,
+                atol=1e-14,
+                equal_nan=True,
+            )
