@@ -370,4 +370,9 @@ def estimate_half_life(autocorrelations: list[float]) -> float | None:
     return None  # Never decayed below threshold
 
 
-__all__ = ["compute_turnover", "compute_autocorrelation", "estimate_half_life"]
+__all__ = [
+    "compute_quantile_turnover",
+    "compute_turnover",
+    "compute_autocorrelation",
+    "estimate_half_life",
+]
