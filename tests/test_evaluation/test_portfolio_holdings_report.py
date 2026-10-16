@@ -354,7 +354,7 @@ def test_real_export_uses_true_viewport_and_readable_leaf_text_for_returns_and_h
             )
             actual = page.evaluate(
                 """() => {
-                    const roles = '.xtick text,.ytick text,.legendtext,.gtitle,.xtitle,.ytitle,.colorbar text';
+                    const roles = '.xtick text,.ytick text,.legendtext,.gtitle,.xtitle,.ytitle,.colorbar text,.heatmap-label text';
                     return {
                         width: innerWidth, scroll: document.documentElement.scrollWidth,
                         body: parseFloat(getComputedStyle(document.body).fontSize),
@@ -407,3 +407,65 @@ def test_real_export_uses_true_viewport_and_readable_leaf_text_for_returns_and_h
         finally:
             browser.close()
     assert not errors and not requests
+
+
+@pytest.mark.parametrize("width", [1280, 375])
+def test_full_year_monthly_values_remain_readable_without_overlap_or_document_overflow(
+    width, tmp_path
+):
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome")
+    if chrome is None:
+        pytest.skip("Installed Chrome/Chromium required for actual report checks")
+    playwright = pytest.importorskip("playwright.sync_api")
+    returns = pd.Series(
+        [0.01, -0.02, 0.03, -0.04, 0.05, -0.06, 0.07, -0.08, 0.09, -0.10, 0.11, -0.12],
+        index=pd.date_range("2025-01-01", periods=12, freq="MS"),
+    )
+    report = create_portfolio_dashboard(
+        PortfolioAnalysis(returns, periods_per_year=12),
+        include_positions=False,
+        include_transactions=False,
+    )
+    path = tmp_path / "monthly.html"
+    report.save_html(path, include_plotlyjs=True)
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            context = browser.new_context(
+                viewport={"width": width, "height": 1000},
+                is_mobile=width == 375,
+                has_touch=width == 375,
+                offline=True,
+            )
+            page = context.new_page()
+            page.goto(path.as_uri(), wait_until="load")
+            page.wait_for_function(
+                "Array.from(document.querySelectorAll('.js-plotly-plot')).every(p=>p._fullLayout)"
+            )
+            panel = page.locator(".plot-container").filter(
+                has=page.get_by_role("heading", name="Monthly Returns Heatmap", exact=True)
+            )
+            actual = panel.evaluate("""p=>({
+                width:p.clientWidth, scroll:p.scrollWidth, document:document.documentElement.scrollWidth,
+                viewport:innerWidth, cells:Array.from(p.querySelectorAll('.heatmap-label text')).map(t=>({
+                    text:t.textContent,size:parseFloat(getComputedStyle(t).fontSize),
+                    left:t.getBoundingClientRect().left,right:t.getBoundingClientRect().right
+                }))
+            })""")
+            cells = actual["cells"]
+            assert len(cells) == 13
+            assert [cell["text"] for cell in cells[:12]] == [f"{value:.1%}" for value in returns]
+            assert cells[-1]["text"] == f"{np.prod(1 + returns) - 1:.1%}"
+            assert all(cell["size"] >= 14 for cell in cells)
+            assert all(left["right"] < right["left"] for left, right in zip(cells, cells[1:]))
+            assert actual["document"] <= actual["viewport"] == width
+            if width == 375:
+                assert actual["scroll"] > actual["width"]
+                panel.evaluate("p=>{p.scrollLeft=p.scrollWidth}")
+                annual = panel.locator(".heatmap-label text").last.bounding_box()
+                boundary = panel.bounding_box()
+                assert annual is not None and boundary is not None
+                assert boundary["x"] <= annual["x"]
+                assert annual["x"] + annual["width"] <= boundary["x"] + boundary["width"]
+        finally:
+            browser.close()
