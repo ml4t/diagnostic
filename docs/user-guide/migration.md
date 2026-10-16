@@ -64,6 +64,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Empirical quantile return distributions | `plot_quantile_returns_violin(result.to_quantile_result(), period=...)` | Unreleased after 0.1.9. Uses actual dated bucket means retained by the analysis/report bridge, with explicit adjustment and percentile options. No summary-derived simulation. Pooled bars and density presentation remain distinct. |
 | Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
+| Selected-factor cumulative wealth | `panel.factor_cumulative_returns(return_column=..., quantiles=..., groups=...)` | Unreleased after 0.1.9. Selects rows before shared weighting, then compounds one supplied horizon in observation order. Retains actual returns/counts and a labelled flat-wealth policy for unavailable returns. Not self-financing daily holdings or an inferred calendar. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
 | Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | Unreleased after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
@@ -646,6 +647,48 @@ caller supplies an explicit aggregate `date_grid`; missing requested dates
 have null return and zero count. Capital, signal expirations, dated holdings,
 factor alpha/beta regression and the complete Alphalens/Pyfolio reports remain
 separate work.
+
+### Compound selected factor returns without inferring holdings
+
+Unreleased after 0.1.9, compose the existing factor weights and returns with the
+shared NaN-aware cumulative product. Choose one exact supplied return column:
+
+```python
+wealth = panel.factor_cumulative_returns(
+    return_column="1D",
+    demeaned=True,
+    group_adjust=False,
+    equal_weight=False,
+    quantiles=[1],
+)
+print(wealth.select("date", "weighted_return", "n_obs", "wealth"))
+```
+
+`quantiles=` and `groups=` select rows before mean/median centering and gross
+normalization. They are not filters on a portfolio constructed from the full
+universe. The direct `signal.compute_factor_cumulative_returns` route also
+accepts pandas indexed or native flat data and explicit physical column names.
+Return selectors such as `3h15m` are exact column names, not inferred durations.
+
+`wealth` starts at one and compounds in observation order. It is a wealth
+multiple, not an excess-return percentage or an annualized statistic.
+`weighted_return` remains a decimal supplied-horizon return; `n_obs` counts
+defined contributions, including zero exposure. An entirely unavailable return
+or an unscored requested grid date stays null with count zero. The explicit
+`missing_return_policy="flat_wealth"` retains the previous wealth value rather
+than claiming an observed zero return. Empty selections create no artificial
+initial-capital row. Constant/singleton centered signals retain zero exposure;
+the released Alphalens undefined-weight difference described above still applies.
+
+Actual Alphalens 0.4.6 comparisons match the selected memberships, finite
+weights, contributions and Empyrical 0.5.12 compounding with a matching clock.
+Without date-level frequency metadata, its `asfreq(None)` can expand civil-day
+dates or collapse a subday sample. Diagnostic defaults to observed keys; an
+explicit `date_grid` reproduces a requested reference clock, including null
+holes. Neither behavior validates sessions or bars. Compounding overlapping
+forward outcomes is a mathematical horizon-return path, not self-financing
+daily holdings. Capital, expiration accounting, cumulative quantile report
+panels and full Alphalens/Pyfolio report workflows remain separate accepted work.
 
 ### Quantiles, turnover, and report boundaries
 

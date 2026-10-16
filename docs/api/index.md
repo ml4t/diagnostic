@@ -74,6 +74,7 @@ The package root re-exports the most common classes and configs for interactive 
         - demean_signal_returns
         - compute_factor_weights
         - compute_factor_returns
+        - compute_factor_cumulative_returns
         - compute_ic_summary
         - compute_quantile_returns
         - compute_quantile_statistics

@@ -66,6 +66,9 @@ def main() -> None:
     ]
     portfolio_summary = PortfolioAnalysis(one_period, periods_per_year=252).compute_summary_stats()
     assert abs(portfolio_summary.total_return - ((1 + one_period).prod() - 1)) < 1e-14
+    factor_wealth = panel.factor_cumulative_returns(return_column="1D", group_adjust=True)
+    assert factor_wealth.height == 3
+    assert abs(factor_wealth["wealth"][-1] - (1 + portfolio_summary.total_return)) < 1e-14
     daily_quantiles = panel.quantile_statistics(by_date=True, demeaned=False)
     empirical = result.to_quantile_result().get_dataframe("observations")
     assert empirical.equals(daily_quantiles)
@@ -104,6 +107,7 @@ def main() -> None:
                 "group_adjusted_returns": adjusted.to_dicts(),
                 "factor_weights": weights.to_dicts(),
                 "factor_returns": portfolio_returns.to_dicts(),
+                "factor_wealth": factor_wealth.to_dicts(),
                 "arithmetic_series_total_return": portfolio_summary.total_return,
                 "daily_quantiles": daily_quantiles.to_dicts(),
                 "equal_date_quantiles": equal_date_quantiles.to_dicts(),

@@ -39,6 +39,10 @@ routes accept explicit supplied return-column selectors, without interpreting th
 `panel.factor_weights` and `panel.factor_returns` expose shared magnitude/equal-sign/group-normalized
 weights and their supplied-horizon contributions. Weights ignore horizon-specific future missingness;
 zero signal means zero exposure. These are not dated holdings/expiration accounting or full reports.
+`panel.factor_cumulative_returns` and `compute_factor_cumulative_returns` select buckets/groups
+before those same weights and compound one supplied horizon using the existing NaN-aware product.
+They retain actual return/count missingness, labelled observation-order wealth and an explicit
+flat-wealth policy. No calendar, holding expiration or self-financing daily accounting is inferred.
 
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse
