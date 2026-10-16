@@ -74,6 +74,44 @@ def _analysis(route, factor, marks, panel):
     )
 
 
+def _long_inputs():
+    dates = pd.bdate_range("2025-01-02", periods=30, tz="UTC")
+    returns = pd.DataFrame(
+        {
+            "A": [0.01 + 0.001 * (i % 3) for i in range(30)],
+            "B": [-0.015 + 0.0005 * (i % 5) for i in range(30)],
+            "C": [0.02 + 0.001 * (i % 4) for i in range(30)],
+            "D": [-0.005 + 0.0002 * (i % 7) for i in range(30)],
+        },
+        index=dates,
+    )
+    prices = 100 * (1 + returns).cumprod()
+    factor = (
+        prices.pct_change(fill_method=None)
+        .iloc[1:27]
+        .stack(future_stack=True)
+        .rename("factor")
+        .rename_axis(["date", "asset"])
+    )
+    marks = (
+        prices.stack(future_stack=True).rename("close").rename_axis(["date", "asset"]).reset_index()
+    )
+    forward = (
+        compute_forward_returns(marks, periods=[1, 2], group_col="asset")
+        .set_index(["date", "asset"])[["fwd_ret_1", "fwd_ret_2"]]
+        .rename(columns={"fwd_ret_1": "1D", "fwd_ret_2": "2D"})
+    )
+    panel = prepare_signal_panel(
+        factor,
+        forward,
+        groups={"A": "growth", "C": "growth", "B": "value", "D": "value"},
+        quantiles=2,
+        max_loss=0,
+    )
+    assert panel.data.height == 104
+    return factor.reset_index(), marks, panel, dates
+
+
 def _trace(figure, name):
     return next(trace for trace in figure.data if trace.name == name)
 
@@ -190,6 +228,98 @@ def test_single_bucket_report_does_not_invent_an_automatic_top_bottom_spread():
     model = _analysis("owned", factor, marks, panel).to_quantile_result()
     with pytest.raises(ValueError, match="two|2"):
         plot_spread_timeseries(model)
+
+
+@pytest.mark.parametrize("bandwidth", [np.nan, np.inf, -1, True, "1", None])
+def test_invalid_error_multiplier_is_rejected_instead_of_publishing_misleading_bands(bandwidth):
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    with pytest.raises(ValueError, match="bandwidth"):
+        plot_spread_timeseries(model, bandwidth=bandwidth)
+
+
+@pytest.mark.parametrize("window", [0, -1, 1.5, True, "2"])
+def test_rolling_smoothing_requires_a_positive_observation_count(window):
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    with pytest.raises(ValueError, match="rolling_window"):
+        plot_spread_timeseries(model, rolling_window=window)
+
+
+@pytest.mark.parametrize("show", [1, None])
+def test_error_band_switch_requires_boolean_not_truthy_coercion(show):
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    with pytest.raises(ValueError, match="show_confidence"):
+        plot_spread_timeseries(model, show_confidence=show)
+
+
+def test_unknown_result_period_is_not_silently_substituted_with_the_first_horizon():
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    with pytest.raises(ValueError, match="Period"):
+        plot_spread_timeseries(model, period="7D")
+
+
+def test_selected_statistics_must_actually_include_the_requested_return_column():
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    selected = panel.quantile_statistics(by_date=True).filter(pl.col("return_column") == "1D")
+    with pytest.raises(ValueError, match="selected period"):
+        plot_spread_timeseries(model, period="2D", observations=selected)
+
+
+def test_empty_actual_date_query_has_no_invented_spreads_or_uncertainty():
+    factor, marks, panel, dates = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    selected = panel.quantile_statistics(by_date=True).filter(pl.col("date") < dates[0])
+    figure = plot_spread_timeseries(model, observations=selected)
+    assert all(len(trace.y) == 0 for trace in figure.data)
+    assert any("No defined observed spread" in item.text for item in figure.layout.annotations)
+
+
+@pytest.mark.parametrize("upper,lower,expected", [(1, 2, [-0.25, -0.0625]), (1, 1, [0.0, 0.0])])
+def test_arbitrary_shared_bucket_pairs_keep_their_sign_and_same_bucket_convention(
+    upper, lower, expected
+):
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    figure = plot_spread_timeseries(model, upper_quantile=upper, lower_quantile=lower)
+    np.testing.assert_allclose(_trace(figure, "Observed Spread").y, expected, rtol=0, atol=1e-14)
+
+
+def test_absent_bucket_is_rejected_not_filled_with_a_zero_mean():
+    factor, marks, panel, _ = _inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    with pytest.raises(ValueError, match="absent"):
+        plot_spread_timeseries(model, upper_quantile=3)
+
+
+def test_actual_long_quote_sample_exercises_complete_22_observation_means_not_only_warmup():
+    factor, marks, panel, _ = _long_inputs()
+    model = _analysis("owned", factor, marks, panel).to_quantile_result()
+    figure = plot_spread_timeseries(model, rolling_window=22)
+    expected = [
+        0.025
+        + (
+            0.001 * ((i + 1) % 3)
+            + 0.001 * ((i + 1) % 4)
+            - 0.0005 * ((i + 1) % 5)
+            - 0.0002 * ((i + 1) % 7)
+        )
+        / 2
+        for i in range(1, 27)
+    ]
+    np.testing.assert_allclose(_trace(figure, "Observed Spread").y, expected, rtol=0, atol=1e-14)
+    expected_smoothing = [np.nan] * 21 + [sum(expected[i - 21 : i + 1]) / 22 for i in range(21, 26)]
+    np.testing.assert_allclose(
+        _trace(figure, "22-Observation Rolling Mean").y,
+        expected_smoothing,
+        rtol=0,
+        atol=1e-14,
+        equal_nan=True,
+    )
+    assert np.isfinite(np.asarray(_trace(figure, "Propagated SE band").y)).all()
 
 
 @pytest.mark.parametrize("width", [1280, 375])
