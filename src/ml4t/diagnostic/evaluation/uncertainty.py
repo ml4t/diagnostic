@@ -10,6 +10,11 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import (
+    date_index,
+    date_snapshot,
+    labeled_dates,
+)
 from ml4t.diagnostic.evaluation.stats import (
     _optimal_block_size,
     _stationary_bootstrap_indices,
@@ -238,11 +243,14 @@ def compute_paired_uncertainty(
     seed: int = 0,
     alpha: float = 0.05,
 ) -> PairedUncertaintyResult:
-    """Compare aligned challenger and baseline returns with paired bootstrap."""
-    challenger_arr = _coerce_returns(challenger)
-    baseline_arr = _coerce_returns(baseline)
-    if challenger_arr.size != baseline_arr.size:
-        raise ValueError("challenger and baseline must have the same aligned length")
+    """Compare a shared finite sample with paired bootstrap.
+
+    Dated pandas inputs must describe the same unique observation labels and
+    are aligned chronologically before one common finite mask. Entirely
+    unlabeled inputs are positional and require equal original lengths.
+    Mixing dated and positional inputs is ambiguous and rejected.
+    """
+    challenger_arr, baseline_arr = _cohort_returns([challenger, baseline])
     if challenger_arr.size < 4:
         raise ValueError("compute_paired_uncertainty() requires at least 4 paired returns")
 
@@ -313,11 +321,16 @@ def compute_selection_adjustment(
     periods_per_year: int = 252,
     pbo_returns_by_fold: dict[str, list[float] | np.ndarray[Any, np.dtype[Any]]] | None = None,
 ) -> SelectionAdjustmentResult:
-    """Compute selection-bias diagnostics for a strategy cohort."""
+    """Compute selection-bias diagnostics on one common finite cohort sample.
+
+    Dated series must share observation labels; otherwise every series must be
+    positional with equal original length. Zero returns remain observations.
+    """
+    common = _cohort_returns(list(returns_by_variant.values()))
     arrays = {
         name: arr
-        for name, values in returns_by_variant.items()
-        if (arr := _coerce_returns(values)).size >= 4 and float(np.std(arr, ddof=1)) > 1e-10
+        for name, arr in zip(returns_by_variant, common, strict=True)
+        if arr.size >= 4 and float(np.std(arr, ddof=1)) > 1e-10
     }
     if not arrays:
         raise ValueError(
@@ -355,13 +368,16 @@ def compute_reality_check(
     block_size: int | None = None,
     seed: int = 0,
 ) -> RealityCheckResult:
-    """Run White's Reality Check for challengers against a benchmark."""
-    benchmark_arr = _coerce_returns(benchmark)
+    """Run White's Reality Check on a shared finite observation sample.
+
+    Dated benchmark/challenger labels must match; entirely positional inputs
+    require equal original lengths. No dates or missing outcomes are filled.
+    """
+    benchmark_arr, *common = _cohort_returns([benchmark, *challengers.values()])
     names: list[str] = []
     arrays: list[np.ndarray[Any, np.dtype[Any]]] = []
-    for name, values in challengers.items():
-        arr = _coerce_returns(values)
-        if arr.size == benchmark_arr.size and float(np.std(arr, ddof=1)) > 1e-10:
+    for name, arr in zip(challengers, common, strict=True):
+        if arr.size >= 2 and float(np.std(arr, ddof=1)) > 1e-10:
             names.append(name)
             arrays.append(arr)
     if not arrays:
@@ -503,6 +519,8 @@ def _information_ratio(returns: np.ndarray[Any, np.dtype[Any]], periods_per_year
 
 def _coerce_returns(
     values: np.ndarray[Any, np.dtype[Any]] | pl.Series | pd.Series | pl.DataFrame | list[float],
+    *,
+    finite_only: bool = True,
 ) -> np.ndarray[Any, np.dtype[Any]]:
     if isinstance(values, pl.DataFrame):
         col = next(
@@ -513,10 +531,39 @@ def _coerce_returns(
     elif isinstance(values, pl.Series | pd.Series):
         arr = values.to_numpy()
     else:
-        arr = np.asarray(values).flatten()
+        arr = np.asarray(values)
     arr = np.asarray(arr, dtype=np.float64)
-    arr = arr[np.isfinite(arr)]
-    return arr
+    if arr.ndim != 1:
+        raise ValueError("returns must be a one-dimensional series")
+    return arr[np.isfinite(arr)] if finite_only else arr.copy()
+
+
+def _cohort_returns(values: list[Any]) -> list[np.ndarray[Any, np.dtype[Any]]]:
+    if not values:
+        return []
+    arrays = [_coerce_returns(item, finite_only=False) for item in values]
+    if len({len(array) for array in arrays}) != 1:
+        raise ValueError("cohort returns must have the same aligned length before filtering")
+    labels = [labeled_dates(item) for item in values]
+    if any(label is not None for label in labels):
+        if any(label is None for label in labels):
+            raise ValueError("cohort inputs must be all dated or all positional")
+        indices = [
+            date_index(date_snapshot(label, len(array), "cohort dates", ordered=False))
+            for label, array in zip(labels, arrays, strict=True)
+        ]
+        anchor = indices[0].sort_values()
+        aligned = []
+        for index, array in zip(indices, arrays, strict=True):
+            if index.tz != anchor.tz:
+                raise ValueError("cohort dates must use the same timezone")
+            locations = index.get_indexer(anchor)
+            if (locations < 0).any():
+                raise ValueError("cohort dates must have the same observation labels")
+            aligned.append(array[locations])
+        arrays = aligned
+    common = np.logical_and.reduce([np.isfinite(array) for array in arrays])
+    return [array[common] for array in arrays]
 
 
 def _compute_pbo_from_fold_performance(
