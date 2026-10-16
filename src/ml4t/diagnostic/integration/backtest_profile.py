@@ -363,6 +363,7 @@ class BacktestProfile:
                 predictions_df=self.predictions_df,
                 signals_df=self.signals_df,
                 quote_coverage_threshold=self.quote_coverage_threshold,
+                occupancy_coverage=self.occupancy["coverage"],
             )
         return self._availability_cache
 
@@ -388,7 +389,22 @@ def _build_availability(
     predictions_df: pl.DataFrame,
     signals_df: pl.DataFrame,
     quote_coverage_threshold: float,
+    occupancy_coverage: dict[str, Any] | None = None,
 ) -> BacktestAvailability:
+    normalization = (
+        occupancy_coverage
+        if occupancy_coverage is not None
+        else compute_occupancy_metrics(portfolio_state_df)["coverage"]
+    )
+    occupancy_reason = None
+    if portfolio_state_df.is_empty():
+        occupancy_reason = "Occupancy requires portfolio_state."
+    elif normalization["status"] != "available":
+        occupancy_reason = (
+            f"Exposure normalization is defined for {normalization['n_normalized_observations']} "
+            f"of {normalization['n_observations']} snapshots. Nonpositive or unusable equity/exposure "
+            "leaves ratios unavailable; raw dollar exposures and position counts remain available."
+        )
     surfaces = {
         "trades": AvailabilityInfo(
             AvailabilityState.AVAILABLE
@@ -525,10 +541,13 @@ def _build_availability(
         "occupancy": AvailabilityInfo(
             (
                 AvailabilityState.AVAILABLE
+                if normalization["status"] == "available"
+                else AvailabilityState.PARTIAL
                 if not portfolio_state_df.is_empty()
                 else AvailabilityState.UNAVAILABLE
             ),
-            None if not portfolio_state_df.is_empty() else "Occupancy requires portfolio_state.",
+            occupancy_reason,
+            coverage=normalization["normalization_coverage"],
         ),
         "attribution": AvailabilityInfo(
             attribution_status,
@@ -559,6 +578,11 @@ def _build_availability(
     }
 
     metrics = {
+        "exposure_normalization": AvailabilityInfo(
+            AvailabilityState(normalization["status"]),
+            occupancy_reason,
+            coverage=normalization["normalization_coverage"],
+        ),
         "turnover": AvailabilityInfo(
             (
                 AvailabilityState.AVAILABLE
