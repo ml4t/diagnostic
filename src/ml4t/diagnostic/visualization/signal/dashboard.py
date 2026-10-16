@@ -640,18 +640,24 @@ class SignalDashboard(BaseDashboard):
                 "Unavailable estimates remain missing; no half-life or confidence interval "
                 "is inferred. Native scalar summaries retain their separate definitions.</p>"
             )
-            html_parts.append(self._create_turnover_summary_table(ta))
+            html_parts.append(
+                f'<div style="overflow-x: auto;">{self._create_turnover_summary_table(ta)}</div>'
+            )
             for name, title in [
                 ("dated_turnover", "Dated quantile turnover"),
                 ("dated_autocorrelation", "Dated rank autocorrelation"),
             ]:
                 html_parts.append(f"<h3>{title}</h3>")
-                table = (
-                    ta.get_dataframe(name)
-                    .to_pandas()
-                    .to_html(index=False, na_rep="N/A", classes="feature-table", border=0)
+                observations = ta.get_dataframe(name)
+                observations = observations.select(
+                    ["date", *[column for column in observations.columns if column != "date"]]
                 )
-                html_parts.append(f'<div style="overflow-x: auto;">{table}</div>')
+                table = observations.to_pandas().to_html(
+                    index=False, na_rep="N/A", classes="feature-table", border=0
+                )
+                html_parts.append(
+                    f'<div style="overflow-x: auto; white-space: nowrap;">{table}</div>'
+                )
             return "\n".join(html_parts)
         theme_name = "dark" if self.theme == "dark" else "default"
 
