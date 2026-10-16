@@ -245,6 +245,8 @@ These workflows live under `ml4t.diagnostic.evaluation`:
 
 For complete signed holdings on exact observed keys, see
 [prepared holdings](../user-guide/migration.md#analyze-prepared-holdings-on-observed-keys).
+Optional `sector_mapping` adds [sector aggregates](../user-guide/migration.md#classify-holdings-by-sector)
+without dropping unknown classifications or merging account cash with sector names.
 Calendar/session ingestion and full Pyfolio reporting remain separate work.
 
 ::: ml4t.diagnostic.evaluation.portfolio_analysis.PortfolioAnalysis.compute_holdings_analysis

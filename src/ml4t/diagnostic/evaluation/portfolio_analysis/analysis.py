@@ -31,6 +31,7 @@ from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
 from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
+from .holdings_sectors import SectorMapping, analyze_sector_exposures
 from .inputs import (
     annual_risk_free,
     initial_valuation_time,
@@ -229,6 +230,7 @@ class PortfolioAnalysis:
         *,
         complete_snapshots: bool,
         snapshot_kind: Literal["observed", "end_of_day", "intraday"] = "observed",
+        sector_mapping: SectorMapping | None = None,
     ) -> HoldingsAnalysisResult:
         """Analyze complete holdings on exact supplied return observation keys.
 
@@ -243,17 +245,27 @@ class PortfolioAnalysis:
         forward fill, intraday reconstruction or instrument valuation is done.
         Snapshot kind is caller-declared provenance, not an inferred schedule.
         The result and its tables are independent of inputs and previous calls.
+
+        Optional sector_mapping accepts a static mapping/Series or asset/sector
+        table with optional exact date keys. Unknown labels remain a null-sector
+        group. Dated labels are not filled between observations. Account cash
+        stays in timeline, separate from any sector literally named "cash".
         """
         self.require_dates()
         if self._positions is None:
             raise ValueError("positions are required for holdings analysis")
-        return analyze_holdings(
+        result = analyze_holdings(
             self._positions,
             valuations,
             self._dates,
             complete_snapshots=complete_snapshots,
             snapshot_kind=snapshot_kind,
         )
+        if sector_mapping is not None:
+            result.positions, result.sectors = analyze_sector_exposures(
+                result.positions, result.timeline, sector_mapping
+            )
+        return result
 
     # =========================================================================
     # Core Metric Methods
