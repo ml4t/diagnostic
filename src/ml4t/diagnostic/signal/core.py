@@ -324,11 +324,8 @@ def _analyze_data(
         if summary["std"] > 0:
             ic_ir[period_key] = summary["mean"] / summary["std"]
         else:
-            ic_ir[period_key] = 0.0
-        if ic_vals:
-            ic_positive_pct[period_key] = sum(1 for x in ic_vals if x > 0) / len(ic_vals) * 100
-        else:
-            ic_positive_pct[period_key] = 0.0
+            ic_ir[period_key] = float("nan")
+        ic_positive_pct[period_key] = summary["pct_positive"] * 100
 
         # Quantile returns
         q_returns, q_std = _compute_quantile_return_statistics(data, period, quantiles)
