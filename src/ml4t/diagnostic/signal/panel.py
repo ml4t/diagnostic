@@ -124,6 +124,59 @@ class PreparedSignalPanel:
             date_grid=date_grid,
         )
 
+    def factor_weights(
+        self,
+        *,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+    ) -> pl.DataFrame:
+        """Inspect factor exposure with explicit zero-signal handling.
+
+        See compute_factor_weights for the single shared weight calculation.
+        This constructs no dated holdings, capital or expiration accounting.
+        """
+        from ml4t.diagnostic.signal.portfolio import compute_factor_weights
+
+        return compute_factor_weights(
+            self.data,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
+    def factor_returns(
+        self,
+        *,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+        by_asset: bool = False,
+        date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Inspect per-asset contributions or aggregate supplied-horizon returns.
+
+        Weights do not depend on horizon-specific future availability. See
+        compute_factor_returns for counts, missing tails and explicit output grids.
+        """
+        from ml4t.diagnostic.signal.portfolio import compute_factor_returns
+
+        return compute_factor_returns(
+            self.data,
+            return_columns=self.metadata["return_columns"],
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            by_asset=by_asset,
+            date_grid=date_grid,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
     def demean_returns(self, *, by_group: bool = False) -> pl.DataFrame:
         """Inspect date- or date/group-demeaned outcomes without changing this panel.
 
