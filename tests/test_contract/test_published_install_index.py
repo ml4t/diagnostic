@@ -49,6 +49,7 @@ def produced_wheels(tmp_path_factory):
 def _index(wheels, scenario):
     state = {"index_requests": 0}
     payloads = dict(wheels.values())
+    release_stalled_request = threading.Event()
 
     class Index(BaseHTTPRequestHandler):
         def do_HEAD(self):
@@ -77,6 +78,8 @@ def _index(wheels, scenario):
                 mime = "application/json"
             elif self.path == "/simple/ml4t-diagnostic/":
                 state["index_requests"] += 1
+                if scenario == "stall":
+                    release_stalled_request.wait(timeout=15)
                 versions = (
                     ["1.2.2"]
                     if scenario == "missing" or state["index_requests"] == 1
@@ -107,7 +110,11 @@ def _index(wheels, scenario):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                if scenario != "stall":
+                    raise
 
         def log_message(self, *args):
             pass
@@ -118,6 +125,7 @@ def _index(wheels, scenario):
     try:
         yield f"http://127.0.0.1:{server.server_port}", state
     finally:
+        release_stalled_request.set()
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
@@ -136,7 +144,7 @@ def _python(tmp_path):
     return environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
-def _install(python, origin, attempts):
+def _install(python, origin, attempts, *, timeout=120):
     return subprocess.run(
         [
             sys.executable,
@@ -151,6 +159,8 @@ def _install(python, origin, attempts):
             str(attempts),
             "--delay",
             "0",
+            "--timeout",
+            str(timeout),
         ],
         capture_output=True,
         text=True,
@@ -205,6 +215,10 @@ def test_install_still_fails_for_missing_or_corrupt_release(produced_wheels, tmp
         result = _install(python, origin, attempts=3)
         assert result.returncode != 0
         assert state["index_requests"] == 3
+        if scenario == "corrupt":
+            assert "invalid" in result.stderr.lower() or "hash" in result.stderr.lower()
+        else:
+            assert "no version" in result.stderr
     absent = subprocess.run(
         [
             str(python),
@@ -217,3 +231,51 @@ def test_install_still_fails_for_missing_or_corrupt_release(produced_wheels, tmp
         timeout=15,
     )
     assert absent.returncode != 0, "Failed installation must not claim the target is installed"
+
+
+def test_stalled_real_installer_is_terminated_without_starting_overlapping_attempts(
+    produced_wheels, tmp_path
+):
+    python = _python(tmp_path)
+    with _index(produced_wheels, "stall") as (origin, state):
+        result = _install(python, origin, attempts=3, timeout=2)
+        assert state["index_requests"] == 1
+        assert result.returncode == 124
+        assert "timed out" in result.stdout
+        assert "attempt 2/" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--attempts", "0"],
+        ["--delay", "nan"],
+        ["--timeout", "inf"],
+        ["--timeout", "0"],
+        ["--version", ">=1.2.3"],
+    ],
+    ids=["no-attempts", "nan-delay", "infinite-timeout", "zero-timeout", "version-range"],
+)
+def test_invalid_retry_bounds_or_unpinned_version_fail_before_installer(
+    produced_wheels, tmp_path, arguments
+):
+    python = _python(tmp_path)
+    with _index(produced_wheels, "delayed") as (origin, state):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--python",
+                str(python),
+                "--version",
+                "1.2.3",
+                "--index-url",
+                f"{origin}/simple",
+                *arguments,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert result.returncode == 2
+        assert state["index_requests"] == 0
