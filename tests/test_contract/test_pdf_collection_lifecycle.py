@@ -19,7 +19,7 @@ def observe(event,args):
     if event=='subprocess.Popen':
         launched.append(str(args[0]))
 sys.addaudithook(observe)
-status=pytest.main(['--collect-only','-q','-c',os.devnull,'-p','no:cacheprovider','-o','addopts=',sys.argv[1]])
+status=pytest.main(['--noconftest','--collect-only','-q','-c',os.devnull,'-p','no:cacheprovider','-o','addopts=',sys.argv[1]])
 python_children=[path for path in launched if os.path.normcase(os.path.realpath(path))==os.path.normcase(os.path.realpath(sys.executable))]
 print(json.dumps({'collection_exit_code':status,'launched_executables':launched,'python_children':python_children}))
 assert status==0
