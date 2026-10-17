@@ -472,8 +472,7 @@ def generate_tearsheet_from_result(
     *,
     periods_per_year: int | None = None,
 ) -> str:
-    """Generate an HTML tearsheet from a BacktestResult."""
-    del include_statistical
+    """Generate an HTML tearsheet, optionally excluding statistical inference."""
     from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
     profile = analyze_backtest_result(result, calendar=calendar, benchmark=benchmark)
@@ -508,6 +507,7 @@ def generate_tearsheet_from_result(
         benchmark_name=benchmark_name,
         report_metadata=effective_metadata,
         periods_per_year=periods_per_year,
+        include_statistical=include_statistical,
     )
 
     if output_path is not None:
