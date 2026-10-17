@@ -79,24 +79,24 @@ import plotly.graph_objects as go
 from pypdf import PdfReader
 from ml4t import diagnostic
 from ml4t.diagnostic.visualization import export_figures_to_pdf
-instances=[]
-original_init=kaleido.Kaleido.__init__
-original_close=kaleido.Kaleido.close
-def observe_init(self,*args,**kwargs):
-    stage('renderer_init_start')
-    original_init(self,*args,**kwargs)
-    instances.append(self)
-    stage('renderer_init_return')
-async def observe_close(self,*args,**kwargs):
-    stage('renderer_close_start')
-    result=await original_close(self,*args,**kwargs)
-    process=getattr(self,'subprocess',None)
-    stage('renderer_close_return',returncode=None if process is None else process.poll())
-    return result
 observe=sys.argv[3]=='1'
 if observe:
-    kaleido.Kaleido.__init__=observe_init
-    kaleido.Kaleido.close=observe_close
+    from ml4t.diagnostic.visualization import _pdf_process
+    observation_path=Path(sys.argv[1]).with_suffix('.renderer.json')
+    observer='''
+import json,kaleido,psutil
+from pathlib import Path
+original_open=kaleido.Kaleido.open
+async def observe_open(self,*args,**kwargs):
+    result=await original_open(self,*args,**kwargs)
+    path=Path(OBSERVATION_PATH)
+    observations=json.loads(path.read_text()) if path.exists() else []
+    observations.append({'pid':self.subprocess.pid,'created':psutil.Process(self.subprocess.pid).create_time()})
+    path.write_text(json.dumps(observations))
+    return result
+kaleido.Kaleido.open=observe_open
+'''.replace('OBSERVATION_PATH',repr(str(observation_path)))
+    _pdf_process._BOOTSTRAP=observer+chr(10)+_pdf_process._BOOTSTRAP
 stage('imports_complete',versions={name:version(name) for name in ['plotly','kaleido','choreographer','pypdf']})
 figures=[go.Figure(go.Bar(x=['A','B'],y=[1,-2])),
          go.Figure(go.Scatter(x=[1,2,3],y=[.85,.92,.78])),
@@ -114,9 +114,22 @@ texts=[page.extract_text() for page in reader.pages]
 stage('pdf_text_extracted')
 assert len(texts)==3 and all(title in text for title,text in zip(titles,texts))
 assert [figure.to_json() for figure in figures]==before
+if observe:
+    import psutil
+    observations=json.loads(observation_path.read_text())
+    assert len(observations)==1,observations
+    terminal=[]
+    for observed in observations:
+        try:
+            actual=psutil.Process(observed['pid'])
+            terminal.append(actual.create_time()!=observed['created'] or actual.status()==psutil.STATUS_ZOMBIE)
+        except psutil.NoSuchProcess:
+            terminal.append(True)
+    assert all(terminal),observations
 print(json.dumps({'module':diagnostic.__file__,
     'versions':{name:version(name) for name in ['ml4t-diagnostic','plotly','kaleido','choreographer','pypdf']},
-    'renderer_observed':observe,'renderer_instances':len(instances),'renderer_returncodes':[instance.subprocess.poll() for instance in instances],
+    'renderer_observed':observe,'renderer_instances':len(observations) if observe else 0,
+    'renderer_terminal':terminal if observe else [],
     'page_boxes':[[float(value) for value in page.mediabox] for page in reader.pages],
     'page_text':texts,'pdf_sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest(),
     'original_figures_unchanged':True}))
@@ -162,7 +175,7 @@ stage('assertions_complete')
     result = json.loads(stdout)
     if observe_renderer:
         assert result["renderer_instances"] == 1, result
-        assert all(code is not None for code in result["renderer_returncodes"]), result
+        assert all(result["renderer_terminal"]), result
     assert result["page_boxes"] == [[0, 0, 600 * scale, 450 * scale]] * 3
     print(json.dumps(result))
 

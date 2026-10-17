@@ -223,8 +223,9 @@ def export_figures_to_pdf(
     Each figure is rendered as a separate page in the PDF. Uses kaleido for
     high-quality vector rendering.
     Batch-capable Plotly/Kaleido versions share one renderer across pages;
-    versions without batch support retain per-figure export. Renderer and cleanup
-    errors propagate to the caller.
+    versions without batch support retain per-figure export. Rendering failures
+    propagate. Modern browser-close failures are recoverable only after all pages
+    are written and the owned renderer processes have been terminated.
 
     Parameters
     ----------
@@ -1334,10 +1335,11 @@ def _export_figures_multipage(
         if callable(getattr(pio, "write_images", None)) and callable(
             getattr(kaleido, "write_fig_sync", None)
         ):
-            pio.write_images(
-                fig=print_figures,
-                file=[str(path) for path in temp_pdfs],
-                format="pdf",
+            from ml4t.diagnostic.visualization._pdf_process import render_pdf_pages
+
+            render_pdf_pages(
+                print_figures,
+                temp_pdfs,
                 width=width,
                 height=height,
                 scale=scale,
