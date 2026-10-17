@@ -28,24 +28,36 @@ class _PlannedOrders(Strategy):
 
 
 @pytest.mark.parametrize(
-    ("marks", "orders", "pnls", "expected"),
+    ("marks", "orders", "pnls", "expected", "bridge_expected"),
     [
-        ([100.0] * 4, {}, [], math.nan),
-        ([100.0] * 4, {0: 4}, [0.0], math.nan),
-        ([100.0] * 4, {0: 4, 2: -4}, [0.0], math.nan),
-        ([100.0, 100.0, 110.0, 120.0], {0: 4, 2: -4}, [80.0], math.inf),
-        ([100.0, 100.0, 90.0, 80.0], {0: 4, 2: -4}, [-80.0], 0.0),
+        ([100.0] * 4, {}, [], math.nan, math.nan),
+        ([100.0] * 4, {0: 4}, [0.0], math.nan, math.nan),
+        ([100.0] * 4, {0: 4, 2: -4}, [0.0], math.nan, math.nan),
+        ([100.0, 100.0, 110.0, 120.0], {0: 4}, [80.0], math.inf, math.nan),
+        ([100.0, 100.0, 90.0, 80.0], {0: 4}, [-80.0], 0.0, math.nan),
+        ([100.0, 100.0, 110.0, 120.0], {0: 4, 2: -4}, [80.0], math.inf, math.inf),
+        ([100.0, 100.0, 90.0, 80.0], {0: 4, 2: -4}, [-80.0], 0.0, 0.0),
         (
             [100.0, 100.0, 110.0, 110.0, 100.0, 100.0, 80.0, 80.0],
             {0: 4, 2: -4, 4: 4, 6: -4},
             [40.0, -80.0],
             0.5,
+            0.5,
         ),
     ],
-    ids=["no-trades", "marked-flat", "closed-flat", "gain-only", "loss-only", "mixed-cash-pnl"],
+    ids=[
+        "no-trades",
+        "marked-flat",
+        "closed-flat",
+        "open-gain",
+        "open-loss",
+        "gain-only",
+        "loss-only",
+        "mixed-cash-pnl",
+    ],
 )
 def test_actual_undefined_trade_profit_factor_survives_profile_bridge_and_default_html(
-    marks, orders, pnls, expected
+    marks, orders, pnls, expected, bridge_expected
 ):
     dates = [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6, 7, 8, 9, 10, 13]]
     bars = pl.DataFrame(
@@ -65,17 +77,17 @@ def test_actual_undefined_trade_profit_factor_survives_profile_bridge_and_defaul
     profile = analyze_backtest_result(result)
     assert profile.edge["metrics"]["num_trades"] == len(pnls)
     values = [
-        profile.edge["metrics"]["profit_factor"],
-        profile.summary["profit_factor"],
-        compute_metrics_from_result(result)["profit_factor"],
+        (profile.edge["metrics"]["profit_factor"], expected),
+        (profile.summary["profit_factor"], expected),
+        (compute_metrics_from_result(result)["profit_factor"], bridge_expected),
     ]
-    for value in values:
-        if math.isnan(expected):
+    for value, target in values:
+        if math.isnan(target):
             assert math.isnan(value), "Zero gains and losses do not establish a trade profit factor"
-        elif math.isinf(expected):
+        elif math.isinf(target):
             assert value == math.inf
         else:
-            assert value == pytest.approx(expected, rel=1e-12, abs=0)
+            assert value == pytest.approx(target, rel=1e-12, abs=0)
     rendered = generate_tearsheet_from_result(result, template="full", include_statistical=False)
     labels = re.findall(
         r'<div class="executive-kpi-label">PROFIT FACTOR</div>\s*'
@@ -84,7 +96,11 @@ def test_actual_undefined_trade_profit_factor_survives_profile_bridge_and_defaul
         re.IGNORECASE,
     )
     expected_label = (
-        "N/A" if math.isnan(expected) else "∞" if math.isinf(expected) else f"{expected:.2f}"
+        "N/A"
+        if math.isnan(bridge_expected)
+        else "∞"
+        if math.isinf(bridge_expected)
+        else f"{bridge_expected:.2f}"
     )
     assert labels and {html.unescape(label) for label in labels} == {expected_label}
     assert result.to_trades_dataframe().equals(trades)
