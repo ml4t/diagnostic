@@ -98,6 +98,12 @@ print('ML4T_NOTEBOOK:'+json.dumps({'module':diagnostic.__file__,'availability':r
     assert "Analysis availability" in html
     assert "Transaction analysis was not requested" in html
     assert "Missing labels remain unclassified" in html
+    assert metadata["availability"]["normal_fit"]["status"] == "unavailable"
+    assert "zero dispersion" in html
+    distribution = next(
+        fig for fig in figures if fig["layout"]["title"]["text"] == "Returns Distribution"
+    )
+    assert not any(trace["name"].startswith("Normal") for trace in distribution["data"])
     print(
         json.dumps(
             {
