@@ -122,7 +122,14 @@ if observe:
     for observed in observations:
         try:
             actual=psutil.Process(observed['pid'])
-            terminal.append(actual.create_time()!=observed['created'] or actual.status()==psutil.STATUS_ZOMBIE)
+            if actual.create_time()!=observed['created'] or actual.status()==psutil.STATUS_ZOMBIE:
+                terminal.append(True)
+            else:
+                try:
+                    actual.wait(timeout=5)
+                    terminal.append(True)
+                except psutil.TimeoutExpired:
+                    terminal.append(False)
         except psutil.NoSuchProcess:
             terminal.append(True)
     assert all(terminal),observations

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import kaleido
@@ -10,6 +11,9 @@ import kaleido
 
 async def _render(request_path: Path, status_path: Path) -> None:
     request = json.loads(request_path.read_text(encoding="utf-8"))
+    # The parent removes both the Chromium profile and Kaleido page after OS termination,
+    # even when the worker cannot complete its own close cleanup.
+    tempfile.tempdir = str(request_path.parent)
     completed = 0
 
     def status(phase: str, **details: object) -> None:

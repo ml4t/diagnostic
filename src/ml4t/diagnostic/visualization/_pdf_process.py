@@ -182,16 +182,27 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
     import plotly.io as pio
     from plotly.utils import PlotlyJSONEncoder
 
+    def resource(value: Any) -> Any:
+        return os.fspath(value) if isinstance(value, os.PathLike) else value
+
     request = {
         "defaults": {
-            name: getattr(pio.defaults, name, None) for name in ("plotlyjs", "mathjax", "headers")
+            name: resource(value)
+            for name in ("plotlyjs", "mathjax", "headers")
+            if (value := getattr(pio.defaults, name, None))
         },
         "pages": [
             {
                 "fig": figure.to_plotly_json(),
                 "path": str(path),
-                "opts": {"format": "pdf", **options},
-                "topojson": getattr(pio.defaults, "topojson", None),
+                "opts": {
+                    "format": "pdf",
+                    **{
+                        name: value or getattr(pio.defaults, f"default_{name}")
+                        for name, value in options.items()
+                    },
+                },
+                "topojson": resource(getattr(pio.defaults, "topojson", None)),
             }
             for figure, path in zip(figures, paths, strict=True)
         ],

@@ -36,6 +36,9 @@ def snapshot(self):
         try: rows[str(process.pid)]=process.create_time()
         except psutil.NoSuchProcess: pass
     observed.write_text(json.dumps(rows))
+    profiles=[str(arg).split('=',1)[1] for arg in self.subprocess.args if str(arg).startswith('--user-data-dir=')]
+    assert profiles, 'No actual browser profile observed'
+    observed.with_suffix('.profiles.json').write_text(json.dumps(profiles))
 async def opened(self,*args,**kwargs):
     result=await original_open(self,*args,**kwargs)
     snapshot(self)
@@ -91,15 +94,27 @@ try:
     assert neighbor.poll() is None, 'Unrelated process was killed by renderer cleanup'
     rows=json.loads(observed.read_text())
     assert rows, 'No actual browser processes observed'
-    running=[]
+    processes=[]
     for pid,created in rows.items():
         try:
             process=psutil.Process(int(pid))
             if process.create_time()==created and process.status()!=psutil.STATUS_ZOMBIE:
-                running.append(int(pid))
+                processes.append(process)
+        except psutil.NoSuchProcess: pass
+    gone,alive=psutil.wait_procs(processes,timeout=5)
+    running=[]
+    for process in alive:
+        try:
+            if process.status()!=psutil.STATUS_ZOMBIE: running.append(process.pid)
         except psutil.NoSuchProcess: pass
     assert not running, running
+    try: psutil.Process(neighbor.pid).wait(timeout=0)
+    except psutil.TimeoutExpired: pass
+    else: raise AssertionError('Process-wait control accepted a live unrelated child')
+    profiles=json.loads(observed.with_suffix('.profiles.json').read_text())
+    assert all(not Path(profile).exists() for profile in profiles), profiles
     print(json.dumps({'mode':mode,'observed_browser_processes':len(rows),'running':running,
+                      'waited_exit_codes':[process.returncode for process in gone],
                       'neighbor_alive':True,'input_figures_unchanged':True}),flush=True)
     success=True
 finally:
@@ -149,3 +164,26 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(mode, tmp_
     assert process.returncode == 0, text
     result = json.loads(text.splitlines()[-1])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
+
+
+def test_local_plotlyjs_path_still_renders_a_real_pdf_in_the_owned_worker(tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    from pathlib import Path
+
+    import plotly
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import export_figures_to_pdf
+
+    bundle = Path(plotly.__file__).parent / "package_data/plotly.min.js"
+    assert bundle.is_file()
+    monkeypatch.setattr(pio.defaults, "plotlyjs", bundle)
+    figure = go.Figure(go.Scatter(x=[1, 2, 3], y=[1, 3, 2]))
+    figure.update_layout(title="Local Plotly source")
+    original = figure.to_json()
+    path = export_figures_to_pdf([figure], tmp_path / "local.pdf", scale=1)
+    pages = pypdf.PdfReader(path).pages
+    assert len(pages) == 1 and "Local Plotly source" in pages[0].extract_text()
+    assert figure.to_json() == original
