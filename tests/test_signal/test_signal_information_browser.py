@@ -81,6 +81,8 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
                         titleInside:(()=>{const title=plot.querySelector('.gtitle').getBoundingClientRect();return title.left>=bounds.left&&title.right<=bounds.right})(),
                         annotationOverlap:(()=>{const boxes=Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.getBoundingClientRect());return boxes.some((a,i)=>boxes.slice(i+1).some(b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))})(),
                         annotationsInside:Array.from(plot.querySelectorAll('.annotation-text')).every(node=>{const box=node.getBoundingClientRect();return box.left>=bounds.left&&box.right<=bounds.right&&box.top>=bounds.top&&box.bottom<=bounds.bottom}),
+                        annotationsOverlapDecorations:(()=>{const boxes=Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.getBoundingClientRect()),decorations=Array.from(plot.querySelectorAll('.g-xtitle,.g-ytitle,.legendtext')).map(node=>node.getBoundingClientRect());return boxes.some(a=>decorations.some(b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))})(),
+                        heatmapLabels:(()=>{const boxes=Array.from(plot.querySelectorAll('.heatmaplayer text')).filter(node=>node.textContent).map(node=>node.getBoundingClientRect());return {count:boxes.length,overlap:boxes.some((a,i)=>boxes.slice(i+1).some(b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))}})(),
                         traces:plot.data.map(trace=>({name:trace.name,x:trace.x,y:trace.y})),
                         legends:Array.from(plot.querySelectorAll('.legendtext')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,inside:box.left>=bounds.left&&box.right<=bounds.right&&box.top>=bounds.top&&box.bottom<=bounds.bottom}})
                     }}),
@@ -123,6 +125,12 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
     assert all(panel["titleInside"] for panel in measured["panels"]), measured
     assert not any(panel["annotationOverlap"] for panel in measured["panels"]), measured
     assert all(panel["annotationsInside"] for panel in measured["panels"]), measured
+    assert not any(panel["annotationsOverlapDecorations"] for panel in measured["panels"]), measured
+    if not grouped:
+        assert all(panel["heatmapLabels"]["count"] > 0 for panel in measured["panels"][-2:])
+        assert not any(panel["heatmapLabels"]["overlap"] for panel in measured["panels"][-2:]), (
+            measured
+        )
     assert all(label["inside"] for panel in measured["panels"] for label in panel["legends"])
     for position in [0, 3]:
         assert len(measured["panels"][position]["traces"][0]["x"]) == (25 if constant else 32)

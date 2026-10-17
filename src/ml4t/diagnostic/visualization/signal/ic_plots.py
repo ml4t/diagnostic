@@ -180,6 +180,8 @@ def plot_ic_ts(
         y=mean_ic,
         line_dash="dot",
         line_color=theme_config["colorway"][2],
+        annotation_text=f"Mean IC: {format_finite(mean_ic, '.4f')}",
+        annotation_position="top right",
     )
 
     # Significance bands
@@ -359,7 +361,7 @@ def plot_ic_histogram(
         fig.add_annotation(
             text="KDE unavailable: constant IC",
             x=0.02,
-            y=-0.18,
+            y=-0.24,
             xref="paper",
             yref="paper",
             showarrow=False,

@@ -85,7 +85,10 @@ def plot_signal_information(
             plot_monthly_ic_heatmap(model, period=column, theme=theme)
             for column in result.metadata["return_columns"]
         )
-    for figure in figures:
+    for index, figure in enumerate(figures):
+        if index < 3 * len(result.metadata["return_columns"]) and index % 3 == 0:
+            figure.layout.annotations = ()
+        figure.update_traces(texttemplate="%{z:.2f}", selector={"type": "heatmap"})
         figure.update_layout(
             width=None,
             autosize=True,
@@ -155,7 +158,7 @@ def generate_signal_information_report(
     for index, figure in enumerate(figures):
         if index < 3 * len(result.metadata["return_columns"]):
             text = [
-                "Points are actual dated ICs. Rolling means require all22finite ICs in each complete22-observation window. This is not a calendar month or a confidence band.",
+                "Points are actual dated ICs. Rolling means require all 22 finite ICs in each complete 22-observation window. This is not a calendar month or a confidence band.",
                 "The histogram retains actual defined ICs. KDE is unavailable for degenerate or insufficient samples; missing ICs are not replaced by zeros.",
                 "Q-Q points use the explicitly fitted/standardized distribution. Empty, singleton or constant samples retain observed values but have no fitted quantiles.",
             ][index % 3]
