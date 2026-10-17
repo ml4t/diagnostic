@@ -111,6 +111,15 @@ not establish exchange-session aggregation, Pyfolio's average-gross-book
 denominator, or beginning-session-NAV return scenarios. Those workflows require
 separate input and calendar contracts.
 
+Trade profit factor divides gross positive lifecycle cash P&L by gross loss
+magnitude. Empty or all-flat samples have an unavailable `0/0` ratio, displayed
+as `N/A`, rather than zero or infinity. Gains without losses retain infinity;
+losses without gains retain zero. Unreleased source after 0.1.9 preserves this
+availability through native profiles, the computed Backtest bridge and reports,
+even when legacy producer metrics use zero for the missing sample. Producer
+tables and metrics remain unchanged. Existing lifecycle eligibility is retained;
+this is not the separate ratio of positive and negative period returns.
+
 PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).
 A headless environment can verify HTML generation without claiming that

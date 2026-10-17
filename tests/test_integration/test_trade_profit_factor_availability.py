@@ -61,6 +61,7 @@ def test_actual_undefined_trade_profit_factor_survives_profile_bridge_and_defaul
     ).run()
     assert [trade.pnl for trade in result.trades] == pnls
     trades, fills = result.to_trades_dataframe().clone(), result.to_fills_dataframe().clone()
+    producer_profit_factor = result.metrics.get("profit_factor")
     profile = analyze_backtest_result(result)
     assert profile.edge["metrics"]["num_trades"] == len(pnls)
     values = [
@@ -88,3 +89,7 @@ def test_actual_undefined_trade_profit_factor_survives_profile_bridge_and_defaul
     assert labels and {html.unescape(label) for label in labels} == {expected_label}
     assert result.to_trades_dataframe().equals(trades)
     assert result.to_fills_dataframe().equals(fills)
+    if isinstance(producer_profit_factor, float) and math.isnan(producer_profit_factor):
+        assert math.isnan(result.metrics["profit_factor"])
+    else:
+        assert result.metrics.get("profit_factor") == producer_profit_factor

@@ -241,7 +241,10 @@ def _normalize_tearsheet_metrics(
 
     computed = compute_metrics_from_result(result, calendar=calendar)
     for key, value in computed.items():
-        if key in ("avg_turnover", "max_turnover"):
+        unavailable_profit_factor = (
+            key == "profit_factor" and isinstance(value, float) and math.isnan(value)
+        )
+        if key in ("avg_turnover", "max_turnover") or unavailable_profit_factor:
             metrics[key] = value
         else:
             metrics.setdefault(key, value)
@@ -259,9 +262,6 @@ def _normalize_tearsheet_metrics(
 
     if "max_drawdown" in metrics:
         metrics["max_drawdown"] = abs(float(metrics["max_drawdown"]))
-
-    if isinstance(metrics.get("profit_factor"), float) and math.isnan(metrics["profit_factor"]):
-        metrics["profit_factor"] = 0.0
 
     return metrics
 
@@ -298,7 +298,11 @@ def compute_metrics_from_result(
     calendar: str | None = None,
     confidence_intervals: bool = False,
 ) -> dict[str, Any]:
-    """Compute portfolio and trade metrics from a BacktestResult."""
+    """Compute portfolio and trade metrics from a BacktestResult.
+
+    Undefined native trade profit factor remains unavailable rather than
+    inheriting a legacy producer's zero-valued missing-sample convention.
+    """
     profile = analyze_backtest_result(
         result=result,
         calendar=calendar,
@@ -309,7 +313,8 @@ def compute_metrics_from_result(
         ta = result.trade_analyzer
         metrics["num_trades"] = ta.num_trades
         metrics["win_rate"] = ta.win_rate
-        metrics["profit_factor"] = ta.profit_factor
+        if not math.isnan(metrics["profit_factor"]):
+            metrics["profit_factor"] = ta.profit_factor
         metrics["total_fees"] = ta.total_fees
         metrics["total_commission"] = ta.total_fees
 
