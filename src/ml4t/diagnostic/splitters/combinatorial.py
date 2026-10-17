@@ -131,6 +131,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR
 
 from ml4t.diagnostic.backends.adapter import DataFrameAdapter
 from ml4t.diagnostic.splitters.base import BaseSplitter
@@ -147,7 +148,11 @@ from ml4t.diagnostic.splitters.cpcv import (
 from ml4t.diagnostic.splitters.group_isolation import isolate_groups_from_train
 
 if TYPE_CHECKING:
+    from ml4t.specs import CalendarUnset, FeedSpec
     from numpy.typing import NDArray
+
+    from ml4t.diagnostic.splitters.calendar import TradingCalendar
+    from ml4t.diagnostic.splitters.calendar_config import CalendarConfig
 
 
 class CombinatorialCV(BaseSplitter):
@@ -324,6 +329,8 @@ class CombinatorialCV(BaseSplitter):
         embargo_pct: float | None = None,
         max_combinations: int | None = None,
         random_state: int | None = None,
+        calendar: str | CalendarConfig | TradingCalendar | CalendarUnset | None = UNSET_CALENDAR,
+        feed_spec: FeedSpec | None = None,
         align_to_sessions: bool = False,
         session_col: str = "session_date",
         timestamp_col: str | None = None,
@@ -337,6 +344,12 @@ class CombinatorialCV(BaseSplitter):
 
         Parameters are automatically converted to a config object internally,
         ensuring a single source of truth for all validation and logic.
+
+        Calendar intent uses the shared explicit argument, declared config, feed
+        metadata, then NYSE precedence. Explicit None disables calendars. Selection
+        does not convert CPCV's existing observation-count integer horizons or
+        elapsed Timedeltas, filter rows, or validate an expected bar grid. Session
+        alignment still uses the explicitly supplied session column.
 
         Examples
         --------
@@ -386,6 +399,8 @@ class CombinatorialCV(BaseSplitter):
                 timestamp_col,
                 isolate_groups,
             )
+
+        self.config, self.calendar = self.config._resolve_calendar(calendar, feed_spec)
 
         # Use parameter if provided, otherwise use config value
         # This allows random_state to be passed either via config or direct parameter

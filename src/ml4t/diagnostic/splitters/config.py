@@ -42,11 +42,17 @@ from __future__ import annotations
 import re
 import warnings
 from datetime import date
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import Field, SerializationInfo, field_validator, model_serializer, model_validator
 
 from ml4t.diagnostic.config.base import BaseConfig
+
+if TYPE_CHECKING:
+    from ml4t.specs import CalendarUnset, FeedSpec
+
+    from ml4t.diagnostic.splitters.calendar import TradingCalendar
+    from ml4t.diagnostic.splitters.calendar_config import CalendarConfig
 
 MONTH_HORIZON_PATTERN = re.compile(r"(?:P)?([0-9]+)M")
 
@@ -130,6 +136,13 @@ class SplitterConfig(BaseConfig):
             "If None, falls back to pandas DatetimeIndex (backward compatible)."
         ),
     )
+    calendar: str | None = Field(
+        "NYSE",
+        description=(
+            "Calendar selection, independent of the splitter's window units. "
+            "Omission inherits declared feed metadata, then NYSE. None disables calendars."
+        ),
+    )
     filter_non_trading: bool = Field(
         True,
         description=(
@@ -147,7 +160,7 @@ class SplitterConfig(BaseConfig):
     @model_validator(mode="before")
     @classmethod
     def _accept_aliases(cls, data: Any) -> Any:
-        """Accept label_buffer -> label_horizon and feature_buffer -> embargo_td."""
+        """Normalize label/feature buffers and the legacy calendar selector."""
         if isinstance(data, dict):
             data = data.copy()
             if "label_buffer" in data and "label_horizon" not in data:
@@ -158,7 +171,86 @@ class SplitterConfig(BaseConfig):
                 data["embargo_td"] = data.pop("feature_buffer")
             elif "feature_buffer" in data:
                 data.pop("feature_buffer")  # embargo_td takes precedence
+            if "calendar_id" in data:
+                if "calendar" in data and data["calendar"] != data["calendar_id"]:
+                    raise ValueError("calendar and calendar_id must agree when both are supplied")
+                data["calendar"] = data.pop("calendar_id")
         return data
+
+    @property
+    def calendar_id(self) -> str | None:
+        """Compatibility alias for the canonical calendar declaration."""
+        return self.calendar
+
+    @calendar_id.setter
+    def calendar_id(self, value: str | None) -> None:
+        self.calendar = value
+
+    @model_serializer(mode="wrap")
+    def _serialize_calendar_declaration(
+        self, handler: Any, info: SerializationInfo
+    ) -> dict[str, Any]:
+        data = handler(self)
+        excluded = info.exclude
+        calendar_excluded = (
+            excluded.get("calendar") is True or excluded.get("calendar") is ...
+            if isinstance(excluded, dict)
+            else excluded is not None and "calendar" in excluded
+        )
+        if "calendar" not in self.model_fields_set:
+            data.pop("calendar", None)
+        elif (
+            self.calendar is None
+            and info.exclude_none
+            and (info.include is None or "calendar" in info.include)
+            and not calendar_excluded
+        ):
+            data["calendar"] = None
+        return data
+
+    def _resolve_calendar(
+        self,
+        calendar: str | CalendarConfig | TradingCalendar | CalendarUnset | None,
+        feed_spec: FeedSpec | None,
+    ) -> tuple[Self, TradingCalendar | None]:
+        """Resolve intent without promoting inherited metadata to a config declaration."""
+        from ml4t.specs import UNSET_CALENDAR, FeedSpec
+
+        from ml4t.diagnostic.splitters.calendar import TradingCalendar
+        from ml4t.diagnostic.splitters.calendar_config import CalendarConfig
+
+        if feed_spec is not None and not isinstance(feed_spec, FeedSpec):
+            raise TypeError("feed_spec must be a FeedSpec or None")
+        metadata = feed_spec if feed_spec is not None else FeedSpec(time_contract_version=2)
+        declaration = calendar
+        if isinstance(declaration, CalendarConfig):
+            declaration = declaration.exchange
+        elif isinstance(declaration, TradingCalendar):
+            declaration = declaration.config.exchange
+        elif (
+            declaration is not UNSET_CALENDAR
+            and declaration is not None
+            and not isinstance(declaration, str)
+        ):
+            raise TypeError("calendar must be str, CalendarConfig, TradingCalendar, or None")
+        if declaration is UNSET_CALENDAR and "calendar" in self.model_fields_set:
+            declaration = self.calendar
+        resolved = metadata.resolve_calendar(calendar=declaration)
+        owned = self.model_copy(
+            deep=True, update={"calendar": resolved} if calendar is not UNSET_CALENDAR else {}
+        )
+        effective = calendar if isinstance(calendar, CalendarConfig | TradingCalendar) else resolved
+        if effective is None:
+            provider = None
+        elif isinstance(effective, str | CalendarConfig):
+            provider = TradingCalendar(effective)
+        elif isinstance(effective, TradingCalendar):
+            provider = effective
+        else:
+            raise TypeError(
+                f"calendar must be str, CalendarConfig, TradingCalendar, or None, got {type(effective)}"
+            )
+        return owned, provider
 
     @property
     def label_buffer(self) -> Any:
@@ -327,16 +419,6 @@ class WalkForwardConfig(SplitterConfig):
         ),
     )
 
-    # Calendar for trading-day-aware calculations
-    calendar: str | None = Field(
-        "NYSE",
-        description=(
-            "Trading calendar for calendar-first splitting and gap calculations. "
-            "Default: 'NYSE'. Examples: 'NYSE', 'CME_Equity', 'LSE'. "
-            "Set to None to disable calendar-aware splitting."
-        ),
-    )
-
     isolate_groups: bool = Field(
         False,
         description=(
@@ -363,41 +445,6 @@ class WalkForwardConfig(SplitterConfig):
                 data["test_end"] = data.pop("holdout_end")
             elif "holdout_end" in data:
                 data.pop("holdout_end")
-            if "calendar_id" in data:
-                if "calendar" in data and data["calendar"] != data["calendar_id"]:
-                    raise ValueError("calendar and calendar_id must agree when both are supplied")
-                data["calendar"] = data.pop("calendar_id")
-        return data
-
-    @property
-    def calendar_id(self) -> str | None:
-        """Compatibility alias for the canonical calendar field."""
-        return self.calendar
-
-    @calendar_id.setter
-    def calendar_id(self, value: str | None) -> None:
-        self.calendar = value
-
-    @model_serializer(mode="wrap")
-    def _serialize_calendar_declaration(
-        self, handler: Any, info: SerializationInfo
-    ) -> dict[str, Any]:
-        data = handler(self)
-        excluded = info.exclude
-        calendar_excluded = (
-            excluded.get("calendar") is True or excluded.get("calendar") is ...
-            if isinstance(excluded, dict)
-            else excluded is not None and "calendar" in excluded
-        )
-        if "calendar" not in self.model_fields_set:
-            data.pop("calendar", None)
-        elif (
-            self.calendar is None
-            and info.exclude_none
-            and (info.include is None or "calendar" in info.include)
-            and not calendar_excluded
-        ):
-            data["calendar"] = None
         return data
 
     @property

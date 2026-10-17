@@ -20,6 +20,109 @@ from ml4t.diagnostic.splitters import (
     WalkForwardCV,
 )
 from ml4t.diagnostic.splitters.calendar import TradingCalendar
+from ml4t.diagnostic.splitters.calendar_config import CalendarConfig
+
+
+@pytest.mark.parametrize("route", ["argument", "config", "legacy-config"])
+def test_cpcv_calendar_intake_explicit_none_produces_observation_folds(route):
+    frame = pd.DataFrame(
+        {"feature": range(6)},
+        index=pd.to_datetime(["2025-07-03"] * 3 + ["2025-07-07"] * 3, utc=True),
+    )
+    before = frame.copy(deep=True)
+    settings = {"n_groups": 3, "n_test_groups": 1, "label_horizon": 1, "isolate_groups": False}
+    if route == "argument":
+        cv = CombinatorialCV(**settings, calendar=None)
+    else:
+        declaration = {"calendar" if route == "config" else "calendar_id": None}
+        cv = CombinatorialCV(config=CombinatorialConfig(**settings, **declaration))
+    assert cv.calendar is None and cv.config.calendar is None
+    assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == [
+        ([2, 3, 4, 5], [0, 1]),
+        ([0, 4, 5], [2, 3]),
+        ([0, 1, 2], [4, 5]),
+    ]
+    wire = cv.config.to_dict(mode="json")
+    assert wire["calendar"] is None and "calendar_id" not in wire
+    pd.testing.assert_frame_equal(frame, before)
+
+
+def test_cpcv_calendar_intake_resolves_feed_and_explicit_precedence_without_changing_row_units():
+    feed = FeedSpec(time_contract_version=2, calendar="24/7")
+    config = CombinatorialConfig(n_groups=3, n_test_groups=1, isolate_groups=False)
+    before = config.model_dump()
+    cases = [
+        (CombinatorialCV(config=config, feed_spec=feed), "24/7"),
+        (CombinatorialCV(config=config, feed_spec=feed, calendar=None), None),
+        (CombinatorialCV(config=config, feed_spec=feed, calendar="NYSE"), "NYSE"),
+        (CombinatorialCV(feed_spec=FeedSpec(time_contract_version=2)), "NYSE"),
+        (CombinatorialCV(feed_spec=FeedSpec(time_contract_version=2, calendar=None)), None),
+        (CombinatorialCV(feed_spec=FeedSpec(calendar=None)), "NYSE"),
+        (CombinatorialCV(config=CombinatorialConfig(calendar=None), feed_spec=feed), None),
+    ]
+    for cv, expected in cases:
+        assert (None if cv.calendar is None else cv.calendar.config.exchange) == expected
+    frame = pd.DataFrame(
+        {"feature": range(6)},
+        index=pd.to_datetime(["2025-07-03"] * 3 + ["2025-07-07"] * 3, utc=True),
+    )
+    expected = [([2, 3, 4, 5], [0, 1]), ([0, 1, 4, 5], [2, 3]), ([0, 1, 2, 3], [4, 5])]
+    for cv, _ in cases[:3]:
+        assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == expected
+    assert config.model_dump() == before
+    assert "calendar" not in config.model_fields_set
+
+
+@pytest.mark.parametrize("format", ["json", "yaml", "copy"])
+@pytest.mark.parametrize("declaration", [{}, {"calendar": None}, {"calendar": "24/7"}])
+def test_cpcv_calendar_intake_runtime_roundtrip_preserves_calendar_declaration(
+    format, declaration, tmp_path
+):
+    config = CombinatorialConfig(n_groups=3, n_test_groups=1, **declaration)
+    first = CombinatorialCV(
+        config=config, feed_spec=FeedSpec(time_contract_version=2, calendar="24/7")
+    )
+    loaded = _roundtrip_config(first.config, format, tmp_path)
+    assert ("calendar" in loaded.model_fields_set) == bool(declaration)
+    wire = loaded.model_dump(exclude_none=True)
+    assert ("calendar" in wire) == bool(declaration)
+    if declaration:
+        assert wire["calendar"] == declaration["calendar"]
+    second = CombinatorialCV(
+        config=loaded, feed_spec=FeedSpec(time_contract_version=2, calendar="NYSE")
+    )
+    expected = declaration.get("calendar", "NYSE")
+    assert (None if second.calendar is None else second.calendar.config.exchange) == expected
+
+
+def test_cpcv_calendar_intake_conflicting_aliases_reject_without_mutating_the_mapping():
+    payload = {"calendar": None, "calendar_id": "NYSE", "label_buffer": 1}
+    before = deepcopy(payload)
+    with pytest.raises(ValueError, match="calendar and calendar_id must agree"):
+        CombinatorialConfig.model_validate(payload)
+    assert payload == before
+
+
+def test_cpcv_calendar_intake_invalid_metadata_does_not_change_the_callers_config():
+    config = CombinatorialConfig(calendar=None)
+    before = config.model_dump()
+    with pytest.raises(TypeError, match="feed_spec must be a FeedSpec"):
+        CombinatorialCV(config=config, feed_spec={"calendar": "NYSE"})
+    assert config.model_dump() == before
+
+
+@pytest.mark.parametrize("instance", [False, True])
+def test_cpcv_calendar_intake_preserves_explicit_provider_options(instance):
+    settings = CalendarConfig(exchange="CME_Equity", timezone="America/Chicago")
+    before = settings.model_dump()
+    selected = TradingCalendar(settings) if instance else settings
+    cv = CombinatorialCV(calendar=selected)
+    assert cv.calendar.config.exchange == "CME_Equity"
+    assert cv.calendar.config.timezone == "America/Chicago"
+    if instance:
+        assert cv.calendar is selected
+    assert cv.config.to_dict()["calendar"] == "CME_Equity"
+    assert settings.model_dump() == before
 
 
 @pytest.mark.parametrize("timezone", [None, "UTC"])
@@ -223,7 +326,7 @@ def _roundtrip_config(config, format, tmp_path):
         return config.model_copy(deep=True)
     path = tmp_path / f"calendar.{format}"
     getattr(config, f"to_{format}")(path)
-    return getattr(WalkForwardConfig, f"from_{format}")(path)
+    return getattr(type(config), f"from_{format}")(path)
 
 
 @pytest.mark.parametrize("format", ["json", "yaml", "copy"])

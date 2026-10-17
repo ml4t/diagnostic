@@ -90,14 +90,63 @@ integer embargoes use the same trading-day conversion as purging.
 Named-calendar percentage buffers retain their legacy elapsed-span convention;
 this change does not establish the broader session/expected-bar unit contract.
 
-These are unreleased walk-forward changes. Qualification pins merged Specs
+These are unreleased calendar-intake changes. Qualification pins merged Specs
 source `701bde68744035050ede386efce498234c661c21`, not the published Specs
 0.1.5 package, which lacks the v2 interface. A published dependency must replace
 that source pin before release. See the
 [shared time contract](https://github.com/ml4t/specs/blob/701bde68744035050ede386efce498234c661c21/docs/contracts.md).
 This does not establish schedule-grid, expected-bar or elapsed-unit conformance
-for every Diagnostic workflow. Combinatorial and Backtest metadata adoption
-remain separate parts of the calendar audit.
+for every Diagnostic workflow. Backtest metadata adoption and full CPCV
+session/expected-bar window semantics remain separate parts of the audit.
+
+## Pass calendar intent to CPCV
+
+Unreleased after 0.1.9, `CombinatorialCV` and `CombinatorialConfig` accept the
+same calendar declarations and `feed_spec` precedence. Explicit `None`
+overrides named feed metadata without changing caller-owned configuration:
+
+```python
+import pandas as pd
+from ml4t.specs import FeedSpec
+
+from ml4t.diagnostic.splitters import CombinatorialConfig, CombinatorialCV
+
+cpcv_config = CombinatorialConfig(
+    n_groups=3,
+    n_test_groups=1,
+    label_horizon=1,
+    isolate_groups=False,
+    calendar=None,
+)
+cpcv = CombinatorialCV(
+    config=cpcv_config,
+    feed_spec=FeedSpec(time_contract_version=2, calendar="NYSE"),
+)
+cpcv_features = pd.DataFrame(
+    {"feature": range(6)},
+    index=pd.to_datetime(["2025-07-03"] * 3 + ["2025-07-07"] * 3, utc=True),
+)
+cpcv_folds = [(train.tolist(), test.tolist()) for train, test in cpcv.split(cpcv_features)]
+assert cpcv.calendar is None
+assert cpcv_config.to_dict(mode="json")["calendar"] is None
+assert cpcv_folds == [
+    ([2, 3, 4, 5], [0, 1]),
+    ([0, 4, 5], [2, 3]),
+    ([0, 1, 2], [4, 5]),
+]
+```
+
+Omitted declarations stay omitted through runtime configuration and JSON/YAML/copy
+round trips, so a reused configuration can inherit another feed's calendar.
+`calendar_id` remains a configuration alias; conflicting aliases fail before
+mutation. Inspect `cpcv.calendar` for the resolved provider, not an undeclared
+configuration's default value.
+
+CPCV retains its existing integer observation counts and elapsed `Timedelta`
+buffers, even when a named calendar is selected. This intake does not introduce
+schedule filtering, infer missing sessions/bars, or turn its integer horizons
+into session counts. `align_to_sessions=True` still groups the supplied
+`session_col` labels. Full authoritative schedule/unit adoption remains separate.
 
 ## Persist generated folds
 
@@ -130,5 +179,5 @@ assert all(
 
 Do not pass individual splitter parameters together with `config`. The
 constructor rejects conflicting sources of settings, except the explicit
-walk-forward `calendar` override, which leaves the caller's configuration
+`calendar` override in either splitter, which leaves the caller's configuration
 unchanged. `feed_spec` supplies metadata rather than another splitter config.

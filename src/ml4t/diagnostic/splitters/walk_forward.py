@@ -302,40 +302,7 @@ class WalkForwardCV(BaseSplitter):
             }
             self.config = WalkForwardConfig(**config_kwargs)
 
-        if feed_spec is not None and not isinstance(feed_spec, FeedSpec):
-            raise TypeError("feed_spec must be a FeedSpec or None")
-        metadata = feed_spec if feed_spec is not None else FeedSpec(time_contract_version=2)
-        declaration = calendar
-        if isinstance(declaration, CalendarConfig):
-            declaration = declaration.exchange
-        elif isinstance(declaration, TradingCalendar):
-            declaration = declaration.config.exchange
-        elif (
-            declaration is not UNSET_CALENDAR
-            and declaration is not None
-            and not isinstance(declaration, str)
-        ):
-            raise TypeError("calendar must be str, CalendarConfig, TradingCalendar, or None")
-        if declaration is UNSET_CALENDAR and "calendar" in self.config.model_fields_set:
-            declaration = self.config.calendar
-        resolved = metadata.resolve_calendar(calendar=declaration)
-        self.config = self.config.model_copy(
-            deep=True, update={"calendar": resolved} if calendar is not UNSET_CALENDAR else {}
-        )
-        effective_calendar = (
-            calendar if isinstance(calendar, CalendarConfig | TradingCalendar) else resolved
-        )
-
-        if effective_calendar is None:
-            self.calendar = None
-        elif isinstance(effective_calendar, str | CalendarConfig):
-            self.calendar = TradingCalendar(effective_calendar)
-        elif isinstance(effective_calendar, TradingCalendar):
-            self.calendar = effective_calendar
-        else:
-            raise TypeError(
-                f"calendar must be str, CalendarConfig, TradingCalendar, or None, got {type(effective_calendar)}"
-            )
+        self.config, self.calendar = self.config._resolve_calendar(calendar, feed_spec)
 
         # Legacy attributes for compatibility with existing split() implementation
         # These reference the config values
