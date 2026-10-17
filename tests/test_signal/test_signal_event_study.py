@@ -11,10 +11,6 @@ from ml4t.diagnostic.signal import (
     analyze_signal_event_study,
     prepare_signal_panel,
 )
-from ml4t.diagnostic.visualization.signal import (
-    generate_signal_event_study_report,
-    plot_signal_event_study,
-)
 
 
 def _panel():
@@ -46,7 +42,7 @@ def test_signal_event_study_uses_elapsed_bins_including_empty_bins_and_all_decla
 
 
 def test_event_rate_conversion_uses_first_supplied_horizon_without_relabelling_raw_statistics():
-    result = analyze_signal_event_study(_panel(), horizon_durations={"3D": "3D", "1D": "1D"})
+    result = analyze_signal_event_study(_panel(), rate_conversion_factors={"3D": 1, "1D": 3})
     assert result.metadata["base_period"] == "3D"
     assert result.metadata["conversion_ratios"] == {"3D": 1, "1D": 3}
     one = result.mean_returns.filter(pl.col("return_column") == "1D").row(0, named=True)
@@ -57,7 +53,7 @@ def test_event_rate_conversion_uses_first_supplied_horizon_without_relabelling_r
     assert result.return_observations.filter(pl.col("return_column") == "1D")[
         "n_obs"
     ].to_list() == [2, 2, 2]
-    with pytest.raises(ValueError, match="horizon_durations is required"):
+    with pytest.raises(ValueError, match="rate_conversion_factors is required"):
         analyze_signal_event_study(_panel())
 
 
@@ -68,7 +64,7 @@ def test_event_study_serialization_owns_tables_and_keeps_undefined_rate_distinct
     returns = frame[["3D", "1D"]].copy()
     returns["1D"] = -1.5
     altered = prepare_signal_panel(factor, returns, quantiles=1, max_loss=0)
-    result = analyze_signal_event_study(altered, horizon_durations={"3D": "1D", "1D": "2D"})
+    result = analyze_signal_event_study(altered, rate_conversion_factors={"3D": 1, "1D": 0.5})
     undefined = result.mean_returns.filter(pl.col("return_column") == "1D")
     assert undefined["mean"][0] == -1.5 and undefined["display_mean"][0] is None
     assert undefined["display_status"][0] == "undefined_rate"
@@ -94,9 +90,30 @@ def test_event_distribution_rejects_invalid_bin_requests(num_bars):
         analyze_signal_event_study(_panel(), rate_of_return=False, num_bars=num_bars)
 
 
+def test_factor_statistics_does_not_overflow_on_two_finite_large_events():
+    index = pd.MultiIndex.from_product(
+        [pd.to_datetime(["2025-01-02"], utc=True), ["A", "B"]], names=["date", "asset"]
+    )
+    factor = pd.Series([1e308, 1.1e308], index=index, name="factor")
+    returns = pd.DataFrame({"1D": [0.0, 0.0]}, index=index)
+    panel = prepare_signal_panel(factor, returns, quantiles=1, max_loss=0)
+    stats = analyze_signal_event_study(panel, rate_of_return=False).factor_statistics.row(
+        0, named=True
+    )
+    assert np.isfinite(stats["std"])
+    assert stats["std"] == pytest.approx((1.1e308 - 1e308) / np.sqrt(2), rel=1e-12)
+    assert stats["mean"] == pytest.approx(1.05e308, rel=1e-12)
+
+
 def test_signal_event_study_composes_actual_returns_and_table_without_invented_paths(tmp_path):
+    pytest.importorskip("plotly")
+    from ml4t.diagnostic.visualization.signal import (
+        generate_signal_event_study_report,
+        plot_signal_event_study,
+    )
+
     result = analyze_signal_event_study(
-        _panel(), horizon_durations={"3D": "3D", "1D": "1D"}, num_bars=3
+        _panel(), rate_conversion_factors={"3D": 1, "1D": 3}, num_bars=3
     )
     figures = plot_signal_event_study(result)
     assert len(figures) == 3
@@ -115,15 +132,22 @@ def test_signal_event_study_composes_actual_returns_and_table_without_invented_p
 
 
 @pytest.mark.parametrize("rate", [False, True])
+@pytest.mark.parametrize("num_bars", [3, 50])
 @pytest.mark.parametrize(
     "with_values,with_window", [(False, False), (False, True), (True, False), (True, True)]
 )
 @pytest.mark.parametrize("quantiles", [1, 2])
 def test_complete_event_study_matches_actual_reference_panels_and_intermediate_samples(
-    rate, with_values, with_window, quantiles, monkeypatch
+    rate, num_bars, with_values, with_window, quantiles, monkeypatch
 ):
     tears = pytest.importorskip("alphalens.tears")
+    pytest.importorskip("plotly")
     import matplotlib.pyplot as plt
+
+    from ml4t.diagnostic.visualization.signal import (
+        generate_signal_event_study_report,
+        plot_signal_event_study,
+    )
 
     dates = pd.bdate_range("2025-01-02", periods=8, tz="UTC")
     prices = pd.DataFrame(
@@ -177,7 +201,7 @@ def test_complete_event_study_matches_actual_reference_panels_and_intermediate_s
     values = prices if with_values else None
     window = (1, 2) if with_window else None
     tears.create_event_study_tear_sheet(
-        frame, values, avgretplot=window, rate_of_ret=rate, n_bars=3
+        frame, values, avgretplot=window, rate_of_ret=rate, n_bars=num_bars
     )
     result = analyze_signal_event_study(
         panel,
@@ -185,8 +209,8 @@ def test_complete_event_study_matches_actual_reference_panels_and_intermediate_s
         input_kind="levels",
         event_window=window,
         rate_of_return=rate,
-        horizon_durations={"3D": "3D", "1D": "1D"},
-        num_bars=3,
+        rate_conversion_factors={"3D": 1, "1D": 3},
+        num_bars=num_bars,
     )
     for row in result.factor_statistics.iter_rows(named=True):
         expected = captured["factors"].loc[row["quantile"]]
@@ -204,10 +228,13 @@ def test_complete_event_study_matches_actual_reference_panels_and_intermediate_s
             atol=1e-12,
             rtol=1e-12,
         )
+    expected_observations = (
+        captured["observations"].reset_index().set_index(["date", "factor_quantile"])
+    )
     for row in result.return_observations.iter_rows(named=True):
         np.testing.assert_allclose(
             row["display_mean"],
-            captured["observations"].loc[(row["date"], row["quantile"]), row["return_column"]],
+            expected_observations.loc[(row["date"], row["quantile"]), row["return_column"]],
             atol=1e-12,
             rtol=1e-12,
         )
@@ -249,3 +276,23 @@ def test_reference_zero_span_histogram_failure_is_reconciled_to_independent_sing
     panel = prepare_signal_panel(frame["factor"], frame[["3D", "1D"]], quantiles=1, max_loss=0)
     result = analyze_signal_event_study(panel, rate_of_return=False)
     assert result.event_distribution["n_events"].to_list() == [2]
+
+
+def test_reference_large_factor_dispersion_overflow_is_reconciled_to_two_point_expected_value():
+    reference = pytest.importorskip("alphalens.plotting")
+    index = pd.MultiIndex.from_product(
+        [pd.to_datetime(["2025-01-02"], utc=True), ["A", "B"]], names=["date", "asset"]
+    )
+    factor = pd.Series([1e308, 1.1e308], index=index, name="factor")
+    returns = pd.DataFrame({"1D": [0.0, 0.0]}, index=index)
+    panel = prepare_signal_panel(factor, returns, quantiles=1, max_loss=0)
+    legacy_frame = (
+        panel.data.to_pandas()
+        .rename(columns={"quantile": "factor_quantile"})
+        .set_index(["date", "asset"])
+    )
+    expected = (1.1e308 - 1e308) / np.sqrt(2)
+    legacy = reference.plot_quantile_statistics_table(legacy_frame, return_df=True)
+    assert not np.isfinite(legacy.loc[1, "std"])
+    actual = analyze_signal_event_study(panel, rate_of_return=False).factor_statistics["std"][0]
+    assert actual == pytest.approx(expected, rel=1e-12)

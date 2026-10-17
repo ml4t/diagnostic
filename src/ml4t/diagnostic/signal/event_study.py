@@ -7,7 +7,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from io import BytesIO
-from numbers import Integral
+from numbers import Integral, Real
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -15,6 +15,7 @@ import pandas as pd
 import polars as pl
 
 from ml4t.diagnostic.signal.events import EventReturnsResult, analyze_event_returns
+from ml4t.diagnostic.signal.quantile import _sample_return_statistics
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.signal.panel import PreparedSignalPanel
@@ -140,15 +141,17 @@ def analyze_signal_event_study(
     input_kind: Literal["levels", "returns"] | None = None,
     event_window: tuple[int, int] | None = (5, 15),
     rate_of_return: bool = True,
-    horizon_durations: Mapping[str, str | pd.Timedelta] | None = None,
+    rate_conversion_factors: Mapping[str, float] | None = None,
     num_bars: int = 50,
 ) -> SignalEventStudyResult:
     """Compose one event-study sample without inferring calendars or re-bucketing.
 
     Event bins use elapsed time. Optional path windows count observed rows.
     Return panels use unadjusted, equal-date quantile statistics. Rate conversion
-    requires explicit positive durations for multiple horizons and uses the first
-    supplied horizon as its base. Raw statistics remain in their original units.
+    requires explicit dimensionless powers for multiple horizons and uses the first
+    supplied horizon as its base. Its factor must be one. For three-observation
+    and one-observation returns, declare factors one and three. Column labels
+    establish neither elapsed durations nor calendars. Raw statistics are retained.
     """
     from ml4t.diagnostic.signal.panel import PreparedSignalPanel
 
@@ -163,34 +166,57 @@ def analyze_signal_event_study(
         raise ValueError("num_bars must be a positive integer")
     columns = panel.metadata["return_columns"]
     ratios = dict.fromkeys(columns, 1.0)
-    durations = {}
-    if horizon_durations is not None:
-        if not isinstance(horizon_durations, Mapping):
-            raise TypeError("horizon_durations must be a mapping")
+    declared = {}
+    if rate_conversion_factors is not None:
+        if not isinstance(rate_conversion_factors, Mapping):
+            raise TypeError("rate_conversion_factors must be a mapping")
         for column in columns:
-            duration = horizon_durations.get(column)
-            if not isinstance(duration, str | pd.Timedelta):
+            factor = rate_conversion_factors.get(column)
+            if (
+                isinstance(factor, bool)
+                or not isinstance(factor, Real)
+                or not np.isfinite(factor)
+                or factor <= 0
+            ):
                 raise ValueError(
-                    "horizon_durations must declare positive explicit durations for every return column"
+                    "rate_conversion_factors must declare a positive finite power for every return column"
                 )
-            parsed = pd.Timedelta(duration)
-            if pd.isna(parsed) or parsed <= pd.Timedelta(0):
-                raise ValueError("horizon_durations must be positive and finite")
-            durations[column] = int(parsed.value)
-    if rate_of_return and len(columns) > 1 and not durations:
-        raise ValueError("horizon_durations is required for multi-horizon rate conversion")
-    if rate_of_return and durations:
-        ratios = {column: durations[columns[0]] / durations[column] for column in columns}
+            declared[column] = float(factor)
+        if declared[columns[0]] != 1:
+            raise ValueError(
+                "the first return column is the base horizon and must have conversion factor one"
+            )
+    if rate_of_return and len(columns) > 1 and not declared:
+        raise ValueError("rate_conversion_factors is required for multi-horizon rate conversion")
+    if rate_of_return and declared:
+        ratios = declared
     means = _display_returns(panel.quantile_statistics(demeaned=False), ratios)
     observations = _display_returns(panel.quantile_statistics(by_date=True, demeaned=False), ratios)
+    factor_rows = []
+    for part in data.partition_by("quantile", maintain_order=True):
+        values_in_bucket = part[panel.factor_col].to_numpy()
+        mean, std, count, _ = _sample_return_statistics(values_in_bucket)
+        factor_rows.append(
+            {
+                "quantile": part["quantile"][0],
+                "min": float(np.min(values_in_bucket)),
+                "max": float(np.max(values_in_bucket)),
+                "mean": mean,
+                "std": std if count > 1 else None,
+                "count": count,
+            }
+        )
     factors = (
-        data.group_by("quantile")
-        .agg(
-            pl.col(panel.factor_col).min().alias("min"),
-            pl.col(panel.factor_col).max().alias("max"),
-            pl.col(panel.factor_col).mean().alias("mean"),
-            pl.col(panel.factor_col).std(ddof=1).alias("std"),
-            pl.len().alias("count"),
+        pl.DataFrame(
+            factor_rows,
+            schema={
+                "quantile": data.schema["quantile"],
+                "min": pl.Float64,
+                "max": pl.Float64,
+                "mean": pl.Float64,
+                "std": pl.Float64,
+                "count": pl.UInt64,
+            },
         )
         .with_columns((pl.col("count") / pl.col("count").sum() * 100).alias("count_percent"))
         .sort("quantile")
@@ -250,7 +276,8 @@ def analyze_signal_event_study(
         },
         "rate_of_return": rate_of_return,
         "base_period": columns[0],
-        "horizon_durations_ns": durations,
+        "declared_conversion_factors": declared,
+        "conversion_factor_unit": "dimensionless power; no time unit or calendar inferred",
         "conversion_ratios": ratios,
         "raw_statistics_units": "supplied horizon returns",
         "display_units": "base-horizon rate" if rate_of_return else "supplied horizon returns",
