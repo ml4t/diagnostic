@@ -8,13 +8,70 @@ import pandas as pd
 import pytest
 from ml4t.specs import FeedSpec
 
-from ml4t.diagnostic.core.purging import apply_purging_and_embargo, calculate_purge_indices
+from ml4t.diagnostic.core.purging import (
+    apply_purging_and_embargo,
+    calculate_embargo_indices,
+    calculate_purge_indices,
+)
 from ml4t.diagnostic.splitters import (
     CombinatorialConfig,
     CombinatorialCV,
     WalkForwardConfig,
     WalkForwardCV,
 )
+from ml4t.diagnostic.splitters.calendar import TradingCalendar
+
+
+@pytest.mark.parametrize("timezone", [None, "UTC"])
+@pytest.mark.parametrize("size", [{"embargo_size": 2}, {"embargo_pct": 0.34}])
+def test_core_embargo_none_counts_observations_across_a_sparse_feed(timezone, size):
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"]
+    )
+    if timezone:
+        times = times.tz_localize(timezone)
+    assert calculate_embargo_indices(
+        timestamps=times, test_start=times[3], test_end=times[4], calendar=None, **size
+    ) == [4, 5]
+
+
+@pytest.mark.parametrize(
+    ("horizon", "embargo", "expected"),
+    [
+        (pd.Timedelta(days=1), 2, [0, 1, 2]),
+        (1, pd.Timedelta(days=1), [0, 1, 5]),
+        (pd.Timedelta(days=1), pd.Timedelta(days=2), [0, 1, 2, 5]),
+    ],
+)
+def test_mixed_purge_and_embargo_keep_their_own_units(horizon, embargo, expected):
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"],
+        utc=True,
+    )
+    actual = apply_purging_and_embargo(
+        np.arange(6),
+        timestamps=times,
+        test_start=times[3],
+        test_end=times[4],
+        label_horizon=horizon,
+        embargo_size=embargo,
+        calendar=None,
+    )
+    assert actual.tolist() == expected
+
+
+def test_core_embargo_uses_resolved_calendar_sessions_instead_of_civil_days():
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"],
+        utc=True,
+    )
+    assert calculate_embargo_indices(
+        timestamps=times,
+        test_start=times[0],
+        test_end=times[1],
+        embargo_size=2,
+        calendar=TradingCalendar("NYSE"),
+    ) == [1, 2]
 
 
 @pytest.mark.parametrize(
