@@ -84,6 +84,85 @@ class AlignedEventResult:
         return cls(tables, json.dumps(parsed["metadata"], allow_nan=False))
 
 
+@dataclass(frozen=True)
+class EventReturnsResult:
+    """Overall event paths and optional group paths computed from the same input."""
+
+    overall: AlignedEventResult
+    groups: AlignedEventResult | None = None
+
+    def __post_init__(self) -> None:
+        if self.overall.metadata["by_group"]:
+            raise ValueError("overall event paths must combine groups")
+        if self.groups is not None:
+            left, right = self.overall.metadata, self.groups.metadata
+            if not right["by_group"] or any(
+                left[key] != right[key] for key in left if key != "by_group"
+            ):
+                raise ValueError("overall and group event analysis options must agree")
+            if not self.overall.paths.equals(self.groups.paths):
+                raise ValueError("overall and group event paths must use the same input")
+
+    def to_json(self) -> str:
+        """Export both complete typed samples, including missing cells and settings."""
+        return json.dumps(
+            {
+                "format_version": 1,
+                "overall": self.overall.to_json(),
+                "groups": None if self.groups is None else self.groups.to_json(),
+            },
+            allow_nan=False,
+        )
+
+    @classmethod
+    def from_json(cls, value: str) -> EventReturnsResult:
+        """Restore the owned overall and group results without recalculation."""
+        data = json.loads(value)
+        if data.get("format_version") != 1:
+            raise ValueError("unsupported event-returns result format")
+        return cls(
+            AlignedEventResult.from_json(data["overall"]),
+            None if data["groups"] is None else AlignedEventResult.from_json(data["groups"]),
+        )
+
+
+def analyze_event_returns(
+    events: pl.DataFrame | pd.DataFrame | pd.Series,
+    values: pl.DataFrame | pd.DataFrame,
+    *,
+    before: int = 5,
+    after: int = 15,
+    input_kind: Literal["levels", "returns"],
+    demeaned: bool = True,
+    group_adjust: bool = False,
+    by_group: bool = False,
+    date_col: str = "date",
+    asset_col: str = "asset",
+    value_col: str = "value",
+) -> EventReturnsResult:
+    """Prepare the complete event-returns report sample using the existing engine.
+
+    Group panels supplement the overall sample, never replace it. Means and sample
+    deviations retain the event-date/group weighting of ``analyze_signal_events``.
+    Values retain explicit level/wealth units rather than event-zero CAR.
+    """
+    if not isinstance(by_group, bool):
+        raise TypeError("by_group must be bool")
+    options = {
+        "before": before,
+        "after": after,
+        "input_kind": input_kind,
+        "demeaned": demeaned,
+        "group_adjust": group_adjust,
+        "date_col": date_col,
+        "asset_col": asset_col,
+        "value_col": value_col,
+    }
+    overall = analyze_signal_events(events, values, by_group=False, **options)
+    grouped = analyze_signal_events(events, values, by_group=True, **options) if by_group else None
+    return EventReturnsResult(overall, grouped)
+
+
 def _event_frame(
     events: pl.DataFrame | pd.DataFrame | pd.Series, date_col: str, asset_col: str
 ) -> pd.DataFrame:

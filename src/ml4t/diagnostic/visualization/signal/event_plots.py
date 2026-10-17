@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import tempfile
+from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,13 +31,15 @@ if TYPE_CHECKING:
         AbnormalReturnResult,
         EventStudyResult,
     )
-    from ml4t.diagnostic.signal.events import AlignedEventResult
+    from ml4t.diagnostic.signal.events import AlignedEventResult, EventReturnsResult
 
 
 def plot_aligned_event_paths(
     result: AlignedEventResult,
     *,
     std_multiplier: float = 1.0,
+    quantile: int | None = None,
+    group: str | int | None = None,
     theme: str | None = None,
 ) -> go.Figure:
     """Plot actual bucket/group path means and optional sample-std error bars.
@@ -49,6 +52,14 @@ def plot_aligned_event_paths(
     config = get_theme_config(validate_theme(theme))
     figure = go.Figure()
     data = result.statistics
+    if quantile is not None:
+        data = data.filter(pl.col("quantile") == quantile)
+    if group is not None:
+        if "group" not in data.columns:
+            raise ValueError("event paths have no group summaries")
+        data = data.filter(pl.col("group") == group)
+    if data.is_empty():
+        raise ValueError("no event paths match the selected quantile/group")
     keys = ["quantile", *(["group"] if "group" in data.columns else [])]
     for index, part in enumerate(data.partition_by(keys, maintain_order=True)):
         part = part.sort("offset")
@@ -99,6 +110,61 @@ def plot_aligned_event_paths(
     )
     figure.add_vline(x=0, line_dash="dot", line_color=_ML4T_COLORS["slate"])
     return figure
+
+
+def plot_event_returns(
+    result: EventReturnsResult, *, std_bar: bool = True, theme: str | None = None
+) -> list[go.Figure]:
+    """Render the overall path, optional quantile deviations and group overviews."""
+    if not isinstance(std_bar, bool):
+        raise TypeError("std_bar must be bool")
+    overview = plot_aligned_event_paths(result.overall, std_multiplier=0, theme=theme)
+    overview.update_layout(title_text="All quantiles")
+    figures = [overview]
+    if std_bar:
+        for quantile in result.overall.statistics["quantile"].unique().sort():
+            figure = plot_aligned_event_paths(result.overall, quantile=quantile, theme=theme)
+            figure.update_layout(title_text=f"Quantile {quantile}")
+            figures.append(figure)
+    if result.groups is not None:
+        for group in result.groups.statistics["group"].unique().sort():
+            figure = plot_aligned_event_paths(
+                result.groups, group=group, std_multiplier=0, theme=theme
+            )
+            figure.update_layout(title_text=f"Group: {escape(str(group))}")
+            for trace in figure.data:
+                trace.name = trace.name.split(" / ", 1)[0]
+            figures.append(figure)
+    return figures
+
+
+def generate_event_returns_report(
+    result: EventReturnsResult,
+    *,
+    output_file: str | Path | None = None,
+    std_bar: bool = True,
+    theme: str | None = None,
+) -> str:
+    """Compose all event-returns panels without replacing the global sample.
+
+    Export the inspectable data separately with ``result.to_json()``. Display
+    units remain supplied levels or full-clock wealth, not basis points or CAR.
+    """
+    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
+
+    figures = plot_event_returns(result, std_bar=std_bar, theme=theme)
+    sections = [
+        {
+            "title": str(figure.layout.title.text),
+            "figure_index": index,
+            "text": "Offsets count observed rows. Values retain supplied-level or full-clock wealth units, not event-zero returns. Separate quantile error bars show sample standard deviation, not standard error or confidence intervals. Undefined observations remain missing.",
+        }
+        for index, figure in enumerate(figures)
+    ]
+    html = combine_figures_to_html(
+        figures, title="Signal event returns", theme=theme, sections=sections
+    )
+    return _publish_event_html(html, output_file)
 
 
 def plot_event_count_distribution(
@@ -189,6 +255,10 @@ def generate_aligned_event_report(
             },
         ],
     )
+    return _publish_event_html(html, output_file)
+
+
+def _publish_event_html(html: str, output_file: str | Path | None) -> str:
     if output_file is None:
         return html
     target = Path(output_file).absolute()

@@ -1079,6 +1079,59 @@ remain separately required. The existing statistical-validation and Backtest
 workflows described below are additional capabilities; aligned event paths alone
 do not establish complete Alphalens/Pyfolio replacement.
 
+### Complete event-returns report
+
+Unreleased after Diagnostic 0.1.9, `analyze_event_returns` or
+`panel.event_returns` prepares the global sample and, with `by_group=True`,
+separate group samples using the same event engine. The group panels supplement
+the global view. `generate_event_returns_report` renders the global overview,
+then one sample-deviation panel per quantile when `std_bar=True`, then group
+overviews. This covers the panel selections of Alphalens 0.4.6
+`create_event_returns_tear_sheet`; it is not the separate event-study sheet or
+all seven Alphalens reports.
+
+```python
+from ml4t.diagnostic.signal import EventReturnsResult, analyze_event_returns
+from ml4t.diagnostic.visualization.signal import generate_event_returns_report
+
+complete_events = analyze_event_returns(
+    event_input, event_prices, before=1, after=1,
+    input_kind="levels", demeaned=False,
+)
+generate_event_returns_report(
+    complete_events, std_bar=True, output_file="event_returns.html",
+)
+event_export = complete_events.to_json()
+assert EventReturnsResult.from_json(event_export).overall.paths.equals(
+    complete_events.overall.paths
+)
+print("Event-returns report: global view and per-quantile sample deviations")
+```
+
+For the complete grouped, price-produced example and its typed JSON data export:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task event-returns --output event-returns.html
+```
+
+The command prints package versions and checks 24 events, 96 requested path
+cells, two quantiles and two changing, unequal groups. Its five panels use the
+actual overall/group samples; `event-returns.json` retains both samples' paths,
+observations, counts, deviations and settings. No Alphalens, Pyfolio or Backtest
+runtime dependency is required. `plot_event_returns` returns the individual
+figures for notebooks or the existing PDF exporter.
+
+`demeaned` corresponds to reference `long_short`; `group_adjust` corresponds
+to `group_neutral` and takes precedence. The report keeps supplied levels or
+full-clock wealth in their declared units. The reference plot multiplies its
+input by 10,000 for a basis-point display, even when supplied values are prices;
+Diagnostic does not relabel those levels as basis-point returns. Group plots
+and the combined overview show means without deviations; only the optional
+separate quantile plots show sample-standard-deviation bars. Clipped and missing
+cells, duplicate-event weighting and observation-clock limitations above remain
+explicit. Full event-study, calendar and canonical-notebook qualification remain
+separate requirements.
+
 ### Quantiles, turnover, and report boundaries
 
 In unreleased source after 0.1.9, direct `metrics.cross_sectional_ic_series()`

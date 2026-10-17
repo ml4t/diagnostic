@@ -573,7 +573,7 @@ def show_prepared_holdings_report(output: Path) -> None:
     print(list(report.figures))
 
 
-def show_aligned_events(output: Path) -> None:
+def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     """Build a grouped event report from one owned, price-produced signal panel."""
     from ml4t.diagnostic.signal import AlignedEventResult, prepare_signal_panel
     from ml4t.diagnostic.visualization.signal import generate_aligned_event_report
@@ -598,7 +598,8 @@ def show_aligned_events(output: Path) -> None:
         name="group",
     )
     panel = prepare_signal_panel(factor, forward, quantiles=2, groups=groups, max_loss=0)
-    result = panel.event_study(
+    analyze = panel.event_returns if complete_report else panel.event_study
+    result = analyze(
         prices,
         before=1,
         after=2,
@@ -607,6 +608,17 @@ def show_aligned_events(output: Path) -> None:
         group_adjust=False,
         by_group=True,
     )
+    if complete_report:
+        from ml4t.diagnostic.signal import EventReturnsResult
+        from ml4t.diagnostic.visualization.signal import generate_event_returns_report
+
+        assert result.overall.paths.height == 96 and result.groups is not None
+        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(result.groups.paths)
+        path = generate_event_returns_report(result, output_file=output)
+        output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+        print(f"Complete event-returns HTML: {path}")
+        print("5 panels: overall, 2 quantile deviations, 2 group overviews; typed JSON exported")
+        return
     assert panel.data.height == 24 and result.paths.height == 96
     assert result.event_counts["n_events"].sum() == 24
     assert AlignedEventResult.from_json(result.to_json()).paths.equals(result.paths)
@@ -632,20 +644,21 @@ def main() -> None:
             "holdings",
             "holdings-report",
             "events",
+            "event-returns",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report or events",
+        help="HTML path for --task holdings-report, events or event-returns",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "events"):
+    if task in ("holdings-report", "events", "event-returns"):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -660,6 +673,9 @@ def main() -> None:
         return
     if task == "events":
         show_aligned_events(arguments.output or Path("aligned-events.html"))
+        return
+    if task == "event-returns":
+        show_aligned_events(arguments.output or Path("event-returns.html"), complete_report=True)
         return
     if task in ("all", "holdings"):
         show_prepared_holdings()

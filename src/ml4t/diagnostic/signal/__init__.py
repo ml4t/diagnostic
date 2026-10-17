@@ -35,7 +35,9 @@ from ml4t.diagnostic.signal._utils import (
 from ml4t.diagnostic.signal.core import analyze_prepared_signal, analyze_signal, prepare_data
 from ml4t.diagnostic.signal.events import (
     AlignedEventResult,
+    EventReturnsResult,
     align_event_paths,
+    analyze_event_returns,
     analyze_signal_events,
 )
 from ml4t.diagnostic.signal.factor_regression import (
@@ -76,6 +78,8 @@ __all__ = [
     "analyze_prepared_signal",
     "SignalResult",
     "AlignedEventResult",
+    "EventReturnsResult",
+    "analyze_event_returns",
     "align_event_paths",
     "analyze_signal_events",
     # Data preparation

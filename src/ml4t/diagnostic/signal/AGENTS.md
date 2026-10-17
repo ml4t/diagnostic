@@ -56,6 +56,10 @@ retaining raw paths, missing cells, date/group observations, sample deviations a
 They reuse existing wealth/statistics kernels and preserve every event ID. They are not CAR,
 calendar-grid validation or complete legacy event sheets. `AlignedEventResult` owns Arrow/JSON
 snapshots; existing event plots and HTML composition render actual paths without synthetic data.
+`panel.event_returns` and `analyze_event_returns` retain the overall analysis alongside optional
+group summaries in `EventReturnsResult`. `plot_event_returns` and `generate_event_returns_report`
+compose the global overview, optional per-quantile sample deviations and group overviews. This
+is the event-returns report, not the separate event-study sheet or all seven legacy sheets.
 
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse

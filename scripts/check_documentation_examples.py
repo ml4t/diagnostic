@@ -31,6 +31,7 @@ PAGES = {
         "One-day IC: 0.347",
         "Portfolio Sharpe:",
         "Aligned event levels: 55.0; finite date paths: 2/3/2",
+        "Event-returns report: global view and per-quantile sample deviations",
     ),
 }
 

@@ -24,7 +24,7 @@ from ml4t.diagnostic.utils.validation import (
 )
 
 if TYPE_CHECKING:
-    from ml4t.diagnostic.signal.events import AlignedEventResult
+    from ml4t.diagnostic.signal.events import AlignedEventResult, EventReturnsResult
     from ml4t.diagnostic.signal.factor_regression import FactorAlphaBetaResult
     from ml4t.diagnostic.signal.result import SignalResult
 
@@ -124,6 +124,35 @@ class PreparedSignalPanel:
             date_col=self.date_col,
             asset_col=self.asset_col,
             date_grid=date_grid,
+        )
+
+    def event_returns(
+        self,
+        values: pl.DataFrame | pd.DataFrame,
+        *,
+        input_kind: Literal["levels", "returns"],
+        before: int = 5,
+        after: int = 15,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        by_group: bool = False,
+        value_col: str = "value",
+    ) -> EventReturnsResult:
+        """Retain the overall and optional group samples for an event-returns report."""
+        from ml4t.diagnostic.signal.events import analyze_event_returns
+
+        return analyze_event_returns(
+            self.data,
+            values,
+            input_kind=input_kind,
+            before=before,
+            after=after,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            by_group=by_group,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+            value_col=value_col,
         )
 
     def event_study(
