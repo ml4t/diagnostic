@@ -223,7 +223,7 @@ def export_figures_to_pdf(
     Each figure is rendered as a separate page in the PDF. Uses kaleido for
     high-quality vector rendering.
     Batch-capable Plotly/Kaleido versions share one renderer across pages;
-    older supported backends retain per-figure export. Renderer and cleanup
+    versions without batch support retain per-figure export. Renderer and cleanup
     errors propagate to the caller.
 
     Parameters

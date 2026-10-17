@@ -8,6 +8,32 @@ import sys
 import pytest
 
 
+def test_pandas_timestamp_return_coordinates_produce_a_real_dated_pdf(tmp_path):
+    pytest.importorskip("kaleido")
+    go = pytest.importorskip("plotly.graph_objects")
+    pypdf = pytest.importorskip("pypdf")
+    import pandas as pd
+
+    from ml4t.diagnostic.visualization import export_figures_to_pdf
+
+    figure = go.Figure(
+        go.Scatter(
+            x=[pd.Timestamp("2025-07-03", tz="UTC"), pd.Timestamp("2025-07-07", tz="UTC")],
+            y=[0.01, -0.02],
+        )
+    )
+    figure.update_layout(title="Observed dated returns")
+    original = figure.to_json()
+    output = tmp_path / "dated.pdf"
+    export_figures_to_pdf([figure], output, scale=1)
+    reader = pypdf.PdfReader(output)
+    assert len(reader.pages) == 1
+    text = reader.pages[0].extract_text()
+    assert "Observed dated returns" in text and "2025" in text
+    assert "Jul 3" in text and "Jul 7" in text
+    assert figure.to_json() == original
+
+
 @pytest.mark.parametrize("scale", [1.0, 2.0])
 def test_multipage_pdf_uses_one_real_renderer_and_closes_it_after_all_pages(scale, tmp_path):
     kaleido = pytest.importorskip("kaleido")
