@@ -334,7 +334,7 @@ def create_top_contributors_html(
     if available.is_empty():
         label = "P&L contribution shares" if pnl_col == "pnl_contribution_share" else "P&L values"
         return (
-            '<div class="cost-summary-line">'
+            '<div class="cost-summary-line" style="font-size:13px">'
             f"{html_mod.escape(label)} unavailable: no finite values to rank.</div>"
         )
     sorted_df = available.sort(pnl_col, descending=True)
@@ -375,9 +375,9 @@ def create_top_contributors_html(
         )
 
     return (
-        '<div class="cost-summary-line" style="gap:12px;font-size:13px">'
+        '<div class="cost-summary-line" style="gap:12px;font-size:14px">'
         '<span style="color:var(--c-text-muted);font-weight:600;'
-        'text-transform:uppercase;font-size:10px;letter-spacing:0.06em">'
+        'text-transform:uppercase;font-size:13px;letter-spacing:0.06em">'
         "Top / Bottom</span>"
         f"{''.join(items)}"
         "</div>"

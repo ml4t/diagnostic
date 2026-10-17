@@ -75,6 +75,8 @@ losing asset a positive share, so its sign does not determine profit/loss
 colors or rankings. Undefined shares display `N/A`; defined zero cash P&L
 remains zero. Standalone share-only contributor inputs use neutral colors
 and report unavailable values explicitly.
+On narrow screens, the attribution panel scrolls horizontally to keep all table
+labels and values readable.
 
 | Template | Primary content |
 |----------|-----------------|

@@ -425,27 +425,31 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
     )
 
     def share_values(column: str) -> list[float | str]:
-        return [round(v, 4) if v is not None and isfinite(v) else "N/A" for v in top[column]]
+        return [v if v is not None and isfinite(v) else "N/A" for v in top[column].round(4)]
 
     fig.add_trace(
         go.Table(
             header={
+                "font": {"size": 14},
+                "height": 36,
                 "values": [
                     "Symbol",
                     "Share of net P&L",
                     "Turnover Share",
                     "Cost Share",
                     "Burden Score",
-                ]
+                ],
             },
             cells={
+                "font": {"size": 14},
+                "height": 28,
                 "values": [
                     top["symbol"].to_list(),
                     share_values("pnl_contribution_share"),
                     share_values("turnover_contribution_share"),
                     share_values("cost_contribution_share"),
                     top["burden_score"].round(4).to_list(),
-                ]
+                ],
             },
         ),
         row=2,
@@ -453,7 +457,7 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
     )
     theme_config = get_theme_config(theme)
     fig.update_layout(theme_config["layout"])
-    y_axis_config: dict[str, object] = {"title": bar_label, "tickformat": "$,.0f"}
+    y_axis_config: dict[str, object] = {"title": bar_label, "tickformat": "$,.2f"}
     fig.update_layout(
         title={"text": "Attribution", "font": {"size": 16}},
         height=380,
