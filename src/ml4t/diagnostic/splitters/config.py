@@ -299,7 +299,7 @@ class WalkForwardConfig(SplitterConfig):
     test_period: int | str | None = Field(
         None,
         description=(
-            "Held-out test period: int (trading days, requires calendar_id), "
+            "Held-out test period: int (sessions with a calendar, otherwise observed rows), "
             "str (time-based, e.g., '52D'). Reserves most recent data for final evaluation."
         ),
     )
@@ -503,24 +503,6 @@ class WalkForwardConfig(SplitterConfig):
             raise ValueError(
                 "'test_end' requires either 'test_period' or 'test_start' to define the held-out test."
             )
-
-        # test_period as int requires calendar_id for trading-day interpretation
-        if isinstance(self.test_period, int) and self.calendar_id is None:
-            warnings.warn(
-                f"test_period={self.test_period} (int) without calendar_id will be interpreted "
-                "as calendar days, not trading days. Set calendar_id for trading-day interpretation.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        # label_horizon as int with calendar_id should use trading days
-        if (
-            isinstance(self.label_horizon, int)
-            and self.label_horizon > 0
-            and self.calendar_id is not None
-        ):
-            # Valid configuration - label_horizon will be converted to trading days
-            pass
 
         return self
 

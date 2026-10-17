@@ -2,11 +2,12 @@
 
 import warnings
 
+import numpy as np
 import pandas as pd
 import pytest
 from ml4t.specs import FeedSpec
 
-from ml4t.diagnostic.core.purging import calculate_purge_indices
+from ml4t.diagnostic.core.purging import apply_purging_and_embargo, calculate_purge_indices
 from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardConfig, WalkForwardCV
 
 
@@ -113,6 +114,69 @@ def test_nested_exclusion_masks_do_not_silently_reenable_a_disabled_calendar(mas
         feed_spec=FeedSpec(time_contract_version=2, calendar="24/7"),
     )
     assert restored.config.calendar == (None if disabled else "24/7")
+
+
+@pytest.fixture(params=[None, "UTC"], ids=["naive-rows", "aware-rows"])
+def sparse_observation_times(request):
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"]
+    )
+    return times.tz_localize(request.param) if request.param else times
+
+
+@pytest.mark.parametrize("direction", ["forward", "backward"])
+def test_row_holdouts_do_not_require_timezones_or_claim_calendar_day_sizes(
+    sparse_observation_times, direction
+):
+    frame = pd.DataFrame({"feature": range(6)}, index=sparse_observation_times)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cv = WalkForwardCV(
+            config=WalkForwardConfig(
+                calendar=None, test_period=2, n_splits=1, test_size=1, fold_direction=direction
+            )
+        )
+        folds = [(train.tolist(), test.tolist()) for train, test in cv.split(frame)]
+    assert not caught
+    assert cv.test_indices_.tolist() == [4, 5]
+    assert folds == ([([0], [1])] if direction == "forward" else [([0, 1, 2], [3])])
+
+
+def test_direct_observation_purge_accepts_consistently_naive_or_aware_keys(
+    sparse_observation_times,
+):
+    times = sparse_observation_times
+    assert calculate_purge_indices(
+        timestamps=times, test_start=times[3], test_end=times[4], label_horizon=1, calendar=None
+    ) == [2]
+
+
+def test_observation_embargo_keeps_row_units_across_a_missing_week(sparse_observation_times):
+    times = sparse_observation_times
+    cleaned = apply_purging_and_embargo(
+        np.arange(6),
+        test_start=times[3],
+        test_end=times[4],
+        label_horizon=1,
+        embargo_size=2,
+        timestamps=times,
+        calendar=None,
+    )
+    assert cleaned.tolist() == [0, 1]
+
+
+def test_row_splits_do_not_move_a_purge_boundary_to_an_earlier_duplicate_timestamp():
+    frame = pd.DataFrame(
+        {"feature": range(4)},
+        index=pd.to_datetime(["2025-07-03", "2025-07-03", "2025-07-07", "2025-07-07"], utc=True),
+    )
+    cv = WalkForwardCV(
+        n_splits=2, test_size=1, train_size=2, label_horizon=1, consecutive=True, calendar=None
+    )
+    assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == [
+        ([0], [2]),
+        ([0, 1], [3]),
+    ]
 
 
 def test_panel_purge_uses_each_assets_next_observation_across_holiday_and_other_assets():

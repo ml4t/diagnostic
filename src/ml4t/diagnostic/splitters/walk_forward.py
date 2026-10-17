@@ -777,6 +777,34 @@ class WalkForwardCV(BaseSplitter):
             self._record_fold(fold_i, train_idx, val_idx, timestamps)
             yield train_idx, val_idx
 
+    def _purge_sample_indices(
+        self,
+        train_indices: NDArray[np.intp],
+        test_start: int,
+        test_end: int,
+        n_samples: int,
+        timestamps: pd.DatetimeIndex | None,
+    ) -> NDArray[np.intp]:
+        """Keep observation boundaries positional in every calendar-free row path."""
+        if (
+            self.calendar is None
+            and not isinstance(self.label_horizon, pd.Timedelta)
+            and not isinstance(self.embargo_size, pd.Timedelta)
+        ):
+            timestamps = None
+        start, end = convert_indices_to_timestamps(test_start, test_end, timestamps)
+        return apply_purging_and_embargo(
+            train_indices=train_indices,
+            test_start=start,
+            test_end=end,
+            label_horizon=self.label_horizon,
+            embargo_size=self.embargo_size,
+            embargo_pct=self.embargo_pct,
+            n_samples=n_samples,
+            timestamps=timestamps,
+            calendar=self.calendar,
+        )
+
     def _split_by_samples(
         self,
         X: pl.DataFrame | pd.DataFrame | NDArray[Any],
@@ -861,30 +889,8 @@ class WalkForwardCV(BaseSplitter):
             # Initial train indices (before purging/embargo)
             train_indices = np.arange(train_start, train_end)
 
-            purge_timestamps = timestamps
-            if (
-                self.calendar is None
-                and not isinstance(self.label_horizon, pd.Timedelta)
-                and not isinstance(self.embargo_size, pd.Timedelta)
-            ):
-                purge_timestamps = None
-            test_start_time, test_end_time = convert_indices_to_timestamps(
-                test_start,
-                test_end,
-                purge_timestamps,
-            )
-
-            # Apply purging and embargo
-            clean_train_indices = apply_purging_and_embargo(
-                train_indices=train_indices,
-                test_start=test_start_time,
-                test_end=test_end_time,
-                label_horizon=self.label_horizon,
-                embargo_size=self.embargo_size,
-                embargo_pct=self.embargo_pct,
-                n_samples=n_samples,
-                timestamps=purge_timestamps,
-                calendar=self.calendar,
+            clean_train_indices = self._purge_sample_indices(
+                train_indices, test_start, test_end, n_samples, timestamps
             )
 
             # Test indices
@@ -1423,22 +1429,8 @@ class WalkForwardCV(BaseSplitter):
             train_indices = np.arange(train_start, train_end, dtype=np.intp)
             val_indices = np.arange(val_start, val_end, dtype=np.intp)
 
-            # Convert boundaries to timestamps for purging
-            val_start_time, val_end_time = convert_indices_to_timestamps(
-                val_start, val_end, timestamps
-            )
-
-            # Apply purging and embargo
-            clean_train_indices = apply_purging_and_embargo(
-                train_indices=train_indices,
-                test_start=val_start_time,
-                test_end=val_end_time,
-                label_horizon=self.label_horizon,
-                embargo_size=self.embargo_size,
-                embargo_pct=self.embargo_pct,
-                n_samples=n_samples,
-                timestamps=timestamps,
-                calendar=self.calendar,
+            clean_train_indices = self._purge_sample_indices(
+                train_indices, val_start, val_end, n_samples, timestamps
             )
 
             # Apply group isolation if requested
@@ -1543,22 +1535,8 @@ class WalkForwardCV(BaseSplitter):
             train_indices = np.arange(train_start, train_end, dtype=np.intp)
             val_indices = np.arange(val_start, val_end, dtype=np.intp)
 
-            # Convert boundaries to timestamps for purging
-            val_start_time, val_end_time = convert_indices_to_timestamps(
-                val_start, val_end, timestamps
-            )
-
-            # Apply purging and embargo
-            clean_train_indices = apply_purging_and_embargo(
-                train_indices=train_indices,
-                test_start=val_start_time,
-                test_end=val_end_time,
-                label_horizon=self.label_horizon,
-                embargo_size=self.embargo_size,
-                embargo_pct=self.embargo_pct,
-                n_samples=n_samples,
-                timestamps=timestamps,
-                calendar=self.calendar,
+            clean_train_indices = self._purge_sample_indices(
+                train_indices, val_start, val_end, n_samples, timestamps
             )
 
             # Apply group isolation if requested

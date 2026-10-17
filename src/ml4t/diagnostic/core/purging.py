@@ -21,12 +21,16 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.splitters.calendar import TradingCalendar
 
 
-def _normalize_timezone_aware_inputs(
+def _normalize_timestamp_inputs(
     timestamps: pd.DatetimeIndex,
     test_start: pd.Timestamp,
     test_end: pd.Timestamp,
+    *,
+    allow_naive: bool = False,
 ) -> tuple[pd.DatetimeIndex, pd.Timestamp, pd.Timestamp]:
-    """Validate timezone awareness and normalize all inputs to UTC."""
+    """Validate consistent awareness and normalize aware inputs to UTC."""
+    if allow_naive and timestamps.tz is None and test_start.tz is None and test_end.tz is None:
+        return timestamps, test_start, test_end
     if timestamps.tz is None:
         raise ValueError("timestamps must be timezone-aware")
     if test_start.tz is None:
@@ -142,8 +146,11 @@ def calculate_purge_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
-            timestamps, test_start, test_end
+        timestamps, test_start, test_end = _normalize_timestamp_inputs(
+            timestamps,
+            test_start,
+            test_end,
+            allow_naive=calendar is None and not isinstance(label_horizon, pd.Timedelta),
         )
 
         if not isinstance(label_horizon, pd.Timedelta):
@@ -257,7 +264,7 @@ def calculate_embargo_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
+        timestamps, test_start, test_end = _normalize_timestamp_inputs(
             timestamps, test_start, test_end
         )
 
@@ -373,9 +380,19 @@ def apply_purging_and_embargo(
     if timestamps is not None:
         if not isinstance(test_start, pd.Timestamp) or not isinstance(test_end, pd.Timestamp):
             raise TypeError("test_start and test_end must be Timestamps when using timestamps")
-        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
-            timestamps, test_start, test_end
+        row_mode = (
+            calendar is None
+            and not isinstance(label_horizon, pd.Timedelta)
+            and not isinstance(embargo_size, pd.Timedelta)
         )
+        timestamps, test_start, test_end = _normalize_timestamp_inputs(
+            timestamps, test_start, test_end, allow_naive=row_mode
+        )
+        if row_mode:
+            n_samples = len(timestamps)
+            test_start = _searchsorted_timestamp_ns(timestamps, test_start, side="left")
+            test_end = _searchsorted_timestamp_ns(timestamps, test_end, side="left")
+            timestamps = None
 
     # Calculate indices to remove - convert to numpy arrays immediately
     purged_list = calculate_purge_indices(
