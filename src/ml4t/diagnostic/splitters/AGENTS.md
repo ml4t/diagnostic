@@ -14,4 +14,6 @@ Leakage-aware cross-validation for financial time series.
 
 - `WalkForwardCV` supports held-out test windows via `test_period` or `test_start` / `test_end`
 - `CombinatorialCV` is the path used by `ValidatedCrossValidation`
+- Both configs preserve canonical `calendar` intent and share the Specs resolver.
+  CPCV intake does not convert its observation/elapsed windows into session units.
 - The public guide is [../../../../docs/user-guide/cv-configuration.md](../../../../docs/user-guide/cv-configuration.md)
