@@ -144,8 +144,11 @@ must name its columns and aligns by column label, preserving the input column
 order. Use a matching rate DataFrame for date-varying per-column rates rather
 than passing a dated Series as if it were a column rate.
 
-Annual return/CAGR, Sortino and downside risk return a labeled Series for a
-nonempty DataFrame. Volatility and Sharpe return a column-ordered NumPy array.
+With enough input rows, annual return/CAGR, Sortino and downside risk return a
+labeled Series for a DataFrame. Annual return/CAGR and downside risk accept
+one input row; Sortino needs at least two raw rows, even if only one has a
+defined adjusted return. Insufficient frame samples return an unlabeled
+undefined array. Volatility and Sharpe return a column-ordered NumPy array.
 Calmar is a one-series route; use `DataFrame.apply` as above. Empty annual
 return/CAGR inputs return scalar `NaN`; the other vectorized routes preserve
 the empty frame's column shape with undefined values. Supplied output buffers

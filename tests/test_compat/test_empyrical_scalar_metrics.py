@@ -216,6 +216,19 @@ def test_exact_constant_and_zero_price_growth_do_not_invent_risk(api):
             assert value == np.inf if mean else np.isnan(value)
 
 
+def test_singleton_frame_sortino_is_undefined_array_not_a_fabricated_labeled_estimate(api, returns):
+    sample = returns.iloc[:1]
+    assert isinstance(api.annual_return(sample), pd.Series)
+    downside = api.downside_risk(sample, required_return=0.03, annualization=12)
+    assert isinstance(downside, pd.Series)
+    assert list(downside.index) == ["complete", "missing"]
+    np.testing.assert_allclose(downside, [0.01 * math.sqrt(12)] * 2)
+    for name in ["sortino_ratio", "sharpe_ratio", "annual_volatility"]:
+        result = getattr(api, name)(sample)
+        assert isinstance(result, np.ndarray) and result.shape == (2,)
+        assert np.isnan(result).all()
+
+
 def test_zero_price_recovery_infinity_is_not_silently_removed_from_risk_sample(api):
     sample = pd.Series([1.0, 0.0, 1.0, 1.0]).pct_change(fill_method=None).iloc[1:]
     assert sample.tolist() == [-1.0, np.inf, 0.0]
