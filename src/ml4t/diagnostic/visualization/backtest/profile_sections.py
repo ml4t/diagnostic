@@ -463,6 +463,8 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
         height=380,
         yaxis=y_axis_config,
     )
+    fig.update_xaxes(tickfont={"size": 14})
+    fig.update_yaxes(tickfont={"size": 14}, title_font={"size": 14})
     return fig
 
 
