@@ -28,6 +28,9 @@ PAGES = {
     "docs/user-guide/backtest-tearsheets.md": ("Wrote backtest_report.html",),
     "docs/user-guide/trade-analysis.md": ("[-410.0, -240.0, -130.0]",),
     "docs/user-guide/migration.md": ("One-day IC: 0.347", "Portfolio Sharpe:"),
+    "docs/user-guide/empyrical-migration.md": (
+        "Empyrical scalar adapters: columnwise counts, periodic rates and labels checked",
+    ),
 }
 
 

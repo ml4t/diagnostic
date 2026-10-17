@@ -166,3 +166,213 @@ def test_annualizing_large_finite_price_gain_returns_infinity_not_python_overflo
     assert 252 * math.log(1e200) > math.log(np.finfo(float).max)
     assert annual_return(sample) == np.inf
     assert api.annual_return(sample) == np.inf
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "annual_return",
+        "cagr",
+        "annual_volatility",
+        "calmar_ratio",
+        "sharpe_ratio",
+        "sortino_ratio",
+        "downside_risk",
+    ],
+)
+def test_empty_and_all_missing_price_returns_keep_each_metrics_undefined_contract(
+    api, returns, name
+):
+    function = getattr(api, name)
+    assert np.isnan(function(returns["missing"].iloc[:0]))
+    missing = (
+        pd.Series(np.nan, index=pd.bdate_range("2025-01-02", periods=5))
+        .pct_change(fill_method=None)
+        .iloc[1:]
+    )
+    actual = function(missing)
+    if name in {"annual_return", "cagr"}:
+        assert actual == 0
+    else:
+        assert np.isnan(actual)
+    if name != "calmar_ratio":
+        empty = function(returns.iloc[:0])
+        if name in {"annual_return", "cagr"}:
+            assert np.ndim(empty) == 0 and np.isnan(empty)
+        else:
+            assert isinstance(empty, np.ndarray) and empty.shape == (2,)
+            assert np.isnan(empty).all()
+
+
+def test_exact_constant_and_zero_price_growth_do_not_invent_risk(api):
+    constant = pd.Series([1, 2, 4, 8, 16]).pct_change(fill_method=None).iloc[1:]
+    zero = pd.Series([100, 100, 100, 100, 100]).pct_change(fill_method=None).iloc[1:]
+    for sample, mean in [(constant, 1), (zero, 0)]:
+        assert api.annual_return(sample, annualization=12) == (1 + mean) ** 12 - 1
+        assert api.annual_volatility(sample) == api.downside_risk(sample) == 0
+        assert np.isnan(api.calmar_ratio(sample))
+        for name in ["sharpe_ratio", "sortino_ratio"]:
+            value = getattr(api, name)(sample)
+            assert value == np.inf if mean else np.isnan(value)
+
+
+def test_zero_price_recovery_infinity_is_not_silently_removed_from_risk_sample(api):
+    sample = pd.Series([1.0, 0.0, 1.0, 1.0]).pct_change(fill_method=None).iloc[1:]
+    assert sample.tolist() == [-1.0, np.inf, 0.0]
+    assert np.isnan(api.annual_return(sample, annualization=12))
+    assert np.isnan(api.annual_volatility(sample, annualization=12))
+    assert np.isnan(api.sharpe_ratio(sample, annualization=12))
+    assert api.downside_risk(sample, annualization=12) == pytest.approx(2)
+    assert api.sortino_ratio(sample, annualization=12) == np.inf
+
+
+def test_one_observation_sortino_guard_is_distinct_from_single_defined_observation(api, returns):
+    from ml4t.diagnostic.metrics import periodic_sortino_ratio
+
+    sample = returns["missing"].where(np.arange(4) == 0)
+    assert np.isnan(periodic_sortino_ratio(sample))
+    assert api.sortino_ratio(sample) == np.inf
+    assert np.isnan(api.sortino_ratio(sample.iloc[:1]))
+    assert api.downside_risk(
+        sample.iloc[:1], required_return=0.03, annualization=12
+    ) == pytest.approx(0.01 * math.sqrt(12))
+
+
+@pytest.mark.parametrize("name", ["sharpe_ratio", "sortino_ratio", "downside_risk"])
+def test_reordered_dated_periodic_rates_pair_with_actual_return_dates(api, returns, name):
+    rates = pd.Series([0.003, 0.001, 0.004, 0.002], index=returns.index[[2, 0, 3, 1]])
+    excess = [1 / 50 - 0.001, 1 / 51 - 0.002, -1 / 52 - 0.003]
+    mean = sum(excess) / 3
+    downside = math.sqrt(sum(min(value, 0) ** 2 for value in excess) / 3)
+    if name == "sharpe_ratio":
+        denominator = math.sqrt(sum((value - mean) ** 2 for value in excess) / 2)
+        expected = mean / denominator * math.sqrt(12)
+    else:
+        expected = (
+            downside * math.sqrt(12) if name == "downside_risk" else mean / downside * math.sqrt(12)
+        )
+    key = "risk_free" if name == "sharpe_ratio" else "required_return"
+    actual = getattr(api, name)(returns["missing"], annualization=12, **{key: rates})
+    assert actual == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("name", ["sharpe_ratio", "sortino_ratio", "downside_risk"])
+@pytest.mark.parametrize("reverse_columns", [False, True])
+@pytest.mark.parametrize("rate_kind", ["series", "frame"])
+def test_frame_periodic_rates_align_by_column_not_series_position(
+    api, returns, name, reverse_columns, rate_kind
+):
+    if reverse_columns:
+        returns = returns[["missing", "complete"]]
+    rates = pd.Series({"complete": 0.001, "missing": 0.002}).reindex(returns.columns[::-1])
+    if rate_kind == "frame":
+        rates = pd.DataFrame(
+            np.tile(rates.to_numpy(), (len(returns), 1)),
+            index=returns.index[::-1],
+            columns=rates.index,
+        )
+    key = "risk_free" if name == "sharpe_ratio" else "required_return"
+    actual = getattr(api, name)(returns, annualization=12, **{key: rates})
+    expected = [
+        _expected(name, column, 12, 0.001 if column == "complete" else 0.002)
+        for column in returns.columns
+    ]
+    if isinstance(actual, pd.Series):
+        assert list(actual.index) == list(returns.columns)
+    np.testing.assert_allclose(actual, expected)
+
+
+def test_supplied_downside_deviation_is_annualized_and_preserves_column_output(api, returns):
+    deviations = np.array([0.2, 0.3])
+    means = [(2 / 100 - 1 / 102 + 2 / 101 + 1 / 103) / 4, (1 / 50 + 1 / 51 - 1 / 52) / 3]
+    result = api.sortino_ratio(
+        returns, required_return=0.001, annualization=52.5, _downside_risk=deviations
+    )
+    assert list(result.index) == ["complete", "missing"]
+    np.testing.assert_allclose(
+        result,
+        [
+            (mean - 0.001) * 52.5 / deviation
+            for mean, deviation in zip(means, deviations, strict=True)
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["annual_volatility", "sharpe_ratio", "sortino_ratio", "downside_risk"]
+)
+def test_invalid_or_aliased_output_buffer_cannot_mutate_price_returns(api, returns, name):
+    sample = returns.to_numpy(copy=True)
+    before = sample.copy()
+    function = getattr(api, name)
+    with pytest.raises(TypeError, match="floating"):
+        function(sample, out=np.empty(2, dtype=int))
+    readonly = np.empty(2)
+    readonly.flags.writeable = False
+    with pytest.raises(ValueError, match="writable"):
+        function(sample, out=readonly)
+    with pytest.raises(ValueError, match="overlap"):
+        function(sample, out=sample[0])
+    np.testing.assert_array_equal(sample, before)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "annual_return",
+        "cagr",
+        "annual_volatility",
+        "calmar_ratio",
+        "sharpe_ratio",
+        "sortino_ratio",
+        "downside_risk",
+    ],
+)
+@pytest.mark.parametrize("shape", ["series", "array1", "frame", "array2"])
+def test_captured_price_workflow_matches_pinned_reference_values_and_supported_shapes(
+    api, returns, name, shape
+):
+    reference = pytest.importorskip("empyrical")
+    sample = (
+        returns["missing"]
+        if shape == "series"
+        else returns["missing"].to_numpy()
+        if shape == "array1"
+        else returns
+        if shape == "frame"
+        else returns.to_numpy()
+    )
+    kwargs = {"period": "ignored-explicit-scale", "annualization": 52.5}
+    if name == "sharpe_ratio":
+        kwargs["risk_free"] = 0.001
+    if name in {"sortino_ratio", "downside_risk"}:
+        kwargs["required_return"] = 0.001
+    if name == "calmar_ratio" and sample.ndim == 2:
+        expected = np.array(
+            [
+                reference.calmar_ratio(
+                    sample[:, index] if shape == "array2" else sample.iloc[:, index], **kwargs
+                )
+                for index in range(2)
+            ]
+        )
+        actual = np.array(
+            [
+                api.calmar_ratio(
+                    sample[:, index] if shape == "array2" else sample.iloc[:, index], **kwargs
+                )
+                for index in range(2)
+            ]
+        )
+    else:
+        expected = getattr(reference, name)(sample, **kwargs)
+        actual = getattr(api, name)(sample, **kwargs)
+    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12, equal_nan=True)
+    assert np.shape(actual) == np.shape(expected)
+    if isinstance(expected, pd.Series):
+        assert isinstance(actual, pd.Series)
+        if name == "sortino_ratio":
+            assert list(actual.index) == ["complete", "missing"]
+            assert list(expected.index) in [["complete", "missing"], [0, 1]]
+        else:
+            pd.testing.assert_index_equal(actual.index, expected.index)

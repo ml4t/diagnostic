@@ -84,6 +84,86 @@ still evaluates Empyrical's NaN behavior; it does not silently fill or drop a
 return to make the inputs agree. The published comparison table remains a
 historical measurement, not the current source's missing-data contract.
 
+## Use columnwise scalar adapters (unreleased)
+
+The source after 0.1.9 adds `ml4t.diagnostic.compat.empyrical` for annual
+return/CAGR, sample annual volatility, one-series Calmar, periodic-rate Sharpe,
+Sortino and downside risk. PyPI 0.1.9 does not contain these adapters. Native
+Diagnostic APIs keep their existing annual-rate defaults and sample guards.
+This namespace does not redirect `import empyrical` or provide every legacy
+function or metric registry.
+
+This standalone workflow needs Diagnostic, not Empyrical, Backtest or Engineer:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.compat import empyrical as metrics
+
+prices = pd.DataFrame(
+    {"complete": [100, 102, 101, 103, 104], "missing": [50, 51, 52, 51, np.nan]},
+    index=pd.bdate_range("2025-01-02", periods=5, tz="UTC"),
+)
+returns = prices.pct_change(fill_method=None).iloc[1:]
+annual = metrics.annual_return(returns, annualization=12)
+np.testing.assert_allclose(annual, [1.04**3 - 1, 1.02**3 - 1])
+assert list(annual.index) == ["complete", "missing"]
+
+out = np.empty(2)
+sortino = metrics.sortino_ratio(
+    returns, required_return=0.001, annualization=12, out=out,
+)
+assert list(sortino.index) == ["complete", "missing"]
+assert np.shares_memory(sortino, out)
+calmar = returns.apply(lambda column: metrics.calmar_ratio(column, annualization=12))
+assert calmar.shape == (2,)
+print("Empyrical scalar adapters: columnwise counts, periodic rates and labels checked")
+```
+
+Build a fresh unpublished wheel with `uv build --out-dir dist/empyrical-adapters`.
+Run all seven routes and print the actual package versions from that wheel:
+
+```bash
+uv run --no-project --with dist/empyrical-adapters/ml4t_diagnostic-0.1.9-py3-none-any.whl \
+  python -I examples/legacy_migration_comparison.py --task empyrical-native
+```
+
+The four return rows include one missing observation. Annual return treats
+that observation as neutral compounding but still counts four elapsed rows.
+Volatility uses sample deviation (`ddof=1`); means and downside deviation omit
+missing adjusted observations separately in each column. Infinite returns are
+not silently removed. A total loss remains -100%; a negative ending wealth
+raised to a fractional annualization power is undefined (`NaN`), and a
+floating overflow is `Inf`, not a complex value or Python overflow exception.
+
+`risk_free` and `required_return` here are periodic returns. Explicit positive
+finite `annualization` takes precedence over `period`, including noninteger
+scales such as 52.5; no cadence or calendar is inferred from dates. For a
+Series, a supplied rate Series aligns by date. For a DataFrame, a rate Series
+must name its columns and aligns by column label, preserving the input column
+order. Use a matching rate DataFrame for date-varying per-column rates rather
+than passing a dated Series as if it were a column rate.
+
+Annual return/CAGR, Sortino and downside risk return a labeled Series for a
+nonempty DataFrame. Volatility and Sharpe return a column-ordered NumPy array.
+Calmar is a one-series route; use `DataFrame.apply` as above. Empty annual
+return/CAGR inputs return scalar `NaN`; the other vectorized routes preserve
+the empty frame's column shape with undefined values. Supplied output buffers
+must have the exact reduced shape, floating dtype, be writable and not overlap
+the input. One-series calls return a scalar; columnwise array calls return the
+buffer itself, and labeled calls share its storage. Sortino's optional
+`_downside_risk` is an already annualized deviation.
+Annual return, volatility and downside deviation use decimal return units;
+Sharpe, Sortino and Calmar ratios are dimensionless.
+
+Published Empyrical Reloaded 0.5.12 loses Sortino DataFrame column names. The
+maintained reference has [repaired those labels](https://github.com/stefan-jansen/empyrical-reloaded/blob/a08e6fd123b74859c5e7e6747252ea9d2148cf67/src/empyrical/stats.py),
+and this adapter retains the input names instead of copying the published
+label defect. Numerical reference comparisons and independent price-product,
+sample-deviation and downside formulas are separate checks. Matching these
+scalar cases does not qualify the report, rolling or attribution workflows
+listed below.
+
 ## Metrics that need separate review
 
 Benchmark-relative `alpha` and `beta` are available from Diagnostic when you

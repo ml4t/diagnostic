@@ -573,6 +573,47 @@ def show_prepared_holdings_report(output: Path) -> None:
     print(list(report.figures))
 
 
+def show_empyrical_native() -> None:
+    """Run captured-price scalar adapters without a legacy runtime dependency."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+
+    prices = pd.DataFrame(
+        {"complete": [100, 102, 101, 103, 104], "missing": [50, 51, 52, 51, np.nan]},
+        index=pd.bdate_range("2025-01-02", periods=5, tz="UTC"),
+    )
+    returns = prices.pct_change(fill_method=None).iloc[1:]
+    before = returns.copy(deep=True)
+    annual = metrics.annual_return(returns, annualization=12)
+    np.testing.assert_allclose(annual, [1.04**3 - 1, 1.02**3 - 1])
+    for name in [
+        "annual_return",
+        "cagr",
+        "annual_volatility",
+        "calmar_ratio",
+        "sharpe_ratio",
+        "sortino_ratio",
+        "downside_risk",
+    ]:
+        kwargs = {"annualization": 12}
+        if name == "sharpe_ratio":
+            kwargs["risk_free"] = 0.001
+        if name in {"sortino_ratio", "downside_risk"}:
+            kwargs["required_return"] = 0.001
+        function = getattr(metrics, name)
+        result = (
+            returns.apply(lambda column, call=function, options=kwargs: call(column, **options))
+            if name == "calmar_ratio"
+            else function(returns, **kwargs)
+        )
+        print(f"{name}: {type(result).__name__}; {np.asarray(result).tolist()}")
+    out = np.empty(2)
+    result = metrics.sortino_ratio(returns, required_return=0.001, annualization=12, out=out)
+    assert list(result.index) == ["complete", "missing"] and np.shares_memory(result, out)
+    assert metrics.annualization_factor("ignored", 52.5) == 52.5
+    pd.testing.assert_frame_equal(returns, before)
+    print("Empyrical scalar adapters: 7 routes; 4 dated rows; 2 columns; 1 missing return")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -583,6 +624,7 @@ def main() -> None:
             "pyfolio",
             "alphalens",
             "empyrical",
+            "empyrical-native",
             "exposure",
             "activity",
             "holdings",
@@ -611,6 +653,9 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
+    if task == "empyrical-native":
+        show_empyrical_native()
+        return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output)
         return

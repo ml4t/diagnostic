@@ -23,9 +23,15 @@ def as_array(returns: ReturnInput) -> np.ndarray:
 
 
 def adjust_rate(returns: ReturnInput, rate: float | ReturnInput) -> ReturnInput:
-    if isinstance(returns, pd.DataFrame) and isinstance(rate, pd.Series):
-        if not rate.index.is_unique or set(rate.index) != set(returns.columns):
-            raise ValueError("a DataFrame rate Series must name its return columns")
+    if isinstance(returns, pd.DataFrame) and isinstance(rate, (pd.Series, pd.DataFrame)):
+        labels = rate.index if isinstance(rate, pd.Series) else rate.columns
+        if not labels.is_unique or set(labels) != set(returns.columns):
+            raise ValueError("a labeled DataFrame rate must name its return columns")
+        rate = (
+            rate.reindex(returns.columns)
+            if isinstance(rate, pd.Series)
+            else rate.reindex(columns=returns.columns)
+        )
     return returns - rate
 
 
