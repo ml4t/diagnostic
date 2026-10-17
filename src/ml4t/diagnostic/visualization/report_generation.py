@@ -222,6 +222,9 @@ def export_figures_to_pdf(
 
     Each figure is rendered as a separate page in the PDF. Uses kaleido for
     high-quality vector rendering.
+    Batch-capable Plotly/Kaleido versions share one renderer across pages;
+    older supported backends retain per-figure export. Renderer and cleanup
+    errors propagate to the caller.
 
     Parameters
     ----------
@@ -1308,6 +1311,7 @@ def _export_figures_multipage(
     # Create temporary directory for individual PDFs
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_pdfs = []
+        print_figures = []
 
         # Export each figure to its own PDF
         for i, fig in enumerate(figures):
@@ -1321,16 +1325,28 @@ def _export_figures_multipage(
                 margin={"l": 50, "r": 50, "t": 80, "b": 50},  # Add margins for print
             )
 
-            # Export to PDF using kaleido
-            fig_copy.write_image(
-                str(temp_pdf),
+            print_figures.append(fig_copy)
+            temp_pdfs.append(temp_pdf)
+
+        import kaleido
+        import plotly.io as pio
+
+        if callable(getattr(pio, "write_images", None)) and callable(
+            getattr(kaleido, "write_fig_sync", None)
+        ):
+            pio.write_images(
+                fig=print_figures,
+                file=[str(path) for path in temp_pdfs],
                 format="pdf",
                 width=width,
                 height=height,
                 scale=scale,
             )
-
-            temp_pdfs.append(temp_pdf)
+        else:
+            for fig_copy, temp_pdf in zip(print_figures, temp_pdfs, strict=True):
+                fig_copy.write_image(
+                    str(temp_pdf), format="pdf", width=width, height=height, scale=scale
+                )
 
         # Merge all PDFs into single file
         writer = pdf_writer_class()
