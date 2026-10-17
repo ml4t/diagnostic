@@ -573,6 +573,50 @@ def show_prepared_holdings_report(output: Path) -> None:
     print(list(report.figures))
 
 
+def show_aligned_events(output: Path) -> None:
+    """Build a grouped event report from one owned, price-produced signal panel."""
+    from ml4t.diagnostic.signal import AlignedEventResult, prepare_signal_panel
+    from ml4t.diagnostic.visualization.signal import generate_aligned_event_report
+
+    dates = pd.bdate_range("2025-01-02", periods=8, tz="UTC")
+    prices = pd.DataFrame(
+        np.arange(100.0, 106.0)
+        * np.exp(np.arange(8)[:, None] * np.array([0.01, 0.02, -0.01, 0.03, -0.02, 0.005])),
+        index=dates,
+        columns=list("ABCDEF"),
+    )
+    factor = prices.iloc[[0, 2, 4, 6]].stack().rename("factor")
+    factor.index.names = ["date", "asset"]
+    forward = prices.pct_change(fill_method=None).shift(-1).stack().rename("1D").to_frame()
+    forward.index.names = ["date", "asset"]
+    groups = pd.Series(
+        [
+            "small" if asset in ("AB" if day < dates[4] else "AC") else "large"
+            for day, asset in factor.index
+        ],
+        index=factor.index,
+        name="group",
+    )
+    panel = prepare_signal_panel(factor, forward, quantiles=2, groups=groups, max_loss=0)
+    result = panel.event_study(
+        prices,
+        before=1,
+        after=2,
+        input_kind="levels",
+        demeaned=False,
+        group_adjust=False,
+        by_group=True,
+    )
+    assert panel.data.height == 24 and result.paths.height == 96
+    assert result.event_counts["n_events"].sum() == 24
+    assert AlignedEventResult.from_json(result.to_json()).paths.equals(result.paths)
+    path = generate_aligned_event_report(result, output_file=output)
+    assert Path(path).is_file()
+    print(f"Aligned event HTML: {path}")
+    print("24 declared events; 96 requested path cells; dynamic groups and buckets retained")
+    print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -587,21 +631,21 @@ def main() -> None:
             "activity",
             "holdings",
             "holdings-report",
+            "events",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("holdings-report.html"),
-        help="HTML path for --task holdings-report",
+        help="HTML path for --task holdings-report or events",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task == "holdings-report":
+    if task in ("holdings-report", "events"):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -612,7 +656,10 @@ def main() -> None:
     for package in packages:
         print(f"{package}=={version(package)}")
     if task == "holdings-report":
-        show_prepared_holdings_report(arguments.output)
+        show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
+        return
+    if task == "events":
+        show_aligned_events(arguments.output or Path("aligned-events.html"))
         return
     if task in ("all", "holdings"):
         show_prepared_holdings()
