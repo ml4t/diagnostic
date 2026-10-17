@@ -70,6 +70,7 @@ def test_all_recorded_lags_are_visible_readable_and_bound_to_the_owned_price_sam
                         traces:p._fullData.map(d=>({name:d.name,x:d.x,y:d.y,custom:d.customdata})),
                         legendInside:Array.from(p.querySelectorAll('.legendtext')).every(n=>{const b=n.getBoundingClientRect();return b.left>=r.left&&b.right<=r.right&&b.top>=r.top&&b.bottom<=r.bottom}),
                         annotationsInside:Array.from(p.querySelectorAll('.annotation-text')).every(n=>{const b=n.getBoundingClientRect();return b.left>=r.left&&b.right<=r.right&&b.top>=r.top&&b.bottom<=r.bottom}),
+                        availabilityInsidePlot:Array.from(p.querySelectorAll('.annotation-text')).filter(n=>n.textContent.includes('unavailable')&&!n.textContent.startsWith('CI')).every(n=>{const b=n.getBoundingClientRect(),s=p._fullLayout._size;return b.left>=r.left+s.l&&b.right<=r.left+s.l+s.w}),
                         text:Array.from(p.querySelectorAll('text')).filter(n=>n.getBoundingClientRect().width>0).map(n=>({text:n.textContent,role:n.closest('.annotation')?'note':'label',size:parseFloat(getComputedStyle(n).fontSize),family:getComputedStyle(n).fontFamily}))};
                 });
                 const tables=Array.from(e.querySelectorAll('table')).map(t=>({rows:t.querySelectorAll('tbody tr').length,font:parseFloat(getComputedStyle(t.querySelector('td')||t.querySelector('th')).fontSize),headers:Array.from(t.querySelectorAll('th')).map(n=>n.textContent),client:t.parentElement.clientWidth,scroll:t.parentElement.scrollWidth}));
@@ -108,7 +109,7 @@ def test_all_recorded_lags_are_visible_readable_and_bound_to_the_owned_price_sam
         assert 0 <= plot["title"]["left"] < plot["title"]["right"] <= plot["width"]
         assert plot["title"]["bottom"] <= plot["plot_top"]
         assert plot["legend"] == [trace["name"] for trace in plot["traces"]]
-        assert plot["legendInside"] and plot["annotationsInside"]
+        assert plot["legendInside"] and plot["annotationsInside"] and plot["availabilityInsidePlot"]
         for text in plot["text"]:
             minimum = 13 if text["role"] == "note" and "unavailable" in text["text"].lower() else 14
             assert minimum <= text["size"] <= measured["body_font"]
