@@ -34,8 +34,22 @@ def test_pandas_timestamp_return_coordinates_produce_a_real_dated_pdf(tmp_path):
     assert figure.to_json() == original
 
 
-@pytest.mark.parametrize("scale", [1.0, 2.0])
-def test_multipage_pdf_uses_one_real_renderer_and_closes_it_after_all_pages(scale, tmp_path):
+@pytest.mark.parametrize(
+    ("scale", "observe_renderer"),
+    [
+        pytest.param(1.0, True, id="scale1-observed"),
+        pytest.param(2.0, True, id="scale2-observed"),
+        pytest.param(1.0, False, id="scale1-public-first"),
+        pytest.param(2.0, False, id="scale2-public-first"),
+        pytest.param(1.0, False, id="scale1-public-second"),
+        pytest.param(2.0, False, id="scale2-public-second"),
+        pytest.param(1.0, False, id="scale1-public-third"),
+        pytest.param(2.0, False, id="scale2-public-third"),
+    ],
+)
+def test_multipage_pdf_preserves_pages_and_returns_from_real_public_export(
+    scale, observe_renderer, tmp_path
+):
     kaleido = pytest.importorskip("kaleido")
     pio = pytest.importorskip("plotly.io")
     pytest.importorskip("pypdf")
@@ -72,8 +86,10 @@ async def observe_close(self,*args,**kwargs):
     process=getattr(self,'subprocess',None)
     stage('renderer_close_return',returncode=None if process is None else process.poll())
     return result
-kaleido.Kaleido.__init__=observe_init
-kaleido.Kaleido.close=observe_close
+observe=sys.argv[3]=='1'
+if observe:
+    kaleido.Kaleido.__init__=observe_init
+    kaleido.Kaleido.close=observe_close
 stage('imports_complete',versions={name:version(name) for name in ['plotly','kaleido','choreographer','pypdf']})
 figures=[go.Figure(go.Bar(x=['A','B'],y=[1,-2])),
          go.Figure(go.Scatter(x=[1,2,3],y=[.85,.92,.78])),
@@ -93,7 +109,7 @@ assert len(texts)==3 and all(title in text for title,text in zip(titles,texts))
 assert [figure.to_json() for figure in figures]==before
 print(json.dumps({'module':diagnostic.__file__,
     'versions':{name:version(name) for name in ['ml4t-diagnostic','plotly','kaleido','choreographer','pypdf']},
-    'renderer_instances':len(instances),'renderer_returncodes':[instance.subprocess.poll() for instance in instances],
+    'renderer_observed':observe,'renderer_instances':len(instances),'renderer_returncodes':[instance.subprocess.poll() for instance in instances],
     'page_boxes':[[float(value) for value in page.mediabox] for page in reader.pages],
     'page_text':texts,'pdf_sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest(),
     'original_figures_unchanged':True}))
@@ -102,7 +118,14 @@ stage('assertions_complete')
 """
     try:
         completed = subprocess.run(
-            [sys.executable, "-c", code, str(tmp_path / "report.pdf"), str(scale)],
+            [
+                sys.executable,
+                "-c",
+                code,
+                str(tmp_path / "report.pdf"),
+                str(scale),
+                "1" if observe_renderer else "0",
+            ],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -118,8 +141,9 @@ stage('assertions_complete')
         pytest.fail(f"Actual PDF export subprocess exceeded 120 seconds:\n{captured}")
     assert completed.returncode == 0, completed.stdout + completed.stderr
     result = json.loads(completed.stdout)
-    assert result["renderer_instances"] == 1, result
-    assert all(code is not None for code in result["renderer_returncodes"]), result
+    if observe_renderer:
+        assert result["renderer_instances"] == 1, result
+        assert all(code is not None for code in result["renderer_returncodes"]), result
     assert result["page_boxes"] == [[0, 0, 600 * scale, 450 * scale]] * 3
     print(completed.stderr)
     print(json.dumps(result))
