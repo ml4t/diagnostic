@@ -12,6 +12,7 @@ Factor-style signal analysis with a clean public surface.
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
 - `portfolio.py` - shared factor-weight normalization and supplied-return contributions
 - `factor_regression.py` - same-universe dated OLS, explicit compound alpha and owned samples
+- `events.py` - observed-clock event paths, explicit level/wealth units and date/group samples
 - `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
@@ -49,6 +50,16 @@ existing OLS kernel against equal-asset same-universe means. They require explic
 for compounded alpha, retain joint dated samples/counts and undefined statuses, and expose owned
 Arrow/JSON snapshots. Supplied portfolio returns bypass weights; no t-statistic, holdings or complete
 returns report is inferred. Generic portfolio alpha retains its existing linear annualization.
+
+`panel.event_study` and `analyze_signal_events` align supplied levels or compounded returns,
+retaining raw paths, missing cells, date/group observations, sample deviations and event counts.
+They reuse existing wealth/statistics kernels and preserve every event ID. They are not CAR,
+calendar-grid validation or complete legacy event sheets. `AlignedEventResult` owns Arrow/JSON
+snapshots; existing event plots and HTML composition render actual paths without synthetic data.
+`panel.event_returns` and `analyze_event_returns` retain the overall analysis alongside optional
+group summaries in `EventReturnsResult`. `plot_event_returns` and `generate_event_returns_report`
+compose the global overview, optional per-quantile sample deviations and group overviews. This
+is the event-returns report, not the separate event-study sheet or all seven legacy sheets.
 
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse

@@ -1003,6 +1003,137 @@ forward outcomes is a mathematical horizon-return path, not self-financing
 daily holdings. Capital, expiration accounting, cumulative quantile report
 panels and full Alphalens/Pyfolio report workflows remain separate accepted work.
 
+### Align observed-clock event paths
+
+This how-to replaces the aligned-value workflow of Alphalens 0.4.6
+`common_start_returns` and `average_cumulative_return_by_quantile`, not its
+complete event tear sheets. Diagnostic's existing abnormal-return
+`EventStudyAnalysis` remains a different method.
+
+Pass wide dated prices/levels with `input_kind="levels"`. They are not rebased
+at event zero, matching the reference's `cumulative=True` behavior. With
+`input_kind="returns"`, the complete supplied clock is compounded from one;
+missing simple returns keep wealth flat. Missing supplied levels remain missing.
+
+```python
+from pathlib import Path
+
+import pandas as pd
+
+from ml4t.diagnostic.signal import AlignedEventResult, analyze_signal_events
+from ml4t.diagnostic.visualization.signal import generate_aligned_event_report
+
+event_dates = pd.bdate_range("2025-01-02", periods=5, tz="UTC")
+event_prices = pd.DataFrame({"A": [10.0] * 5, "B": [100.0] * 5}, index=event_dates)
+event_input = (
+    event_prices.loc[event_dates[[0, 2, 4]]].stack()
+    .rename("factor").rename_axis(["date", "asset"])
+)
+event_result = analyze_signal_events(
+    event_input, event_prices, before=1, after=1,
+    input_kind="levels", demeaned=False,
+)
+assert event_result.statistics["mean"].to_list() == [55.0, 55.0, 55.0]
+assert event_result.statistics["n_obs"].to_list() == [2, 3, 2]
+assert event_result.metadata["event_zero_rebased"] is False
+assert AlignedEventResult.from_json(event_result.to_json()).paths.equals(event_result.paths)
+generate_aligned_event_report(event_result, output_file=Path("aligned_events.html"))
+print("Aligned event levels: 55.0; finite date paths: 2/3/2")
+```
+
+For a price-produced panel with dynamic groups and buckets, run the existing
+migration example with an explicit task:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task events --output aligned-events.html
+```
+
+It checks 24 declared events, 96 requested path cells and a typed JSON roundtrip
+before writing the report. It needs Diagnostic's `viz` extra, not Alphalens or
+Pyfolio. Existing `--task all` comparisons are unchanged.
+
+An existing owned panel can call `panel.event_study(event_prices, ...)` with
+the same options. Its supplied buckets/groups are retained. `demeaned=True`
+subtracts the entire event-date universe's level path; `group_adjust=True`
+instead uses each event-date group's universe and takes precedence.
+`by_group=True` keeps separate group summaries. Date/group means are formed
+before their final mean and sample standard deviation. `mean_by_date=False`
+instead weights individual events. `paths`, `observations`, `statistics` and
+`event_counts` expose these intermediate samples and counts. The two-panel
+HTML report shows actual means/sample deviations and event counts; error bars
+are not SE or confidence intervals. Rendering completes before an atomic file
+replacement, so invalid rendering settings do not overwrite an existing report.
+
+Diagnostic deliberately retains every declared event ID, including repeated
+date/asset pairs. Released Alphalens conditionally deduplicates assets in the
+unadjusted path. For two A events at level 10 and one B event at 100, Diagnostic
+returns 40, whereas the legacy unadjusted date mean is 55. This is an explicit
+event-multiplicity difference, not a tolerance adjustment or a reference-error
+claim. Boundary-clipped and off-clock event cells remain inspectable as missing;
+they do not become zero observations.
+
+Offsets count rows of the supplied value clock, not calendar days or sessions.
+No holidays, missing scheduled bars or authoritative session grid are inferred.
+Full calendar adoption, all event/report options and the four canonical notebooks
+remain separately required. The existing statistical-validation and Backtest
+workflows described below are additional capabilities; aligned event paths alone
+do not establish complete Alphalens/Pyfolio replacement.
+
+### Complete event-returns report
+
+Unreleased after Diagnostic 0.1.9, `analyze_event_returns` or
+`panel.event_returns` prepares the global sample and, with `by_group=True`,
+separate group samples using the same event engine. The group panels supplement
+the global view. `generate_event_returns_report` renders the global overview,
+then one sample-deviation panel per quantile when `std_bar=True`, then group
+overviews. This covers the panel selections of Alphalens 0.4.6
+`create_event_returns_tear_sheet`; it is not the separate event-study sheet or
+all seven Alphalens reports.
+
+```python
+from ml4t.diagnostic.signal import EventReturnsResult, analyze_event_returns
+from ml4t.diagnostic.visualization.signal import generate_event_returns_report
+
+complete_events = analyze_event_returns(
+    event_input, event_prices, before=1, after=1,
+    input_kind="levels", demeaned=False,
+)
+generate_event_returns_report(
+    complete_events, std_bar=True, output_file="event_returns.html",
+)
+event_export = complete_events.to_json()
+assert EventReturnsResult.from_json(event_export).overall.paths.equals(
+    complete_events.overall.paths
+)
+print("Event-returns report: global view and per-quantile sample deviations")
+```
+
+For the complete grouped, price-produced example and its typed JSON data export:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task event-returns --output event-returns.html
+```
+
+The command prints package versions and checks 24 events, 96 requested path
+cells, two quantiles and two changing, unequal groups. Its five panels use the
+actual overall/group samples; `event-returns.json` retains both samples' paths,
+observations, counts, deviations and settings. No Alphalens, Pyfolio or Backtest
+runtime dependency is required. `plot_event_returns` returns the individual
+figures for notebooks or the existing PDF exporter.
+
+`demeaned` corresponds to reference `long_short`; `group_adjust` corresponds
+to `group_neutral` and takes precedence. The report keeps supplied levels or
+full-clock wealth in their declared units. The reference plot multiplies its
+input by 10,000 for a basis-point display, even when supplied values are prices;
+Diagnostic does not relabel those levels as basis-point returns. Demeaned
+values are labelled level or wealth differences, not wealth starting at one.
+The rendered report states the window and actual demeaning choice. Group plots
+and the combined overview show means without deviations; only the optional
+separate quantile plots show sample-standard-deviation bars. Clipped and missing
+cells, duplicate-event weighting and observation-clock limitations above remain
+explicit. Full event-study, calendar and canonical-notebook qualification remain
+separate requirements.
+
 ### Quantiles, turnover, and report boundaries
 
 In unreleased source after 0.1.9, direct `metrics.cross_sectional_ic_series()`
