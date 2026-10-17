@@ -286,6 +286,7 @@ jobs:
           -q -s --timeout 120 --tb=short
           tests/test_contract/test_pdf_collection_lifecycle.py
           tests/test_visualization/test_pdf_report_lifecycle.py
+          tests/test_visualization/test_pdf_process_ownership.py
           tests/test_visualization/test_report_generation.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

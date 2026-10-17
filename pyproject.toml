@@ -121,6 +121,7 @@ viz = [
     "seaborn>=0.12.0",
     "kaleido>=1.5.0",  # Timestamp-safe PDF export and current Choreographer transport
     "pypdf>=6.16.1",    # For PDF merging
+    "psutil>=7.2.2",   # Owned PDF renderer process cleanup
 ]
 
 # Additional ML model backends
@@ -181,6 +182,7 @@ all = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "kaleido>=1.5.0",
+    "psutil>=7.2.2",
     "pypdf>=6.16.1",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
@@ -208,6 +210,7 @@ test = [
     "pytest-benchmark>=4.0.0",
     "hypothesis>=6.80.0",
     "plotly>=6.1.2",
+    "psutil>=7.2.2",
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "kaleido>=1.5.0",
