@@ -1030,6 +1030,13 @@ observation-based analysis. These boundary corrections are
 unreleased source changes after 0.1.9; earlier published behavior is not a
 supported missing-data or positional-alignment policy.
 
+`PortfolioAnalysis` profit factor divides the sum of positive period returns by
+the absolute sum of negative period returns, without annualization. In
+unreleased source after 0.1.9, a flat sample reports `NaN` for undefined `0/0`,
+instead of positive infinity. Gains without losses still produce infinity;
+losses without gains produce zero. This return-based ratio does not use
+trade-lifecycle cash P&L and is not a Pyfolio metric-parity claim.
+
 The returns-distribution normal reference uses the supplied returns' sample
 mean and sample standard deviation, without annualization. Fewer than two
 observations or identical returns do not define that fit. The histogram and

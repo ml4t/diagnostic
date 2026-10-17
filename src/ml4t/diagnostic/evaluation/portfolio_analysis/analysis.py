@@ -275,8 +275,12 @@ class PortfolioAnalysis:
     def compute_summary_stats(self, force_recompute: bool = False) -> PortfolioMetrics:
         """Compute all standard portfolio metrics.
 
-        This is the main method for getting performance statistics,
-        equivalent to pyfolio's perf_stats output.
+        This is the main method for return-based performance statistics.
+        Match each metric's definition and input conventions before comparison.
+
+        Profit factor uses positive and negative period-return sums, without
+        annualization. No gains or losses yields NaN; gains without losses
+        yields infinity. It does not use trade-lifecycle cash PnL.
 
         Parameters
         ----------
@@ -338,7 +342,12 @@ class PortfolioAnalysis:
 
         gross_profit = float(np.sum(wins)) if len(wins) > 0 else 0.0
         gross_loss = float(abs(np.sum(losses))) if len(losses) > 0 else 0.0
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else np.inf
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
+        elif gross_profit > 0:
+            profit_factor = np.inf
+        else:
+            profit_factor = np.nan
 
         # Benchmark metrics
         alpha_val = beta_val = ir = up_cap = down_cap = None
