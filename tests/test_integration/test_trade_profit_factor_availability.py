@@ -59,7 +59,7 @@ class _PlannedOrders(Strategy):
 def test_actual_undefined_trade_profit_factor_survives_profile_bridge_and_default_html(
     marks, orders, pnls, expected, bridge_expected
 ):
-    dates = [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6, 7, 8, 9, 10, 13]]
+    dates = [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6, 7, 8, 10, 13, 14]]
     bars = pl.DataFrame(
         {
             "timestamp": dates[: len(marks)],
