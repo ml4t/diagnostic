@@ -78,6 +78,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Dated spread/error chart | `plot_spread_timeseries(result.to_quantile_result(), observations=...)` | Unreleased after 0.1.9. Uses actual dated bucket means and independent propagated errors, with explicit pair, bandwidth and observation-window controls. No cumulative-increment reconstruction or inferred confidence coverage. |
 | Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
+| Factor alpha and beta | `panel.factor_alpha_beta(annualization_factors=...)` | Unreleased after 0.1.9. Reuses factor returns and OLS against the same universe's equal-asset mean. Retains dated joint samples/counts and explicitly compounded annual alpha; constant benchmarks and unavailable dates remain explicit. Does not add a complete returns table or tear sheet. |
 | Selected-factor cumulative wealth | `panel.factor_cumulative_returns(return_column=..., quantiles=..., groups=...)` | Unreleased after 0.1.9. Selects rows before shared weighting, then compounds one supplied horizon in observation order. Retains actual returns/counts and a labelled flat-wealth policy for unavailable returns. Not self-financing daily holdings or an inferred calendar. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
@@ -873,9 +874,73 @@ explicit cadence assumption, not inferred from the label `1D` or validated by
 an exchange calendar. Overlapping supplied horizons are not automatically a
 self-financing daily wealth path. Output dates are observed dates unless the
 caller supplies an explicit aggregate `date_grid`; missing requested dates
-have null return and zero count. Capital, signal expirations, dated holdings,
-factor alpha/beta regression and the complete Alphalens/Pyfolio reports remain
-separate work.
+have null return and zero count. Capital, signal expirations, dated holdings
+and the complete Alphalens/Pyfolio reports remain separate work.
+
+### Inspect factor alpha and beta on the same universe
+
+Unreleased after 0.1.9, use the same `panel` to inspect a factor portfolio's
+regression against its supplied asset universe. Declare annualization rather
+than inferring a duration from a column label:
+
+```python
+regression = panel.factor_alpha_beta(
+    annualization_factors={"1D": 252},
+    demeaned=True,
+    group_adjust=True,
+    equal_weight=False,
+)
+print(regression.statistics)
+print(regression.observations)
+restored_regression = type(regression).from_json(regression.to_json())
+assert restored_regression.observations.equals(regression.observations)
+```
+
+The independent variable is the equal-asset mean of each supplied horizon in
+the same input sample, not an external index or a group-neutral benchmark.
+The dependent variable reuses `factor_returns` with the selected weighting
+options. The observation table retains both dated returns, actual finite
+asset counts, the joint finite-date mask, fitted returns and residuals.
+Statistics retain pair counts, design rank/condition number, period alpha,
+beta, compound annual alpha and availability statuses. Beta is dimensionless;
+both alpha fields are decimal returns at their stated period/annual scale.
+
+To reproduce Alphalens 0.4.6's fixed 252-day annualization convention for known
+one-day and five-day outcomes, explicitly supply `{"1D": 252, "5D": 50.4}`.
+This does not infer exchange sessions, validate bars or annualize overlapping
+holdings. The formula is `expm1(log1p(alpha_per_period) * scale)`, unlike the
+existing generic `alpha_beta` metric's unchanged linear scaling. In a real
+price-derived two-asset test, period alpha `0.001` and beta `0.6` give annual
+alpha `0.28643404437618775` at scale 252, not `0.252`.
+
+Supply `returns=` to regress caller-computed portfolio returns instead. Use a
+wide pandas/Polars table with the same horizon columns and date keys, or an
+indexed pandas Series for one horizon. Dates align by identity, never row
+position. Supplied weighting flags are then unused and metadata records no
+applied weight options. Extra portfolio dates remain visible with unavailable
+benchmark values; missing horizons retain their own joint samples. Source
+Series names, input frames, owned panel data and result snapshots stay unchanged.
+The direct `signal.compute_factor_alpha_beta` also accepts a raw unique
+date/asset panel and explicit return-column selectors without re-cleaning it.
+
+Unlike released Alphalens 0.4.6, an entirely missing portfolio date remains
+null, not a fabricated zero. Zero signal follows Diagnostic's checked
+zero-exposure rule. A constant benchmark leaves both coefficients unavailable;
+the released reference's constant-zero design can return a minimum-norm beta0
+even though the slope is unidentified. Fewer than two joint dates also remain
+unavailable. Negative gross intercepts or compound overflow retain defined
+period coefficients but no annual alpha, with a separate reason. The reference
+can apply integer powers to negative gross intercepts; Diagnostic does not
+interpret that algebraic value as a compounded investment return.
+
+Run the current comparison command above with `--task all` to check actual
+Alphalens 0.4.6 and Diagnostic weights, dated returns, universe means, membership,
+counts and alpha/beta for all eight weighting variants on one shared
+price-generated 600-row sample with dated unequal groups and two horizons.
+It also checks reverse-ordered provided returns and horizon-specific missingness.
+These comparisons cover this numerical workflow, not all input/reference
+options or the complete returns/full tear sheets. No t-statistic is synthesized
+from the reference docstring; its actual alpha/beta table contains no t-statistic.
 
 ### Compound selected factor returns without inferring holdings
 

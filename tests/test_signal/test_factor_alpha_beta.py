@@ -11,7 +11,7 @@ from polars.testing import assert_frame_equal
 import ml4t.diagnostic.signal as signal
 
 
-def _price_panel(nanoseconds=False):
+def _price_panel(nanoseconds=False, periods=(1,)):
     dates = pd.bdate_range("2024-09-09", periods=9, tz="UTC")
     if nanoseconds:
         dates = pd.DatetimeIndex([dates[0] + pd.Timedelta(i * 100, unit="ns") for i in range(9)])
@@ -28,8 +28,12 @@ def _price_panel(nanoseconds=False):
     )
     factor = marks[marks.date < dates[-1]][["date", "asset"]].copy()
     factor["factor"] = (factor.asset == "A").astype(float)
-    frame = signal.prepare_data(factor, marks, periods=(1,), quantiles=2, filter_zscore=None)
-    return frame.rename({"1D_fwd_return": "outcome"}), dates[:-1], universe
+    frame = signal.prepare_data(factor, marks, periods=periods, quantiles=2, filter_zscore=None)
+    return (
+        frame.rename({f"{p}D_fwd_return": "outcome" if p == 1 else "second" for p in periods}),
+        dates[:-1],
+        universe,
+    )
 
 
 def _analyze(frame, **options):
@@ -155,3 +159,119 @@ def test_missing_horizon_tails_stay_null_and_do_not_become_zero_portfolio_dates(
     assert last["n_portfolio"] == last["n_universe"] == 0 and last["paired"] is False
     assert result.statistics["n_obs"].to_list() == [7]
     assert result.statistics["beta"][0] == pytest.approx(0.6, abs=1e-12)
+
+
+def test_two_price_derived_horizons_retain_requested_order_and_separate_joint_samples():
+    frame, _, _ = _price_panel(periods=(1, 2))
+    result = signal.compute_factor_alpha_beta(
+        frame,
+        return_columns=["second", "outcome"],
+        annualization_factors={"outcome": 252, "second": 126},
+        demeaned=False,
+    )
+    assert result.statistics["return_column"].to_list() == ["second", "outcome"]
+    assert result.statistics["n_obs"].to_list() == [7, 8]
+    assert result.statistics["annualization_factor"].to_list() == [126, 252]
+    sample = frame.to_pandas()
+    for column in ["second", "outcome"]:
+        wide = sample.pivot(index="date", columns="asset", values=column).dropna()
+        x = wide.mean(axis=1).to_numpy()
+        y = wide.A.to_numpy()
+        expected_beta = np.dot(x - x.mean(), y - y.mean()) / np.dot(x - x.mean(), x - x.mean())
+        expected_intercept = y.mean() - expected_beta * x.mean()
+        row = result.statistics.filter(pl.col("return_column") == column).row(0, named=True)
+        assert row["beta"] == pytest.approx(expected_beta, abs=1e-12)
+        assert row["alpha_per_period"] == pytest.approx(expected_intercept, abs=1e-12)
+        assert row["annual_alpha"] == pytest.approx(
+            np.expm1(np.log1p(expected_intercept) * row["annualization_factor"]), abs=1e-12
+        )
+
+
+@pytest.mark.parametrize("n", [0, 1])
+def test_insufficient_joint_sample_reports_counts_and_nulls_instead_of_fitting(n):
+    frame, dates, _ = _price_panel()
+    returns = pd.Series([0.01] * n, index=dates[:n], dtype=float)
+    result = _analyze(frame, returns=returns)
+    row = result.statistics.row(0, named=True)
+    assert row["n_dates"] == row["n_obs"] == n
+    assert row["status"] == ("no_joint_observations" if n == 0 else "insufficient_observations")
+    assert row["alpha_per_period"] is row["beta"] is row["annual_alpha"] is None
+    assert result.observations.height == n
+    restored = signal.FactorAlphaBetaResult.from_json(result.to_json())
+    assert_frame_equal(restored.statistics, result.statistics)
+
+
+def test_supplied_dates_outside_universe_are_visible_but_never_enter_the_regression():
+    frame, dates, universe = _price_panel()
+    supplied = pd.Series(0.001 + 0.6 * universe, index=dates)
+    extra = dates[-1] + pd.Timedelta(days=1)
+    supplied.loc[extra] = 100
+    result = _analyze(frame, returns=supplied)
+    row = result.observations.tail(1).row(0, named=True)
+    assert row["n_universe"] == 0 and row["universe_return"] is None
+    assert row["portfolio_return"] == 100 and row["paired"] is False
+    assert row["fitted_return"] is None and row["residual"] is None
+    assert result.statistics["n_dates"][0] == 9 and result.statistics["n_obs"][0] == 8
+    assert result.statistics["beta"][0] == pytest.approx(0.6, abs=1e-12)
+
+
+def test_zero_signal_is_zero_exposure_with_zero_intercept_against_a_varying_universe():
+    frame, _, _ = _price_panel()
+    result = _analyze(frame.with_columns(pl.lit(0.0).alias("factor")))
+    assert result.observations["portfolio_return"].to_list() == [0.0] * 8
+    row = result.statistics.row(0, named=True)
+    assert row["status"] == "defined" and row["n_obs"] == 8
+    assert row["alpha_per_period"] == row["beta"] == row["annual_alpha"] == 0
+
+
+@pytest.mark.parametrize(
+    "value,status,annual",
+    [
+        (-1.0, "defined", -1.0),
+        (-1.1, "negative_gross_intercept", None),
+        (100.0, "annualization_overflow", None),
+    ],
+)
+def test_compound_domain_and_overflow_do_not_erase_defined_period_coefficients(
+    value, status, annual
+):
+    frame, dates, _ = _price_panel()
+    result = _analyze(frame, returns=pd.Series(value, index=dates))
+    row = result.statistics.row(0, named=True)
+    assert row["status"] == "defined" and row["alpha_per_period"] == value and row["beta"] == 0
+    assert row["annualization_status"] == status and row["annual_alpha"] == annual
+    json.loads(result.to_json(), parse_constant=lambda token: pytest.fail(token))
+
+
+@pytest.mark.parametrize("change", ["duplicate", "missing", "timezone"])
+def test_ambiguous_provided_date_keys_are_rejected_before_regression(change):
+    frame, dates, _ = _price_panel()
+    index = dates.copy()
+    if change == "duplicate":
+        index = pd.DatetimeIndex([dates[0]] * 8)
+    elif change == "missing":
+        index = pd.DatetimeIndex([pd.NaT, *dates[1:]])
+    else:
+        index = dates.tz_convert("America/New_York")
+    with pytest.raises(ValueError, match="duplicate|nonmissing|timezones"):
+        _analyze(frame, returns=pd.Series(0.01, index=index))
+
+
+def test_tiny_supplied_intercept_retains_compound_alpha_instead_of_rounding_gross_to_one():
+    frame, dates, _ = _price_panel()
+    result = _analyze(frame, returns=pd.Series(1e-18, index=dates))
+    row = result.statistics.row(0, named=True)
+    assert row["alpha_per_period"] == pytest.approx(1e-18, abs=1e-32)
+    assert row["annual_alpha"] == pytest.approx(2.52e-16, abs=1e-30)
+    assert row["annual_alpha"] > 0
+
+
+def test_custom_physical_names_do_not_change_the_public_sample_or_regression():
+    frame, _, _ = _price_panel()
+    renamed = frame.rename({"date": "instant", "asset": "security", "factor": "score"})
+    expected = _analyze(frame, demeaned=False)
+    actual = _analyze(
+        renamed, date_col="instant", asset_col="security", factor_col="score", demeaned=False
+    )
+    assert_frame_equal(actual.statistics, expected.statistics)
+    assert_frame_equal(actual.observations, expected.observations)
