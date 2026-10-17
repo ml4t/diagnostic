@@ -149,7 +149,10 @@ def test_complete_event_returns_report_matches_actual_reference_sheet_panels_and
                 )
     assert len(figures) == 1 + (2 if std_bar else 0) + (2 if by_group else 0)
     for figure in figures:
-        expected_units = "Supplied levels" if input_kind == "levels" else "Wealth (start = 1)"
+        if demeaned or group_adjust:
+            expected_units = "Level difference" if input_kind == "levels" else "Wealth difference"
+        else:
+            expected_units = "Supplied levels" if input_kind == "levels" else "Wealth (start = 1)"
         assert figure.layout.yaxis.title.text == expected_units
         sample = result.overall.statistics
         if figure.layout.title.text.startswith("Group: "):
@@ -213,6 +216,16 @@ def test_group_names_are_display_data_not_html_or_filenames():
     html = generate_event_returns_report(result)
     assert '<h2 class="section-title">Group: <script>' not in html
     assert "Group: &lt;script&gt;" in html
+
+
+def test_demeaned_wealth_report_does_not_claim_paths_start_at_one():
+    dates = pd.date_range("2025-01-01", periods=3)
+    returns = pd.DataFrame({"A": [0.0] * 3, "B": [0.0] * 3}, index=dates)
+    events = pd.DataFrame({"date": [dates[1]] * 2, "asset": ["A", "B"]})
+    result = analyze_event_returns(events, returns, input_kind="returns", before=1, after=1)
+    figure = plot_event_returns(result, std_bar=False)[0]
+    assert list(figure.data[0].y) == [0, 0, 0]
+    assert figure.layout.yaxis.title.text == "Wealth difference"
 
 
 @pytest.mark.parametrize("width", [375, 1200])

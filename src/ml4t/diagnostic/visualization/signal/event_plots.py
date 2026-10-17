@@ -95,6 +95,10 @@ def plot_aligned_event_paths(
     units = {"supplied_levels": "Supplied levels", "wealth_starting_at_one": "Wealth (start = 1)"}[
         result.metadata["units"]
     ]
+    if result.metadata["demeaned"] or result.metadata["group_adjust"]:
+        units = (
+            "Level difference" if result.metadata["input_kind"] == "levels" else "Wealth difference"
+        )
     figure.update_layout(**config["layout"])
     figure.update_layout(
         title={"text": "Aligned event paths", "font": {"size": 16}},
@@ -153,11 +157,25 @@ def generate_event_returns_report(
     from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
 
     figures = plot_event_returns(result, std_bar=std_bar, theme=theme)
+    metadata = result.overall.metadata
+    adjustment = (
+        "within each event-date group"
+        if metadata["group_adjust"]
+        else "across the event-date universe"
+        if metadata["demeaned"]
+        else "none"
+    )
     sections = [
         {
             "title": str(figure.layout.title.text),
             "figure_index": index,
-            "text": "Offsets count observed rows. Values retain supplied-level or full-clock wealth units, not event-zero returns. Separate quantile error bars show sample standard deviation, not standard error or confidence intervals. Undefined observations remain missing.",
+            "text": (
+                f"Window: {metadata['before']} rows before and {metadata['after']} after each event. Demeaning: {adjustment}. Values use level or wealth units; adjusted values are differences, not wealth starting at one or event-zero returns. Undefined observations remain missing."
+                if index == 0
+                else "Error bars show sample standard deviation, not SE or confidence intervals."
+                if str(figure.layout.title.text).startswith("Quantile ")
+                else "Group-specific means supplement the global overview; deviations are not displayed."
+            ),
         }
         for index, figure in enumerate(figures)
     ]

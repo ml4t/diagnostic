@@ -1125,7 +1125,9 @@ figures for notebooks or the existing PDF exporter.
 to `group_neutral` and takes precedence. The report keeps supplied levels or
 full-clock wealth in their declared units. The reference plot multiplies its
 input by 10,000 for a basis-point display, even when supplied values are prices;
-Diagnostic does not relabel those levels as basis-point returns. Group plots
+Diagnostic does not relabel those levels as basis-point returns. Demeaned
+values are labelled level or wealth differences, not wealth starting at one.
+The rendered report states the window and actual demeaning choice. Group plots
 and the combined overview show means without deviations; only the optional
 separate quantile plots show sample-standard-deviation bars. Clipped and missing
 cells, duplicate-event weighting and observation-clock limitations above remain

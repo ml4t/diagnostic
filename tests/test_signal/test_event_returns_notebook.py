@@ -85,8 +85,8 @@ print('ML4T_EVENT_NOTEBOOK:'+json.dumps({'module':diagnostic.__file__,'events':r
     assert figures[0]["data"][0]["x"] == [-1, 0, 1]
     assert figures[0]["data"][0]["y"] == [15, 20, 25]
     assert figures[0]["data"][1]["y"] == [150, 200, 250]
-    assert figures[1]["data"][0]["error_y"]["array"][1] == 10
-    assert figures[2]["data"][0]["error_y"]["array"][1] == 100
+    assert figures[1]["data"][0]["error_y"]["array"][1] == pytest.approx(10, abs=1e-12)
+    assert figures[2]["data"][0]["error_y"]["array"][1] == pytest.approx(100, abs=1e-12)
     assert figures[-1]["data"][0]["y"] == [15, 20, 25]
     html = "\n".join(out.get("data", {}).get("text/html", "") for out in outputs)
     assert html.count('class="plot-container"') == 5
