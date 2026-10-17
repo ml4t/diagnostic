@@ -137,3 +137,32 @@ def test_period_defaults_are_used_only_without_explicit_scale(api):
     assert api.annualization_factor("not-a-period", 52.5) == 52.5
     with pytest.raises(ValueError, match="period"):
         api.annualization_factor("not-a-period", None)
+
+
+def test_negative_ending_price_wealth_does_not_return_complex_cagr(api):
+    from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import annual_return
+
+    prices = pd.Series([2.0, 3.0, -1.0, -2.0, -3.0], index=pd.bdate_range("2020-04-16", periods=5))
+    sample = prices.pct_change(fill_method=None).iloc[1:]
+    native = annual_return(sample, periods_per_year=52.5)
+    assert np.isrealobj(native) and np.isnan(native)
+    assert np.isnan(api.annual_return(sample, annualization=52.5))
+
+
+def test_total_price_loss_is_retained_when_subsequent_zero_price_return_is_missing(api):
+    prices = pd.Series([100.0, 110.0, 0.0, 0.0], index=pd.bdate_range("2025-01-02", periods=4))
+    sample = prices.pct_change(fill_method=None).iloc[1:]
+    assert sample.tolist()[:2] == pytest.approx([0.1, -1.0])
+    assert np.isnan(sample.iloc[2])
+    assert api.annual_return(sample, annualization=52.5) == -1
+    assert api.calmar_ratio(sample, annualization=52.5) == -1
+
+
+def test_annualizing_large_finite_price_gain_returns_infinity_not_python_overflow(api):
+    from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import annual_return
+
+    sample = pd.Series([1e-100, 1e100]).pct_change(fill_method=None).iloc[1:]
+    assert np.isfinite(sample.iloc[0])
+    assert 252 * math.log(1e200) > math.log(np.finfo(float).max)
+    assert annual_return(sample) == np.inf
+    assert api.annual_return(sample) == np.inf

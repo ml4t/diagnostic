@@ -185,7 +185,8 @@ def annual_return(
     if years == 0:
         return np.nan
 
-    return total ** (1 / years) - 1
+    with np.errstate(invalid="ignore", over="ignore"):
+        return float(np.power(total, 1 / years) - 1)
 
 
 def annual_volatility(
