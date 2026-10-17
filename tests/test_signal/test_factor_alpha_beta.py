@@ -230,6 +230,7 @@ def test_zero_signal_is_zero_exposure_with_zero_intercept_against_a_varying_univ
         (-1.0, "defined", -1.0),
         (-1.1, "negative_gross_intercept", None),
         (100.0, "annualization_overflow", None),
+        (1e308, "annualization_overflow", None),
     ],
 )
 def test_compound_domain_and_overflow_do_not_erase_defined_period_coefficients(
@@ -275,3 +276,50 @@ def test_custom_physical_names_do_not_change_the_public_sample_or_regression():
     )
     assert_frame_equal(actual.statistics, expected.statistics)
     assert_frame_equal(actual.observations, expected.observations)
+
+
+@pytest.mark.parametrize("provided_beta", [None, 1e-308], ids=["factor-portfolio", "tiny-exposure"])
+def test_finite_price_derived_universe_mean_does_not_overflow_and_discard_a_valid_date(
+    provided_beta,
+):
+    dates = pd.bdate_range("2024-09-09", periods=4, tz="UTC")
+    prices = pd.DataFrame(
+        {"A": [1.0, 1e308, 5e307, 7.5e307], "B": [1.0, 1e308, 5e307, 7.5e307]}, index=dates
+    )
+    marks = (
+        prices.stack(future_stack=True).rename("price").rename_axis(["date", "asset"]).reset_index()
+    )
+    factor = marks[marks.date < dates[-1]][["date", "asset"]].assign(factor=1.0)
+    frame = signal.prepare_data(factor, marks, periods=(1,), quantiles=2, filter_zscore=None)
+    result = signal.compute_factor_alpha_beta(
+        frame,
+        return_columns=["1D_fwd_return"],
+        annualization_factors={"1D_fwd_return": 252},
+        demeaned=False,
+        returns=None
+        if provided_beta is None
+        else prices.A.pct_change(fill_method=None).shift(-1).iloc[:-1] * provided_beta,
+    )
+    row = result.statistics.row(0, named=True)
+    assert row["n_obs"] == row["n_dates"] == 3
+    np.testing.assert_allclose(
+        result.observations["universe_return"], [1e308, -0.5, 0.5], rtol=1e-14
+    )
+    assert result.observations["paired"].to_list() == [True] * 3
+    assert result.observations["n_universe"].to_list() == [2] * 3
+    assert result.observations["n_portfolio"].to_list() == (
+        [2] * 3 if provided_beta is None else [1] * 3
+    )
+    assert row["beta"] == (1 if provided_beta is None else provided_beta)
+    assert row["alpha_per_period"] == row["annual_alpha"] == 0
+    assert row["fit_coordinate_policy"] == "unit_max_abs"
+
+
+def test_extended_finite_annualization_scale_must_also_be_representable_in_result_float64():
+    frame, _, _ = _price_panel()
+    with np.errstate(over="ignore"):
+        scale = np.longdouble("1e400")
+    with pytest.raises(ValueError, match="annualization_factors"):
+        signal.compute_factor_alpha_beta(
+            frame, return_columns=["outcome"], annualization_factors={"outcome": scale}
+        )

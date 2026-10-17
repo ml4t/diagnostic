@@ -16,6 +16,7 @@ import polars as pl
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import alpha_beta
 from ml4t.diagnostic.signal._utils import _signal_frame, _signal_inputs
 from ml4t.diagnostic.signal.portfolio import _weight_flags, compute_factor_returns
+from ml4t.diagnostic.signal.quantile import _sample_return_statistics
 from ml4t.diagnostic.utils.validation import (
     _align_datetime_key_resolution,
     _validate_observation_keys,
@@ -96,20 +97,72 @@ def _provided_returns(
     return values.select(pl.col(date_col).alias("date"), *columns)
 
 
+def _universe_means(values: pl.DataFrame, column: str, date_col: str) -> pl.DataFrame:
+    benchmark = (
+        values.select(
+            pl.col(date_col).alias("date"),
+            pl.when(pl.col(column).cast(pl.Float64).is_finite())
+            .then(pl.col(column).cast(pl.Float64))
+            .otherwise(None)
+            .alias("universe_return"),
+        )
+        .group_by("date")
+        .agg(
+            pl.col("universe_return").mean(),
+            pl.col("universe_return").count().alias("n_universe"),
+        )
+    )
+    overflow = benchmark.filter(
+        (pl.col("n_universe") > 0) & ~pl.col("universe_return").is_finite().fill_null(False)
+    )
+    if overflow.is_empty():
+        return benchmark
+    corrections = []
+    affected = values.join(overflow.select(pl.col("date").alias(date_col)), on=date_col, how="semi")
+    for part in affected.partition_by(date_col, maintain_order=True):
+        outcomes = part[column].cast(pl.Float64).to_numpy()
+        mean = _sample_return_statistics(outcomes[np.isfinite(outcomes)])[0]
+        corrections.append(
+            part.head(1)
+            .select(pl.col(date_col).alias("date"))
+            .with_columns(pl.lit(mean).alias("__stable_mean"))
+        )
+    return (
+        benchmark.join(pl.concat(corrections), on="date", how="left")
+        .with_columns(pl.coalesce("__stable_mean", "universe_return").alias("universe_return"))
+        .drop("__stable_mean")
+    )
+
+
 def _fit(part: pl.DataFrame, scale: float) -> tuple[dict, pl.DataFrame]:
     x, y = part["universe_return"].to_numpy(), part["portfolio_return"].to_numpy()
     paired = np.isfinite(x) & np.isfinite(y)
     n = int(paired.sum())
     intercept = beta = annual = condition = None
     annual_status = "unavailable_fit"
+    conditioning_x = x[paired]
+    coordinate_policy = "supplied_units"
     if n == 0:
         status = "no_joint_observations"
     elif n < 2:
         status = "insufficient_observations"
-    elif np.ptp(x[paired]) == 0:
+    elif np.all(x[paired] == x[paired][0]):
         status = "constant_benchmark"
     else:
-        intercept, beta = map(float, alpha_beta(y[paired], x[paired], periods_per_year=1))
+        x_scale = float(np.max(np.abs(x[paired])))
+        y_scale = float(np.max(np.abs(y[paired]))) or 1.0
+        conditioning_x = x[paired] / x_scale
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            scaled_intercept, scaled_beta = alpha_beta(
+                y[paired] / y_scale, conditioning_x, periods_per_year=1
+            )
+            intercept = float(scaled_intercept * y_scale)
+            beta = float(
+                (scaled_beta * y_scale) / x_scale
+                if abs(scaled_beta) <= 1
+                else scaled_beta * (y_scale / x_scale)
+            )
+        coordinate_policy = "unit_max_abs"
         if not np.isfinite([intercept, beta]).all():
             intercept = beta = None
             status = "nonfinite_fit"
@@ -127,7 +180,7 @@ def _fit(part: pl.DataFrame, scale: float) -> tuple[dict, pl.DataFrame]:
                 else:
                     annual_status = "annualization_overflow"
     if n:
-        design = np.column_stack([np.ones(n), x[paired]])
+        design = np.column_stack([np.ones(n), conditioning_x])
         rank = int(np.linalg.matrix_rank(design))
         observed_condition = float(np.linalg.cond(design))
         if np.isfinite(observed_condition):
@@ -137,8 +190,12 @@ def _fit(part: pl.DataFrame, scale: float) -> tuple[dict, pl.DataFrame]:
     fitted = np.full(len(x), np.nan)
     residual = np.full(len(x), np.nan)
     if intercept is not None and beta is not None:
-        fitted[paired] = intercept + beta * x[paired]
-        residual[paired] = y[paired] - fitted[paired]
+        with np.errstate(over="ignore", invalid="ignore"):
+            fitted_scaled = scaled_intercept + scaled_beta * conditioning_x
+            fitted[paired] = fitted_scaled * y_scale
+            residual[paired] = (y[paired] / y_scale - fitted_scaled) * y_scale
+        fitted[~np.isfinite(fitted)] = np.nan
+        residual[~np.isfinite(residual)] = np.nan
     observations = part.with_columns(
         pl.Series("paired", paired),
         pl.Series("fitted_return", fitted, nan_to_null=True),
@@ -156,6 +213,7 @@ def _fit(part: pl.DataFrame, scale: float) -> tuple[dict, pl.DataFrame]:
         "n_universe_dates": int(np.isfinite(x).sum()),
         "design_rank": rank,
         "design_condition_number": condition,
+        "fit_coordinate_policy": coordinate_policy,
         "status": status,
         "annualization_status": annual_status,
     }, observations
@@ -193,7 +251,10 @@ def compute_factor_alpha_beta(
     its existing linear annualization and defaults.
 
     Regress only finite paired portfolio/benchmark dates using the existing OLS
-    kernel. Fewer than two pairs or constant benchmark yields null coefficients
+    kernel in unit-max-absolute coordinates, then restore coefficient units.
+    Rank/condition diagnostics describe that scaled design, as recorded in
+    fit_coordinate_policy. Finite mean overflow uses the shared stable sample
+    statistics without dropping dates. Fewer than two pairs or constant benchmark yields null coefficients
     with a status. Unlike released Alphalens0.4.6, all-missing portfolio dates
     stay null rather than zero, and a constant-zero benchmark does not invent
     identified beta0. Zero signal uses the existing explicit zero-exposure policy.
@@ -215,14 +276,17 @@ def compute_factor_alpha_beta(
     scales = {}
     for column in columns:
         value = annualization_factors[column]
-        if (
-            isinstance(value, bool | np.bool_)
-            or not isinstance(value, Real)
-            or not np.isfinite(value)
-            or value <= 0
-        ):
+        if isinstance(value, bool | np.bool_) or not isinstance(value, Real):
             raise ValueError("annualization_factors must contain positive finite numbers")
-        scales[column] = float(value)
+        try:
+            scale = float(value)
+        except (OverflowError, ValueError) as error:
+            raise ValueError(
+                "annualization_factors must contain positive finite numbers"
+            ) from error
+        if not np.isfinite(scale) or scale <= 0:
+            raise ValueError("annualization_factors must contain positive finite Float64 numbers")
+        scales[column] = scale
     if returns is None:
         portfolio = compute_factor_returns(
             values,
@@ -239,20 +303,7 @@ def compute_factor_alpha_beta(
         portfolio = _provided_returns(returns, columns, date_col)
     statistics, observations = [], []
     for column in columns:
-        benchmark = (
-            values.select(
-                pl.col(date_col).alias("date"),
-                pl.when(pl.col(column).cast(pl.Float64).is_finite())
-                .then(pl.col(column).cast(pl.Float64))
-                .otherwise(None)
-                .alias("universe_return"),
-            )
-            .group_by("date")
-            .agg(
-                pl.col("universe_return").mean(),
-                pl.col("universe_return").count().alias("n_universe"),
-            )
-        )
+        benchmark = _universe_means(values, column, date_col)
         if returns is None:
             part = portfolio.filter(pl.col("return_column") == column).select(
                 "date", "portfolio_return", "n_portfolio"

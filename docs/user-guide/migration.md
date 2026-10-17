@@ -901,9 +901,16 @@ the same input sample, not an external index or a group-neutral benchmark.
 The dependent variable reuses `factor_returns` with the selected weighting
 options. The observation table retains both dated returns, actual finite
 asset counts, the joint finite-date mask, fitted returns and residuals.
-Statistics retain pair counts, design rank/condition number, period alpha,
+Statistics retain pair counts, scaled-design rank/condition number, period alpha,
 beta, compound annual alpha and availability statuses. Beta is dimensionless;
 both alpha fields are decimal returns at their stated period/annual scale.
+The existing OLS kernel runs in unit-max-absolute coordinates and restores the
+coefficient units afterwards; `fit_coordinate_policy` identifies those units
+for the condition diagnostics. A finite universe mean that overflows its first
+aggregation is recomputed with the existing stable sample-statistics helper.
+Neither adjustment removes an otherwise finite date. Price-derived tests retain
+three joint dates for identical asset returns `[1e308, -0.5, 0.5]`, with known
+beta1/alpha0, and preserve a supplied portfolio's tiny beta `1e-308`.
 
 To reproduce Alphalens 0.4.6's fixed 252-day annualization convention for known
 one-day and five-day outcomes, explicitly supply `{"1D": 252, "5D": 50.4}`.
