@@ -90,6 +90,13 @@ costs, predictions, and factor results. Use
 `generate_tearsheet_from_result` for an `ml4t-backtest` result. The integration
 normalizes the backtest object before rendering.
 
+In unreleased source after 0.1.9, `include_statistical=False` on
+`generate_tearsheet_from_result` or `generate_backtest_tearsheet` omits
+inferential validation calculations, credibility/validity panels, confidence
+intervals, minimum track record, Sharpe bootstrap and statistical summary KPIs.
+Ordinary performance, trading and descriptive drawdown analysis remain.
+The default is `True`. Previously the bridge silently ignored `False`.
+
 For contract fills, provide the declared point-value multiplier. The Backtest
 bridge uses a fill's explicit `multiplier` when present, otherwise the producer's
 trade multiplier for that asset. Conflicting trade declarations or missing,

@@ -150,6 +150,10 @@ def _normalize_profile_metrics(profile: BacktestProfile) -> dict[str, Any]:
     return metrics
 
 
+_STATISTICAL_SECTIONS = frozenset(
+    {"validity_card", "confidence_intervals", "min_trl", "sharpe_bootstrap", "credibility_box"}
+)
+
 _WORKSPACE_SPECS: dict[str, BacktestWorkspaceSpec] = {
     "overview": BacktestWorkspaceSpec(
         id="overview",
@@ -768,6 +772,7 @@ def generate_backtest_tearsheet(
     include_plotlyjs: bool = True,
     *,
     periods_per_year: int | None = None,
+    include_statistical: bool = True,
 ) -> str:
     """Generate a comprehensive backtest tearsheet.
 
@@ -814,6 +819,10 @@ def generate_backtest_tearsheet(
         Positive annualization scale for every computed report metric. Defaults
         to the profile scale, or 252 for raw daily returns, never sample length.
         Precomputed metrics must use the same convention.
+    include_statistical : bool, default True
+        Compute and show statistical validation. False omits inference enrichment,
+        validity/credibility, confidence intervals, track record and bootstrap
+        panels and statistical hero KPIs. Descriptive drawdown analysis remains.
 
     Returns
     -------
@@ -870,6 +879,13 @@ def generate_backtest_tearsheet(
     # Get template
     tmpl = get_template(template)
     preset = get_dashboard_preset(template)
+    if not include_statistical:
+        preset = replace(
+            preset,
+            hero_metrics=tuple(
+                k for k in preset.hero_metrics if k not in {"dsr_probability", "min_trl"}
+            ),
+        )
     if metrics is None:
         metrics = {}
     benchmark_metrics = _compute_portfolio_summary_metrics(
@@ -943,6 +959,7 @@ def generate_backtest_tearsheet(
         theme=theme,
         interactive=interactive,
         periods_per_year=periods_per_year,
+        include_statistical=include_statistical,
     )
 
     html = HTML_TEMPLATE.format(
@@ -1135,10 +1152,11 @@ def _generate_sections(
     theme: str = "default",
     interactive: bool = True,
     periods_per_year: int = 252,
+    include_statistical: bool = True,
 ) -> str:
     """Generate HTML for all enabled sections."""
     # Enrich metrics with computed validation stats when absent
-    if metrics is not None:
+    if metrics is not None and include_statistical:
         metrics = _enrich_validation_metrics(metrics, returns, n_trials, periods_per_year)
 
     # Pre-build FactorAnalysis to cache models across factor sections
@@ -1152,6 +1170,8 @@ def _generate_sections(
     rendered_sections: list[tuple[TearsheetSection, str]] = []
 
     for section in template.get_enabled_sections():
+        if not include_statistical and section.name in _STATISTICAL_SECTIONS:
+            continue
         section_html = _generate_section(
             section,
             preset=preset,
@@ -1172,6 +1192,7 @@ def _generate_sections(
             theme=theme,
             interactive=interactive,
             periods_per_year=periods_per_year,
+            include_statistical=include_statistical,
         )
         if section_html:
             rendered_sections.append((section, section_html))
@@ -1201,6 +1222,7 @@ def _generate_section(
     theme: str = "default",
     interactive: bool = True,
     periods_per_year: int = 252,
+    include_statistical: bool = True,
 ) -> str | None:
     """Generate HTML for a single section."""
     preset = preset or get_dashboard_preset("full")
@@ -1230,6 +1252,7 @@ def _generate_section(
             report_metadata=report_metadata,
             theme=theme,
             periods_per_year=periods_per_year,
+            include_statistical=include_statistical,
         )
 
         if content is None:
@@ -1411,6 +1434,7 @@ class _SectionContext:
         "data_sources",
         "report_metadata",
         "periods_per_year",
+        "include_statistical",
     )
 
     def __init__(
@@ -1434,8 +1458,10 @@ class _SectionContext:
         theme: str,
         data_sources: dict[str, str] | None = None,
         periods_per_year: int = 252,
+        include_statistical: bool = True,
     ):
         self.preset = preset
+        self.include_statistical = include_statistical
         self.profile = profile
         self.trades = trades
         self.returns = returns
@@ -2705,6 +2731,8 @@ def _render_methodology_notes(ctx: _SectionContext) -> str | None:
             )
 
     for tab, title, description, source_keys in _METHODOLOGY_SECTIONS:
+        if not ctx.include_statistical and tab == "Validation":
+            continue
         # Build source status badges
         badges = ""
         for key in source_keys:
@@ -2813,6 +2841,7 @@ def _create_section_figure(
     report_metadata: BacktestReportMetadata | None = None,
     theme: str = "default",
     periods_per_year: int = 252,
+    include_statistical: bool = True,
 ) -> go.Figure | str | None:
     """Create the Plotly figure for a specific section.
 
@@ -2840,6 +2869,7 @@ def _create_section_figure(
         report_metadata=report_metadata,
         theme=theme,
         periods_per_year=periods_per_year,
+        include_statistical=include_statistical,
         data_sources=profile.data_sources if profile is not None else None,
     )
     return renderer(ctx)
