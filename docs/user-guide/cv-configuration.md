@@ -34,7 +34,8 @@ print(path.read_text())
 ```
 
 Use `to_yaml` and `from_yaml` for YAML. Both formats preserve the validated
-configuration values.
+configuration values. Parsing legacy aliases leaves the supplied mapping
+unchanged, including when validation rejects the configuration.
 
 `label_horizon` accepts an integer number of observations or a fixed duration
 such as `5D` or `1W`. Monthly research configurations may use `1M` or the ISO
@@ -72,7 +73,8 @@ assert WalkForwardCV(
 Without a calendar, integer label horizons and embargo sizes in a row-mode
 purge request count observed rows, even across weekends, holidays or missing
 dates. Integer held-out sizes also count rows. Standard and forward/backward
-held-out folds retain positional boundaries, including duplicate timestamps.
+held-out walk-forward folds and ordinary CPCV row groups retain positional
+purge/embargo boundaries, including duplicate timestamps.
 An explicit `pd.Timedelta` still means elapsed time. Pure row-count splitting
 does not need timezone-aware timestamps; elapsed-time calculations retain their
 timezone checks. With a selected calendar, the existing session-aware

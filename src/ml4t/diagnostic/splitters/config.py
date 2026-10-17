@@ -149,6 +149,7 @@ class SplitterConfig(BaseConfig):
     def _accept_aliases(cls, data: Any) -> Any:
         """Accept label_buffer -> label_horizon and feature_buffer -> embargo_td."""
         if isinstance(data, dict):
+            data = data.copy()
             if "label_buffer" in data and "label_horizon" not in data:
                 data["label_horizon"] = data.pop("label_buffer")
             elif "label_buffer" in data:
@@ -349,6 +350,7 @@ class WalkForwardConfig(SplitterConfig):
     def _accept_wf_aliases(cls, data: Any) -> Any:
         """Accept val_size -> test_size and holdout_start/end -> test_start/end."""
         if isinstance(data, dict):
+            data = data.copy()
             if "val_size" in data and "test_size" not in data:
                 data["test_size"] = data.pop("val_size")
             elif "val_size" in data:

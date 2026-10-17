@@ -64,6 +64,12 @@ def apply_single_asset_purging(
     clean_indices : ndarray
         Training indices after purging.
     """
+    if (
+        group_indices_list is None
+        and not isinstance(label_horizon, pd.Timedelta)
+        and not isinstance(embargo_size, pd.Timedelta)
+    ):
+        timestamps = None
     for test_group_idx in test_group_indices:
         # Compute purge window bounds
         if group_indices_list is not None and timestamps is not None:
