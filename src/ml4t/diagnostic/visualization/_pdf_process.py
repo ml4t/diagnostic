@@ -19,7 +19,8 @@ _BOOTSTRAP = (
     "faulthandler.enable(); "
     "faulthandler.dump_traceback_later(20,repeat=True); "
     "assert sys.stdin.buffer.read(1)==b'1'; "
-    "runpy.run_module('ml4t.diagnostic.visualization._pdf_worker',run_name='__main__')"
+    "worker=sys.argv.pop(1); "
+    "runpy.run_path(worker,run_name='__main__')"
 )
 _RENDER_TIMEOUT = 90
 _CLOSE_TIMEOUT = 15
@@ -234,7 +235,15 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
         status_path = Path(directory) / "status.json"
         request_path.write_text(json.dumps(request, cls=PlotlyJSONEncoder), encoding="utf-8")
         process = subprocess.Popen(
-            [sys.executable, "-I", "-c", _BOOTSTRAP, str(request_path), str(status_path)],
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                _BOOTSTRAP,
+                str(Path(__file__).with_name("_pdf_worker.py")),
+                str(request_path),
+                str(status_path),
+            ],
             stdin=subprocess.PIPE,
             stdout=output,
             stderr=output,

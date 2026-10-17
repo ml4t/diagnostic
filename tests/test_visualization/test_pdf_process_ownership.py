@@ -229,3 +229,34 @@ def test_owned_worker_preserves_packaged_and_supported_custom_plotlyjs(tmp_path,
             {"custom_plotlyjs_supported": custom_path_supported, "packaged_bundle": str(bundle)}
         )
     )
+
+
+def test_pdf_worker_renders_without_initializing_the_analytical_package(tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly.graph_objects as go
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    imports_path = tmp_path / "worker-imports.jsonl"
+    observer = f"""
+import json,sys
+from pathlib import Path
+observed_imports=Path({str(imports_path)!r})
+observed_imports.touch()
+def observe_import(event,args):
+    if event=='import' and str(args[0]).startswith('ml4t.diagnostic'):
+        with observed_imports.open('a',encoding='utf-8') as output:
+            output.write(json.dumps(str(args[0]))+chr(10))
+sys.addaudithook(observe_import)
+"""
+    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", observer + "\n" + _pdf_process._BOOTSTRAP)
+    figure = go.Figure(go.Bar(x=["A", "B"], y=[1, -2]))
+    figure.update_layout(title="Standalone renderer")
+    original = figure.to_json()
+    output = export_figures_to_pdf([figure], tmp_path / "standalone.pdf", scale=1)
+    pages = pypdf.PdfReader(output).pages
+    assert len(pages) == 1 and "Standalone renderer" in pages[0].extract_text()
+    assert figure.to_json() == original
+    assert imports_path.is_file()
+    assert imports_path.read_text(encoding="utf-8").splitlines() == []
