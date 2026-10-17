@@ -2,6 +2,8 @@
 
 import importlib
 import math
+import subprocess
+import sys
 
 import numpy as np
 import pandas as pd
@@ -20,6 +22,21 @@ def returns():
         index=pd.bdate_range("2025-01-02", periods=5, tz="UTC", name="date"),
     )
     return prices.pct_change(fill_method=None).iloc[1:]
+
+
+def test_parent_compat_namespace_exposes_scalar_workflow_in_a_fresh_interpreter():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import pandas as pd; import ml4t.diagnostic.compat as compat; prices=pd.Series([100.,102.,104.]); returns=prices.pct_change(fill_method=None).iloc[1:]; value=compat.empyrical.annual_return(returns,annualization=2); assert abs(value-.04)<1e-12",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def _expected(name, column, scale, rate=0.001):
