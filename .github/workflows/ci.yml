@@ -300,6 +300,22 @@ jobs:
           --with nbclient --with ipykernel --with pytest
           pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
           tests/test_signal/test_event_returns_notebook.py
+      - name: Run canonical signal event-study workflow from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task event-study
+          --output "$RUNNER_TEMP/event-study.html"
+      - name: Execute canonical signal event-study notebook from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with nbclient --with ipykernel --with pytest
+          pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
+          tests/test_signal/test_signal_event_study_notebook.py
       - name: Retain aligned event report browser evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
