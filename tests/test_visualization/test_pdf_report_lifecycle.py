@@ -8,7 +8,8 @@ import sys
 import pytest
 
 
-def test_pandas_timestamp_return_coordinates_produce_a_real_dated_pdf(tmp_path):
+def test_pandas_timestamp_return_coordinates_produce_a_real_dated_pdf(tmp_path, caplog):
+    caplog.set_level("DEBUG", logger="choreographer")
     pytest.importorskip("kaleido")
     go = pytest.importorskip("plotly.graph_objects")
     pypdf = pytest.importorskip("pypdf")
@@ -130,7 +131,7 @@ stage('assertions_complete')
             "1" if observe_renderer else "0",
         ],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=None,
         text=True,
         encoding="utf-8",
         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
@@ -153,11 +154,10 @@ stage('assertions_complete')
                 "Actual PDF export subprocess exceeded 120 seconds; "
                 f"returncode before cleanup={returncode_at_timeout}:\n{captured}"
             )
-    assert process.returncode == 0, stdout + stderr
+    assert process.returncode == 0, stdout + (stderr or "")
     result = json.loads(stdout)
     if observe_renderer:
         assert result["renderer_instances"] == 1, result
         assert all(code is not None for code in result["renderer_returncodes"]), result
     assert result["page_boxes"] == [[0, 0, 600 * scale, 450 * scale]] * 3
-    print(stderr)
     print(json.dumps(result))
