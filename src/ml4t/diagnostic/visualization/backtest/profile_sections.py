@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from math import isfinite
 from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
@@ -402,11 +403,16 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
         vertical_spacing=0.12,
         row_heights=[0.56, 0.44],
     )
-    # Use contribution share (%) for cross-time comparability
-    bar_col = "pnl_contribution_share" if "pnl_contribution_share" in top.columns else "net_pnl"
-    bar_label = "PnL Contribution" if bar_col == "pnl_contribution_share" else "Net PnL"
-    bar_values = top[bar_col].to_list()
-    colors = [COLORS["positive"] if v >= 0 else COLORS["negative"] for v in bar_values]
+    bar_label = "Net P&L ($)"
+    bar_values = [v if v is not None and isfinite(v) else None for v in top["net_pnl"]]
+    colors = [
+        COLORS["positive"]
+        if v is not None and v > 0
+        else COLORS["negative"]
+        if v is not None and v < 0
+        else COLORS["neutral"]
+        for v in bar_values
+    ]
     fig.add_trace(
         go.Bar(
             x=top["symbol"].to_list(),
@@ -417,12 +423,16 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
         row=1,
         col=1,
     )
+
+    def share_values(column: str) -> list[float | str]:
+        return [round(v, 4) if v is not None and isfinite(v) else "N/A" for v in top[column]]
+
     fig.add_trace(
         go.Table(
             header={
                 "values": [
                     "Symbol",
-                    "PnL Share",
+                    "Share of net P&L",
                     "Turnover Share",
                     "Cost Share",
                     "Burden Score",
@@ -431,9 +441,9 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
             cells={
                 "values": [
                     top["symbol"].to_list(),
-                    top["pnl_contribution_share"].round(4).to_list(),
-                    top["turnover_contribution_share"].round(4).to_list(),
-                    top["cost_contribution_share"].round(4).to_list(),
+                    share_values("pnl_contribution_share"),
+                    share_values("turnover_contribution_share"),
+                    share_values("cost_contribution_share"),
                     top["burden_score"].round(4).to_list(),
                 ]
             },
@@ -443,9 +453,7 @@ def plot_attribution_overview(profile: BacktestProfile, theme: str | None = None
     )
     theme_config = get_theme_config(theme)
     fig.update_layout(theme_config["layout"])
-    y_axis_config: dict[str, object] = {"title": bar_label}
-    if bar_col == "pnl_contribution_share":
-        y_axis_config["tickformat"] = ".1%"
+    y_axis_config: dict[str, object] = {"title": bar_label, "tickformat": "$,.0f"}
     fig.update_layout(
         title={"text": "Attribution", "font": {"size": 16}},
         height=380,
