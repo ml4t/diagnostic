@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         AbnormalReturnResult,
         EventStudyResult,
     )
+    from ml4t.diagnostic.signal.event_study import SignalEventStudyResult
     from ml4t.diagnostic.signal.events import AlignedEventResult, EventReturnsResult
 
 
@@ -181,6 +182,190 @@ def generate_event_returns_report(
     ]
     html = combine_figures_to_html(
         figures, title="Signal event returns", theme=theme, sections=sections
+    )
+    return _publish_event_html(html, output_file)
+
+
+def plot_signal_event_study(
+    result: SignalEventStudyResult, *, theme: str | None = None
+) -> list[go.Figure]:
+    """Plot elapsed event counts, optional paths and the actual quantile samples."""
+    config = get_theme_config(validate_theme(theme))
+    counts = result.event_distribution
+    distribution = go.Figure(
+        go.Bar(x=counts["date"].to_list(), y=counts["n_events"].to_list(), name="Events")
+    )
+    distribution.update_layout(
+        meta={
+            "analysis": "elapsed_event_distribution",
+            "bin_width_ns": result.metadata["bin_width_ns"],
+        }
+    )
+    figures = [distribution]
+    titles = [("Event distribution", "Events", "Elapsed bin start")]
+    if result.event_returns is not None:
+        paths = plot_event_returns(result.event_returns, std_bar=True, theme=theme)
+        figures.extend(paths)
+        titles.extend(
+            (
+                str(figure.layout.title.text),
+                str(figure.layout.yaxis.title.text),
+                "Observation offset",
+            )
+            for figure in paths
+        )
+    bars = go.Figure()
+    violin = go.Figure()
+    columns = result.metadata["return_columns"]
+    for index, column in enumerate(columns):
+        color = config["colorway"][index % len(config["colorway"])]
+        means = result.mean_returns.filter(pl.col("return_column") == column).sort("quantile")
+        sample = result.return_observations.filter(
+            (pl.col("return_column") == column) & pl.col("display_mean").is_not_null()
+        ).sort("quantile", "date")
+        bars.add_trace(
+            go.Bar(
+                x=[f"Q{quantile}" for quantile in means["quantile"]],
+                y=means["display_mean"].to_list(),
+                name=column,
+                marker_color=color,
+                customdata=means["n_obs"].to_list(),
+                hovertemplate="%{x}<br>Mean %{y:.4%}<br>Dates %{customdata}<extra>%{fullData.name}</extra>",
+            )
+        )
+        violin.add_trace(
+            go.Violin(
+                x=[f"Q{quantile}" for quantile in sample["quantile"]],
+                y=sample["display_mean"].to_list(),
+                name=column,
+                fillcolor=color,
+                line_color=color,
+                points="all",
+                spanmode="hard",
+                box_visible=True,
+                meanline_visible=True,
+                customdata=list(
+                    zip(
+                        sample["date"].to_pandas().astype(str).to_list(),
+                        sample["n_obs"].to_list(),
+                        strict=True,
+                    )
+                ),
+                hovertemplate="%{x}<br>Date %{customdata[0]}<br>Return %{y:.4%}<br>Assets %{customdata[1]}<extra>%{fullData.name}</extra>",
+            )
+        )
+    bars.update_layout(
+        barmode="group",
+        meta={
+            "analysis": "event_quantile_means",
+            "sample_unit": "date",
+            "rate_of_return": result.metadata["rate_of_return"],
+        },
+    )
+    violin.update_layout(
+        violinmode="group",
+        meta={
+            "analysis": "event_quantile_observations",
+            "sample_unit": "date",
+            "visible_percentiles": [1, 99],
+            "sample_policy": "all defined date/bucket means; no synthetic samples",
+        },
+    )
+    values = result.return_observations["display_mean"].drop_nulls().to_numpy()
+    if len(values):
+        lower, upper = np.percentile(values, [1, 99])
+        if lower < upper:
+            violin.update_yaxes(range=[float(lower), float(upper)])
+    figures.extend([bars, violin])
+    unit = (
+        f"Return per {result.metadata['base_period']}"
+        if result.metadata["rate_of_return"]
+        else "Supplied-horizon return"
+    )
+    titles.extend(
+        [
+            ("Quantile return means", unit, "Quantile"),
+            ("Observed date/bucket returns", unit, "Quantile"),
+        ]
+    )
+    for figure, (title, y_title, x_title) in zip(figures, titles, strict=True):
+        figure.update_layout(**config["layout"])
+        figure.update_layout(
+            title={"text": title, "font": {"size": 16}},
+            font={"size": 14},
+            height=500,
+            autosize=True,
+            margin={"l": 70, "r": 20, "t": 45, "b": 120},
+            legend={"orientation": "h", "y": -0.25, "x": 0, "font": {"size": 14}},
+        )
+        figure.update_xaxes(title_text=x_title, tickfont={"size": 14})
+        figure.update_yaxes(title_text=y_title, tickfont={"size": 14})
+    distribution.update_xaxes(tickangle=0, nticks=3, automargin=True)
+    distribution.update_yaxes(dtick=1)
+    bars.update_yaxes(tickformat=".2%")
+    violin.update_yaxes(tickformat=".2%")
+    return figures
+
+
+def generate_signal_event_study_report(
+    result: SignalEventStudyResult,
+    *,
+    output_file: str | Path | None = None,
+    theme: str | None = None,
+) -> str:
+    """Compose factor stats, elapsed bins, optional paths and empirical return panels."""
+    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
+
+    table = (
+        result.factor_statistics.rename(
+            {
+                "quantile": "Quantile",
+                "min": "Minimum",
+                "max": "Maximum",
+                "mean": "Mean",
+                "std": "Sample deviation",
+                "count": "Events",
+                "count_percent": "Event share (%)",
+            }
+        )
+        .to_pandas()
+        .to_html(
+            index=False,
+            escape=True,
+            na_rep="Undefined",
+            float_format=lambda value: format_finite(value, ".6g"),
+            border=0,
+        )
+    )
+    table = table.replace("<table ", '<table style="font-size:14px;border-collapse:collapse" ', 1)
+    table = table.replace("<th>", '<th style="padding:6px">').replace(
+        "<td>", '<td style="padding:6px">'
+    )
+    sections = [
+        {"title": "Factor statistics", "text": f'<div style="overflow-x:auto">{table}</div>'}
+    ]
+    figures = plot_signal_event_study(result, theme=theme)
+    for index, figure in enumerate(figures):
+        analysis = (figure.layout.meta or {}).get("analysis")
+        if analysis == "elapsed_event_distribution":
+            text = "Counts include every prepared event and empty elapsed-time bins. Bin count can include an endpoint bin beyond the requested count; singleton event dates use one observed bin. These are not calendar sessions or expected bars."
+        elif analysis in ("event_quantile_means", "event_quantile_observations"):
+            text = f"Unadjusted date/bucket means give dates equal weight. Rate conversion: {result.metadata['rate_of_return']}; base horizon: {escape(result.metadata['base_period'])}. Raw horizon means, deviations and counts remain separately inspectable. The violin retains all defined samples; its visible range uses the 1st/99th percentiles, not sample trimming or simulated data."
+        else:
+            text = "Unadjusted supplied levels or full-clock wealth, not event-zero CAR. Offsets count observations. Separate quantile bars show sample deviation, not SE or confidence intervals."
+        sections.append(
+            {"title": str(figure.layout.title.text), "text": text, "figure_index": index}
+        )
+    if result.event_returns is None:
+        sections.insert(
+            2,
+            {
+                "title": "Aligned path availability",
+                "text": f"Not displayed: {escape(result.metadata['event_paths_availability'])}. No path or uncertainty is synthesized.",
+            },
+        )
+    html = combine_figures_to_html(
+        figures, title="Signal event study", sections=sections, theme=theme
     )
     return _publish_event_html(html, output_file)
 

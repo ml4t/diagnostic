@@ -19,7 +19,14 @@ from ml4t.diagnostic.signal.events import EventReturnsResult, analyze_event_retu
 if TYPE_CHECKING:
     from ml4t.diagnostic.signal.panel import PreparedSignalPanel
 
-_TABLES = ("factor_statistics", "event_distribution", "mean_returns", "return_observations")
+_TABLES = (
+    "factor_statistics",
+    "event_distribution",
+    "mean_returns",
+    "return_observations",
+    "prepared_events",
+    "event_membership",
+)
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,16 @@ class SignalEventStudyResult:
     def return_observations(self) -> pl.DataFrame:
         """Return actual date/bucket means, counts and optional rate conversion."""
         return pl.read_ipc(BytesIO(self._tables[3]))
+
+    @property
+    def prepared_events(self) -> pl.DataFrame:
+        """Return the owned complete prepared input, not only aggregate statistics."""
+        return pl.read_ipc(BytesIO(self._tables[4]))
+
+    @property
+    def event_membership(self) -> pl.DataFrame:
+        """Return each actual event key's elapsed-time bin without losing input order."""
+        return pl.read_ipc(BytesIO(self._tables[5]))
 
     @property
     def metadata(self) -> dict:
@@ -179,15 +196,31 @@ def analyze_signal_event_study(
         .sort("quantile")
     )
     dates = pd.DatetimeIndex(data[panel.date_col].to_pandas()).as_unit("ns")
-    events = pd.Series(data[panel.factor_col].to_numpy(), index=dates)
+    events = pd.DataFrame(
+        {"event_row": np.arange(len(dates)), "factor": data[panel.factor_col].to_numpy()},
+        index=dates,
+    )
     span = dates.max() - dates.min()
     width = span / int(num_bars)
+    bin_labels: list[pd.Timestamp | None]
     if span == pd.Timedelta(0):
         counts = pd.Series([len(events)], index=pd.DatetimeIndex([dates[0]]))
+        bin_labels = [dates[0]] * len(events)
     else:
         if width <= pd.Timedelta(0):
             raise ValueError("num_bars exceeds the timestamp resolution of the event span")
-        counts = events.groupby(pd.Grouper(freq=width)).count()
+        grouped = events.groupby(pd.Grouper(freq=width))
+        counts = grouped["factor"].count()
+        bin_labels = [None] * len(events)
+        for label, part in grouped:
+            for position in part["event_row"]:
+                bin_labels[position] = label
+    bin_starts = pl.from_pandas(
+        pd.Series(pd.DatetimeIndex(bin_labels).as_unit("ns"), name="bin_start")
+    )
+    membership = data.select(
+        pl.col(panel.date_col).alias("date"), pl.col(panel.asset_col).alias("asset"), "quantile"
+    ).with_columns(bin_starts)
     distribution = pl.from_pandas(
         pd.DataFrame({"date": counts.index, "n_events": counts.to_numpy()})
     )
@@ -210,6 +243,11 @@ def analyze_signal_event_study(
         )
     metadata = {
         "return_columns": columns,
+        "input_columns": {
+            "factor": panel.factor_col,
+            "date": panel.date_col,
+            "asset": panel.asset_col,
+        },
         "rate_of_return": rate_of_return,
         "base_period": columns[0],
         "horizon_durations_ns": durations,
@@ -232,7 +270,7 @@ def analyze_signal_event_study(
         else "window_disabled",
         "base_rate_precision": "identity ratios retain the original mean; other positive-wealth rates use log1p/expm1",
     }
-    tables = (factors, distribution, means, observations)
+    tables = (factors, distribution, means, observations, data, membership)
     return SignalEventStudyResult(
         tuple(frame.write_ipc(None).getvalue() for frame in tables),
         json.dumps(metadata, allow_nan=False),

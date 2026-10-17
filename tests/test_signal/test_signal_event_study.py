@@ -11,6 +11,10 @@ from ml4t.diagnostic.signal import (
     analyze_signal_event_study,
     prepare_signal_panel,
 )
+from ml4t.diagnostic.visualization.signal import (
+    generate_signal_event_study_report,
+    plot_signal_event_study,
+)
 
 
 def _panel():
@@ -35,6 +39,10 @@ def test_signal_event_study_uses_elapsed_bins_including_empty_bins_and_all_decla
     assert stats["count"] == 6 and stats["count_percent"] == 100
     assert result.event_returns is None
     assert result.metadata["event_paths_availability"] == "values_not_supplied"
+    assert_frame_equal(result.prepared_events, _panel().data)
+    assert (
+        result.event_membership["bin_start"].to_list() == result.event_membership["date"].to_list()
+    )
 
 
 def test_event_rate_conversion_uses_first_supplied_horizon_without_relabelling_raw_statistics():
@@ -84,3 +92,160 @@ def test_single_date_event_distribution_is_one_observed_bin_not_a_zero_frequency
 def test_event_distribution_rejects_invalid_bin_requests(num_bars):
     with pytest.raises(ValueError, match="positive integer"):
         analyze_signal_event_study(_panel(), rate_of_return=False, num_bars=num_bars)
+
+
+def test_signal_event_study_composes_actual_returns_and_table_without_invented_paths(tmp_path):
+    result = analyze_signal_event_study(
+        _panel(), horizon_durations={"3D": "3D", "1D": "1D"}, num_bars=3
+    )
+    figures = plot_signal_event_study(result)
+    assert len(figures) == 3
+    assert list(figures[0].data[0].y) == [2, 0, 2, 2]
+    assert list(figures[1].data[0].y) == pytest.approx([0.03])
+    assert list(figures[1].data[1].y) == pytest.approx([1.01**3 - 1])
+    assert list(figures[2].data[0].y) == pytest.approx([0.03] * 3)
+    assert list(figures[2].data[1].y) == pytest.approx([1.01**3 - 1] * 3)
+    target = tmp_path / "study.html"
+    assert generate_signal_event_study_report(result, output_file=target) == str(target)
+    html = target.read_text()
+    assert html.count('class="plot-container"') == 3
+    assert "Factor statistics" in html and "Event share (%)" in html
+    assert "values_not_supplied" in html
+    assert "Signal event study" in html
+
+
+@pytest.mark.parametrize("rate", [False, True])
+@pytest.mark.parametrize(
+    "with_values,with_window", [(False, False), (False, True), (True, False), (True, True)]
+)
+@pytest.mark.parametrize("quantiles", [1, 2])
+def test_complete_event_study_matches_actual_reference_panels_and_intermediate_samples(
+    rate, with_values, with_window, quantiles, monkeypatch
+):
+    tears = pytest.importorskip("alphalens.tears")
+    import matplotlib.pyplot as plt
+
+    dates = pd.bdate_range("2025-01-02", periods=8, tz="UTC")
+    prices = pd.DataFrame(
+        np.arange(100.0, 106.0)
+        * np.exp(np.arange(8)[:, None] * np.array([0.01, 0.02, -0.01, 0.03, -0.02, 0.005])),
+        index=dates,
+        columns=list("ABCDEF"),
+    )
+    factor = prices.iloc[[0, 2, 4]].stack().rename("factor")
+    factor.index.names = ["date", "asset"]
+    forward = pd.concat(
+        {f"{period}D": (prices.shift(-period) / prices - 1).stack() for period in [3, 1]}, axis=1
+    )
+    forward.index.names = ["date", "asset"]
+    panel = prepare_signal_panel(factor, forward, quantiles=quantiles, max_loss=0)
+    frame = (
+        panel.data.to_pandas()
+        .rename(columns={"quantile": "factor_quantile"})
+        .set_index(["date", "asset"])
+    )
+    captured = {}
+    original_table = tears.plotting.plot_quantile_statistics_table
+    original_distribution = tears.plotting.plot_events_distribution
+    original_bar = tears.plotting.plot_quantile_returns_bar
+    original_violin = tears.plotting.plot_quantile_returns_violin
+
+    def stats(data, *args, **kwargs):
+        captured["factors"] = original_table(data, return_df=True)
+        return original_table(data, *args, **kwargs)
+
+    def distribution(*args, **kwargs):
+        axis = original_distribution(*args, **kwargs)
+        captured["counts"] = [patch.get_height() for patch in axis.patches]
+        captured["bin_labels"] = [label.get_text() for label in axis.get_xticklabels()]
+        return axis
+
+    def bars(data, *args, **kwargs):
+        captured["means"] = data.copy(deep=True)
+        axis = original_bar(data, *args, **kwargs)
+        captured["bar_values"] = [patch.get_height() / 10000 for patch in axis.patches]
+        return axis
+
+    def violins(data, *args, **kwargs):
+        captured["observations"] = data.copy(deep=True)
+        return original_violin(data, *args, **kwargs)
+
+    monkeypatch.setattr(tears.plotting, "plot_quantile_statistics_table", stats)
+    monkeypatch.setattr(tears.plotting, "plot_events_distribution", distribution)
+    monkeypatch.setattr(tears.plotting, "plot_quantile_returns_bar", bars)
+    monkeypatch.setattr(tears.plotting, "plot_quantile_returns_violin", violins)
+    values = prices if with_values else None
+    window = (1, 2) if with_window else None
+    tears.create_event_study_tear_sheet(
+        frame, values, avgretplot=window, rate_of_ret=rate, n_bars=3
+    )
+    result = analyze_signal_event_study(
+        panel,
+        values,
+        input_kind="levels",
+        event_window=window,
+        rate_of_return=rate,
+        horizon_durations={"3D": "3D", "1D": "1D"},
+        num_bars=3,
+    )
+    for row in result.factor_statistics.iter_rows(named=True):
+        expected = captured["factors"].loc[row["quantile"]]
+        for column in ["min", "max", "mean", "std", "count"]:
+            assert row[column] == pytest.approx(expected[column], abs=1e-12)
+        assert row["count_percent"] == pytest.approx(expected["count %"])
+    assert result.event_distribution["n_events"].to_list() == captured["counts"]
+    assert captured["bin_labels"] == [
+        str(date) for date in result.event_distribution["date"].to_list()
+    ]
+    for row in result.mean_returns.iter_rows(named=True):
+        np.testing.assert_allclose(
+            row["display_mean"],
+            captured["means"].loc[row["quantile"], row["return_column"]],
+            atol=1e-12,
+            rtol=1e-12,
+        )
+    for row in result.return_observations.iter_rows(named=True):
+        np.testing.assert_allclose(
+            row["display_mean"],
+            captured["observations"].loc[(row["date"], row["quantile"]), row["return_column"]],
+            atol=1e-12,
+            rtol=1e-12,
+        )
+    figures = plot_signal_event_study(result)
+    expected_count = 3 + (1 + quantiles if with_values and with_window else 0)
+    assert len(figures) == expected_count
+    bars_figure = figures[-2]
+    native_values = [value for trace in bars_figure.data for value in trace.y]
+    np.testing.assert_allclose(native_values, captured["bar_values"], rtol=1e-12, atol=1e-12)
+    for trace in figures[-1].data:
+        sample = result.return_observations.filter(pl.col("return_column") == trace.name).sort(
+            "quantile", "date"
+        )
+        np.testing.assert_allclose(trace.y, sample["display_mean"])
+        assert len(trace.y) == sample.height
+    html = generate_signal_event_study_report(result)
+    assert html.count('class="plot-container"') == expected_count
+    assert "Factor statistics" in html
+    assert ("Aligned path availability" in html) == (not (with_values and with_window))
+    plt.close("all")
+
+
+def test_identity_rate_preserves_independent_tiny_return_instead_of_reference_rounding_to_zero():
+    reference = pytest.importorskip("alphalens.utils")
+    frame = _panel().data.to_pandas().set_index(["date", "asset"])
+    returns = pd.DataFrame({"1D": [1e-20] * len(frame)}, index=frame.index)
+    panel = prepare_signal_panel(frame["factor"], returns, quantiles=1, max_loss=0)
+    result = analyze_signal_event_study(panel)
+    assert result.mean_returns["display_mean"][0] == pytest.approx(1e-20, rel=1e-12, abs=0)
+    assert reference.rate_of_return(pd.Series([1e-20], name="1D"), base_period="1D")[0] == 0
+
+
+def test_reference_zero_span_histogram_failure_is_reconciled_to_independent_single_bin_count():
+    reference = pytest.importorskip("alphalens.plotting")
+    frame = _panel().data.to_pandas()
+    frame = frame[frame["date"] == frame["date"].iloc[0]].set_index(["date", "asset"])
+    with pytest.raises((ValueError, ZeroDivisionError)):
+        reference.plot_events_distribution(frame["factor"])
+    panel = prepare_signal_panel(frame["factor"], frame[["3D", "1D"]], quantiles=1, max_loss=0)
+    result = analyze_signal_event_study(panel, rate_of_return=False)
+    assert result.event_distribution["n_events"].to_list() == [2]
