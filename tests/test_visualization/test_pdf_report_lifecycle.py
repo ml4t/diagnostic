@@ -58,9 +58,9 @@ def test_multipage_pdf_preserves_pages_and_returns_from_real_public_export(
     ):
         pytest.skip("Modern batch lifecycle requires Plotly write_images and Kaleido1")
     code = """
-import faulthandler,hashlib,json,sys,time
+import atexit,faulthandler,hashlib,json,os,sys,threading,time
 faulthandler.enable()
-faulthandler.dump_traceback_later(60)
+faulthandler.dump_traceback_later(20,repeat=True)
 started=time.monotonic()
 def stage(name,**details):
     print(json.dumps({'stage':name,'elapsed_seconds':time.monotonic()-started,**details}),file=sys.stderr,flush=True)
@@ -113,37 +113,51 @@ print(json.dumps({'module':diagnostic.__file__,
     'page_boxes':[[float(value) for value in page.mediabox] for page in reader.pages],
     'page_text':texts,'pdf_sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest(),
     'original_figures_unchanged':True}))
-faulthandler.cancel_dump_traceback_later()
+sys.stdout.flush()
+stage('final_process_state',pid=os.getpid(),threads=[
+    {'name':thread.name,'daemon':thread.daemon,'ident':thread.ident}
+    for thread in threading.enumerate()])
+atexit.register(lambda:stage('python_atexit_reached'))
 stage('assertions_complete')
 """
-    try:
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                code,
-                str(tmp_path / "report.pdf"),
-                str(scale),
-                "1" if observe_renderer else "0",
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-            timeout=120,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as error:
-        captured = "\n".join(
-            value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
-            for value in (error.stdout, error.stderr)
-        )
-        pytest.fail(f"Actual PDF export subprocess exceeded 120 seconds:\n{captured}")
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    result = json.loads(completed.stdout)
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            code,
+            str(tmp_path / "report.pdf"),
+            str(scale),
+            "1" if observe_renderer else "0",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=120)
+        except subprocess.TimeoutExpired as error:
+            returncode_at_timeout = process.poll()
+            process.kill()
+            if os.name == "nt":
+                stdout, stderr = process.communicate()
+            else:
+                process.wait()
+                stdout, stderr = error.stdout, error.stderr
+            captured = "\n".join(
+                value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+                for value in (stdout, stderr)
+            )
+            pytest.fail(
+                "Actual PDF export subprocess exceeded 120 seconds; "
+                f"returncode before cleanup={returncode_at_timeout}:\n{captured}"
+            )
+    assert process.returncode == 0, stdout + stderr
+    result = json.loads(stdout)
     if observe_renderer:
         assert result["renderer_instances"] == 1, result
         assert all(code is not None for code in result["renderer_returncodes"]), result
     assert result["page_boxes"] == [[0, 0, 600 * scale, 450 * scale]] * 3
-    print(completed.stderr)
+    print(stderr)
     print(json.dumps(result))
