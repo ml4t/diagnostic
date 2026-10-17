@@ -703,6 +703,12 @@ def plot_signal_turnover(
             figure.update_xaxes(tickfont_size=14, title_font_size=14)
             figure.update_yaxes(tickfont_size=14, title_font_size=14)
             figure.update_annotations(font_size=14)
+            if (figure.layout.meta or {}).get("clock_source") == "supplied":
+                figure.update_xaxes(
+                    title_text="Supplied clock order"
+                    if figure.layout.xaxis.type == "category"
+                    else "Supplied clock date"
+                )
             figures.append(figure)
     return figures
 

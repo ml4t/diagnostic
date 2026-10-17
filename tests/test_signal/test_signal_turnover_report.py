@@ -117,12 +117,29 @@ def test_report_lags_preserve_supplied_empty_observations_instead_of_compressing
     full = plot_signal_turnover(supplied)[0]
     assert compact.layout.meta["clock_source"] == "observed"
     assert full.layout.meta["clock_source"] == "supplied"
+    assert full.layout.xaxis.title.text == "Supplied clock date"
     assert len(compact.data[0].x) == 11 and len(full.data[0].x) == 12
     assert [pd.Timestamp(value).value for value in full.data[0].x] == [day.value for day in dates]
     for trace in full.data:
         assert trace.y[5] is None and trace.y[6] is None
         assert trace.customdata[5][-1] == "empty_current"
         assert trace.customdata[6][-1] == "empty_previous"
+
+
+def test_civil_daily_clock_retains_weekends_even_when_rotating_summary_means_agree():
+    panel, observed, dates = captured_turnover()
+    grid = pd.DataFrame({"date": pd.date_range(dates[0], dates[-1], freq="D")})
+    supplied = TurnoverAnalysisResult.from_observations(
+        panel.quantile_turnover(lags=(1, 2, 5), date_grid=grid),
+        panel.rank_autocorrelation(lags=(1, 2, 5), date_grid=grid),
+    )
+    assert observed.get_dataframe("dated_autocorrelation").height == 36
+    assert supplied.get_dataframe("dated_autocorrelation").height == 48
+    assert observed.get_dataframe("autocorrelation")["n_dates"].to_list() == [11, 10, 7]
+    assert supplied.get_dataframe("autocorrelation")["n_dates"].to_list() == [9, 6, 6]
+    np.testing.assert_allclose(
+        supplied.get_dataframe("autocorrelation")["autocorrelation"], [0, -1, 0], atol=1e-12
+    )
 
 
 @pytest.mark.parametrize("supplied", [False, True])
@@ -208,10 +225,15 @@ def test_complete_report_traces_and_summary_tables_match_actual_alphalens_on_sha
     reference = pytest.importorskip("alphalens.performance")
     from ml4t.diagnostic.visualization.signal import plot_signal_turnover
 
-    panel, component, _ = captured_turnover(profile)
+    panel, _, dates = captured_turnover(profile)
     data = panel.data.to_pandas().rename(columns={"quantile": "factor_quantile"})
     data = data.set_index(["date", "asset"]).sort_index()
     assert data.index.levels[0].freq is None
+    grid = pd.DataFrame({"date": pd.date_range(dates[0], dates[-1], freq="D")})
+    component = TurnoverAnalysisResult.from_observations(
+        panel.quantile_turnover(lags=(1, 2, 5), date_grid=grid),
+        panel.rank_autocorrelation(lags=(1, 2, 5), date_grid=grid),
+    )
     figures = {_key(figure): figure for figure in plot_signal_turnover(component)}
     turnover_means = component.get_dataframe("turnover")
     rank_means = component.get_dataframe("autocorrelation")
