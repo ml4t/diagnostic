@@ -138,11 +138,30 @@ def test_complete_event_returns_report_matches_actual_reference_sheet_panels_and
                 quantile = int(label.split()[-1])
                 values = statistics.filter(pl.col("quantile") == quantile).sort("offset")
                 # Reference plotting scales the supplied levels by10,000, not event-zero returns.
-                np.testing.assert_allclose(line.get_ydata() / 10000, values["mean"], equal_nan=True)
+                offsets = line.get_xdata()
+                if table.columns.dtype == object:
+                    labels = dict(zip(axis.get_xticks(), axis.get_xticklabels(), strict=True))
+                    offsets = [int(labels[position].get_text()) for position in offsets]
+                    assert offsets == list(table.columns)
+                coordinates = sorted(zip(offsets, line.get_ydata() / 10000, strict=True))
+                np.testing.assert_allclose(
+                    coordinates, values.select("offset", "mean").to_numpy(), equal_nan=True
+                )
     assert len(figures) == 1 + (2 if std_bar else 0) + (2 if by_group else 0)
     for figure in figures:
         expected_units = "Supplied levels" if input_kind == "levels" else "Wealth (start = 1)"
         assert figure.layout.yaxis.title.text == expected_units
+        sample = result.overall.statistics
+        if figure.layout.title.text.startswith("Group: "):
+            group = figure.layout.title.text.removeprefix("Group: ")
+            sample = result.groups.statistics.filter(pl.col("group") == group)
+        for trace in figure.data:
+            quantile = int(trace.name.removeprefix("Q"))
+            expected = sample.filter(pl.col("quantile") == quantile).sort("offset")
+            np.testing.assert_allclose(trace.x, expected["offset"])
+            np.testing.assert_allclose(trace.y, expected["mean"], equal_nan=True)
+            if trace.error_y.visible:
+                np.testing.assert_allclose(trace.error_y.array, expected["std"], equal_nan=True)
     plt.close("all")
 
 
@@ -194,3 +213,77 @@ def test_group_names_are_display_data_not_html_or_filenames():
     html = generate_event_returns_report(result)
     assert '<h2 class="section-title">Group: <script>' not in html
     assert "Group: &lt;script&gt;" in html
+
+
+@pytest.mark.parametrize("width", [375, 1200])
+def test_complete_event_returns_report_renders_all_panels_readably_in_actual_browser(
+    width, tmp_path
+):
+    import json
+    import os
+    import shutil
+    from pathlib import Path
+
+    playwright = pytest.importorskip("playwright.sync_api")
+    from plotly.offline import get_plotlyjs
+
+    chrome = (
+        shutil.which("google-chrome")
+        or shutil.which("chromium")
+        or shutil.which("chromium-browser")
+    )
+    if chrome is None:
+        pytest.skip("actual Chrome is required for rendered report verification")
+    panel, prices = _inputs()
+    result = panel.event_returns(prices, input_kind="levels", before=1, after=2, by_group=True)
+    target = tmp_path / "events.html"
+    generate_event_returns_report(result, output_file=target)
+    errors = []
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1100})
+            page.route(
+                "https://cdn.plot.ly/*",
+                lambda route: route.fulfill(
+                    content_type="application/javascript", body=get_plotlyjs()
+                ),
+            )
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(target.as_uri(), wait_until="networkidle")
+            page.wait_for_selector("#plot-4 .gtitle")
+            measured = page.evaluate("""() => {
+                const plots=Array.from(document.querySelectorAll('.js-plotly-plot'));
+                const labels=Array.from(document.querySelectorAll('.xtick text,.ytick text,.legendtext,.xtitle,.ytitle'));
+                return {width:innerWidth,scroll:document.documentElement.scrollWidth,
+                    panels:plots.map(plot=>({title:plot.layout.title.text,traces:plot.data.map(trace=>({name:trace.name,x:trace.x,y:trace.y,error:trace.error_y}))})),
+                    labelSizes:labels.map(node=>parseFloat(getComputedStyle(node).fontSize)),
+                    proseSize:parseFloat(getComputedStyle(document.querySelector('.section-text')).fontSize),
+                    titleSizes:Array.from(document.querySelectorAll('.gtitle')).map(node=>parseFloat(getComputedStyle(node).fontSize))};
+            }""")
+            if os.environ.get("GITHUB_ACTIONS") == "true":
+                evidence = Path(os.environ["GITHUB_WORKSPACE"]) / "artifacts/event-reports"
+                evidence.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(evidence / f"event-returns-{width}.png"), full_page=True)
+                for index in range(5):
+                    page.locator(f"#section-{index}").screenshot(
+                        path=str(evidence / f"event-returns-{width}-section-{index}.png")
+                    )
+                (evidence / f"event-returns-{width}.json").write_text(
+                    json.dumps(measured, indent=2)
+                )
+        finally:
+            browser.close()
+    assert not errors
+    assert measured["width"] == measured["scroll"] == width
+    assert len(measured["panels"]) == 5
+    assert min(measured["labelSizes"]) >= 14
+    assert max(measured["titleSizes"]) <= measured["proseSize"]
+    expected = plot_event_returns(result)
+    for actual, figure in zip(measured["panels"], expected, strict=True):
+        assert actual["title"] == figure.layout.title.text
+        for trace, requested in zip(actual["traces"], figure.data, strict=True):
+            assert trace["name"] == requested.name
+            np.testing.assert_allclose(trace["x"], requested.x)
+            np.testing.assert_allclose(trace["y"], requested.y, equal_nan=True)
+    print("EVENT_RETURNS_BROWSER " + json.dumps(measured))
