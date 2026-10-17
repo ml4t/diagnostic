@@ -2,6 +2,9 @@
 
 Diagnostic is not a drop-in replacement for either package. Choose a task below,
 convert its input shape, and compare result definitions before comparing numbers.
+Unreleased source after 0.1.9 requires Polars 1.0 or newer. The earlier 0.20
+minimum did not support APIs already used by prepared signal and factor-weight
+workflows. Optional Backtest integration has its own higher dependency floor.
 Core examples use synthetic data and the base package. HTML and real-Backtest
 tasks name their optional dependencies below.
 For selected performance metrics, see the separate
