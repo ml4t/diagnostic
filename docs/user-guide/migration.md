@@ -658,7 +658,7 @@ print(rank_plot.layout.meta)
 ```
 
 For dated inputs, `lag` counts recorded clock observations, not return days or
-exchange sessions. The default selects the first recorded lag. Membership and
+exchange sessions. The individual plot default selects the smallest recorded lag. Membership and
 rank computations can retain different lag sets; inspect `dated_turnover` and
 `dated_autocorrelation` before selecting one. Missing or invalid lags raise
 `ValueError`. Return-horizon `period` and lag-summary `max_lags` selectors do not
@@ -765,6 +765,9 @@ not make it an offline bundle. `show_all_quantiles=True` includes every recorded
 bucket in each membership chart. The default charts show the top and bottom
 buckets, while the tables always include all buckets. Custom lag order and
 different membership/rank lag sets are retained independently.
+Alphalens's default `turnover_periods=None` derives its lags from the forward-return
+column labels. Diagnostic takes explicit observation lags when constructing this
+result; a label such as `1D` does not establish a validated session duration.
 
 The runnable command also prints installed package versions and writes typed
 JSON alongside the HTML. Run it from a checkout containing this unreleased API:
