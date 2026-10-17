@@ -613,7 +613,9 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
         from ml4t.diagnostic.visualization.signal import generate_event_returns_report
 
         assert result.overall.paths.height == 96 and result.groups is not None
-        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(result.groups.paths)
+        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(
+            result.groups.paths
+        )
         path = generate_event_returns_report(result, output_file=output)
         output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
         print(f"Complete event-returns HTML: {path}")
@@ -627,6 +629,31 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     print(f"Aligned event HTML: {path}")
     print("24 declared events; 96 requested path cells; dynamic groups and buckets retained")
     print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
+
+
+def _signal_information_inputs() -> tuple[pd.Series, pd.DataFrame, pd.Series]:
+    dates = pd.bdate_range("2025-01-15", periods=45, tz="UTC")
+    assets = list("ABCDEFG")
+    random = np.random.default_rng(90417)
+    prices = pd.DataFrame(
+        100 * np.cumprod(1 + random.normal(0.001, 0.025, (45, 7)), axis=0),
+        index=dates,
+        columns=assets,
+    )
+    factor = prices.pct_change(3, fill_method=None).iloc[3:35].stack().rename("factor")
+    factor.index = factor.index.set_names(["date", "asset"])
+    forward = pd.DataFrame(
+        {f"{period}D": (prices.shift(-period) / prices - 1).stack() for period in [1, 5]}
+    ).reindex(factor.index)
+    groups = pd.Series(
+        [
+            "small" if asset in ("ABC" if day.day % 2 else "AB") else "large"
+            for day, asset in factor.index
+        ],
+        index=factor.index,
+        name="group",
+    )
+    return factor, forward, groups
 
 
 def main() -> None:

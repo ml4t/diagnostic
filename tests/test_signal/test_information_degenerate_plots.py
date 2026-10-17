@@ -5,11 +5,15 @@ import pandas as pd
 import pytest
 
 from ml4t.diagnostic import analyze_signal
-from ml4t.diagnostic.visualization.signal import plot_ic_histogram, plot_ic_qq
+from ml4t.diagnostic.visualization.signal import plot_ic_histogram, plot_ic_qq, plot_ic_ts
 
 
-def _price_produced_ic(*, unavailable=False, dates_count=25):
-    dates = pd.bdate_range("2025-01-02", periods=dates_count, tz="UTC")
+def _price_produced_ic(*, unavailable=False, dates_count=25, intraday=False):
+    dates = (
+        pd.date_range("2025-01-02", periods=dates_count, freq="h", tz="UTC")
+        if intraday
+        else pd.bdate_range("2025-01-02", periods=dates_count, tz="UTC")
+    )
     assets = [f"asset-{number:02}" for number in range(12)]
     index = pd.MultiIndex.from_product([dates, assets], names=["date", "asset"])
     factors = pd.DataFrame(
@@ -51,3 +55,12 @@ def test_unavailable_or_degenerate_price_produced_ic_does_not_invent_fitted_quan
     assert not any(trace.name == "Normal Reference" for trace in figure.data)
     observed = [] if unavailable else [1.0] * (dates_count - 1)
     assert [value for trace in figure.data for value in trace.y] == observed
+
+
+def test_intraday_price_produced_ic_rolling_window_is_not_labelled_as_elapsed_days():
+    ic = _price_produced_ic(intraday=True)
+    figure = plot_ic_ts(ic, rolling_window=22, show_significance=False)
+    rolling = next(trace for trace in figure.data if "Rolling" in trace.name)
+    assert rolling.name == "22-Observation Rolling Mean"
+    assert np.isnan(rolling.y[:21]).all()
+    assert list(rolling.y[21:]) == [1.0] * 3

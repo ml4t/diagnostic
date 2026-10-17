@@ -44,6 +44,7 @@ from ml4t.diagnostic.signal.factor_regression import (
     FactorAlphaBetaResult,
     compute_factor_alpha_beta,
 )
+from ml4t.diagnostic.signal.information import SignalInformationResult, analyze_signal_information
 from ml4t.diagnostic.signal.panel import PreparedSignalPanel, prepare_signal_panel
 from ml4t.diagnostic.signal.portfolio import (
     compute_factor_cumulative_returns,
@@ -77,6 +78,8 @@ __all__ = [
     "analyze_signal",
     "analyze_prepared_signal",
     "SignalResult",
+    "SignalInformationResult",
+    "analyze_signal_information",
     "AlignedEventResult",
     "EventReturnsResult",
     "analyze_event_returns",

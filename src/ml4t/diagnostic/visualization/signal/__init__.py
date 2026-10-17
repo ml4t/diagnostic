@@ -58,6 +58,10 @@ from ml4t.diagnostic.visualization.signal.ic_plots import (
     plot_ic_ts,
     plot_monthly_ic_heatmap,
 )
+from ml4t.diagnostic.visualization.signal.information_plots import (
+    generate_signal_information_report,
+    plot_signal_information,
+)
 from ml4t.diagnostic.visualization.signal.multi_signal_dashboard import (
     MultiSignalDashboard,
 )
@@ -87,6 +91,8 @@ __all__ = [
     "plot_ic_histogram",
     "plot_ic_qq",
     "plot_monthly_ic_heatmap",
+    "plot_signal_information",
+    "generate_signal_information_report",
     # Quantile plots
     "plot_quantile_returns_bar",
     "plot_quantile_returns_violin",

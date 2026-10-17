@@ -9,6 +9,7 @@ Factor-style signal analysis with a clean public surface.
 - `panel.py` - `prepare_signal_panel`, owned common supplied-return samples and staged losses
 - `result.py` - `SignalResult`
 - `signal_ic.py` - per-date/group IC observations and legacy finite-series extraction
+- `information.py` - owned complete information-report samples, inference and month/group means
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
 - `portfolio.py` - shared factor-weight normalization and supplied-return contributions
 - `factor_regression.py` - same-universe dated OLS, explicit compound alpha and owned samples
