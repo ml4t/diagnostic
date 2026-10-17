@@ -90,11 +90,10 @@ integer embargoes use the same trading-day conversion as purging.
 Named-calendar percentage buffers retain their legacy elapsed-span convention;
 this change does not establish the broader session/expected-bar unit contract.
 
-These are unreleased calendar-intake changes. Qualification pins merged Specs
-source `701bde68744035050ede386efce498234c661c21`, not the published Specs
-0.1.5 package, which lacks the v2 interface. A published dependency must replace
-that source pin before release. See the
-[shared time contract](https://github.com/ml4t/specs/blob/701bde68744035050ede386efce498234c661c21/docs/contracts.md).
+These Diagnostic calendar-intake changes are unreleased after 0.1.9. They
+require published `ml4t-specs>=0.2.0`, which provides the v2 interface; Specs
+0.1.5 does not. See the
+[shared time contract](https://github.com/ml4t/specs/blob/e1a05a8065c1988a6bac414e50f8f0474e3b6ad4/docs/contracts.md).
 This does not establish schedule-grid, expected-bar or elapsed-unit conformance
 for every Diagnostic workflow. Backtest metadata adoption and full CPCV
 session/expected-bar window semantics remain separate parts of the audit.
