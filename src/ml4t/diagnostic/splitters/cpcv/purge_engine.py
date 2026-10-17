@@ -8,9 +8,10 @@ This module implements the core purging and embargo logic:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
+import pandas as pd
 from numpy.typing import NDArray
 
 from ml4t.diagnostic.core.purging import apply_purging_and_embargo
@@ -19,9 +20,6 @@ from ml4t.diagnostic.splitters.cpcv.windows import (
     timestamp_window_from_indices,
 )
 from ml4t.diagnostic.splitters.utils import convert_indices_to_timestamps
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 def apply_single_asset_purging(
@@ -66,6 +64,12 @@ def apply_single_asset_purging(
     clean_indices : ndarray
         Training indices after purging.
     """
+    if (
+        group_indices_list is None
+        and not isinstance(label_horizon, pd.Timedelta)
+        and not isinstance(embargo_size, pd.Timedelta)
+    ):
+        timestamps = None
     for test_group_idx in test_group_indices:
         # Compute purge window bounds
         if group_indices_list is not None and timestamps is not None:
@@ -278,17 +282,32 @@ def process_asset_purging(
     if not contiguous_segments:
         return asset_train_indices.tolist()
 
-    # Apply purging for each contiguous segment
-    return apply_segment_purging(
-        asset_train_indices=asset_train_indices,
-        contiguous_segments=contiguous_segments,
-        n_samples=n_samples,
-        timestamps=timestamps,
+    local_segments = [
+        [
+            (
+                group,
+                int(np.searchsorted(asset_indices, start)),
+                int(np.searchsorted(asset_indices, end)),
+                np.searchsorted(asset_indices, exact).astype(np.intp),
+            )
+            for group, start, end, exact in segment
+        ]
+        for segment in contiguous_segments
+    ]
+    local_timestamps = timestamps.take(asset_indices) if timestamps is not None else None
+    if not isinstance(label_horizon, pd.Timedelta) and not isinstance(embargo_size, pd.Timedelta):
+        local_timestamps = None
+    clean_local = apply_segment_purging(
+        asset_train_indices=np.searchsorted(asset_indices, asset_train_indices).astype(np.intp),
+        contiguous_segments=local_segments,
+        n_samples=len(asset_indices),
+        timestamps=local_timestamps,
         label_horizon=label_horizon,
         embargo_size=embargo_size,
         embargo_pct=embargo_pct,
         group_indices_list=group_indices_list,
     )
+    return asset_indices[clean_local].tolist()
 
 
 def apply_segment_purging(

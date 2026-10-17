@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
 from ml4t.diagnostic.core.purging import (
     _searchsorted_timestamp_ns,
@@ -105,7 +106,8 @@ class WalkForwardCV(BaseSplitter):
           Creates default CalendarConfig with UTC timezone
         - If CalendarConfig: Full configuration with exchange, timezone, and options
         - If TradingCalendar: Pre-configured calendar instance
-        - If None: Uses naive time-based calculation (backward compatible)
+        - If None: Disables calendars; integer horizons count observed rows
+        - If omitted: Uses a declared config calendar, then feed metadata, then NYSE
 
         For intraday data with time-based test_size/train_size (e.g., '4W'),
         using a calendar ensures proper session-aware splitting:
@@ -119,6 +121,11 @@ class WalkForwardCV(BaseSplitter):
         >>> from ml4t.diagnostic.splitters.calendar_config import CME_CONFIG
         >>> cv = WalkForwardCV(test_size='4W', calendar=CME_CONFIG)  # CME futures
         >>> cv = WalkForwardCV(test_size='1W', calendar='NYSE')  # US equities (simple)
+
+    feed_spec : FeedSpec, optional
+        Shared input metadata. Version 2 preserves omitted calendars separately
+        from explicit None. An explicit calendar argument overrides metadata;
+        no temporal version is inferred for legacy metadata.
 
     align_to_sessions : bool, default=False
         If True, align fold boundaries to trading session boundaries.
@@ -180,7 +187,8 @@ class WalkForwardCV(BaseSplitter):
         embargo_pct: float | None = None,
         expanding: bool = True,
         consecutive: bool = False,
-        calendar: str | CalendarConfig | TradingCalendar | None = None,
+        calendar: str | CalendarConfig | TradingCalendar | CalendarUnset | None = UNSET_CALENDAR,
+        feed_spec: FeedSpec | None = None,
         align_to_sessions: bool = False,
         session_col: str = "session_date",
         timestamp_col: str | None = None,
@@ -250,8 +258,6 @@ class WalkForwardCV(BaseSplitter):
                 non_default_params.append("expanding")
             if consecutive:
                 non_default_params.append("consecutive")
-            if calendar is not None:
-                non_default_params.append("calendar")
             if align_to_sessions:
                 non_default_params.append("align_to_sessions")
             if session_col != "session_date":
@@ -279,9 +285,6 @@ class WalkForwardCV(BaseSplitter):
         else:
             # Create config from individual parameters
             # Note: embargo_size maps to embargo_td in config
-            # Determine calendar_id: explicit str overrides default,
-            # CalendarConfig/TradingCalendar handled separately,
-            # None means use config default ("NYSE")
             config_kwargs: dict[str, Any] = {
                 "n_splits": n_splits,
                 "test_size": test_size,
@@ -297,34 +300,9 @@ class WalkForwardCV(BaseSplitter):
                 "test_end": test_end,
                 "fold_direction": fold_direction,
             }
-            if isinstance(calendar, str):
-                config_kwargs["calendar_id"] = calendar
-            elif calendar is not None:
-                # CalendarConfig or TradingCalendar — extract exchange name
-                if isinstance(calendar, CalendarConfig):
-                    config_kwargs["calendar_id"] = calendar.exchange
-                elif isinstance(calendar, TradingCalendar):
-                    config_kwargs["calendar_id"] = calendar.config.exchange
-            # When calendar is None, omit calendar_id to use config default ("NYSE")
-
             self.config = WalkForwardConfig(**config_kwargs)
 
-        # Handle calendar initialization
-        # Use calendar_id from config if no calendar parameter provided
-        effective_calendar = calendar
-        if effective_calendar is None and self.config.calendar_id is not None:
-            effective_calendar = self.config.calendar_id
-
-        if effective_calendar is None:
-            self.calendar = None
-        elif isinstance(effective_calendar, str | CalendarConfig):
-            self.calendar = TradingCalendar(effective_calendar)
-        elif isinstance(effective_calendar, TradingCalendar):
-            self.calendar = effective_calendar
-        else:
-            raise TypeError(
-                f"calendar must be str, CalendarConfig, TradingCalendar, or None, got {type(effective_calendar)}"
-            )
+        self.config, self.calendar = self.config._resolve_calendar(calendar, feed_spec)
 
         # Legacy attributes for compatibility with existing split() implementation
         # These reference the config values
@@ -408,8 +386,8 @@ class WalkForwardCV(BaseSplitter):
 
     @property
     def calendar_id(self) -> str | None:
-        """Trading calendar identifier."""
-        return self.config.calendar_id
+        """Resolved trading calendar identifier, separate from its declaration."""
+        return self.calendar.config.exchange if self.calendar is not None else None
 
     @property
     def test_indices_(self) -> NDArray[np.intp]:
@@ -768,6 +746,34 @@ class WalkForwardCV(BaseSplitter):
             self._record_fold(fold_i, train_idx, val_idx, timestamps)
             yield train_idx, val_idx
 
+    def _purge_sample_indices(
+        self,
+        train_indices: NDArray[np.intp],
+        test_start: int,
+        test_end: int,
+        n_samples: int,
+        timestamps: pd.DatetimeIndex | None,
+    ) -> NDArray[np.intp]:
+        """Keep observation boundaries positional in every calendar-free row path."""
+        if (
+            self.calendar is None
+            and not isinstance(self.label_horizon, pd.Timedelta)
+            and not isinstance(self.embargo_size, pd.Timedelta)
+        ):
+            timestamps = None
+        start, end = convert_indices_to_timestamps(test_start, test_end, timestamps)
+        return apply_purging_and_embargo(
+            train_indices=train_indices,
+            test_start=start,
+            test_end=end,
+            label_horizon=self.label_horizon,
+            embargo_size=self.embargo_size,
+            embargo_pct=self.embargo_pct,
+            n_samples=n_samples,
+            timestamps=timestamps,
+            calendar=self.calendar,
+        )
+
     def _split_by_samples(
         self,
         X: pl.DataFrame | pd.DataFrame | NDArray[Any],
@@ -852,24 +858,8 @@ class WalkForwardCV(BaseSplitter):
             # Initial train indices (before purging/embargo)
             train_indices = np.arange(train_start, train_end)
 
-            # Convert test boundaries to timestamps if needed
-            test_start_time, test_end_time = convert_indices_to_timestamps(
-                test_start,
-                test_end,
-                timestamps,
-            )
-
-            # Apply purging and embargo
-            clean_train_indices = apply_purging_and_embargo(
-                train_indices=train_indices,
-                test_start=test_start_time,
-                test_end=test_end_time,
-                label_horizon=self.label_horizon,
-                embargo_size=self.embargo_size,
-                embargo_pct=self.embargo_pct,
-                n_samples=n_samples,
-                timestamps=timestamps,
-                calendar=self.calendar,
+            clean_train_indices = self._purge_sample_indices(
+                train_indices, test_start, test_end, n_samples, timestamps
             )
 
             # Test indices
@@ -1408,22 +1398,8 @@ class WalkForwardCV(BaseSplitter):
             train_indices = np.arange(train_start, train_end, dtype=np.intp)
             val_indices = np.arange(val_start, val_end, dtype=np.intp)
 
-            # Convert boundaries to timestamps for purging
-            val_start_time, val_end_time = convert_indices_to_timestamps(
-                val_start, val_end, timestamps
-            )
-
-            # Apply purging and embargo
-            clean_train_indices = apply_purging_and_embargo(
-                train_indices=train_indices,
-                test_start=val_start_time,
-                test_end=val_end_time,
-                label_horizon=self.label_horizon,
-                embargo_size=self.embargo_size,
-                embargo_pct=self.embargo_pct,
-                n_samples=n_samples,
-                timestamps=timestamps,
-                calendar=self.calendar,
+            clean_train_indices = self._purge_sample_indices(
+                train_indices, val_start, val_end, n_samples, timestamps
             )
 
             # Apply group isolation if requested
@@ -1528,22 +1504,8 @@ class WalkForwardCV(BaseSplitter):
             train_indices = np.arange(train_start, train_end, dtype=np.intp)
             val_indices = np.arange(val_start, val_end, dtype=np.intp)
 
-            # Convert boundaries to timestamps for purging
-            val_start_time, val_end_time = convert_indices_to_timestamps(
-                val_start, val_end, timestamps
-            )
-
-            # Apply purging and embargo
-            clean_train_indices = apply_purging_and_embargo(
-                train_indices=train_indices,
-                test_start=val_start_time,
-                test_end=val_end_time,
-                label_horizon=self.label_horizon,
-                embargo_size=self.embargo_size,
-                embargo_pct=self.embargo_pct,
-                n_samples=n_samples,
-                timestamps=timestamps,
-                calendar=self.calendar,
+            clean_train_indices = self._purge_sample_indices(
+                train_indices, val_start, val_end, n_samples, timestamps
             )
 
             # Apply group isolation if requested

@@ -83,6 +83,14 @@ class _WindowsJob:
             "AssignProcessToJobObject": ([wintypes.HANDLE, wintypes.HANDLE], wintypes.BOOL),
             "TerminateJobObject": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
             "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
+            "IsProcessInJob": (
+                [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)],
+                wintypes.BOOL,
+            ),
+            "GetExitCodeProcess": (
+                [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)],
+                wintypes.BOOL,
+            ),
             "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
         }
         for name, (args, result) in signatures.items():
@@ -133,13 +141,22 @@ class _WindowsJob:
             for process in processes:
                 if not process.is_running():
                     continue
-                handle = self.api.OpenProcess(0x00100000, False, process.pid)  # SYNCHRONIZE
+                handle = self.api.OpenProcess(
+                    0x00101000, False, process.pid
+                )  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
                 if handle:
-                    handles.append((process.pid, handle))
+                    member = wintypes.BOOL()
+                    membership = (
+                        bool(member.value)
+                        if self.api.IsProcessInJob(handle, self.handle, ctypes.byref(member))
+                        else None
+                    )
+                    handles.append((process.pid, handle, membership))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
             self._check(self.api.TerminateJobObject(self.handle, 120))
-            deadline = time.monotonic() + 5
+            started = time.monotonic()
+            deadline = started + 5
             while True:
                 accounting = Accounting()
                 self._check(
@@ -148,6 +165,7 @@ class _WindowsJob:
                     )
                 )
                 if accounting.active == 0:
+                    job_zero_elapsed = time.monotonic() - started
                     break
                 if time.monotonic() >= deadline:
                     raise RuntimeError(
@@ -155,15 +173,24 @@ class _WindowsJob:
                     )
                 time.sleep(0.05)
             # Accounting can reach zero before process teardown releases file handles.
-            for pid, handle in handles:
+            for pid, handle, membership in handles:
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
+                    exit_code = wintypes.DWORD()
+                    observed_exit = (
+                        exit_code.value
+                        if self.api.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+                        else None
+                    )
                     raise RuntimeError(
-                        f"Owned PDF process {pid} not terminal: wait result {result}"
+                        f"Owned PDF process {pid} not terminal: wait result {result}; "
+                        f"member_before_termination={membership}, exit_code={observed_exit}, "
+                        f"job_active={accounting.active}, job_zero_elapsed={job_zero_elapsed:.6f}, "
+                        f"cleanup_elapsed={time.monotonic() - started:.6f}, wait_budget_ms={remaining_ms}"
                     )
         finally:
-            for _, handle in handles:
+            for _, handle, _ in handles:
                 self.api.CloseHandle(handle)
             self.api.CloseHandle(self.handle)
 

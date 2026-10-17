@@ -401,7 +401,8 @@ class TestConfigSerialization:
         # Verify fields
         assert data["test_period"] == "30D"
         assert data["fold_direction"] == "backward"
-        assert data["calendar_id"] == "NYSE"
+        assert data["calendar"] == "NYSE"
+        assert "calendar_id" not in data
 
         # Deserialize back
         restored = WalkForwardConfig.model_validate_json(json_str)
