@@ -42,6 +42,7 @@ from ml4t.diagnostic.visualization.signal.quantile_plots import (
 )
 from ml4t.diagnostic.visualization.signal.turnover_plots import (
     plot_autocorrelation,
+    plot_signal_turnover,
     plot_top_bottom_turnover,
 )
 
@@ -689,14 +690,10 @@ class SignalDashboard(BaseDashboard):
                 f'<div style="overflow-x: auto;">{self._create_turnover_summary_table(ta)}</div>'
             )
             theme_name = "dark" if self.theme == "dark" else "default"
-            html_parts.append(
-                "<p>The dated charts show the first recorded observation lag. "
-                "Select another recorded lag explicitly in the plotting API; "
-                "the tables below retain all recorded lags.</p>"
-            )
-            for function in [plot_top_bottom_turnover, plot_autocorrelation]:
+            html_parts.append("<p>Every recorded membership and rank lag is shown below.</p>")
+            for figure in plot_signal_turnover(ta, theme=theme_name):
                 html_parts.append('<div class="plot-container">')
-                html_parts.append(self._figure_html(function(ta, theme=theme_name)))
+                html_parts.append(self._figure_html(figure))
                 html_parts.append("</div>")
             for name, title in [
                 ("dated_turnover", "Dated quantile turnover"),

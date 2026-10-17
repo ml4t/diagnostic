@@ -76,3 +76,8 @@ Spearman averaging remains distinct. Persistence-enabled analyses retain both da
 `SignalResult` and its JSON; `to_turnover_result` and `to_tear_sheet` expose actual dated observations
 and summaries in the existing report. Cumulative paths and complete chart/sheet coverage remain
 separate; no unavailable data or confidence bands are synthesized from scalar means.
+
+`visualization.signal.plot_signal_turnover` and `generate_signal_turnover_report` compose every
+recorded membership/rank lag and owned tables from `TurnoverAnalysisResult`. The dashboard uses the
+same collection. Lags retain their observed/supplied clock, not an inferred calendar or return
+horizon. Other composed sheets and portfolio/interchange workflows remain separate.

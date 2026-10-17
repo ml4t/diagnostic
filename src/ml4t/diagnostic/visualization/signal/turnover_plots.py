@@ -7,6 +7,8 @@ This module provides interactive Plotly visualizations for turnover analysis:
 
 from __future__ import annotations
 
+from html import escape
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -659,3 +661,110 @@ def plot_turnover_heatmap(
             )
 
     return fig
+
+
+def plot_signal_turnover(
+    turnover_result: TurnoverAnalysisResult,
+    *,
+    show_all_quantiles: bool = False,
+    theme: str | None = None,
+) -> list[go.Figure]:
+    """Render every recorded membership and rank lag using the existing plots.
+
+    Each component retains its own recorded lag order and clock. Empty results
+    render availability notices, without inventing a lag or uncertainty estimate.
+    Historical scalar maps remain supported by the original individual plots.
+    """
+    from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+
+    if not isinstance(turnover_result, TurnoverAnalysisResult):
+        raise TypeError("turnover_result must be a TurnoverAnalysisResult")
+    if turnover_result.dated_turnover_ipc_base64 is None:
+        raise ValueError("complete turnover plots require recorded dated observations")
+    if not isinstance(show_all_quantiles, bool):
+        raise TypeError("show_all_quantiles must be bool")
+    figures = []
+    for table, rank in [("dated_turnover", False), ("dated_autocorrelation", True)]:
+        lags = turnover_result.get_dataframe(table)["lag"].unique(maintain_order=True).to_list()
+        for lag in lags or [None]:
+            if rank:
+                figure = plot_autocorrelation(turnover_result, lag=lag, theme=theme)
+            else:
+                figure = plot_top_bottom_turnover(
+                    turnover_result, lag=lag, show_all_quantiles=show_all_quantiles, theme=theme
+                )
+            figure.update_layout(
+                width=None,
+                autosize=True,
+                font={"size": 14},
+                title_font={"size": 16},
+                legend={"font": {"size": 14}},
+            )
+            figure.update_xaxes(tickfont_size=14, title_font_size=14)
+            figure.update_yaxes(tickfont_size=14, title_font_size=14)
+            figure.update_annotations(font_size=14)
+            figures.append(figure)
+    return figures
+
+
+def generate_signal_turnover_report(
+    turnover_result: TurnoverAnalysisResult,
+    *,
+    output_file: str | Path | None = None,
+    show_all_quantiles: bool = False,
+    theme: str | None = None,
+) -> str:
+    """Compose owned persistence tables and every lag, then publish atomically.
+
+    The result's existing JSON/Arrow views retain full-precision observations,
+    counts and method metadata. Display rounding does not change those tables.
+    """
+    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
+    from ml4t.diagnostic.visualization.signal.event_plots import _publish_event_html
+
+    figures = plot_signal_turnover(
+        turnover_result, show_all_quantiles=show_all_quantiles, theme=theme
+    )
+    sections = [
+        {
+            "title": "Methods and availability",
+            "text": (
+                "<p>Turnover is entrants / current membership. Rank autocorrelation uses "
+                "full-date average ranks and paired Pearson correlation. Lags count "
+                "observations on each recorded clock, not inferred days or sessions. "
+                "Undefined estimates remain missing. No confidence interval or half-life "
+                "is inferred. Export full-precision observations with the result's JSON "
+                "and get_dataframe methods.</p>"
+            ),
+        }
+    ]
+    for name, title in [
+        ("turnover", "All-quantile mean turnover"),
+        ("autocorrelation", "Mean rank autocorrelation"),
+        ("dated_turnover", "Dated membership observations"),
+        ("dated_autocorrelation", "Dated rank observations"),
+    ]:
+        table = (
+            turnover_result.get_dataframe(name)
+            .to_pandas()
+            .to_html(index=False, na_rep="N/A", float_format=lambda value: f"{value:.6g}", border=0)
+        )
+        sections.append(
+            {
+                "title": title,
+                "text": f'<div style="overflow-x: auto; white-space: nowrap;">{table}</div>',
+            }
+        )
+    for index, figure in enumerate(figures):
+        clock = escape(str((figure.layout.meta or {}).get("clock_source", "unavailable")))
+        sections.append(
+            {
+                "title": str(figure.layout.title.text),
+                "figure_index": index,
+                "text": f"<p>Recorded observation clock: {clock}. Gaps are not zero estimates.</p>",
+            }
+        )
+    html = combine_figures_to_html(
+        figures, title="Signal turnover and rank persistence", sections=sections, theme=theme
+    )
+    return _publish_event_html(html, output_file)
