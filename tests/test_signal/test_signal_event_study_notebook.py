@@ -1,8 +1,10 @@
 """Execute the original event notebook's analytical sequence in an actual kernel."""
 
 import asyncio
+import hashlib
 import json
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -132,6 +134,19 @@ print('ML4T_SIGNAL_EVENT_NOTEBOOK:'+json.dumps({{'module':diagnostic.__file__,'c
                 "path_cells_per_sign": 144,
                 "horizons": 7,
                 "factor_means": [row["factor_mean"] for row in metadata["cases"]],
+                "export": str(tmp_path / "positive.json"),
+                "notebook_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "packages": {
+                    name: version(name)
+                    for name in [
+                        "ml4t-diagnostic",
+                        "pandas",
+                        "polars",
+                        "plotly",
+                        "nbclient",
+                        "ipykernel",
+                    ]
+                },
             }
         )
     )
