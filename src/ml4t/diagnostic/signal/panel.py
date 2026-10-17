@@ -24,6 +24,7 @@ from ml4t.diagnostic.utils.validation import (
 )
 
 if TYPE_CHECKING:
+    from ml4t.diagnostic.signal.factor_regression import FactorAlphaBetaResult
     from ml4t.diagnostic.signal.result import SignalResult
 
 
@@ -172,6 +173,35 @@ class PreparedSignalPanel:
             equal_weight=equal_weight,
             by_asset=by_asset,
             date_grid=date_grid,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+        )
+
+    def factor_alpha_beta(
+        self,
+        *,
+        annualization_factors: Mapping[str, float],
+        returns: pl.DataFrame | pd.DataFrame | pd.Series | None = None,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+    ) -> FactorAlphaBetaResult:
+        """Regress this sample's dated factor returns against its equal-asset universe.
+
+        See compute_factor_alpha_beta for explicit compounded scales, provided
+        returns, finite joint samples, ownership and undefined-fit differences.
+        """
+        from ml4t.diagnostic.signal.factor_regression import compute_factor_alpha_beta
+
+        return compute_factor_alpha_beta(
+            self.data,
+            return_columns=self.metadata["return_columns"],
+            annualization_factors=annualization_factors,
+            returns=returns,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
             factor_col=self.factor_col,
             date_col=self.date_col,
             asset_col=self.asset_col,

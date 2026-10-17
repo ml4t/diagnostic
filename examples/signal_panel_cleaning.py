@@ -64,6 +64,16 @@ def main(*, plots: bool = False) -> None:
     gross = weights.to_pandas().groupby("date")["weight"].agg(lambda values: values.abs().sum())
     np.testing.assert_allclose(gross, [1.0] * 3, atol=1e-14, rtol=0)
     portfolio_returns = panel.factor_returns(group_adjust=True)
+    factor_regression = panel.factor_alpha_beta(
+        annualization_factors={"1D": 252, "2D": 126},
+        group_adjust=True,
+    )
+    assert factor_regression.statistics["n_obs"].to_list() == [3, 3]
+    assert factor_regression.observations.height == 6
+    for row in factor_regression.statistics.iter_rows(named=True):
+        assert row["annual_alpha"] == np.expm1(
+            np.log1p(row["alpha_per_period"]) * row["annualization_factor"]
+        )
     one_period = portfolio_returns.to_pandas()
     one_period = one_period[one_period["return_column"] == "1D"].set_index("date")[
         "weighted_return"
@@ -161,6 +171,8 @@ def main(*, plots: bool = False) -> None:
                 "group_adjusted_returns": adjusted.to_dicts(),
                 "factor_weights": weights.to_dicts(),
                 "factor_returns": portfolio_returns.to_dicts(),
+                "factor_regression": factor_regression.statistics.to_dicts(),
+                "factor_regression_observations": factor_regression.observations.to_dicts(),
                 "factor_wealth": factor_wealth.to_dicts(),
                 "arithmetic_series_total_return": portfolio_summary.total_return,
                 "daily_quantiles": daily_quantiles.to_dicts(),

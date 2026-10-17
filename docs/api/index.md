@@ -75,6 +75,8 @@ The package root re-exports the most common classes and configs for interactive 
         - compute_factor_weights
         - compute_factor_returns
         - compute_factor_cumulative_returns
+        - compute_factor_alpha_beta
+        - FactorAlphaBetaResult
         - compute_ic_summary
         - compute_quantile_returns
         - compute_quantile_statistics
