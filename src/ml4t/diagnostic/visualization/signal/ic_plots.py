@@ -315,7 +315,7 @@ def plot_ic_histogram(
     # Histogram
     if len(ic_clean) == 0:
         fig.add_annotation(
-            text="IC distribution unavailable: no defined IC observations",
+            text="IC distribution unavailable:<br>no defined observations",
             x=0.5,
             y=0.5,
             xref="paper",
@@ -496,7 +496,10 @@ def plot_ic_qq(
             )
         fig.update_xaxes(title="Observation rank")
         fig.add_annotation(
-            text="Q-Q fit unavailable: insufficient or constant IC sample",
+            text=(
+                "Q-Q fit unavailable:<br>"
+                + ("constant IC sample" if n >= 2 else "fewer than two observations")
+            ),
             x=0.5,
             y=0.98,
             xref="paper",
