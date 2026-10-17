@@ -656,6 +656,45 @@ def _signal_information_inputs() -> tuple[pd.Series, pd.DataFrame, pd.Series]:
     return factor, forward, groups
 
 
+def show_signal_information_reports(output: Path) -> None:
+    import polars as pl
+
+    from ml4t.diagnostic.metrics.ic_inference import compute_ic_hac_stats
+    from ml4t.diagnostic.signal import (
+        SignalInformationResult,
+        analyze_signal_information,
+        prepare_signal_panel,
+    )
+    from ml4t.diagnostic.visualization.signal import generate_signal_information_report
+
+    factor, forward, groups = _signal_information_inputs()
+    panel = prepare_signal_panel(factor, forward, groups=groups, quantiles=3, max_loss=0)
+    for adjusted in [False, True]:
+        for grouped in [False, True]:
+            result = analyze_signal_information(panel, group_adjust=adjusted, by_group=grouped)
+            restored = SignalInformationResult.from_json(result.to_json())
+            assert restored.get_table("prepared_data").height == 224
+            assert restored.get_table("ic_by_date").height == 64
+            assert restored.get_table("group_ic_by_date").height == (128 if grouped else 0)
+            target = output.with_name(
+                f"{output.stem}-adjusted-{int(adjusted)}-grouped-{int(grouped)}{output.suffix}"
+            )
+            generate_signal_information_report(result, output_file=target)
+            target.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+            assert target.read_text().count('class="plot-container"') == (7 if grouped else 8)
+            print(
+                f"Information report: adjusted={adjusted}, grouped={grouped}, prepared rows=224, dates=32; {target}"
+            )
+    observed = (
+        result.get_table("ic_by_date").filter(pl.col("return_column") == "5D")["ic"].to_numpy()
+    )
+    robust = compute_ic_hac_stats(observed, label_horizon=5)
+    assert robust["n_periods"] == 32 and robust["effective_lags"] >= 4
+    print(
+        f"Separate HAC IC: n={robust['n_periods']}; lags={robust['effective_lags']}; not the report's naive inference"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -672,20 +711,21 @@ def main() -> None:
             "holdings-report",
             "events",
             "event-returns",
+            "information",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report, events or event-returns",
+        help="HTML path for holdings-report, events, event-returns or information",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "events", "event-returns"):
+    if task in ("holdings-report", "events", "event-returns", "information"):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -697,6 +737,9 @@ def main() -> None:
         print(f"{package}=={version(package)}")
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
+        return
+    if task == "information":
+        show_signal_information_reports(arguments.output or Path("signal-information.html"))
         return
     if task == "events":
         show_aligned_events(arguments.output or Path("aligned-events.html"))

@@ -404,6 +404,68 @@ particular output keys, including empty dates with zero pairs and null IC.
 This grid controls output keys only. It does not validate sessions, construct
 returns, fill observations or establish an exchange calendar.
 
+### Complete information-analysis report
+
+Unreleased source after 0.1.9 composes the owned panel's full information analysis.
+Using `panel` from the grouped-IC example above:
+
+```python
+from ml4t.diagnostic.signal import SignalInformationResult, analyze_signal_information
+from ml4t.diagnostic.visualization.signal import generate_signal_information_report
+
+information = analyze_signal_information(panel, group_adjust=True, by_group=True)
+generate_signal_information_report(information, output_file="signal-information.html")
+restored_information = SignalInformationResult.from_json(information.to_json())
+assert restored_information.get_table("prepared_data").height == panel.data.height
+print("Information report samples:", information.get_table("ic_by_date").height)
+```
+
+`group_adjust` demeans each date/group's outcomes before correlation. Independently,
+`by_group=True` adds group means without replacing the global analysis; `False`
+shows civil-month heatmaps instead. Every supplied horizon gets an IC time series,
+actual-sample histogram and fitted Q-Q panel. The default is Spearman with at least
+two paired assets. Pearson remains an explicit native alternative.
+
+The result exports prepared keys/groups/buckets, global and requested group ICs,
+paired counts and undefined statuses, summary inference and exact month/group
+aggregates through `get_table`. Undefined observations remain missing, not zero.
+Empty, singleton and constant samples cannot produce KDE or fitted quantiles.
+Rolling means require all 22 finite ICs in a 22-observation window, not an elapsed
+month. Nanosecond keys remain in the typed export and chart payloads.
+
+IC, its sample deviation and mean/deviation ratio are dimensionless. The report
+uses naive two-sided t inference and biased skew/Fisher excess kurtosis. It keeps
+constant-sample inference undefined rather than adopting the reference's infinite
+t statistic and zero p value. This is an explicit degenerate-sample convention,
+not a claim that a differing definition proves a reference error.
+
+The fitted Q-Q convention matches Alphalens's standardized observations and
+estimated distribution. Standalone `plot_ic_qq` retains its existing native
+midpoint-probability/sample-deviation normal default; select `fitted=True` and,
+optionally, `theoretical_dist=scipy.stats.t` to request the fitted alternative.
+Civil-month grouping and supplied horizon labels establish no session calendar,
+expected-bar grid or annualization.
+
+The offline recipe runs all four adjustment/grouping combinations and exports
+four HTML/typed-JSON pairs without requiring Alphalens, Backtest or Engineer:
+
+```bash
+uv run --extra viz python examples/legacy_migration_comparison.py --task information --output signal-information.html
+```
+
+Its fixture uses 224 price-produced observations over 32 dates, changing unequal
+groups and supplied one-/five-observation returns. The `1D`/`5D` labels are supplied
+selectors, not validated elapsed-day or exchange-session declarations. Comparisons
+use Alphalens Reloaded 0.4.6, pandas 2.3.3, Polars 1.36.1 and Plotly 6.1.2, checking
+keys, buckets, groups, ICs, table values, rolling samples and actual plotted Q-Q data.
+
+The same retained IC observations can also feed Diagnostic's
+[HAC-adjusted inference](statistical-tests.md#hac-adjusted-ic). The recipe executes
+that separate analysis with an explicit five-observation label horizon; it does
+not relabel the report's naive t-test as HAC. Other Alphalens sheets and complete
+Pyfolio/Empyrical coverage remain separate requirements. No new release or blanket
+replacement claim follows from this report.
+
 ### Inspect daily and equal-date quantile statistics
 
 The owned panel also exposes a separate bucket-statistics table. Using the

@@ -153,12 +153,24 @@ def test_complete_information_report_matches_actual_reference_sheets_and_their_s
             frame[column].sort_index(),
             check_names=False,
             check_dtype=False,
+            check_categorical=False,
             check_freq=False,
         )
+    pd.testing.assert_series_equal(
+        prepared["quantile"].sort_index(),
+        frame["factor_quantile"].sort_index(),
+        check_names=False,
+        check_dtype=False,
+        check_freq=False,
+    )
     for by_group in [False, True] if grouped else [False]:
         expected = reference.factor_information_coefficient(
             frame, group_adjust=adjusted, by_group=by_group
         )
+        if by_group:
+            expected = expected.reset_index()
+            expected["group"] = expected["group"].astype(object)
+            expected = expected.set_index(["date", "group"])
         actual = result.get_table("group_ic_by_date" if by_group else "ic_by_date").to_pandas()
         keys = ["date", "group"] if by_group else ["date"]
         actual = actual.pivot(index=keys, columns="return_column", values="ic").sort_index()
