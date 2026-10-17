@@ -62,6 +62,7 @@ def test_unavailable_or_degenerate_price_produced_ic_does_not_invent_fitted_quan
 def test_intraday_price_produced_ic_rolling_window_is_not_labelled_as_elapsed_days():
     ic = _price_produced_ic(intraday=True)
     figure = plot_ic_ts(ic, rolling_window=22, show_significance=False)
+    assert figure.data[0].name == "Observed IC"
     rolling = next(trace for trace in figure.data if "Rolling" in trace.name)
     assert rolling.name == "22-Observation Rolling Mean"
     assert np.isnan(rolling.y[:21]).all()

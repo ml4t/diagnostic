@@ -141,7 +141,7 @@ def plot_ic_ts(
             x=dates,
             y=ic_series,
             mode="markers",
-            name="Daily IC",
+            name="Observed IC",
             marker={
                 "size": 4,
                 "color": theme_config["colorway"][0],
