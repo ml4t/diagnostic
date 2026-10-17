@@ -475,6 +475,7 @@ def create_portfolio_dashboard(
         height=height_per_row,
         width=width,
     )
+    availability["normal_fit"] = deepcopy(figures["Returns Distribution"].layout.meta["normal_fit"])
 
     # 8. Top drawdowns
     figures["Top Drawdowns"] = plot_drawdown_periods(
