@@ -292,6 +292,18 @@ def test_nullable_supplied_values_do_not_turn_missing_levels_into_zero():
     )
 
 
+@pytest.mark.parametrize("bucket", [np.inf, -np.inf, np.nan, 1.5, True])
+def test_invalid_legacy_bucket_labels_are_rejected_before_publishing_event_statistics(bucket):
+    factor, prices = _constant()
+    events = factor.to_frame().assign(factor_quantile=bucket)
+    original = events.copy(deep=True)
+    with pytest.raises(ValueError, match="quantiles must be positive integers"):
+        analyze_signal_events(
+            events, prices, input_kind="levels", before=0, after=0, demeaned=False
+        )
+    pd.testing.assert_frame_equal(events, original)
+
+
 def _report_result():
     dates = pd.date_range("2025-01-01", periods=2)
     prices = pd.DataFrame({"A": [10.0, 20.0], "B": [100.0, 140.0]}, index=dates)

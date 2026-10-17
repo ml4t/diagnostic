@@ -118,6 +118,7 @@ def _event_frame(
     if (
         pd.api.types.is_bool_dtype(buckets)
         or not pd.api.types.is_numeric_dtype(buckets)
+        or not np.isfinite(buckets.to_numpy(dtype=float, na_value=np.nan)).all()
         or not (buckets.notna() & (buckets >= 1) & (buckets == np.floor(buckets))).all()
     ):
         raise ValueError("event quantiles must be positive integers")
