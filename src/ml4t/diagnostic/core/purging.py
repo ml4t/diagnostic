@@ -201,6 +201,7 @@ def calculate_embargo_indices(
     embargo_size: int | pd.Timedelta | None = None,
     embargo_pct: float | None = None,
     timestamps: pd.DatetimeIndex | None = None,
+    calendar: TradingCalendar | None = None,
 ) -> list[int]:
     """Calculate indices to embargo after test set to prevent serial correlation.
 
@@ -228,6 +229,11 @@ def calculate_embargo_indices(
 
     timestamps : pandas.DatetimeIndex, optional
         Timestamps for each sample when using time-based indices.
+
+    calendar : TradingCalendar, optional
+        Already resolved calendar for integer trading-day embargo. Without a
+        calendar, integers and percentages count observations even when the
+        other buffer uses elapsed time. Timedelta always means elapsed time.
 
     Returns:
     -------
@@ -264,9 +270,16 @@ def calculate_embargo_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
+        row_mode = calendar is None and not isinstance(embargo_size, pd.Timedelta)
         timestamps, test_start, test_end = _normalize_timestamp_inputs(
-            timestamps, test_start, test_end
+            timestamps, test_start, test_end, allow_naive=row_mode
         )
+
+        if row_mode:
+            size = int(len(timestamps) * embargo_pct) if embargo_pct is not None else embargo_size
+            assert size is not None
+            start = _searchsorted_timestamp_ns(timestamps, test_end, side="left")
+            return list(range(start, min(len(timestamps), start + size)))
 
         # Calculate embargo size if percentage given
         if embargo_pct is not None:
@@ -274,11 +287,18 @@ def calculate_embargo_indices(
             embargo_size = total_duration * embargo_pct
 
         if not isinstance(embargo_size, pd.Timedelta):
-            # Convert integer days to Timedelta
-            embargo_size = pd.Timedelta(days=cast(int, embargo_size))
+            from ml4t.diagnostic.splitters.calendar import trading_days_to_timedelta
+
+            assert calendar is not None
+            embargo_size = trading_days_to_timedelta(
+                n_trading_days=cast(int, embargo_size),
+                calendar=calendar,
+                reference_date=test_end,
+                direction="forward",
+            )
 
         # Calculate embargo end time
-        embargo_end_time = test_end + cast(pd.Timedelta, embargo_size)
+        embargo_end_time = test_end + embargo_size
 
         # Find indices to embargo
         embargo_mask = (timestamps >= test_end) & (timestamps < embargo_end_time)
@@ -412,6 +432,7 @@ def apply_purging_and_embargo(
         embargo_size=embargo_size,
         embargo_pct=embargo_pct,
         timestamps=timestamps,
+        calendar=calendar,
     )
     embargoed_arr = np.asarray(embargoed_list, dtype=np.intp)
 

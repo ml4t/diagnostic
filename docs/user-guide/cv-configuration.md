@@ -78,8 +78,17 @@ purge/embargo boundaries, including duplicate timestamps.
 An explicit `pd.Timedelta` still means elapsed time. Pure row-count splitting
 does not need timezone-aware timestamps; elapsed-time calculations retain their
 timezone checks. With a selected calendar, the existing session-aware
-walk-forward path remains active. Mixed-unit requests remain part of the
-broader unit audit described below.
+walk-forward path remains active.
+
+The low-level `calculate_embargo_indices` helper also accepts an already
+resolved `TradingCalendar` or `None`. Without a calendar, integer embargoes
+and percentages count observations, including across missing dates. An
+elapsed purge does not convert a separate integer embargo into days; an
+elapsed embargo likewise does not change an integer purge's row units.
+Explicit durations retain timezone validation. With a resolved calendar,
+integer embargoes use the same trading-day conversion as purging.
+Named-calendar percentage buffers retain their legacy elapsed-span convention;
+this change does not establish the broader session/expected-bar unit contract.
 
 These are unreleased walk-forward changes. Qualification pins merged Specs
 source `701bde68744035050ede386efce498234c661c21`, not the published Specs
