@@ -15,7 +15,9 @@ from typing import Any
 import psutil
 
 _BOOTSTRAP = (
-    "import sys,runpy; "
+    "import sys,runpy,faulthandler; "
+    "faulthandler.enable(); "
+    "faulthandler.dump_traceback_later(20,repeat=True); "
     "assert sys.stdin.buffer.read(1)==b'1'; "
     "runpy.run_module('ml4t.diagnostic.visualization._pdf_worker',run_name='__main__')"
 )
@@ -291,7 +293,11 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                     break
                 if time.monotonic() >= deadline:
                     if phase != "closing":
-                        failure = "PDF renderer exceeded its progress deadline"
+                        failure = (
+                            "PDF renderer exceeded its progress deadline: "
+                            f"phase={phase!r}, completed={status.get('completed', 0)}, "
+                            f"expected={len(paths)}, worker_pid={process.pid}"
+                        )
                     break
                 time.sleep(0.05)
             if status.get("completed") != len(paths) or status.get("phase") == "render_failed":

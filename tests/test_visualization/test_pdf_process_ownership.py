@@ -50,6 +50,7 @@ async def written(self,specs,*args,**kwargs):
         page=PdfReader(spec['path'])
         assert len(page.pages)==1 and 'Owned PDF page' in page.pages[0].extract_text()
     if mode=='render_error': raise RuntimeError('Actual renderer failed after first page')
+    if mode=='render_hang': await asyncio.sleep(3600)
     if mode=='invalid_page': Path(specs[0]['path']).write_bytes(b'invalid PDF')
     return result
 async def closed(self,*args,**kwargs):
@@ -69,6 +70,9 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='render_hang':
+        _pdf_process._RENDER_TIMEOUT=15
+        _pdf_process._BOOTSTRAP=_pdf_process._BOOTSTRAP.replace('dump_traceback_later(20,','dump_traceback_later(1,')
     if mode=='held_status':
         original_observe=_pdf_process._OwnedProcesses.observe
         original_terminate=_pdf_process._OwnedProcesses.terminate
@@ -99,6 +103,9 @@ try:
         if mode in ('close_error','close_hang','held_status'): raise
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
         if mode=='render_error': assert 'Actual renderer failed after first page' in str(error),repr(error)
+        if mode=='render_hang':
+            assert "phase='rendering', completed=0, expected=2" in str(error),repr(error)
+            assert 'Timeout (' in str(error) and 'Thread' in str(error),repr(error)
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
@@ -153,7 +160,16 @@ finally:
 
 
 @pytest.mark.parametrize(
-    "mode", ["close_error", "close_hang", "render_error", "invalid_page", "exit7", "held_status"]
+    "mode",
+    [
+        "close_error",
+        "close_hang",
+        "render_error",
+        "render_hang",
+        "invalid_page",
+        "exit7",
+        "held_status",
+    ],
 )
 def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(mode, tmp_path):
     pytest.importorskip("kaleido")
