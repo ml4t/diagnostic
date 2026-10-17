@@ -44,7 +44,13 @@ def test_multipage_pdf_uses_one_real_renderer_and_closes_it_after_all_pages(scal
     ):
         pytest.skip("Modern batch lifecycle requires Plotly write_images and Kaleido1")
     code = """
-import hashlib,json,sys
+import faulthandler,hashlib,json,sys,time
+faulthandler.enable()
+faulthandler.dump_traceback_later(60)
+started=time.monotonic()
+def stage(name,**details):
+    print(json.dumps({'stage':name,'elapsed_seconds':time.monotonic()-started,**details}),file=sys.stderr,flush=True)
+stage('imports_start')
 from importlib.metadata import version
 from pathlib import Path
 import kaleido
@@ -54,10 +60,21 @@ from ml4t import diagnostic
 from ml4t.diagnostic.visualization import export_figures_to_pdf
 instances=[]
 original_init=kaleido.Kaleido.__init__
+original_close=kaleido.Kaleido.close
 def observe_init(self,*args,**kwargs):
+    stage('renderer_init_start')
     original_init(self,*args,**kwargs)
     instances.append(self)
+    stage('renderer_init_return')
+async def observe_close(self,*args,**kwargs):
+    stage('renderer_close_start')
+    result=await original_close(self,*args,**kwargs)
+    process=getattr(self,'subprocess',None)
+    stage('renderer_close_return',returncode=None if process is None else process.poll())
+    return result
 kaleido.Kaleido.__init__=observe_init
+kaleido.Kaleido.close=observe_close
+stage('imports_complete',versions={name:version(name) for name in ['plotly','kaleido','choreographer','pypdf']})
 figures=[go.Figure(go.Bar(x=['A','B'],y=[1,-2])),
          go.Figure(go.Scatter(x=[1,2,3],y=[.85,.92,.78])),
          go.Figure(go.Histogram(x=[0.,.1,-.05,.02]))]
@@ -65,9 +82,13 @@ titles=['Holdings values','Method agreement','Observed returns']
 for figure,title in zip(figures,titles):
     figure.update_layout(title=title)
 before=[figure.to_json() for figure in figures]
+stage('public_export_start')
 path=export_figures_to_pdf(figures,sys.argv[1],page_size=(800,600),scale=float(sys.argv[2]))
+stage('public_export_return')
 reader=PdfReader(path)
+stage('pdf_reader_ready')
 texts=[page.extract_text() for page in reader.pages]
+stage('pdf_text_extracted')
 assert len(texts)==3 and all(title in text for title,text in zip(titles,texts))
 assert [figure.to_json() for figure in figures]==before
 print(json.dumps({'module':diagnostic.__file__,
@@ -76,19 +97,29 @@ print(json.dumps({'module':diagnostic.__file__,
     'page_boxes':[[float(value) for value in page.mediabox] for page in reader.pages],
     'page_text':texts,'pdf_sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest(),
     'original_figures_unchanged':True}))
+faulthandler.cancel_dump_traceback_later()
+stage('assertions_complete')
 """
-    completed = subprocess.run(
-        [sys.executable, "-c", code, str(tmp_path / "report.pdf"), str(scale)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-        timeout=120,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", code, str(tmp_path / "report.pdf"), str(scale)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            timeout=120,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        captured = "\n".join(
+            value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+            for value in (error.stdout, error.stderr)
+        )
+        pytest.fail(f"Actual PDF export subprocess exceeded 120 seconds:\n{captured}")
     assert completed.returncode == 0, completed.stdout + completed.stderr
     result = json.loads(completed.stdout)
     assert result["renderer_instances"] == 1, result
     assert all(code is not None for code in result["renderer_returncodes"]), result
     assert result["page_boxes"] == [[0, 0, 600 * scale, 450 * scale]] * 3
+    print(completed.stderr)
     print(json.dumps(result))
