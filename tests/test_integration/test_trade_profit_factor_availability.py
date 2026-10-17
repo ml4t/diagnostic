@@ -76,10 +76,12 @@ def test_actual_undefined_trade_profit_factor_survives_profile_bridge_and_defaul
     producer_profit_factor = result.metrics.get("profit_factor")
     profile = analyze_backtest_result(result)
     assert profile.edge["metrics"]["num_trades"] == len(pnls)
+    bridge = compute_metrics_from_result(result)
+    assert bridge["num_trades"] == sum(quantity < 0 for quantity in orders.values())
     values = [
         (profile.edge["metrics"]["profit_factor"], expected),
         (profile.summary["profit_factor"], expected),
-        (compute_metrics_from_result(result)["profit_factor"], bridge_expected),
+        (bridge["profit_factor"], bridge_expected),
     ]
     for value, target in values:
         if math.isnan(target):

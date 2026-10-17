@@ -119,6 +119,10 @@ availability through native profiles, the computed Backtest bridge and reports,
 even when legacy producer metrics use zero for the missing sample. Producer
 tables and metrics remain unchanged. Existing lifecycle eligibility is retained;
 this is not the separate ratio of positive and negative period returns.
+When the default bridge prefers the producer's closed-trade statistics, an
+open-only account also has an unavailable ratio. Direct native lifecycle
+metrics can still include marked P&L through their existing all-open fallback;
+the repair does not reclassify either sample or change their trade counts.
 
 PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).
