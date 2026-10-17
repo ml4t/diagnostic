@@ -613,7 +613,9 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
         from ml4t.diagnostic.visualization.signal import generate_event_returns_report
 
         assert result.overall.paths.height == 96 and result.groups is not None
-        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(result.groups.paths)
+        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(
+            result.groups.paths
+        )
         path = generate_event_returns_report(result, output_file=output)
         output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
         print(f"Complete event-returns HTML: {path}")
@@ -627,6 +629,42 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     print(f"Aligned event HTML: {path}")
     print("24 declared events; 96 requested path cells; dynamic groups and buckets retained")
     print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
+
+
+def show_signal_turnover(output: Path) -> None:
+    from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+    from ml4t.diagnostic.signal import prepare_signal_panel
+    from ml4t.diagnostic.visualization.signal import generate_signal_turnover_report
+
+    dates = pd.bdate_range("2025-03-03", periods=14, tz="UTC")
+    changes = np.array([np.roll([0.01, 0.02, -0.01, -0.02], i) for i in range(13)])
+    prices = pd.DataFrame(
+        np.vstack([np.full(4, 100.0), 100 * np.cumprod(1 + changes, axis=0)]),
+        index=dates,
+        columns=list("ABCD"),
+    )
+    factor = (
+        prices.pct_change(fill_method=None).iloc[1:-1].stack(future_stack=True).rename("factor")
+    )
+    forward = (prices.shift(-1) / prices - 1).stack(future_stack=True).rename("1D").to_frame()
+    factor.index.names = forward.index.names = ["date", "asset"]
+    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0)
+    result = TurnoverAnalysisResult.from_observations(
+        panel.quantile_turnover(lags=(1, 2, 5)),
+        panel.rank_autocorrelation(lags=(1, 2, 5)),
+    )
+    assert panel.data.height == 48
+    means = result.get_dataframe("autocorrelation")
+    np.testing.assert_allclose(means["autocorrelation"], [0, -1, 0], atol=1e-12)
+    assert means["n_dates"].to_list() == [11, 10, 7]
+    path = generate_signal_turnover_report(result, output_file=output)
+    output.with_suffix(".json").write_text(result.model_dump_json(), encoding="utf-8")
+    restored = TurnoverAnalysisResult.model_validate_json(output.with_suffix(".json").read_text())
+    for name in ["turnover", "autocorrelation", "dated_turnover", "dated_autocorrelation"]:
+        assert restored.get_dataframe(name).equals(result.get_dataframe(name))
+    print(f"Complete turnover HTML: {path}")
+    print("6 panels: 3 membership lags and 3 rank lags; typed JSON exported")
+    print("Observed-date clock; defined rank dates at lags 1/2/5: 11/10/7")
 
 
 def main() -> None:
@@ -645,20 +683,21 @@ def main() -> None:
             "holdings-report",
             "events",
             "event-returns",
+            "turnover",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report, events or event-returns",
+        help="HTML path for --task holdings-report, events, event-returns or turnover",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "events", "event-returns"):
+    if task in ("holdings-report", "events", "event-returns", "turnover"):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -668,6 +707,9 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
+    if task == "turnover":
+        show_signal_turnover(arguments.output or Path("turnover-report.html"))
+        return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
         return

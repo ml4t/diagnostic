@@ -630,10 +630,10 @@ clocks remain observed dates; authoritative calendar adoption is separate.
 With the declared visualization extra, pass `report_result.to_tear_sheet()` to
 the existing `SignalDashboard` to render dated tables, method labels and summary
 values. Unavailable values display as `N/A`; the workflow does not create
-confidence bands from a fixed 252-observation assumption. These are numeric
-table/report paths, not complete dated chart composition or all seven Alphalens
-tear sheets. Quantile cumulative paths, holdings and event workflows remain
-separate accepted work. Persistence-disabled analyses and historical saved
+confidence bands from a fixed 252-observation assumption. The
+[complete turnover report](#complete-turnover-report) below composes all recorded
+lags. Other Alphalens tear sheets and dated holdings remain separate accepted
+work. Persistence-disabled analyses and historical saved
 results without dated observations return no turnover component; scalar means
 cannot reconstruct missing dates, buckets or reference ranks.
 
@@ -682,19 +682,123 @@ The heatmap reuses recorded bucket/lag means over defined dates and shows their
 date counts. A defined zero turnover remains zero; missing means stay blank.
 No confidence interval or half-life is inferred from the dated tables. The rank
 plot displays `CI unavailable` when `show_significance=True`; setting it to
-`False` omits that notice. The existing dashboard renders both dated charts
-at their first recorded lag and retains the complete tables and summaries.
+`False` omits that notice. The dashboard renders membership and rank charts
+for every recorded lag and retains the complete tables and summaries.
 
 Shared-input checks compare the same membership, rank universe and observation
 clock with Alphalens Reloaded 0.4.6 `quantile_turnover` and
 `factor_rank_autocorrelation` before their dated plotting routes. The native
 scalar larger-membership turnover and paired-sample Spearman definitions remain
-separate. These chart workflows do not establish exchange-calendar defaults,
-complete turnover-sheet composition or full Alphalens/Pyfolio replacement.
+separate. These chart workflows do not establish exchange-calendar defaults
+or full Alphalens/Pyfolio replacement.
 Run the existing
 [supplied-panel example](https://github.com/ml4t/diagnostic/blob/8d52739bb133e5c5d3540c8cf268ea1a8d3c7722/examples/signal_panel_cleaning.py)
 with `--plots` to inspect the actual
 trace values, recorded methods and hover counts without a legacy dependency.
+
+### Complete turnover report
+
+Unreleased after 0.1.9, `generate_signal_turnover_report` composes all recorded
+membership and rank lags, all-quantile mean/count tables, and the exact dated
+observations. It consumes the existing owned `TurnoverAnalysisResult`, without
+an Alphalens, Pyfolio, Backtest or Engineer runtime dependency. Use this route
+when you need to inspect missing dates, denominators and lag clocks alongside
+the charts. The result uses the same
+[dated persistence calculations](#inspect-dated-persistence-in-a-result-and-report)
+and JSON/Arrow snapshots as the analysis workflow.
+
+With the visualization extra installed, this price-produced example requests
+three lags on the observed-date clock:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+from ml4t.diagnostic.signal import prepare_signal_panel
+from ml4t.diagnostic.visualization.signal import (
+    generate_signal_turnover_report,
+    plot_signal_turnover,
+)
+
+turnover_dates = pd.bdate_range("2025-03-03", periods=14, tz="UTC")
+turnover_changes = np.array([
+    np.roll([0.01, 0.02, -0.01, -0.02], i) for i in range(13)
+])
+turnover_prices = pd.DataFrame(
+    np.vstack([np.full(4, 100.0), 100 * np.cumprod(1 + turnover_changes, axis=0)]),
+    index=turnover_dates,
+    columns=list("ABCD"),
+)
+turnover_factor = (
+    turnover_prices.pct_change(fill_method=None).iloc[1:-1]
+    .stack(future_stack=True).rename("factor")
+)
+turnover_forward = (
+    (turnover_prices.shift(-1) / turnover_prices - 1)
+    .stack(future_stack=True).rename("1D").to_frame()
+)
+turnover_factor.index.names = turnover_forward.index.names = ["date", "asset"]
+turnover_panel = prepare_signal_panel(
+    turnover_factor, turnover_forward, quantiles=2, max_loss=0
+)
+turnover_result = TurnoverAnalysisResult.from_observations(
+    turnover_panel.quantile_turnover(lags=(1, 2, 5)),
+    turnover_panel.rank_autocorrelation(lags=(1, 2, 5)),
+)
+turnover_means = turnover_result.get_dataframe("autocorrelation")
+np.testing.assert_allclose(turnover_means["autocorrelation"], [0, -1, 0], atol=1e-12)
+assert turnover_means["n_dates"].to_list() == [11, 10, 7]
+assert len(plot_signal_turnover(turnover_result)) == 6
+turnover_report = generate_signal_turnover_report(turnover_result)
+turnover_restored = TurnoverAnalysisResult.model_validate_json(turnover_result.model_dump_json())
+assert turnover_restored.get_dataframe("dated_turnover").equals(
+    turnover_result.get_dataframe("dated_turnover")
+)
+print("Turnover report: 6 panels; defined rank dates 11/10/7")
+```
+
+In a notebook, call `figure.show()` for each figure from
+`plot_signal_turnover(turnover_result)` and display the returned HTML. To write
+HTML atomically, pass `output_file="turnover-report.html"` to the generator.
+The HTML composer loads Plotly from its CDN; exporting this HTML alone does
+not make it an offline bundle. `show_all_quantiles=True` includes every recorded
+bucket in each membership chart. The default charts show the top and bottom
+buckets, while the tables always include all buckets. Custom lag order and
+different membership/rank lag sets are retained independently.
+
+The runnable command also prints installed package versions and writes typed
+JSON alongside the HTML. Run it from a checkout containing this unreleased API:
+
+```bash
+uv run --extra viz python examples/legacy_migration_comparison.py --task turnover --output turnover-report.html
+```
+
+Clock choice changes the sample. Alphalens Reloaded 0.4.6 with pandas 2.3.3
+calls `asfreq(None)` on the prepared index used in the comparison, inserting
+civil daily dates. Diagnostic's default uses the 12 observed scored dates.
+To compare on that reference's 16-date clock, supply the same grid to both
+Diagnostic calculations:
+
+```python
+turnover_grid = pd.DataFrame({
+    "date": pd.date_range(turnover_dates[1], turnover_dates[-2], freq="D")
+})
+turnover_daily = TurnoverAnalysisResult.from_observations(
+    turnover_panel.quantile_turnover(lags=(1, 2, 5), date_grid=turnover_grid),
+    turnover_panel.rank_autocorrelation(lags=(1, 2, 5), date_grid=turnover_grid),
+)
+assert turnover_daily.get_dataframe("autocorrelation")["n_dates"].to_list() == [9, 6, 6]
+```
+
+The rotating sample has the same mean rank correlations under these two
+clocks, but different dates, missingness and counts. The reference comparison
+checks those intermediates and calls the complete reference turnover sheet
+for rotating, changing-membership, constant-rank and single-asset samples.
+Inserted weekends remain unavailable, not zero turnover or zero correlation.
+Choose the intended clock explicitly; neither observation lags nor this civil
+grid establish exchange-session validation. Native scalar definitions remain
+unchanged. This workflow does not qualify the other six Alphalens sheets,
+dated holdings/expiration accounting or full Pyfolio replacement.
 
 ### Plot empirical dated quantile observations
 
@@ -1166,9 +1270,10 @@ not elapsed calendar days; insufficient history returns NaN.
 The published baseline's `SignalResult.to_tear_sheet()` supplies IC and quantile
 analysis but not turnover or cumulative quantile-return paths. The unreleased
 persistence-enabled workflow above adds actual dated turnover/rank tables and
-summaries, not cumulative paths or complete reference chart composition. Do not
-infer complete panels from a successful HTML render. Keep Alphalens when those report sections,
-dated holdings/expiration accounting, or event-aligned cumulative paths are required.
+summaries. The complete turnover report composes every recorded lag; it does not
+add dated holdings/expiration accounting or the remaining complete reference
+sheets. Do not infer those capabilities from a successful HTML render. Keep the
+legacy route for report sections and workflows not yet qualified here.
 
 Alphalens also supplies grouped summaries and its own complete factor tear
 sheet. Those capabilities are not implied by grouped IC observations or by a Diagnostic signal result.
