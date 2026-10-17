@@ -264,6 +264,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.0.0" --with "pandas==2.3.3" --with pytest --with pytest-timeout
+          --with "alphalens-reloaded==0.4.6" --with playwright
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --timeout 120 tests/test_signal/
       - name: Execute prepared portfolio report in a notebook from installed wheel
