@@ -290,7 +290,7 @@ def export_figures_to_pdf(
 
     Notes
     -----
-    - Requires kaleido package: `pip install kaleido`
+    - Install the visualization dependencies with `pip install 'ml4t-diagnostic[viz]'`
     - Each figure is exported as a vector PDF page
     - File size depends on plot complexity and scale factor
     - For print quality, use scale >= 2.0
@@ -308,7 +308,8 @@ def export_figures_to_pdf(
         import kaleido  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "kaleido is required for PDF export. Install it with: pip install kaleido"
+            "kaleido is required for PDF export. Install the visualization dependencies with: "
+            "pip install 'ml4t-diagnostic[viz]'"
         ) from e
 
     # Create output directory if needed

@@ -14,14 +14,26 @@ from typing import Any
 
 import psutil
 
-_BOOTSTRAP = (
-    "import sys,runpy,faulthandler; "
-    "faulthandler.enable(); "
-    "faulthandler.dump_traceback_later(20,repeat=True); "
-    "assert sys.stdin.buffer.read(1)==b'1'; "
-    "worker=sys.argv.pop(1); "
-    "runpy.run_path(worker,run_name='__main__')"
-)
+_BOOTSTRAP = """
+import os,sys,runpy,threading,traceback
+assert sys.stdin.buffer.read(1)==b'1'
+diagnostic_stop=threading.Event()
+def snapshot_threads():
+    while not diagnostic_stop.wait(20):
+        lines=['PDF worker thread snapshot\\n']
+        for identifier,frame in sys._current_frames().items():
+            lines.append(f'Thread {identifier}:\\n')
+            lines.extend(traceback.format_stack(frame))
+        os.write(2,''.join(lines).encode('utf-8',errors='backslashreplace'))
+watcher=threading.Thread(target=snapshot_threads,daemon=True)
+watcher.start()
+try:
+    worker=sys.argv.pop(1)
+    runpy.run_path(worker,run_name='__main__')
+finally:
+    diagnostic_stop.set()
+    watcher.join(timeout=1)
+"""
 _RENDER_TIMEOUT = 90
 _CLOSE_TIMEOUT = 15
 _logger = logging.getLogger(__name__)

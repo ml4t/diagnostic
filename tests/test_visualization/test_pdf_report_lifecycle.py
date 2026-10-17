@@ -65,9 +65,21 @@ def _assert_multipage_pdf_export(scale, observe_renderer, tmp_path):
     ):
         pytest.skip("Modern batch lifecycle requires Plotly write_images and Kaleido1")
     code = """
-import atexit,faulthandler,hashlib,json,os,sys,threading,time
-faulthandler.enable()
-faulthandler.dump_traceback_later(20,repeat=True)
+import atexit,hashlib,json,os,sys,threading,time,traceback
+diagnostic_stop=threading.Event()
+def snapshot_threads():
+    while not diagnostic_stop.wait(20):
+        lines=['PDF exporter thread snapshot'+chr(10)]
+        for identifier,frame in sys._current_frames().items():
+            lines.append(f'Thread {identifier}:'+chr(10))
+            lines.extend(traceback.format_stack(frame))
+        os.write(2,''.join(lines).encode('utf-8',errors='backslashreplace'))
+diagnostic_thread=threading.Thread(target=snapshot_threads,daemon=True)
+diagnostic_thread.start()
+def stop_diagnostics():
+    diagnostic_stop.set()
+    diagnostic_thread.join(timeout=1)
+atexit.register(stop_diagnostics)
 started=time.monotonic()
 def stage(name,**details):
     print(json.dumps({'stage':name,'elapsed_seconds':time.monotonic()-started,**details}),file=sys.stderr,flush=True)
