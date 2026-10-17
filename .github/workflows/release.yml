@@ -289,11 +289,9 @@ jobs:
         shell: bash
         run: |
           uv venv --clear --python "${{ env.PYTHON_VERSION }}" "${RUNNER_TEMP}/published-venv"
-          uv pip install \
+          python scripts/install_published_package.py \
             --python "${RUNNER_TEMP}/published-venv/bin/python" \
-            --no-cache \
-            --index-url https://pypi.org/simple \
-            "ml4t-diagnostic==${{ inputs.version }}"
+            --version "${{ inputs.version }}"
           "${RUNNER_TEMP}/published-venv/bin/python" -I scripts/import_smoke.py
           "${RUNNER_TEMP}/published-venv/bin/python" -I scripts/run_readme_quickstart.py
       - name: Verify deployed documentation again
