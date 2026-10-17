@@ -13,6 +13,7 @@ Factor-style signal analysis with a clean public surface.
 - `portfolio.py` - shared factor-weight normalization and supplied-return contributions
 - `factor_regression.py` - same-universe dated OLS, explicit compound alpha and owned samples
 - `events.py` - observed-clock event paths, explicit level/wealth units and date/group samples
+- `event_study.py` - composed factor statistics, elapsed event bins and raw/rate dated samples
 - `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
@@ -60,6 +61,10 @@ snapshots; existing event plots and HTML composition render actual paths without
 group summaries in `EventReturnsResult`. `plot_event_returns` and `generate_event_returns_report`
 compose the global overview, optional per-quantile sample deviations and group overviews. This
 is the event-returns report, not the separate event-study sheet or all seven legacy sheets.
+`analyze_signal_event_study` composes the separate signal event-study report from an owned
+prepared panel. It retains raw inputs, elapsed-bin membership, date-weighted return statistics
+and explicit dimensionless rate powers. Optional paths retain observed-row units. The HTML
+composer and `plot_signal_event_study` expose real table/plot data, not an abnormal-return model.
 
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse

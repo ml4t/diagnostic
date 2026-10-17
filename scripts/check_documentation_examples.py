@@ -32,6 +32,7 @@ PAGES = {
         "Portfolio Sharpe:",
         "Aligned event levels: 55.0; finite date paths: 2/3/2",
         "Event-returns report: global view and per-quantile sample deviations",
+        "Signal event study: owned factor statistics, bins and dated return samples",
     ),
 }
 

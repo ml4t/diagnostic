@@ -295,6 +295,7 @@ def plot_signal_event_study(
             font={"size": 14},
             height=500,
             autosize=True,
+            showlegend=True,
             margin={"l": 70, "r": 20, "t": 45, "b": 120},
             legend={"orientation": "h", "y": -0.25, "x": 0, "font": {"size": 14}},
         )

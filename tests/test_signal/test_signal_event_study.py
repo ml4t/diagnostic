@@ -296,3 +296,184 @@ def test_reference_large_factor_dispersion_overflow_is_reconciled_to_two_point_e
     assert not np.isfinite(legacy.loc[1, "std"])
     actual = analyze_signal_event_study(panel, rate_of_return=False).factor_statistics["std"][0]
     assert actual == pytest.approx(expected, rel=1e-12)
+
+
+def test_event_notebook_threshold_producer_drops_masked_non_events_on_pandas3():
+    import runpy
+    from pathlib import Path
+
+    recipe = Path(__file__).resolve().parents[2] / "examples/legacy_migration_comparison.py"
+    pricing, events, forward = runpy.run_path(str(recipe))["_signal_event_study_inputs"]()
+    expected_keys = {(pricing.index[position], "A") for position in [0, 2, 4, 6, 8]} | {
+        (pricing.index[position], "B") for position in [1, 3, 5, 7]
+    }
+    assert events.notna().all()
+    assert set(events.index) == expected_keys and len(events) == 9
+    assert forward.index.equals(events.index)
+
+
+@pytest.mark.parametrize("direction", [1, -1])
+def test_original_event_notebook_threshold_membership_and_all_seven_horizons_match_reference(
+    direction,
+):
+    reference = pytest.importorskip("alphalens.utils")
+    performance = pytest.importorskip("alphalens.performance")
+    import runpy
+    from pathlib import Path
+
+    recipe = Path(__file__).resolve().parents[2] / "examples/legacy_migration_comparison.py"
+    pricing, events, forward = runpy.run_path(str(recipe))["_signal_event_study_inputs"]()
+    expected_keys = {(pricing.index[position], "A") for position in [0, 2, 4, 6, 8]} | {
+        (pricing.index[position], "B") for position in [1, 3, 5, 7]
+    }
+    assert set(events.index) == expected_keys and len(events) == 9
+    periods = (1, 2, 3, 4, 5, 6, 10)
+    legacy = reference.get_clean_factor_and_forward_returns(
+        events * direction,
+        pricing,
+        quantiles=None,
+        bins=1,
+        periods=periods,
+        filter_zscore=None,
+        max_loss=0,
+    )
+    panel = prepare_signal_panel(events * direction, forward, quantiles=None, bins=1, max_loss=0)
+    native = (
+        panel.data.to_pandas()
+        .rename(columns={"quantile": "factor_quantile"})
+        .set_index(["date", "asset"])
+    )
+    pd.testing.assert_frame_equal(
+        native[legacy.columns].sort_index(),
+        legacy.sort_index(),
+        check_dtype=False,
+        check_exact=False,
+        atol=1e-12,
+        rtol=1e-12,
+    )
+    result = analyze_signal_event_study(
+        panel,
+        pricing,
+        input_kind="levels",
+        event_window=(5, 10),
+        rate_conversion_factors={f"{period}D": 1 / period for period in periods},
+    )
+    assert result.event_returns is not None
+    assert result.event_returns.overall.paths.height == 144
+    assert (
+        result.event_returns.overall.paths.filter(pl.col("status") == "window_clipped").height == 15
+    )
+    assert result.event_membership.height == 9
+    expected_paths = performance.average_cumulative_return_by_quantile(
+        legacy, pricing, 5, 10, demeaned=False
+    )
+    for row in result.event_returns.overall.statistics.iter_rows(named=True):
+        for metric in ["mean", "std"]:
+            np.testing.assert_allclose(
+                row[metric],
+                expected_paths.loc[(row["quantile"], metric), row["offset"]],
+                rtol=1e-12,
+                atol=1e-12,
+            )
+
+
+@pytest.mark.parametrize("width", [375, 1200])
+def test_seven_horizon_event_study_renders_every_legend_and_factor_table_without_clipping(
+    width, tmp_path
+):
+    import json
+    import os
+    import runpy
+    import shutil
+    from pathlib import Path
+
+    playwright = pytest.importorskip("playwright.sync_api")
+    from plotly.offline import get_plotlyjs
+
+    from ml4t.diagnostic.visualization.signal import generate_signal_event_study_report
+
+    chrome = (
+        shutil.which("google-chrome")
+        or shutil.which("chromium")
+        or shutil.which("chromium-browser")
+    )
+    if chrome is None:
+        pytest.skip("actual Chrome is required for event-study rendered verification")
+    recipe = Path(__file__).resolve().parents[2] / "examples/legacy_migration_comparison.py"
+    pricing, events, forward = runpy.run_path(str(recipe))["_signal_event_study_inputs"]()
+    panel = prepare_signal_panel(events, forward, quantiles=None, bins=1, max_loss=0)
+    result = analyze_signal_event_study(
+        panel, pricing, input_kind="levels", event_window=(5, 10), rate_of_return=False
+    )
+    target = tmp_path / "event-study.html"
+    generate_signal_event_study_report(result, output_file=target)
+    errors = []
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1100})
+            page.route(
+                "https://cdn.plot.ly/*",
+                lambda route: route.fulfill(
+                    content_type="application/javascript", body=get_plotlyjs()
+                ),
+            )
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(target.as_uri(), wait_until="networkidle")
+            page.wait_for_selector("#plot-4 .gtitle")
+            measured = page.evaluate("""() => {
+                const plots=Array.from(document.querySelectorAll('.js-plotly-plot'));
+                return {width:innerWidth,scroll:document.documentElement.scrollWidth,
+                    panels:plots.map(plot=>{
+                        const bounds=plot.getBoundingClientRect();
+                        const legends=Array.from(plot.querySelectorAll('.legendtext')).map(node=>{
+                            const box=node.getBoundingClientRect();
+                            return {text:node.textContent,inside:box.left>=bounds.left && box.right<=bounds.right && box.top>=bounds.top && box.bottom<=bounds.bottom};
+                        });
+                        return {title:plot.layout.title.text,legends,traces:plot.data.map(trace=>({name:trace.name,x:trace.x,y:trace.y}))};
+                    }),
+                    labelSizes:Array.from(document.querySelectorAll('.xtick text,.ytick text,.legendtext,.xtitle,.ytitle,td,th')).map(node=>parseFloat(getComputedStyle(node).fontSize)),
+                    titleSizes:Array.from(document.querySelectorAll('.gtitle')).map(node=>parseFloat(getComputedStyle(node).fontSize)),
+                    proseSize:parseFloat(getComputedStyle(document.querySelector('.section-text')).fontSize)};
+            }""")
+            if os.environ.get("GITHUB_ACTIONS") == "true":
+                evidence = Path(os.environ["GITHUB_WORKSPACE"]) / "artifacts/event-reports"
+                evidence.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(evidence / f"event-study-{width}.png"), full_page=True)
+                for index in range(6):
+                    page.locator(f"#section-{index}").screenshot(
+                        path=str(evidence / f"event-study-{width}-section-{index}.png")
+                    )
+                (evidence / f"event-study-{width}.json").write_text(json.dumps(measured, indent=2))
+        finally:
+            browser.close()
+    assert not errors
+    assert measured["width"] == measured["scroll"] == width
+    assert len(measured["panels"]) == 5
+    for panel in measured["panels"][-2:]:
+        assert [label["text"] for label in panel["legends"]] == [
+            "1D",
+            "2D",
+            "3D",
+            "4D",
+            "5D",
+            "6D",
+            "10D",
+        ]
+    assert all(label["inside"] for panel in measured["panels"] for label in panel["legends"]), (
+        measured
+    )
+    assert min(measured["labelSizes"]) >= 14
+    assert max(measured["labelSizes"]) <= measured["proseSize"]
+    assert max(measured["titleSizes"]) <= measured["proseSize"]
+    assert [trace["name"] for trace in measured["panels"][-1]["traces"]] == [
+        "1D",
+        "2D",
+        "3D",
+        "4D",
+        "5D",
+        "6D",
+        "10D",
+    ]
+    assert all(len(trace["y"]) == 9 for trace in measured["panels"][-1]["traces"])
+    print("EVENT_STUDY_BROWSER " + json.dumps(measured))

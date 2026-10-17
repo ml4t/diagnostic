@@ -1134,6 +1134,76 @@ cells, duplicate-event weighting and observation-clock limitations above remain
 explicit. Full event-study, calendar and canonical-notebook qualification remain
 separate requirements.
 
+### Signal event-study report
+
+Unreleased after 0.1.9, `analyze_signal_event_study` composes the separate
+Alphalens event-study workflow from an owned `PreparedSignalPanel`. It retains
+factor statistics, elapsed-time event bins and each event's bin membership,
+raw prepared events, equal-date quantile statistics and empirical dated return
+samples. Optional event paths reuse the preceding event-returns workflow.
+This is not Diagnostic's abnormal-return/CAR model.
+
+```python
+from ml4t.diagnostic.signal import analyze_signal_event_study, prepare_signal_panel
+from ml4t.diagnostic.visualization.signal import generate_signal_event_study_report
+
+study_index = pd.MultiIndex.from_product(
+    [event_dates[[0, 2, 4]], ["A", "B"]], names=["date", "asset"]
+)
+study_scores = pd.Series(range(1, 7), index=study_index, name="factor")
+study_returns = pd.DataFrame({"3D": [0.03] * 6, "1D": [0.01] * 6}, index=study_index)
+study_panel = prepare_signal_panel(study_scores, study_returns, quantiles=1, max_loss=0)
+study_result = analyze_signal_event_study(
+    study_panel, rate_conversion_factors={"3D": 1, "1D": 3}, num_bars=3,
+)
+assert study_result.metadata["base_period"] == "3D"
+assert study_result.event_distribution["n_events"].sum() == 6
+generate_signal_event_study_report(study_result, output_file="signal_event_study.html")
+print("Signal event study: owned factor statistics, bins and dated return samples")
+```
+
+The first supplied horizon is the rate base, not necessarily the shortest one.
+Declare dimensionless `rate_conversion_factors` from known compatible horizon
+units. For a three-observation base and one-observation return, the powers are
+one and three. Labels such as `3D` alone establish neither elapsed days nor
+sessions. No calendar or annualization factor is inferred. With
+`rate_of_return=False`, raw horizon means are displayed and no factors are
+required. Raw means, deviations, errors and counts remain unchanged; separate
+`display_mean`, `conversion_ratio` and `display_status` fields expose conversion.
+Undefined real-valued rates remain missing rather than becoming zero returns.
+
+Supply `values` and an explicit `input_kind` for optional aligned paths. Omit
+values or pass `event_window=None` to exclude them; the report explains their
+absence and does not invent data. The window counts observed rows. Histogram
+bins instead divide the actual elapsed timestamp span; they retain empty bins
+and may include an endpoint bin beyond the requested `num_bars`. A singleton
+timestamp uses one observed bin, whereas the reference zero-width grouper fails.
+
+The native factor table reuses stable sample statistics. It retains finite
+two-point deviations for large finite factors where the reference overflows.
+Identity rate conversion preserves a supplied tiny return such as `1e-20`;
+the reference add/power/subtract calculation rounds it to zero. These are
+explicit numerical reconciliations, not blanket equivalence claims. Violin
+samples are the actual date/bucket means. Their visible limits use the 1st/99th
+percentiles without trimming the sample or generating observations; Plotly and
+Seaborn density rendering are not claimed identical.
+
+Run the original event-study notebook's threshold-crossing sequence on bounded
+offline prices, including one bin, all seven horizons and positive/negative
+event factors:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task event-study --output event-study.html
+```
+
+The command checks nine events and 144 requested path cells per sign and writes
+positive/negative reports with typed JSON exports. Negative event factors change
+the factor statistics, not the sign of raw forward-outcome panels. This is the
+reference event-study convention, not a short-strategy portfolio simulation.
+Provider downloads are replaced by deterministic offline prices; no legacy
+library, Backtest or Engineer is required at runtime. The other canonical
+notebooks and report families remain separately required.
+
 ### Quantiles, turnover, and report boundaries
 
 In unreleased source after 0.1.9, direct `metrics.cross_sectional_ic_series()`
