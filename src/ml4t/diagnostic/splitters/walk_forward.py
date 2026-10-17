@@ -319,7 +319,9 @@ class WalkForwardCV(BaseSplitter):
         if declaration is UNSET_CALENDAR and "calendar" in self.config.model_fields_set:
             declaration = self.config.calendar
         resolved = metadata.resolve_calendar(calendar=declaration)
-        self.config = self.config.model_copy(deep=True, update={"calendar": resolved})
+        self.config = self.config.model_copy(
+            deep=True, update={"calendar": resolved} if calendar is not UNSET_CALENDAR else {}
+        )
         effective_calendar = (
             calendar if isinstance(calendar, CalendarConfig | TradingCalendar) else resolved
         )
@@ -417,8 +419,8 @@ class WalkForwardCV(BaseSplitter):
 
     @property
     def calendar_id(self) -> str | None:
-        """Trading calendar identifier."""
-        return self.config.calendar_id
+        """Resolved trading calendar identifier, separate from its declaration."""
+        return self.calendar.config.exchange if self.calendar is not None else None
 
     @property
     def test_indices_(self) -> NDArray[np.intp]:

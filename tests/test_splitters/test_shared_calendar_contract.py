@@ -92,6 +92,48 @@ def test_explicit_calendar_can_override_config_without_mutating_caller_configura
     assert config.calendar == "NYSE"
 
 
+def _roundtrip_config(config, format, tmp_path):
+    if format == "copy":
+        return config.model_copy(deep=True)
+    path = tmp_path / f"calendar.{format}"
+    getattr(config, f"to_{format}")(path)
+    return getattr(WalkForwardConfig, f"from_{format}")(path)
+
+
+@pytest.mark.parametrize("format", ["json", "yaml", "copy"])
+@pytest.mark.parametrize("metadata_calendar", [None, "24/7"])
+def test_runtime_config_roundtrip_does_not_promote_inherited_calendar_to_override(
+    format, metadata_calendar, tmp_path
+):
+    first = WalkForwardCV(
+        config=WalkForwardConfig(n_splits=2),
+        feed_spec=FeedSpec(time_contract_version=2, calendar=metadata_calendar),
+    )
+    assert first.calendar_id == metadata_calendar
+    loaded = _roundtrip_config(first.config, format, tmp_path)
+    assert "calendar" not in loaded.model_fields_set
+    second = WalkForwardCV(
+        config=loaded, feed_spec=FeedSpec(time_contract_version=2, calendar="NYSE")
+    )
+    assert second.calendar_id == "NYSE"
+
+
+@pytest.mark.parametrize("format", ["json", "yaml", "copy"])
+@pytest.mark.parametrize("calendar", [None, "NYSE"])
+def test_explicit_calendar_argument_remains_declared_after_runtime_config_roundtrip(
+    format, calendar, tmp_path
+):
+    first = WalkForwardCV(
+        feed_spec=FeedSpec(time_contract_version=2, calendar="24/7"), calendar=calendar
+    )
+    loaded = _roundtrip_config(first.config, format, tmp_path)
+    assert "calendar" in loaded.model_fields_set and loaded.calendar == calendar
+    second = WalkForwardCV(
+        config=loaded, feed_spec=FeedSpec(time_contract_version=2, calendar="24/7")
+    )
+    assert second.calendar_id == calendar
+
+
 def test_config_serialization_filters_do_not_resurrect_an_explicitly_excluded_calendar():
     config = WalkForwardConfig(calendar=None)
     assert config.model_dump(include={"n_splits"}) == {"n_splits": 5}
@@ -113,7 +155,7 @@ def test_nested_exclusion_masks_do_not_silently_reenable_a_disabled_calendar(mas
         config=WalkForwardConfig(**wire),
         feed_spec=FeedSpec(time_contract_version=2, calendar="24/7"),
     )
-    assert restored.config.calendar == (None if disabled else "24/7")
+    assert restored.calendar_id == (None if disabled else "24/7")
 
 
 @pytest.fixture(params=[None, "UTC"], ids=["naive-rows", "aware-rows"])

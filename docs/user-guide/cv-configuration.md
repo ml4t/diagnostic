@@ -49,6 +49,9 @@ a supported configuration input/property alias, but serialized output uses
 `calendar`. Supplying both names with conflicting values raises an error.
 An undeclared calendar stays absent on configuration serialization; explicit
 `None` stays explicit, including when other null fields are excluded.
+This also holds for `cv.config` after construction and for JSON/YAML/copy
+round trips. Inspect `cv.calendar_id` for the resolved calendar; an undeclared
+configuration can inherit different metadata when reused with another feed.
 
 Walk-forward selection uses an explicit `calendar` argument first, then an
 explicit configuration declaration, then the supplied `FeedSpec` metadata,
@@ -66,11 +69,15 @@ assert WalkForwardCV(
 ).calendar is None
 ```
 
-Without a calendar, integer label horizons count observed rows, even across
-weekends, holidays or missing dates. An explicit `pd.Timedelta` still means
-elapsed time. Row-count splitting does not need timezone-aware timestamps;
-elapsed-time calculations retain their timezone checks. With a selected
-calendar, the existing session-aware walk-forward path remains active.
+Without a calendar, integer label horizons and embargo sizes in a row-mode
+purge request count observed rows, even across weekends, holidays or missing
+dates. Integer held-out sizes also count rows. Standard and forward/backward
+held-out folds retain positional boundaries, including duplicate timestamps.
+An explicit `pd.Timedelta` still means elapsed time. Pure row-count splitting
+does not need timezone-aware timestamps; elapsed-time calculations retain their
+timezone checks. With a selected calendar, the existing session-aware
+walk-forward path remains active. Mixed-unit requests remain part of the
+broader unit audit described below.
 
 These are unreleased walk-forward changes. Qualification pins merged Specs
 source `701bde68744035050ede386efce498234c661c21`, not the published Specs
