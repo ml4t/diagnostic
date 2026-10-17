@@ -11,6 +11,7 @@ Factor-style signal analysis with a clean public surface.
 - `signal_ic.py` - per-date/group IC observations and legacy finite-series extraction
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
 - `portfolio.py` - shared factor-weight normalization and supplied-return contributions
+- `factor_regression.py` - same-universe dated OLS, explicit compound alpha and owned samples
 - `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
@@ -43,6 +44,11 @@ zero signal means zero exposure. These are not dated holdings/expiration account
 before those same weights and compound one supplied horizon using the existing NaN-aware product.
 They retain actual return/count missingness, labelled observation-order wealth and an explicit
 flat-wealth policy. No calendar, holding expiration or self-financing daily accounting is inferred.
+`panel.factor_alpha_beta` and `compute_factor_alpha_beta` reuse those weights/returns and the
+existing OLS kernel against equal-asset same-universe means. They require explicit horizon scales
+for compounded alpha, retain joint dated samples/counts and undefined statuses, and expose owned
+Arrow/JSON snapshots. Supplied portfolio returns bypass weights; no t-statistic, holdings or complete
+returns report is inferred. Generic portfolio alpha retains its existing linear annualization.
 
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse

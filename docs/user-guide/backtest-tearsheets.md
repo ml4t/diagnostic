@@ -90,6 +90,13 @@ costs, predictions, and factor results. Use
 `generate_tearsheet_from_result` for an `ml4t-backtest` result. The integration
 normalizes the backtest object before rendering.
 
+In unreleased source after 0.1.9, `include_statistical=False` on
+`generate_tearsheet_from_result` or `generate_backtest_tearsheet` omits
+inferential validation calculations, credibility/validity panels, confidence
+intervals, minimum track record, Sharpe bootstrap and statistical summary KPIs.
+Ordinary performance, trading and descriptive drawdown analysis remain.
+The default is `True`. Previously the bridge silently ignored `False`.
+
 For contract fills, provide the declared point-value multiplier. The Backtest
 bridge uses a fill's explicit `multiplier` when present, otherwise the producer's
 trade multiplier for that asset. Conflicting trade declarations or missing,
@@ -110,6 +117,19 @@ These activity ratios use the NAV at the matched observed timestamp. They do
 not establish exchange-session aggregation, Pyfolio's average-gross-book
 denominator, or beginning-session-NAV return scenarios. Those workflows require
 separate input and calendar contracts.
+
+Trade profit factor divides gross positive lifecycle cash P&L by gross loss
+magnitude. Empty or all-flat samples have an unavailable `0/0` ratio, displayed
+as `N/A`, rather than zero or infinity. Gains without losses retain infinity;
+losses without gains retain zero. Unreleased source after 0.1.9 preserves this
+availability through native profiles, the computed Backtest bridge and reports,
+even when legacy producer metrics use zero for the missing sample. Producer
+tables and metrics remain unchanged. Existing lifecycle eligibility is retained;
+this is not the separate ratio of positive and negative period returns.
+When the default bridge prefers the producer's closed-trade statistics, an
+open-only account also has an unavailable ratio. Direct native lifecycle
+metrics can still include marked P&L through their existing all-open fallback;
+the repair does not reclassify either sample or change their trade counts.
 
 PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).

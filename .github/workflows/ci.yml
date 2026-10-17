@@ -248,16 +248,26 @@ jobs:
         run: >-
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)"
-          --with "polars==0.20.0" --with "pandas==2.3.3"
+          --with "polars==1.36.1" --with "pandas==2.3.3"
           python -I examples/legacy_migration_comparison.py --task holdings
       - name: Run prepared portfolio report at dependency floors from installed wheel
         shell: bash
         run: >-
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)"
-          --with "polars==0.20.0" --with "pandas==2.3.3" --with "plotly==5.15.0"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==5.15.0"
           python -I examples/legacy_migration_comparison.py --task holdings-report
           --output "$RUNNER_TEMP/prepared-holdings.html"
+      - name: Run signal workflows with minimum Polars from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3"
+          --with pytest --with pytest-timeout --with pytest-xdist
+          --with "alphalens-reloaded==0.4.6" --with playwright
+          pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          -q -n auto --timeout 120 tests/test_signal/
       - name: Execute prepared portfolio report in a notebook from installed wheel
         shell: bash
         run: >-
@@ -276,6 +286,7 @@ jobs:
           -q -s --timeout 120 --tb=short
           tests/test_contract/test_pdf_collection_lifecycle.py
           tests/test_visualization/test_pdf_report_lifecycle.py
+          tests/test_visualization/test_pdf_process_ownership.py
           tests/test_visualization/test_report_generation.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -237,7 +237,7 @@ def compute_edge_metrics(trades_df: pl.DataFrame) -> dict[str, Any]:
             "metrics": {
                 "num_trades": 0,
                 "win_rate": 0.0,
-                "profit_factor": 0.0,
+                "profit_factor": float("nan"),
                 "expectancy": 0.0,
                 "avg_trade": 0.0,
                 "avg_winner": 0.0,
@@ -266,11 +266,17 @@ def compute_edge_metrics(trades_df: pl.DataFrame) -> dict[str, Any]:
     total_wins = float(wins["pnl"].sum()) if not wins.is_empty() else 0.0
     total_losses = abs(float(losses["pnl"].sum())) if not losses.is_empty() else 0.0
     avg_trade = float(closed["pnl"].mean()) if closed.height else 0.0
+    if total_losses > 0:
+        profit_factor = total_wins / total_losses
+    elif total_wins > 0:
+        profit_factor = float("inf")
+    else:
+        profit_factor = float("nan")
 
     metrics = {
         "num_trades": closed.height,
         "win_rate": float(wins.height / closed.height) if closed.height else 0.0,
-        "profit_factor": float(total_wins / total_losses) if total_losses > 0 else float("inf"),
+        "profit_factor": profit_factor,
         "expectancy": avg_trade,
         "avg_trade": avg_trade,
         "avg_winner": float(wins["pnl"].mean()) if not wins.is_empty() else 0.0,

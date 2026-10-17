@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import polars as pl
 import pytest
-from ml4t.backtest import BacktestConfig, BacktestResult
+from ml4t.backtest import BacktestConfig, BacktestResult, DataFeed, Engine, Strategy
 from ml4t.backtest.types import Trade
 from ml4t.specs import FeedSpec
 
@@ -119,27 +119,45 @@ def test_portfolio_analysis_from_result_uses_session_aligned_returns():
 
 
 def test_portfolio_analysis_from_result_uses_feed_semantics_for_auto_alignment():
-    result = BacktestResult(
-        trades=[],
-        equity_curve=[
-            (datetime(2024, 1, 1, 18, 0), 100000.0),
-            (datetime(2024, 1, 2, 10, 0), 101000.0),
-        ],
-        fills=[],
-        metrics={},
-        config=BacktestConfig(
-            calendar="NYSE",
-            timezone="America/New_York",
+    class BuyOnce(Strategy):
+        def __init__(self):
+            self.ordered = False
+
+        def on_data(self, timestamp, data, context, broker):
+            if not self.ordered:
+                broker.submit_order("A", 4)
+                self.ordered = True
+
+    bars = pl.DataFrame(
+        {
+            "timestamp": [
+                datetime(2025, 1, 7, 23, 30, tzinfo=UTC),
+                datetime(2025, 1, 8, 0, 30, tzinfo=UTC),
+                datetime(2025, 1, 8, 16, 0, tzinfo=UTC),
+            ],
+            "asset": ["A"] * 3,
+            **dict.fromkeys(["open", "high", "low", "close"], [100.0, 100.0, 110.0]),
+            "volume": [10000.0] * 3,
+        }
+    )
+    result = Engine(
+        DataFeed(prices_df=bars),
+        BuyOnce(),
+        BacktestConfig(
+            initial_cash=1000,
             feed_spec=FeedSpec(
-                calendar="NYSE",
+                calendar="CME_Equity",
+                timezone="America/Chicago",
                 session_start_time="17:00",
                 timestamp_semantics="event_time",
             ),
         ),
-    )
+    ).run()
 
+    assert [equity for _, equity in result.equity_curve] == [1000.0, 1000.0, 1040.0]
+    assert result.to_daily_returns(session_aligned=False).to_list() == pytest.approx([0.0, 0.04])
     analysis = portfolio_analysis_from_result(result)
-    assert len(analysis.returns) == 1
+    assert analysis.returns.tolist() == [0.0]
 
 
 def test_compute_metrics_from_result_handles_empty_inputs():

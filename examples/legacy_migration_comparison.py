@@ -142,6 +142,117 @@ def compare_signals(factor: pd.Series, prices: pd.DataFrame) -> None:
         "Prepared per-date IC and means match on this balanced sample; "
         "native std/spread inference differ."
     )
+    compare_factor_regression(factor, prices)
+
+
+def compare_factor_regression(factor: pd.Series, prices: pd.DataFrame) -> None:
+    """Compare actual dated samples before coefficients, using two supplied horizons."""
+    import itertools
+
+    import alphalens.performance as reference
+    import alphalens.utils as reference_utils
+
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    groups = pd.Series(
+        [
+            "first" if (int(asset[-2:]) + date.day) % 12 < 4 else "second"
+            for date, asset in factor.index
+        ],
+        index=factor.index,
+    )
+    sample = reference_utils.get_clean_factor_and_forward_returns(
+        factor,
+        prices,
+        groupby=groups,
+        quantiles=5,
+        periods=(1, 5),
+        filter_zscore=None,
+        max_loss=0,
+    )
+    panel = prepare_signal_panel(
+        sample["factor"],
+        sample[["1D", "5D"]],
+        groups=sample["group"],
+        quantiles=5,
+        max_loss=0,
+    )
+    canonical = panel.data.to_pandas().set_index(["date", "asset"])
+    pd.testing.assert_index_equal(canonical.index, sample.index, exact=False)
+    np.testing.assert_allclose(canonical[["1D", "5D"]], sample[["1D", "5D"]], atol=0, rtol=0)
+    assert canonical["group"].tolist() == sample["group"].tolist()
+    universe = sample[["1D", "5D"]].groupby(level="date").mean()
+    for flags in itertools.product([False, True], repeat=3):
+        options = dict(zip(["demeaned", "group_adjust", "equal_weight"], flags, strict=True))
+        expected_weights = reference.factor_weights(sample, **options)
+        weights = panel.factor_weights(**options).to_pandas().set_index(["date", "asset"])
+        np.testing.assert_allclose(weights["weight"], expected_weights, atol=1e-14, rtol=1e-12)
+        expected_returns = reference.factor_returns(sample, **options)
+        expected = reference.factor_alpha_beta(sample, **options)
+        result = panel.factor_alpha_beta(annualization_factors={"1D": 252, "5D": 50.4}, **options)
+        actual = result.statistics.to_pandas().set_index("return_column")
+        for column in ["1D", "5D"]:
+            observed = result.observations.to_pandas()
+            observed = observed[observed.return_column == column].set_index("date")
+            pd.testing.assert_index_equal(observed.index, expected_returns.index, exact=False)
+            np.testing.assert_allclose(
+                observed.portfolio_return, expected_returns[column], atol=1e-14, rtol=1e-12
+            )
+            np.testing.assert_allclose(
+                observed.universe_return, universe[column], atol=1e-14, rtol=1e-12
+            )
+            assert observed.paired.all() and observed.n_universe.eq(12).all()
+            assert observed.n_portfolio.eq(12).all()
+            assert actual.loc[column, "n_obs"] == len(expected_returns)
+            np.testing.assert_allclose(
+                actual.loc[column, ["annual_alpha", "beta"]].to_numpy(dtype=float),
+                expected.loc[["Ann. alpha", "beta"], column].to_numpy(dtype=float),
+                atol=1e-10,
+                rtol=1e-8,
+            )
+    print(
+        "Factor regression: eight weighting variants, two horizons, exact dated membership/counts"
+    )
+    supplied = universe.mul([0.6, -0.2]).add([0.001, -0.002]).iloc[::-1]
+    supplied.iloc[3, 0] = np.nan
+    before = supplied.copy(deep=True)
+    expected = reference.factor_alpha_beta(sample, returns=supplied)
+    result = panel.factor_alpha_beta(
+        returns=supplied, annualization_factors={"1D": 252, "5D": 50.4}
+    )
+    actual = result.statistics.to_pandas().set_index("return_column")
+    np.testing.assert_allclose(actual["beta"], [0.6, -0.2], atol=1e-12, rtol=1e-8)
+    np.testing.assert_allclose(
+        actual["annual_alpha"], expected.loc["Ann. alpha"], atol=1e-10, rtol=1e-8
+    )
+    assert actual["n_obs"].tolist() == [len(supplied) - 1, len(supplied)]
+    pd.testing.assert_frame_equal(supplied, before)
+    print(
+        "Provided factor returns: reverse-date alignment and horizon-specific missingness retained"
+    )
+    flat_sample = reference_utils.get_clean_factor_and_forward_returns(
+        factor,
+        prices * 0 + 100,
+        quantiles=5,
+        periods=(1,),
+        filter_zscore=None,
+        max_loss=0,
+    )
+    flat_panel = prepare_signal_panel(
+        flat_sample["factor"],
+        flat_sample[["1D"]],
+        quantiles=5,
+        max_loss=0,
+    )
+    legacy_constant = reference.factor_alpha_beta(flat_sample)
+    native_constant = flat_panel.factor_alpha_beta(annualization_factors={"1D": 252})
+    assert legacy_constant.loc["beta", "1D"] == 0
+    assert native_constant.statistics["beta"][0] is None
+    assert native_constant.statistics["design_rank"][0] == 1
+    assert native_constant.statistics["status"][0] == "constant_benchmark"
+    print(
+        "Flat-price reconciliation: reference beta0 versus unidentified slope (rank1), not parity"
+    )
 
 
 def show_diagnostic_only() -> None:
