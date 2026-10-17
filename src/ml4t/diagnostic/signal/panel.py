@@ -11,7 +11,7 @@ from hashlib import sha256
 from importlib.metadata import version
 from io import BytesIO
 from numbers import Real
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,7 @@ from ml4t.diagnostic.utils.validation import (
 )
 
 if TYPE_CHECKING:
+    from ml4t.diagnostic.signal.events import AlignedEventResult, EventReturnsResult
     from ml4t.diagnostic.signal.factor_regression import FactorAlphaBetaResult
     from ml4t.diagnostic.signal.result import SignalResult
 
@@ -123,6 +124,66 @@ class PreparedSignalPanel:
             date_col=self.date_col,
             asset_col=self.asset_col,
             date_grid=date_grid,
+        )
+
+    def event_returns(
+        self,
+        values: pl.DataFrame | pd.DataFrame,
+        *,
+        input_kind: Literal["levels", "returns"],
+        before: int = 5,
+        after: int = 15,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        by_group: bool = False,
+        value_col: str = "value",
+    ) -> EventReturnsResult:
+        """Retain the overall and optional group samples for an event-returns report."""
+        from ml4t.diagnostic.signal.events import analyze_event_returns
+
+        return analyze_event_returns(
+            self.data,
+            values,
+            input_kind=input_kind,
+            before=before,
+            after=after,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            by_group=by_group,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+            value_col=value_col,
+        )
+
+    def event_study(
+        self,
+        values: pl.DataFrame | pd.DataFrame,
+        *,
+        input_kind: Literal["levels", "returns"],
+        before: int = 10,
+        after: int = 15,
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        by_group: bool = False,
+        mean_by_date: bool = True,
+        value_col: str = "value",
+    ) -> AlignedEventResult:
+        """Align this owned event sample without substituting an abnormal-return model."""
+        from ml4t.diagnostic.signal.events import analyze_signal_events
+
+        return analyze_signal_events(
+            self.data,
+            values,
+            input_kind=input_kind,
+            before=before,
+            after=after,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            by_group=by_group,
+            mean_by_date=mean_by_date,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+            value_col=value_col,
         )
 
     def factor_weights(
