@@ -62,12 +62,30 @@ kaleido.Kaleido.write_fig_from_object=written
 kaleido.Kaleido.close=closed
 """.replace('MODE',repr(mode)).replace('OBSERVED',repr(str(observed)))
 exec(patch)
+read_handles=[]
 try:
     from ml4t.diagnostic.visualization import _pdf_process
 except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='held_status':
+        original_observe=_pdf_process._OwnedProcesses.observe
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        def hold_first_progress(self):
+            original_observe(self)
+            if not read_handles:
+                base=Path(self.process.args[-1])
+                for candidate in [base,base.with_name(base.stem+'-000001.json')]:
+                    if candidate.exists():
+                        read_handles.append(candidate.open('rb'))
+                        break
+        def terminate_then_release(self):
+            try: return original_terminate(self)
+            finally:
+                for handle in read_handles: handle.close()
+        _pdf_process._OwnedProcesses.observe=hold_first_progress
+        _pdf_process._OwnedProcesses.terminate=terminate_then_release
 
 neighbor=subprocess.Popen([sys.executable,'-c','import time;time.sleep(180)'])
 success=False
@@ -78,19 +96,20 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except Exception as error:
-        if mode in ('close_error','close_hang'): raise
+        if mode in ('close_error','close_hang','held_status'): raise
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
         if mode=='render_error': assert 'Actual renderer failed after first page' in str(error),repr(error)
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','held_status'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
         assert all(abs(float(page.mediabox.width)-450)<0.1 for page in pages)
         assert all(abs(float(page.mediabox.height)-337.5)<1 for page in pages)
     assert originals==[figure.to_json() for figure in figures]
+    if mode=='held_status': assert len(read_handles)==1 and all(handle.closed for handle in read_handles)
     assert neighbor.poll() is None, 'Unrelated process was killed by renderer cleanup'
     rows=json.loads(observed.read_text())
     assert rows, 'No actual browser processes observed'
@@ -134,7 +153,7 @@ finally:
 
 
 @pytest.mark.parametrize(
-    "mode", ["close_error", "close_hang", "render_error", "invalid_page", "exit7"]
+    "mode", ["close_error", "close_hang", "render_error", "invalid_page", "exit7", "held_status"]
 )
 def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(mode, tmp_path):
     pytest.importorskip("kaleido")
@@ -166,7 +185,7 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(mode, tmp_
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
 
 
-def test_local_plotlyjs_path_still_renders_a_real_pdf_in_the_owned_worker(tmp_path, monkeypatch):
+def test_owned_worker_preserves_packaged_and_supported_custom_plotlyjs(tmp_path, monkeypatch):
     pytest.importorskip("kaleido")
     pypdf = pytest.importorskip("pypdf")
     from pathlib import Path
@@ -179,7 +198,9 @@ def test_local_plotlyjs_path_still_renders_a_real_pdf_in_the_owned_worker(tmp_pa
 
     bundle = Path(plotly.__file__).parent / "package_data/plotly.min.js"
     assert bundle.is_file()
-    monkeypatch.setattr(pio.defaults, "plotlyjs", bundle)
+    custom_path_supported = hasattr(pio.defaults, "plotlyjs")
+    if custom_path_supported:
+        monkeypatch.setattr(pio.defaults, "plotlyjs", bundle)
     figure = go.Figure(go.Scatter(x=[1, 2, 3], y=[1, 3, 2]))
     figure.update_layout(title="Local Plotly source")
     original = figure.to_json()
@@ -187,3 +208,8 @@ def test_local_plotlyjs_path_still_renders_a_real_pdf_in_the_owned_worker(tmp_pa
     pages = pypdf.PdfReader(path).pages
     assert len(pages) == 1 and "Local Plotly source" in pages[0].extract_text()
     assert figure.to_json() == original
+    print(
+        json.dumps(
+            {"custom_plotlyjs_supported": custom_path_supported, "packaged_bundle": str(bundle)}
+        )
+    )

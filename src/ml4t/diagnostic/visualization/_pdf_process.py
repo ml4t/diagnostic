@@ -67,6 +67,7 @@ class _WindowsJob:
             "OpenProcess": ([wintypes.DWORD, wintypes.BOOL, wintypes.DWORD], wintypes.HANDLE),
             "AssignProcessToJobObject": ([wintypes.HANDLE, wintypes.HANDLE], wintypes.BOOL),
             "TerminateJobObject": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
+            "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
             "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
         }
         for name, (args, result) in signatures.items():
@@ -100,7 +101,7 @@ class _WindowsJob:
         if not ok:
             raise ctypes.WinError(ctypes.get_last_error())
 
-    def terminate(self) -> None:
+    def terminate(self, processes: list[psutil.Process]) -> None:
         from ctypes import wintypes
 
         class Accounting(ctypes.Structure):
@@ -112,7 +113,16 @@ class _WindowsJob:
                 ("terminated", wintypes.DWORD),
             ]
 
+        handles = []
         try:
+            for process in processes:
+                if not process.is_running():
+                    continue
+                handle = self.api.OpenProcess(0x00100000, False, process.pid)  # SYNCHRONIZE
+                if handle:
+                    handles.append((process.pid, handle))
+                elif ctypes.get_last_error() != 87:  # PID already gone
+                    raise ctypes.WinError(ctypes.get_last_error())
             self._check(self.api.TerminateJobObject(self.handle, 120))
             deadline = time.monotonic() + 5
             while True:
@@ -123,13 +133,23 @@ class _WindowsJob:
                     )
                 )
                 if accounting.active == 0:
-                    return
+                    break
                 if time.monotonic() >= deadline:
                     raise RuntimeError(
                         "PDF renderer job still has active processes after termination"
                     )
                 time.sleep(0.05)
+            # Accounting can reach zero before process teardown releases file handles.
+            for pid, handle in handles:
+                remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+                result = self.api.WaitForSingleObject(handle, remaining_ms)
+                if result != 0:
+                    raise RuntimeError(
+                        f"Owned PDF process {pid} not terminal: wait result {result}"
+                    )
         finally:
+            for _, handle in handles:
+                self.api.CloseHandle(handle)
             self.api.CloseHandle(self.handle)
 
 
@@ -150,7 +170,7 @@ class _OwnedProcesses:
     def terminate(self) -> None:
         self.observe()
         if self.job is not None:
-            self.job.terminate()
+            self.job.terminate(list(self.observed.values()))
         else:
             # Chrome starts a new session of its own. Kill observed child-led groups too.
             for process in reversed(list(self.observed.values())):
@@ -221,6 +241,17 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
         owner = None
         status: dict[str, Any] = {}
         failure = None
+        sequence = 0
+
+        def read_progress() -> None:
+            nonlocal status, sequence
+            while True:
+                next_path = status_path.with_name(f"{status_path.stem}-{sequence + 1:06d}.json")
+                if not next_path.exists():
+                    return
+                status = json.loads(next_path.read_text(encoding="utf-8"))
+                sequence += 1
+
         try:
             owner = _OwnedProcesses(process)
             assert process.stdin is not None
@@ -230,8 +261,7 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
             deadline = time.monotonic() + _RENDER_TIMEOUT
             while True:
                 owner.observe()
-                if status_path.exists():
-                    status = json.loads(status_path.read_text(encoding="utf-8"))
+                read_progress()
                 progress = (status.get("phase"), status.get("completed"))
                 if progress != previous:
                     deadline = time.monotonic() + (
@@ -240,8 +270,7 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                     previous = progress
                 if process.poll() is not None:
                     # Re-read after exit so a final atomic status cannot race the poll.
-                    if status_path.exists():
-                        status = json.loads(status_path.read_text(encoding="utf-8"))
+                    read_progress()
                     if process.returncode != 0 or status.get("phase") not in (
                         "closed",
                         "close_failed",

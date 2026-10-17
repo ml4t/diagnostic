@@ -15,13 +15,17 @@ async def _render(request_path: Path, status_path: Path) -> None:
     # even when the worker cannot complete its own close cleanup.
     tempfile.tempdir = str(request_path.parent)
     completed = 0
+    sequence = 0
 
     def status(phase: str, **details: object) -> None:
-        temporary = status_path.with_suffix(".new")
+        nonlocal sequence
+        sequence += 1
+        destination = status_path.with_name(f"{status_path.stem}-{sequence:06d}.json")
+        temporary = destination.with_suffix(".new")
         temporary.write_text(
             json.dumps({"phase": phase, "completed": completed, **details}), encoding="utf-8"
         )
-        temporary.replace(status_path)
+        temporary.replace(destination)
 
     renderer = kaleido.Kaleido(n=1, timeout=90, **request["defaults"])
     try:
