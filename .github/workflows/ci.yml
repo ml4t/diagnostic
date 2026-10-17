@@ -266,6 +266,17 @@ jobs:
           --with nbclient --with ipykernel --with pytest
           pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
           tests/test_evaluation/test_portfolio_notebook_report.py
+      - name: Run all real PDF tests from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with pytest --with pytest-timeout
+          pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          -q -s --timeout 120 --tb=short
+          tests/test_contract/test_pdf_collection_lifecycle.py
+          tests/test_visualization/test_pdf_report_lifecycle.py
+          tests/test_visualization/test_report_generation.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
