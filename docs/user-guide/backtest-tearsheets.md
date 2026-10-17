@@ -69,6 +69,15 @@ requirements, not guarantees established by report generation.
 
 ## Choose a template
 
+Profile attribution bars and contributor rankings use signed cash P&L. The
+table's "Share of net P&L" is a separate ratio: a losing total can give a
+losing asset a positive share, so its sign does not determine profit/loss
+colors or rankings. Undefined shares display `N/A`; defined zero cash P&L
+remains zero. Standalone share-only contributor inputs use neutral colors
+and report unavailable values explicitly.
+On narrow screens, the attribution panel scrolls horizontally to keep all table
+labels and values readable.
+
 | Template | Primary content |
 |----------|-----------------|
 | `quant_trader` | Trades, performance, and model diagnostics |

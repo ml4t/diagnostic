@@ -324,6 +324,11 @@ _COLLAPSIBLE_SECTIONS: set[str] = {
 
 # Interpretive footnotes — brief guidance for complex charts
 _SECTION_FOOTNOTES: dict[str, str] = {
+    "attribution_overview": (
+        "<strong>Reading:</strong> Bars rank signed cash P&amp;L. Shares divide by signed net "
+        "P&amp;L and are unavailable when the denominator is zero. "
+        "Scroll this panel horizontally on narrow screens."
+    ),
     "rolling_metrics": (
         "<strong>Reading:</strong> Rolling windows smooth noise. "
         "A Sharpe consistently above the dashed zero line suggests persistent edge, "
@@ -347,7 +352,8 @@ _SECTION_FOOTNOTES: dict[str, str] = {
     "cost_sensitivity": (
         "<strong>Reading:</strong> The breakeven point shows how much transaction costs "
         "can increase before the strategy becomes unprofitable. "
-        "A narrow margin suggests fragility to execution costs."
+        "A narrow margin suggests fragility to execution costs. "
+        "Scroll this panel horizontally on narrow screens."
     ),
     "factor_attribution": (
         "<strong>Reading:</strong> Additive attribution: \u03b2 \u00d7 factor return. "

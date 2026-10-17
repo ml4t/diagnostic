@@ -23,11 +23,12 @@ def report_inputs(n):
 
 
 def chart_payloads(html, section):
-    start = html.index(f'data-section="{section}"')
-    tail = html[start:]
-    end = tail.find('data-section="', 1)
-    if end >= 0:
-        tail = tail[:end]
+    marker = re.search(rf'<(?:div|details)\b[^>]*\bdata-section="{re.escape(section)}"[^>]*>', html)
+    assert marker, section
+    tail = html[marker.end() :]
+    end = re.search(r'<(?:div|details)\b[^>]*\bdata-section="', tail)
+    if end is not None:
+        tail = tail[: end.start()]
     match = re.search(r'Plotly\.newPlot\(\s*"[^"]+",\s*', tail)
     assert match, section
     decoder = json.JSONDecoder()

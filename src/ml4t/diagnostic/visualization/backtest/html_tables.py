@@ -298,7 +298,9 @@ def create_top_contributors_html(
     ----------
     attribution : dict or None
         Attribution dict with ``"by_symbol"`` key containing a DataFrame
-        with ``symbol`` and ``pnl_contribution_share`` (or ``net_pnl``) columns.
+        with ``symbol`` and signed ``net_pnl`` (or ``pnl``) columns. Share-only
+        inputs retain percentages without profit/loss colors. Unavailable
+        values are excluded from ranking, not treated as zero.
     top_n : int
         Number of contributors/detractors to show.
 
@@ -306,12 +308,14 @@ def create_top_contributors_html(
     """
     if attribution is None:
         return None
+    import polars as pl
+
     by_symbol = attribution.get("by_symbol")
     if by_symbol is None or by_symbol.is_empty():
         return None
 
     pnl_col = None
-    for candidate in ("pnl_contribution_share", "net_pnl", "pnl"):
+    for candidate in ("net_pnl", "pnl", "pnl_contribution_share"):
         if candidate in by_symbol.columns:
             pnl_col = candidate
             break
@@ -326,7 +330,14 @@ def create_top_contributors_html(
     if sym_col is None:
         return None
 
-    sorted_df = by_symbol.sort(pnl_col, descending=True)
+    available = by_symbol.filter(pl.col(pnl_col).is_not_null() & pl.col(pnl_col).is_finite())
+    if available.is_empty():
+        label = "P&L contribution shares" if pnl_col == "pnl_contribution_share" else "P&L values"
+        return (
+            '<div class="cost-summary-line" style="font-size:13px">'
+            f"{html_mod.escape(label)} unavailable: no finite values to rank.</div>"
+        )
+    sorted_df = available.sort(pnl_col, descending=True)
     top = sorted_df.head(top_n)
     bottom = sorted_df.tail(top_n).sort(pnl_col)
 
@@ -337,12 +348,17 @@ def create_top_contributors_html(
             return f"{val:+.1%}"
         return f"${val:+,.0f}"
 
+    def _color(val: float) -> str:
+        if is_share or val == 0:
+            return "var(--c-text-muted)"
+        return TRAFFIC_LIGHT_COLORS["green"] if val > 0 else TRAFFIC_LIGHT_COLORS["red"]
+
     items: list[str] = []
     # Top contributors
     for i in range(min(top_n, top.height)):
         sym = str(top[sym_col][i])
         val = float(top[pnl_col][i])
-        color = TRAFFIC_LIGHT_COLORS["green"] if val >= 0 else TRAFFIC_LIGHT_COLORS["red"]
+        color = _color(val)
         items.append(
             f'<span style="color:{color};font-weight:600">{html_mod.escape(sym)} {_fmt(val)}</span>'
         )
@@ -353,15 +369,15 @@ def create_top_contributors_html(
     for i in range(min(top_n, bottom.height)):
         sym = str(bottom[sym_col][i])
         val = float(bottom[pnl_col][i])
-        color = TRAFFIC_LIGHT_COLORS["green"] if val >= 0 else TRAFFIC_LIGHT_COLORS["red"]
+        color = _color(val)
         items.append(
             f'<span style="color:{color};font-weight:600">{html_mod.escape(sym)} {_fmt(val)}</span>'
         )
 
     return (
-        '<div class="cost-summary-line" style="gap:12px;font-size:13px">'
+        '<div class="cost-summary-line" style="gap:12px;font-size:14px">'
         '<span style="color:var(--c-text-muted);font-weight:600;'
-        'text-transform:uppercase;font-size:10px;letter-spacing:0.06em">'
+        'text-transform:uppercase;font-size:13px;letter-spacing:0.06em">'
         "Top / Bottom</span>"
         f"{''.join(items)}"
         "</div>"
