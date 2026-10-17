@@ -91,6 +91,13 @@ def test_explicit_calendar_can_override_config_without_mutating_caller_configura
     assert config.calendar == "NYSE"
 
 
+def test_config_serialization_filters_do_not_resurrect_an_explicitly_excluded_calendar():
+    config = WalkForwardConfig(calendar=None)
+    assert config.model_dump(include={"n_splits"}) == {"n_splits": 5}
+    assert "calendar" not in config.model_dump(exclude={"calendar"})
+    assert config.model_dump(exclude_none=True)["calendar"] is None
+
+
 def test_panel_purge_uses_each_assets_next_observation_across_holiday_and_other_assets():
     dates = pd.to_datetime(
         [

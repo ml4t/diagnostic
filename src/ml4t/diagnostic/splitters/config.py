@@ -44,7 +44,7 @@ import warnings
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import Field, field_validator, model_serializer, model_validator
+from pydantic import Field, SerializationInfo, field_validator, model_serializer, model_validator
 
 from ml4t.diagnostic.config.base import BaseConfig
 
@@ -264,10 +264,11 @@ class WalkForwardConfig(SplitterConfig):
         Direction of validation folds:
         - "forward": Traditional walk-forward (folds step forward in time)
         - "backward": Folds step backward from held-out test boundary
-    calendar_id : str | None
+    calendar : str | None
         Trading calendar for trading-day-aware gap calculations.
         Examples: "NYSE", "CME_Equity", "LSE"
         Required when label_horizon is int and you want trading-day interpretation.
+        calendar_id remains a supported input and property alias.
     """
 
     test_size: int | float | str | None = Field(
@@ -376,12 +377,19 @@ class WalkForwardConfig(SplitterConfig):
         self.calendar = value
 
     @model_serializer(mode="wrap")
-    def _serialize_calendar_declaration(self, handler: Any) -> dict[str, Any]:
+    def _serialize_calendar_declaration(
+        self, handler: Any, info: SerializationInfo
+    ) -> dict[str, Any]:
         data = handler(self)
         if "calendar" not in self.model_fields_set:
             data.pop("calendar", None)
-        else:
-            data["calendar"] = self.calendar
+        elif (
+            self.calendar is None
+            and info.exclude_none
+            and (info.include is None or "calendar" in info.include)
+            and (info.exclude is None or "calendar" not in info.exclude)
+        ):
+            data["calendar"] = None
         return data
 
     @property
