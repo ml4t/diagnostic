@@ -1041,6 +1041,17 @@ generate_aligned_event_report(event_result, output_file=Path("aligned_events.htm
 print("Aligned event levels: 55.0; finite date paths: 2/3/2")
 ```
 
+For a price-produced panel with dynamic groups and buckets, run the existing
+migration example with an explicit task:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task events --output aligned-events.html
+```
+
+It checks 24 declared events, 96 requested path cells and a typed JSON roundtrip
+before writing the report. It needs Diagnostic's `viz` extra, not Alphalens or
+Pyfolio. Existing `--task all` comparisons are unchanged.
+
 An existing owned panel can call `panel.event_study(event_prices, ...)` with
 the same options. Its supplied buckets/groups are retained. `demeaned=True`
 subtracts the entire event-date universe's level path; `group_adjust=True`

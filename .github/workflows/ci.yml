@@ -268,6 +268,14 @@ jobs:
           --with "alphalens-reloaded==0.4.6" --with playwright
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q -n auto --timeout 120 tests/test_signal/
+      - name: Run aligned event migration from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task events
+          --output "$RUNNER_TEMP/aligned-events.html"
       - name: Execute prepared portfolio report in a notebook from installed wheel
         shell: bash
         run: >-
