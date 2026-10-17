@@ -157,7 +157,7 @@ def _value_frame(
     if not all(pd.api.types.is_numeric_dtype(dtype) for dtype in data.dtypes):
         raise TypeError("event values must be numeric")
     data.index = data.index.as_unit("ns")
-    if np.isinf(data.to_numpy(dtype=float)).any():
+    if np.isinf(data.to_numpy(dtype=float, na_value=np.nan)).any():
         raise ValueError("event values must not contain infinity")
     return data
 
@@ -203,14 +203,27 @@ def align_event_paths(
         if not selected["asset"].isin(data.columns).all():
             raise ValueError("event universe contains assets absent from values")
     if input_kind == "returns":
-        data = data.apply(lambda column: _safe_cumprod(1 + column.to_numpy(dtype=float)))
+        data = data.apply(
+            lambda column: _safe_cumprod(1 + column.to_numpy(dtype=float, na_value=np.nan))
+        )
+    outcomes = data.to_numpy(dtype=float, na_value=np.nan)
+    asset_indices = {asset: index for index, asset in enumerate(data.columns)}
+    universes = (
+        {}
+        if universe is None
+        else {
+            timestamp: [asset_indices[asset] for asset in part["asset"]]
+            for timestamp, part in universe.groupby("event_date", sort=False)
+        }
+    )
+    benchmarks = {}
     rows = []
     for event in frame.to_dict("records"):
         timestamp = event["event_date"]
         position = data.index.get_indexer([timestamp])[0]
         peers = None
         if universe is not None and position >= 0:
-            peers = universe.loc[universe["event_date"] == timestamp, "asset"].tolist()
+            peers = universes.get(timestamp, [])
             if not peers:
                 raise ValueError("demeaning universe is missing an event timestamp")
         for offset in range(-before, after + 1):
@@ -219,14 +232,15 @@ def align_event_paths(
             status = "event_not_on_clock" if position < 0 else "window_clipped"
             if position >= 0 and 0 <= index < len(data):
                 source_date = data.index[index]
-                raw = float(data.iloc[index][event["asset"]])
-                benchmark = (
-                    0.0
-                    if peers is None
-                    else _sample_return_statistics(
-                        data.iloc[index][peers].dropna().to_numpy(dtype=float)
-                    )[0]
-                )
+                raw = float(outcomes[index, asset_indices[event["asset"]]])
+                if peers is None:
+                    benchmark = 0.0
+                else:
+                    key = (timestamp, offset)
+                    if key not in benchmarks:
+                        sample = outcomes[index, peers]
+                        benchmarks[key] = _sample_return_statistics(sample[~np.isnan(sample)])[0]
+                    benchmark = benchmarks[key]
                 adjusted = raw - benchmark
                 status = "observed" if np.isfinite(adjusted) else "missing_value"
                 if not np.isfinite(adjusted):
