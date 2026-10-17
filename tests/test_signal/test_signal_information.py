@@ -85,6 +85,24 @@ def test_information_export_owns_original_input_keys_groups_and_every_intermedia
         result.get_table("not_a_table")
 
 
+def test_information_chart_adapter_keeps_price_observation_keys_below_microsecond_resolution():
+    factor, forward, groups = _inputs()
+    original_dates = factor.index.get_level_values("date").unique()
+    clock = pd.date_range("2025-01-20", periods=32, freq="100ns", tz="UTC")
+    mapping = dict(zip(original_dates, clock, strict=True))
+    for table in [factor, forward, groups]:
+        table.index = pd.MultiIndex.from_tuples(
+            [(mapping[date], asset) for date, asset in table.index], names=["date", "asset"]
+        )
+    forward = forward.rename(columns={"1D": "next_quote", "5D": "fifth_quote"})
+    panel = prepare_signal_panel(factor, forward, groups=groups, quantiles=3, max_loss=0)
+    result = analyze_signal_information(panel, by_group=True)
+    assert result.get_table("ic_by_date")["date"].n_unique() == 32
+    model = result.to_ic_result()
+    assert list(pd.DatetimeIndex(model.dates).as_unit("ns").asi8) == list(clock.as_unit("ns").asi8)
+    assert set(model.ic_by_date) == {"next_quote", "fifth_quote"}
+
+
 def test_information_keeps_unavailable_dates_and_counts_instead_of_inventing_zero_ic():
     dates = pd.bdate_range("2025-01-02", periods=25, tz="UTC")
     prices = pd.DataFrame(np.arange(1, 13)[None, :] * 2.0 ** np.arange(25)[:, None], index=dates)

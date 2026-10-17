@@ -8,12 +8,14 @@ from ml4t.diagnostic import analyze_signal
 from ml4t.diagnostic.visualization.signal import plot_ic_histogram, plot_ic_qq, plot_ic_ts
 
 
-def _price_produced_ic(*, unavailable=False, dates_count=25, intraday=False):
+def _price_produced_ic(*, unavailable=False, dates_count=25, intraday=False, nanosecond=False):
     dates = (
         pd.date_range("2025-01-02", periods=dates_count, freq="h", tz="UTC")
         if intraday
         else pd.bdate_range("2025-01-02", periods=dates_count, tz="UTC")
     )
+    if nanosecond:
+        dates = pd.date_range("2025-01-02", periods=dates_count, freq="100ns", tz="UTC")
     assets = [f"asset-{number:02}" for number in range(12)]
     index = pd.MultiIndex.from_product([dates, assets], names=["date", "asset"])
     factors = pd.DataFrame(
@@ -64,3 +66,12 @@ def test_intraday_price_produced_ic_rolling_window_is_not_labelled_as_elapsed_da
     assert rolling.name == "22-Observation Rolling Mean"
     assert np.isnan(rolling.y[:21]).all()
     assert list(rolling.y[21:]) == [1.0] * 3
+
+
+def test_price_produced_ic_time_series_retains_nanosecond_dates_already_owned_by_its_model():
+    ic = _price_produced_ic(nanosecond=True)
+    expected = pd.DatetimeIndex(ic.dates).as_unit("ns")
+    assert len(expected.unique()) == 24
+    figure = plot_ic_ts(ic, show_significance=False)
+    actual = pd.DatetimeIndex(figure.data[0].x).as_unit("ns")
+    assert list(actual.asi8) == list(expected.asi8)

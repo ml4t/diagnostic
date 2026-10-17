@@ -14,6 +14,7 @@ import polars as pl
 from scipy import stats
 
 from ml4t.diagnostic.metrics.ic_inference import compute_ic_summary_stats
+from ml4t.diagnostic.signal._utils import precise_dates
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.results.signal_results import SignalICResult
@@ -96,7 +97,7 @@ class SignalInformationResult:
         }
         return SignalICResult(
             ic_by_date=values,
-            dates=[pd.Timestamp(value).isoformat() for value in first["date"]],
+            dates=[pd.Timestamp(value).isoformat() for value in precise_dates(first["date"])],
             ic_positive_pct={
                 row["return_column"]: float("nan")
                 if row["pct_positive"] is None

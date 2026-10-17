@@ -14,6 +14,7 @@ from numbers import Integral
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 from scipy import stats
 from scipy.stats import jarque_bera as _jarque_bera
@@ -109,7 +110,7 @@ def plot_ic_ts(
     # Convert dates to datetime if strings
     if dates and isinstance(dates[0], str):
         try:
-            dates = [datetime.fromisoformat(d) for d in dates]
+            dates = [pd.Timestamp(d) for d in dates]
         except ValueError:
             pass  # Keep as strings if conversion fails
 
