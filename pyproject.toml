@@ -93,7 +93,7 @@ dependencies = [
     # Configuration management
     "pydantic>=2.13.4,<3",
     "pyyaml>=6.0",
-    "ml4t-specs @ git+https://github.com/ml4t/specs.git@701bde68744035050ede386efce498234c661c21",
+    "ml4t-specs>=0.2.0",
     # Trading calendars (for calendar-aware CV)
     "pandas_market_calendars>=4.0.0",
     # Templating (needed for dashboard module)
