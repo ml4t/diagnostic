@@ -67,7 +67,7 @@ def _annualization_factor(periods_per_year: int = 252) -> float:
 
 def calmar_ratio(
     returns: ArrayLike,
-    periods_per_year: int = 252,
+    periods_per_year: float = 252,
 ) -> float:
     """Compute Calmar ratio (annual return / max drawdown).
 
@@ -161,7 +161,7 @@ def max_drawdown(returns: ArrayLike) -> float:
 
 def annual_return(
     returns: ArrayLike,
-    periods_per_year: int = 252,
+    periods_per_year: float = 252,
 ) -> float:
     """Compute annualized return (CAGR).
 

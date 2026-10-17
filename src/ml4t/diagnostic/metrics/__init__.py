@@ -51,6 +51,7 @@ from ml4t.diagnostic.metrics.percentiles import compute_fold_percentiles
 from ml4t.diagnostic.metrics.quantile_profile import QuantileProfile, quantile_profile
 from ml4t.diagnostic.metrics.risk_adjusted import (
     maximum_drawdown,
+    periodic_downside_risk,
     periodic_sharpe_ratio,
     periodic_sortino_ratio,
     sharpe_ratio,
@@ -84,6 +85,7 @@ __all__ = [
     "maximum_drawdown",
     "sortino_ratio",
     "periodic_sortino_ratio",
+    "periodic_downside_risk",
     "analyze_feature_outcome",
     "compute_permutation_importance",
     "compute_mdi_importance",
