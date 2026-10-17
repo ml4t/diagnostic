@@ -295,6 +295,16 @@ def plot_ic_histogram(
     )
 
     # Histogram
+    if len(ic_clean) == 0:
+        fig.add_annotation(
+            text="IC distribution unavailable: no defined IC observations",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        return fig
     fig.add_trace(
         go.Histogram(
             x=ic_clean,
@@ -307,7 +317,8 @@ def plot_ic_histogram(
     )
 
     # KDE overlay
-    if show_kde and len(ic_clean) > 10:
+    varied = len(ic_clean) > 1 and np.std(ic_clean, ddof=1) > 0
+    if show_kde and len(ic_clean) > 10 and varied:
         kde = stats.gaussian_kde(ic_clean)
         x_kde = np.linspace(ic_clean.min(), ic_clean.max(), 200)
         y_kde = kde(x_kde)
@@ -325,6 +336,16 @@ def plot_ic_histogram(
                 name="KDE",
                 line={"color": theme_config["colorway"][1], "width": 2},
             )
+        )
+    elif show_kde and not varied:
+        fig.add_annotation(
+            text="KDE unavailable: IC sample has no dispersion",
+            x=0.02,
+            y=0.98,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            xanchor="left",
         )
 
     # Mean line
@@ -347,8 +368,8 @@ def plot_ic_histogram(
     # Statistics annotation
     if show_stats:
         ic_std = ic_result.ic_std.get(period, 0)
-        skewness = float(stats.skew(ic_clean)) if len(ic_clean) > 2 else 0
-        kurtosis = float(stats.kurtosis(ic_clean)) if len(ic_clean) > 3 else 0
+        skewness = float(stats.skew(ic_clean)) if varied and len(ic_clean) > 2 else np.nan
+        kurtosis = float(stats.kurtosis(ic_clean)) if varied and len(ic_clean) > 3 else np.nan
 
         stats_text = (
             f"<b>Statistics:</b><br>"
@@ -418,14 +439,6 @@ def plot_ic_qq(
     ic_clean = ic_series[~np.isnan(ic_series)]
     ic_sorted = np.sort(ic_clean)
 
-    # Theoretical quantiles
-    n = len(ic_sorted)
-    theoretical_quantiles = stats.norm.ppf(
-        (np.arange(1, n + 1) - 0.5) / n,
-        loc=np.mean(ic_clean),
-        scale=np.std(ic_clean, ddof=1),
-    )
-
     # Create figure
     fig = create_base_figure(
         title=f"IC Q-Q Plot ({period})",
@@ -434,6 +447,34 @@ def plot_ic_qq(
         width=width or theme_config["defaults"]["scatter_height"],
         height=height or theme_config["defaults"]["scatter_height"],
         theme=theme,
+    )
+
+    n = len(ic_sorted)
+    if n < 2 or np.std(ic_clean, ddof=1) <= 0:
+        if n:
+            fig.add_trace(
+                go.Scatter(
+                    x=np.arange(1, n + 1),
+                    y=ic_sorted,
+                    mode="markers",
+                    name="Observed IC (no fitted quantiles)",
+                )
+            )
+        fig.update_xaxes(title="Observation rank")
+        fig.add_annotation(
+            text="Q-Q fit unavailable: insufficient or constant IC sample",
+            x=0.5,
+            y=0.98,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        return fig
+
+    theoretical_quantiles = stats.norm.ppf(
+        (np.arange(1, n + 1) - 0.5) / n,
+        loc=np.mean(ic_clean),
+        scale=np.std(ic_clean, ddof=1),
     )
 
     # Q-Q scatter
