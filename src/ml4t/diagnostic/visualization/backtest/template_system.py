@@ -857,6 +857,21 @@ TEARSHEET_CSS = """
         width: 100% !important;
     }
 
+    .report-section[data-section="attribution_overview"] .chart-container,
+    .report-section[data-section="cost_sensitivity"] .chart-container {
+        overflow-x: auto;
+    }
+
+    .report-section[data-section="attribution_overview"] .chart-container > div,
+    .report-section[data-section="cost_sensitivity"] .chart-container > div {
+        min-width: 650px;
+    }
+
+    .report-section[data-section="attribution_overview"] .section-footnote,
+    .report-section[data-section="cost_sensitivity"] .section-footnote {
+        font-size: 13px;
+    }
+
     /* -- KPI Strip --------------------------------------- */
     .executive-strip {
         display: flex;
