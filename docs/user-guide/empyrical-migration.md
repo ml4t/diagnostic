@@ -156,6 +156,8 @@ must have the exact reduced shape, floating dtype, be writable and not overlap
 the input. One-series calls return a scalar; columnwise array calls return the
 buffer itself, and labeled calls share its storage. Sortino's optional
 `_downside_risk` is an already annualized deviation.
+Inputs are normalized to float64 for calculation; an explicitly supplied
+floating output buffer retains its dtype and corresponding output precision.
 Annual return, volatility and downside deviation use decimal return units;
 Sharpe, Sortino and Calmar ratios are dimensionless.
 

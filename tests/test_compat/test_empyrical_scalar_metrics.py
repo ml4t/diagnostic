@@ -130,6 +130,24 @@ def test_price_column_output_buffer_is_written_without_changing_input(api, retur
     pd.testing.assert_frame_equal(returns, before)
 
 
+@pytest.mark.parametrize("alpha", [1.0, 1.5, 2.0])
+@pytest.mark.parametrize("scale", [12, 52.5])
+def test_volatility_levy_exponent_scales_each_actual_price_column(api, returns, alpha, scale):
+    daily = [_expected("annual_volatility", column, 1) for column in ["complete", "missing"]]
+    expected = np.array(daily) * scale ** (1 / alpha)
+    np.testing.assert_allclose(
+        api.annual_volatility(returns, alpha=alpha, annualization=scale), expected
+    )
+
+
+@pytest.mark.parametrize("alpha", [0, -1, np.nan, np.inf])
+def test_invalid_levy_exponent_does_not_silently_produce_complex_or_zero_volatility(
+    api, returns, alpha
+):
+    with pytest.raises(ValueError, match="positive.*finite"):
+        api.annual_volatility(returns, alpha=alpha)
+
+
 def test_one_defined_price_return_retains_elapsed_rows_without_inventing_volatility(api, returns):
     sample = returns["missing"].where(np.arange(4) == 0)
     assert sample.notna().sum() == 1
@@ -312,11 +330,14 @@ def test_frame_periodic_rates_align_by_column_not_series_position(
     np.testing.assert_allclose(actual, expected)
 
 
-def test_supplied_downside_deviation_is_annualized_and_preserves_column_output(api, returns):
-    deviations = np.array([0.2, 0.3])
+@pytest.mark.parametrize("supplied", [0.2, np.array([0.2, 0.3])])
+def test_supplied_downside_deviation_is_annualized_and_preserves_column_output(
+    api, returns, supplied
+):
+    deviations = np.broadcast_to(supplied, (2,))
     means = [(2 / 100 - 1 / 102 + 2 / 101 + 1 / 103) / 4, (1 / 50 + 1 / 51 - 1 / 52) / 3]
     result = api.sortino_ratio(
-        returns, required_return=0.001, annualization=52.5, _downside_risk=deviations
+        returns, required_return=0.001, annualization=52.5, _downside_risk=supplied
     )
     assert list(result.index) == ["complete", "missing"]
     np.testing.assert_allclose(
@@ -344,6 +365,23 @@ def test_invalid_or_aliased_output_buffer_cannot_mutate_price_returns(api, retur
     with pytest.raises(ValueError, match="overlap"):
         function(sample, out=sample[0])
     np.testing.assert_array_equal(sample, before)
+
+
+@pytest.mark.parametrize(
+    "name", ["annual_volatility", "sharpe_ratio", "sortino_ratio", "downside_risk"]
+)
+def test_float32_output_keeps_buffer_storage_and_its_explicit_precision(api, returns, name):
+    out = np.empty(2, dtype=np.float32)
+    kwargs = {"annualization": 12, "out": out}
+    if name == "sharpe_ratio":
+        kwargs["risk_free"] = 0.001
+    if name in {"sortino_ratio", "downside_risk"}:
+        kwargs["required_return"] = 0.001
+    actual = getattr(api, name)(returns, **kwargs)
+    assert np.asarray(actual).dtype == np.dtype("float32")
+    assert np.shares_memory(actual, out)
+    expected = [_expected(name, column, 12) for column in ["complete", "missing"]]
+    np.testing.assert_allclose(actual, expected, rtol=2e-6)
 
 
 @pytest.mark.parametrize(
