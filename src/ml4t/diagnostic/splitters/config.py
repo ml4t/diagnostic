@@ -381,13 +381,19 @@ class WalkForwardConfig(SplitterConfig):
         self, handler: Any, info: SerializationInfo
     ) -> dict[str, Any]:
         data = handler(self)
+        excluded = info.exclude
+        calendar_excluded = (
+            excluded.get("calendar") is True or excluded.get("calendar") is ...
+            if isinstance(excluded, dict)
+            else excluded is not None and "calendar" in excluded
+        )
         if "calendar" not in self.model_fields_set:
             data.pop("calendar", None)
         elif (
             self.calendar is None
             and info.exclude_none
             and (info.include is None or "calendar" in info.include)
-            and (info.exclude is None or "calendar" not in info.exclude)
+            and not calendar_excluded
         ):
             data["calendar"] = None
         return data

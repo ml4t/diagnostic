@@ -98,6 +98,23 @@ def test_config_serialization_filters_do_not_resurrect_an_explicitly_excluded_ca
     assert config.model_dump(exclude_none=True)["calendar"] is None
 
 
+@pytest.mark.parametrize(
+    ("mask", "disabled"), [(False, True), (None, True), ({}, True), (True, False), (..., False)]
+)
+def test_nested_exclusion_masks_do_not_silently_reenable_a_disabled_calendar(mask, disabled):
+    config = WalkForwardConfig(calendar=None)
+    wire = config.model_dump(exclude_none=True, exclude={"calendar": mask})
+    if disabled:
+        assert "calendar" in wire and wire["calendar"] is None
+    else:
+        assert "calendar" not in wire
+    restored = WalkForwardCV(
+        config=WalkForwardConfig(**wire),
+        feed_spec=FeedSpec(time_contract_version=2, calendar="24/7"),
+    )
+    assert restored.config.calendar == (None if disabled else "24/7")
+
+
 def test_panel_purge_uses_each_assets_next_observation_across_holiday_and_other_assets():
     dates = pd.to_datetime(
         [
