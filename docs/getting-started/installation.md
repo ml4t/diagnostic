@@ -137,6 +137,14 @@ LightGBM requires an OpenMP runtime on macOS. Static Plotly image and PDF
 export through current Kaleido releases may require a local Chrome or Chromium
 installation.
 
+Source changes after 0.1.9 require Plotly 6.1.2 or newer and Kaleido 1.5 or
+newer in the `viz` and `all` extras. The older Kaleido 1.3 renderer fails on
+ordinary pandas Timestamp coordinates. HTML-only checks with Plotly 5.15 do
+not qualify PDF export with an older renderer pair. Windows browser-shutdown
+failures remain tracked in [issue 112](https://github.com/ml4t/diagnostic/issues/112);
+updated dependencies and successful Linux exports alone do not establish that
+the Windows failure is fixed.
+
 ### Migrating from beta releases
 
 The stable 0.1.0 API removes beta features that were not validated for the

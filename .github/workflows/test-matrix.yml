@@ -34,3 +34,10 @@ jobs:
         run: uv sync --frozen --dev --extra ml --extra viz
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short -x
+      - name: Run all real PDF lifecycle and report tests
+        run: >-
+          uv run pytest -o addopts=
+          tests/test_contract/test_pdf_collection_lifecycle.py
+          tests/test_visualization/test_pdf_report_lifecycle.py
+          tests/test_visualization/test_report_generation.py
+          -q -s -n 0 --timeout 120 --tb=short

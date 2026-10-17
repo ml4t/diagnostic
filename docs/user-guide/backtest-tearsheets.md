@@ -69,6 +69,15 @@ requirements, not guarantees established by report generation.
 
 ## Choose a template
 
+Profile attribution bars and contributor rankings use signed cash P&L. The
+table's "Share of net P&L" is a separate ratio: a losing total can give a
+losing asset a positive share, so its sign does not determine profit/loss
+colors or rankings. Undefined shares display `N/A`; defined zero cash P&L
+remains zero. Standalone share-only contributor inputs use neutral colors
+and report unavailable values explicitly.
+On narrow screens, the attribution panel scrolls horizontally to keep all table
+labels and values readable.
+
 | Template | Primary content |
 |----------|-----------------|
 | `quant_trader` | Trades, performance, and model diagnostics |
@@ -80,6 +89,27 @@ Use `BacktestProfile` when you have normalized trades, returns, positions,
 costs, predictions, and factor results. Use
 `generate_tearsheet_from_result` for an `ml4t-backtest` result. The integration
 normalizes the backtest object before rendering.
+
+For contract fills, provide the declared point-value multiplier. The Backtest
+bridge uses a fill's explicit `multiplier` when present, otherwise the producer's
+trade multiplier for that asset. Conflicting trade declarations or missing,
+nonfinite or nonpositive declared multipliers raise an error. Direct
+`compute_activity_metrics` callers can supply the corresponding `trades_df`.
+Legacy inputs with no multiplier declaration retain cash-per-unit prices; they
+do not establish support for contract prices quoted in points.
+
+Filled notional is absolute quantity times execution price times multiplier.
+Slippage quoted in price points uses the same multiplier; commission is already
+cash and is not multiplied again. In the tested one-contract example, price
+100 and multiplier 50 produce $5,000 notional and 0.50 turnover against $10,000
+end-observation NAV. With 0.5 points of slippage and $2 commission, implementation
+cost is $27, not $2.50. Activity and symbol attribution use the same units and
+leave producer tables unchanged.
+
+These activity ratios use the NAV at the matched observed timestamp. They do
+not establish exchange-session aggregation, Pyfolio's average-gross-book
+denominator, or beginning-session-NAV return scenarios. Those workflows require
+separate input and calendar contracts.
 
 PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).
