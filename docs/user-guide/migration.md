@@ -910,7 +910,13 @@ for the condition diagnostics. A finite universe mean that overflows its first
 aggregation is recomputed with the existing stable sample-statistics helper.
 Neither adjustment removes an otherwise finite date. Price-derived tests retain
 three joint dates for identical asset returns `[1e308, -0.5, 0.5]`, with known
-beta1/alpha0, and preserve a supplied portfolio's tiny beta `1e-308`.
+beta 1 and alpha 0, and preserve a supplied portfolio's tiny beta `1e-308`.
+On those same six date/asset observations and weights of 0.5, released
+Alphalens 0.4.6 with pandas 2.3.3 retains the portfolio returns but overflows
+the first universe mean to infinity. Its regression raises `MissingDataError`.
+The independent expected mean of two identical finite returns is that return;
+regressing the same nonconstant series on itself has beta 1 and intercept 0.
+This stress-boundary reconciliation does not establish full reference parity.
 
 To reproduce Alphalens 0.4.6's fixed 252-day annualization convention for known
 one-day and five-day outcomes, explicitly supply `{"1D": 252, "5D": 50.4}`.
