@@ -104,6 +104,15 @@ def test_price_columns_use_metric_specific_missingness_and_explicit_periodic_rat
     pd.testing.assert_frame_equal(returns, before)
 
 
+@pytest.mark.parametrize("as_numpy", [False, True])
+def test_calmar_rejects_direct_two_column_input_instead_of_inventing_axis_semantics(
+    api, returns, as_numpy
+):
+    sample = returns.to_numpy() if as_numpy else returns
+    with pytest.raises(ValueError, match="one-dimensional"):
+        api.calmar_ratio(sample)
+
+
 @pytest.mark.parametrize(
     "name", ["annual_volatility", "sharpe_ratio", "sortino_ratio", "downside_risk"]
 )
@@ -416,6 +425,10 @@ def test_captured_price_workflow_matches_pinned_reference_values_and_supported_s
     if name in {"sortino_ratio", "downside_risk"}:
         kwargs["required_return"] = 0.001
     if name == "calmar_ratio" and sample.ndim == 2:
+        with pytest.raises(ValueError):
+            reference.calmar_ratio(sample, **kwargs)
+        with pytest.raises(ValueError, match="one-dimensional"):
+            api.calmar_ratio(sample, **kwargs)
         expected = np.array(
             [
                 reference.calmar_ratio(
