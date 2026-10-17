@@ -1193,7 +1193,7 @@ offline prices, including one bin, all seven horizons and positive/negative
 event factors:
 
 ```bash
-uv run python examples/legacy_migration_comparison.py --task event-study --output event-study.html
+uv run --extra viz python examples/legacy_migration_comparison.py --task event-study --output event-study.html
 ```
 
 The command checks nine events and 144 requested path cells per sign and writes

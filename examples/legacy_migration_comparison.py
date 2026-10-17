@@ -613,7 +613,9 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
         from ml4t.diagnostic.visualization.signal import generate_event_returns_report
 
         assert result.overall.paths.height == 96 and result.groups is not None
-        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(result.groups.paths)
+        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(
+            result.groups.paths
+        )
         path = generate_event_returns_report(result, output_file=output)
         output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
         print(f"Complete event-returns HTML: {path}")
@@ -633,29 +635,48 @@ def _signal_event_study_inputs():
     dates = pd.bdate_range("2025-01-02", periods=24, tz="UTC")
     prices = pd.DataFrame(
         {
-            "A": [31,29,32,28,31,27,30,29,33,28,*np.linspace(35,48,14)],
-            "B": [28,31,29,33,27,32,28,34,26,35,*np.linspace(36,49,14)],
-            "C": np.linspace(40,63,24),
-        },index=dates,
+            "A": [31, 29, 32, 28, 31, 27, 30, 29, 33, 28, *np.linspace(35, 48, 14)],
+            "B": [28, 31, 29, 33, 27, 32, 28, 34, 26, 35, *np.linspace(36, 49, 14)],
+            "C": np.linspace(40, 63, 24),
+        },
+        index=dates,
     )
     events = prices.where((prices < 30) & (prices.shift(1) >= 30)).stack().dropna().rename("factor")
-    events.index.names = ["date","asset"]
+    events.index.names = ["date", "asset"]
     pricing = prices.iloc[1:]
-    forward = pd.concat({f"{period}D":(pricing.shift(-period)/pricing-1).stack() for period in [1,2,3,4,5,6,10]},axis=1)
-    forward.index.names = ["date","asset"]
-    return pricing,events,forward.reindex(events.index)
+    forward = pd.concat(
+        {
+            f"{period}D": (pricing.shift(-period) / pricing - 1).stack()
+            for period in [1, 2, 3, 4, 5, 6, 10]
+        },
+        axis=1,
+    )
+    forward.index.names = ["date", "asset"]
+    return pricing, events, forward.reindex(events.index)
 
 
 def show_signal_event_study(output: Path) -> None:
     """Execute the original event notebook's positive/negative threshold workflow offline."""
-    from ml4t.diagnostic.signal import SignalEventStudyResult,analyze_signal_event_study,prepare_signal_panel
+    from ml4t.diagnostic.signal import (
+        SignalEventStudyResult,
+        analyze_signal_event_study,
+        prepare_signal_panel,
+    )
     from ml4t.diagnostic.visualization.signal import generate_signal_event_study_report
 
-    pricing,events,forward = _signal_event_study_inputs()
-    factors = {f"{period}D":1/period for period in [1,2,3,4,5,6,10]}
-    for direction in [1,-1]:
-        panel = prepare_signal_panel(events*direction,forward,quantiles=None,bins=1,max_loss=0)
-        result = analyze_signal_event_study(panel,pricing,input_kind="levels",event_window=(5,10),rate_conversion_factors=factors)
+    pricing, events, forward = _signal_event_study_inputs()
+    factors = {f"{period}D": 1 / period for period in [1, 2, 3, 4, 5, 6, 10]}
+    for direction in [1, -1]:
+        panel = prepare_signal_panel(
+            events * direction, forward, quantiles=None, bins=1, max_loss=0
+        )
+        result = analyze_signal_event_study(
+            panel,
+            pricing,
+            input_kind="levels",
+            event_window=(5, 10),
+            rate_conversion_factors=factors,
+        )
         assert panel.data.height == 9 and result.factor_statistics["count"].to_list() == [9]
         assert result.event_distribution["n_events"].sum() == 9
         assert result.event_membership.height == 9
@@ -665,11 +686,17 @@ def show_signal_event_study(output: Path) -> None:
         restored = SignalEventStudyResult.from_json(result.to_json())
         assert restored.prepared_events.equals(result.prepared_events)
         assert restored.event_membership.equals(result.event_membership)
-        target = output if direction == 1 else output.with_name(output.stem+"-negative"+output.suffix)
-        path = generate_signal_event_study_report(result,output_file=target)
-        target.with_suffix(".json").write_text(result.to_json(),encoding="utf-8")
-        print(f"{'Positive' if direction==1 else 'Negative'} event-study HTML: {path}")
-    print("Threshold-crossing event study: 9 events, 1 bucket, 7 horizons, positive/negative factors")
+        target = (
+            output
+            if direction == 1
+            else output.with_name(output.stem + "-negative" + output.suffix)
+        )
+        path = generate_signal_event_study_report(result, output_file=target)
+        target.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+        print(f"{'Positive' if direction == 1 else 'Negative'} event-study HTML: {path}")
+    print(
+        "Threshold-crossing event study: 9 events, 1 bucket, 7 horizons, positive/negative factors"
+    )
     print("Observed-row horizons/window; elapsed histogram; explicit dimensionless rate powers")
 
 
