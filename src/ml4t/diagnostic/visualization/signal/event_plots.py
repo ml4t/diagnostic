@@ -140,7 +140,13 @@ def plot_event_count_distribution(
         barmode="stack",
         legend={"orientation": "h", "y": -0.25, "x": 0, "font": {"size": 14}},
         margin={"l": 65, "r": 20, "t": 45, "b": 120},
-        xaxis={"title": "Event timestamp", "tickfont": {"size": 14}},
+        xaxis={
+            "title": "Event timestamp",
+            "tickfont": {"size": 14},
+            "tickangle": 0,
+            "nticks": 3,
+            "automargin": True,
+        },
         yaxis={"title": "Events", "tickfont": {"size": 14}, "dtick": 1},
         meta={"analysis": "event_counts", "calendar_validation": "not performed"},
     )

@@ -360,7 +360,9 @@ def test_event_report_validates_before_writing_and_cleans_up_after_real_filesyst
 
 
 @pytest.mark.parametrize("width", [375, 1200])
-def test_real_aligned_event_report_browser_preserves_data_and_readable_labels(width, tmp_path):
+def test_real_aligned_event_report_browser_preserves_data_and_readable_labels(
+    width, tmp_path, monkeypatch
+):
     import json
     import os
     import shutil
@@ -369,7 +371,7 @@ def test_real_aligned_event_report_browser_preserves_data_and_readable_labels(wi
     playwright = pytest.importorskip("playwright.sync_api")
     from plotly.offline import get_plotlyjs
 
-    from ml4t.diagnostic.visualization.signal import generate_aligned_event_report
+    from ml4t.diagnostic.visualization.signal import event_plots, generate_aligned_event_report
 
     chrome = (
         shutil.which("google-chrome")
@@ -380,6 +382,27 @@ def test_real_aligned_event_report_browser_preserves_data_and_readable_labels(wi
         pytest.skip("actual Chrome is required for rendered report verification")
     target = tmp_path / "events.html"
     generate_aligned_event_report(_report_result(), output_file=target, std_multiplier=0.5)
+    previous = tmp_path / "previous-auto-ticks.html"
+    if width == 375:
+        original_plot = event_plots.plot_event_count_distribution
+
+        def previous_auto_ticks(*args, **kwargs):
+            figure = original_plot(*args, **kwargs)
+            figure.update_xaxes(tickangle=None, nticks=None, automargin=None)
+            return figure
+
+        with monkeypatch.context() as context:
+            context.setattr(event_plots, "plot_event_count_distribution", previous_auto_ticks)
+            generate_aligned_event_report(_report_result(), output_file=previous)
+    overlap_script = """() => {
+        const plot=document.getElementById('plot-1');
+        const legend=plot.querySelector('.legend').getBoundingClientRect();
+        return Array.from(plot.querySelectorAll('.xtick text')).some(node=>{
+            const tick=node.getBoundingClientRect();
+            return tick.width>0 && tick.height>0 && tick.left<legend.right &&
+                tick.right>legend.left && tick.top<legend.bottom && tick.bottom>legend.top;
+        });
+    }"""
     errors = []
     with playwright.sync_playwright() as runtime:
         browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
@@ -392,6 +415,14 @@ def test_real_aligned_event_report_browser_preserves_data_and_readable_labels(wi
                 ),
             )
             page.on("pageerror", lambda error: errors.append(str(error)))
+            if width == 375:
+                page.goto(previous.as_uri(), wait_until="networkidle")
+                page.wait_for_selector("#plot-1 .xtick text")
+                assert page.evaluate(overlap_script), "previous automatic ticks must expose overlap"
+                if os.environ.get("GITHUB_ACTIONS") == "true":
+                    evidence = Path(os.environ["GITHUB_WORKSPACE"]) / "artifacts/event-reports"
+                    evidence.mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(evidence / "events-375-previous.png"), full_page=True)
             page.goto(target.as_uri(), wait_until="networkidle")
             page.wait_for_selector(".js-plotly-plot .gtitle")
             measured = page.evaluate("""() => {
@@ -406,6 +437,8 @@ def test_real_aligned_event_report_browser_preserves_data_and_readable_labels(wi
                     proseFamily:getComputedStyle(prose).fontFamily,
                     titles:Array.from(document.querySelectorAll('.gtitle')).map(node=>parseFloat(getComputedStyle(node).fontSize))};
             }""")
+            measured["eventCountTickLegendOverlap"] = page.evaluate(overlap_script)
+            measured["previousAutoTicksOverlapControl"] = width == 375
             page.screenshot(path=str(tmp_path / f"events-{width}.png"), full_page=True)
             if os.environ.get("GITHUB_ACTIONS") == "true":
                 evidence = Path(os.environ["GITHUB_WORKSPACE"]) / "artifacts/event-reports"
@@ -416,6 +449,7 @@ def test_real_aligned_event_report_browser_preserves_data_and_readable_labels(wi
             browser.close()
     assert not errors
     assert measured["width"] == width and measured["scroll"] <= width
+    assert measured["eventCountTickLegendOverlap"] is False
     assert measured["mean"] == [67.5]
     np.testing.assert_allclose(measured["error"], [8.838834764831844])
     assert measured["labelSizes"] and min(measured["labelSizes"]) >= 14
