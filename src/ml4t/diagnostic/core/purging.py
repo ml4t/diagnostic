@@ -10,7 +10,6 @@ Based on López de Prado (2018) "Advances in Financial Machine Learning".
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
@@ -22,12 +21,16 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.splitters.calendar import TradingCalendar
 
 
-def _normalize_timezone_aware_inputs(
+def _normalize_timestamp_inputs(
     timestamps: pd.DatetimeIndex,
     test_start: pd.Timestamp,
     test_end: pd.Timestamp,
+    *,
+    allow_naive: bool = False,
 ) -> tuple[pd.DatetimeIndex, pd.Timestamp, pd.Timestamp]:
-    """Validate timezone awareness and normalize all inputs to UTC."""
+    """Validate consistent awareness and normalize aware inputs to UTC."""
+    if allow_naive and timestamps.tz is None and test_start.tz is None and test_end.tz is None:
+        return timestamps, test_start, test_end
     if timestamps.tz is None:
         raise ValueError("timestamps must be timezone-aware")
     if test_start.tz is None:
@@ -85,7 +88,7 @@ def calculate_purge_indices(
 
     label_horizon : int or pandas.Timedelta, default=0
         Forward-looking period of labels. For example, if predicting
-        20-day returns, label_horizon=20 (days).
+        20-observation returns, label_horizon=20 (rows without a calendar).
 
         When timestamps and calendar are provided and label_horizon is int,
         it is interpreted as trading days (not calendar days).
@@ -96,7 +99,8 @@ def calculate_purge_indices(
     calendar : TradingCalendar, optional
         Trading calendar for trading-day-aware conversion.
         When provided with integer label_horizon and timestamps,
-        label_horizon is interpreted as trading days.
+        label_horizon is interpreted as trading days. Without a calendar,
+        integers count observed rows; pd.Timedelta always means elapsed time.
 
     Returns:
     -------
@@ -142,8 +146,11 @@ def calculate_purge_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
-            timestamps, test_start, test_end
+        timestamps, test_start, test_end = _normalize_timestamp_inputs(
+            timestamps,
+            test_start,
+            test_end,
+            allow_naive=calendar is None and not isinstance(label_horizon, pd.Timedelta),
         )
 
         if not isinstance(label_horizon, pd.Timedelta):
@@ -159,18 +166,11 @@ def calculate_purge_indices(
                     direction="backward",
                 )
             else:
-                # Fallback to calendar days with warning
-                if label_horizon > 0:
-                    warnings.warn(
-                        f"label_horizon={label_horizon} (int) with timestamps but no calendar. "
-                        "Interpreting as calendar days. For trading days, provide a calendar.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                label_horizon = pd.Timedelta(days=label_horizon)
+                start = _searchsorted_timestamp_ns(timestamps, test_start, side="left")
+                return list(range(max(0, start - label_horizon), start))
 
         # Calculate purge start time
-        purge_start_time = test_start - cast(pd.Timedelta, label_horizon)
+        purge_start_time = test_start - label_horizon
 
         # Find indices to purge
         purge_mask = (timestamps >= purge_start_time) & (timestamps < test_start)
@@ -201,6 +201,7 @@ def calculate_embargo_indices(
     embargo_size: int | pd.Timedelta | None = None,
     embargo_pct: float | None = None,
     timestamps: pd.DatetimeIndex | None = None,
+    calendar: TradingCalendar | None = None,
 ) -> list[int]:
     """Calculate indices to embargo after test set to prevent serial correlation.
 
@@ -228,6 +229,11 @@ def calculate_embargo_indices(
 
     timestamps : pandas.DatetimeIndex, optional
         Timestamps for each sample when using time-based indices.
+
+    calendar : TradingCalendar, optional
+        Already resolved calendar for integer trading-day embargo. Without a
+        calendar, integers and percentages count observations even when the
+        other buffer uses elapsed time. Timedelta always means elapsed time.
 
     Returns:
     -------
@@ -264,9 +270,16 @@ def calculate_embargo_indices(
                 "test_start and test_end must be Timestamps when using timestamps",
             )
 
-        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
-            timestamps, test_start, test_end
+        row_mode = calendar is None and not isinstance(embargo_size, pd.Timedelta)
+        timestamps, test_start, test_end = _normalize_timestamp_inputs(
+            timestamps, test_start, test_end, allow_naive=row_mode
         )
+
+        if row_mode:
+            size = int(len(timestamps) * embargo_pct) if embargo_pct is not None else embargo_size
+            assert size is not None
+            start = _searchsorted_timestamp_ns(timestamps, test_end, side="left")
+            return list(range(start, min(len(timestamps), start + size)))
 
         # Calculate embargo size if percentage given
         if embargo_pct is not None:
@@ -274,11 +287,18 @@ def calculate_embargo_indices(
             embargo_size = total_duration * embargo_pct
 
         if not isinstance(embargo_size, pd.Timedelta):
-            # Convert integer days to Timedelta
-            embargo_size = pd.Timedelta(days=cast(int, embargo_size))
+            from ml4t.diagnostic.splitters.calendar import trading_days_to_timedelta
+
+            assert calendar is not None
+            embargo_size = trading_days_to_timedelta(
+                n_trading_days=cast(int, embargo_size),
+                calendar=calendar,
+                reference_date=test_end,
+                direction="forward",
+            )
 
         # Calculate embargo end time
-        embargo_end_time = test_end + cast(pd.Timedelta, embargo_size)
+        embargo_end_time = test_end + embargo_size
 
         # Find indices to embargo
         embargo_mask = (timestamps >= test_end) & (timestamps < embargo_end_time)
@@ -380,9 +400,19 @@ def apply_purging_and_embargo(
     if timestamps is not None:
         if not isinstance(test_start, pd.Timestamp) or not isinstance(test_end, pd.Timestamp):
             raise TypeError("test_start and test_end must be Timestamps when using timestamps")
-        timestamps, test_start, test_end = _normalize_timezone_aware_inputs(
-            timestamps, test_start, test_end
+        row_mode = (
+            calendar is None
+            and not isinstance(label_horizon, pd.Timedelta)
+            and not isinstance(embargo_size, pd.Timedelta)
         )
+        timestamps, test_start, test_end = _normalize_timestamp_inputs(
+            timestamps, test_start, test_end, allow_naive=row_mode
+        )
+        if row_mode:
+            n_samples = len(timestamps)
+            test_start = _searchsorted_timestamp_ns(timestamps, test_start, side="left")
+            test_end = _searchsorted_timestamp_ns(timestamps, test_end, side="left")
+            timestamps = None
 
     # Calculate indices to remove - convert to numpy arrays immediately
     purged_list = calculate_purge_indices(
@@ -402,6 +432,7 @@ def apply_purging_and_embargo(
         embargo_size=embargo_size,
         embargo_pct=embargo_pct,
         timestamps=timestamps,
+        calendar=calendar,
     )
     embargoed_arr = np.asarray(embargoed_list, dtype=np.intp)
 

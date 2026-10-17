@@ -454,15 +454,15 @@ class TestEmbargoValidation:
             timestamps=timestamps,
             test_start=test_start,
             test_end=test_end,
-            embargo_pct=0.05,  # 5% of duration
+            embargo_pct=0.05,  # 5% of observations
         )
 
         # Should have some embargo indices
         assert len(embargoed) > 0
         assert all(idx >= 60 for idx in embargoed)
 
-    def test_embargo_int_converted_to_timedelta(self):
-        """Test that integer embargo_size is converted to Timedelta."""
+    def test_embargo_int_counts_observations_with_timestamps(self):
+        """Integer embargo keeps its observation units when timestamps are supplied."""
         timestamps = pd.date_range("2020-01-01", periods=100, freq="D", tz="UTC")
         test_start = timestamps[50]
         test_end = timestamps[60]
@@ -471,7 +471,7 @@ class TestEmbargoValidation:
             timestamps=timestamps,
             test_start=test_start,
             test_end=test_end,
-            embargo_size=5,  # Integer, should become 5 days
+            embargo_size=5,
         )
 
         expected = list(range(60, 65))
