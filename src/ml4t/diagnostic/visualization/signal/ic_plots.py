@@ -180,8 +180,6 @@ def plot_ic_ts(
         y=mean_ic,
         line_dash="dot",
         line_color=theme_config["colorway"][2],
-        annotation_text=f"Mean IC: {format_finite(mean_ic, '.4f')}",
-        annotation_position="top right",
     )
 
     # Significance bands
@@ -359,14 +357,17 @@ def plot_ic_histogram(
         )
     elif show_kde and not varied:
         fig.add_annotation(
-            text="KDE unavailable: IC sample has no dispersion",
+            text="KDE unavailable: constant IC",
             x=0.02,
-            y=0.98,
+            y=-0.18,
             xref="paper",
             yref="paper",
             showarrow=False,
             xanchor="left",
         )
+
+    if show_kde and not varied:
+        fig.update_layout(margin_b=120)
 
     # Mean line
     mean_ic = ic_result.ic_mean.get(period, 0)
@@ -374,7 +375,7 @@ def plot_ic_histogram(
         x=mean_ic,
         line_dash="dash",
         line_color=theme_config["colorway"][2],
-        annotation_text=f"Mean: {format_finite(mean_ic, '.4f')}",
+        **({} if show_stats else {"annotation_text": f"Mean: {format_finite(mean_ic, '.4f')}"}),
     )
 
     # Zero line

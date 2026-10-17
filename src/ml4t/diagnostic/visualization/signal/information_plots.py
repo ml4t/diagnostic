@@ -73,7 +73,7 @@ def plot_signal_information(
             )
         figure.update_layout(**get_theme_config(validate_theme(theme))["layout"])
         figure.update_layout(
-            title="Mean information coefficient by group",
+            title="Mean IC by group",
             barmode="group",
             xaxis_title="Group",
             yaxis_title="Mean IC",

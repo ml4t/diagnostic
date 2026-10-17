@@ -11,10 +11,13 @@ import pytest
 
 @pytest.mark.parametrize("grouped", [False, True])
 @pytest.mark.parametrize("width", [375, 1200])
+@pytest.mark.parametrize("constant", [False, True])
 def test_complete_information_panels_render_actual_samples_without_hidden_or_clipped_labels(
-    grouped, width, tmp_path
+    grouped, width, constant, tmp_path
 ):
     playwright = pytest.importorskip("playwright.sync_api")
+    import numpy as np
+    import pandas as pd
     from plotly.offline import get_plotlyjs
 
     from ml4t.diagnostic.signal import analyze_signal_information, prepare_signal_panel
@@ -29,9 +32,27 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
         pytest.skip("Actual Chrome is required for rendered information-report qualification")
     recipe = Path(__file__).resolve().parents[2] / "examples/legacy_migration_comparison.py"
     factor, forward, groups = runpy.run_path(str(recipe))["_signal_information_inputs"]()
+    if constant:
+        dates = pd.bdate_range("2025-01-02", periods=30, tz="UTC")
+        assets = [f"asset-{index:02}" for index in range(12)]
+        prices = pd.DataFrame(
+            64 * (1 + np.arange(1, 13)[None, :] / 64) ** np.arange(30)[:, None],
+            index=dates,
+            columns=assets,
+        )
+        factor = (
+            pd.DataFrame(np.tile(np.arange(1, 13), (25, 1)), index=dates[:25], columns=assets)
+            .stack()
+            .rename("factor")
+        )
+        factor.index = factor.index.set_names(["date", "asset"])
+        forward = pd.DataFrame(
+            {f"{period}D": (prices.shift(-period) / prices - 1).stack() for period in [1, 5]}
+        ).reindex(factor.index)
+        groups = {asset: "small" if index < 6 else "large" for index, asset in enumerate(assets)}
     result = analyze_signal_information(
         prepare_signal_panel(factor, forward, groups=groups, quantiles=3, max_loss=0),
-        group_adjust=True,
+        group_adjust=not constant,
         by_group=grouped,
     )
     target = tmp_path / "information.html"
@@ -57,6 +78,8 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
                 return {width:innerWidth,scroll:document.documentElement.scrollWidth,
                     panels:plots.map(plot=>{const bounds=plot.getBoundingClientRect();return {
                         title:plot.layout.title.text,
+                        titleInside:(()=>{const title=plot.querySelector('.gtitle').getBoundingClientRect();return title.left>=bounds.left&&title.right<=bounds.right})(),
+                        annotationOverlap:(()=>{const boxes=Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.getBoundingClientRect());return boxes.some((a,i)=>boxes.slice(i+1).some(b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))})(),
                         traces:plot.data.map(trace=>({name:trace.name,x:trace.x,y:trace.y})),
                         legends:Array.from(plot.querySelectorAll('.legendtext')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,inside:box.left>=bounds.left&&box.right<=bounds.right&&box.top>=bounds.top&&box.bottom<=bounds.bottom}})
                     }}),
@@ -67,14 +90,21 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
             }""")
             table = page.locator("#section-0 table")
             table.evaluate("node => {node.parentElement.scrollLeft=node.parentElement.scrollWidth}")
-            final_header_visible = table.locator("th").last.evaluate(
-                "node => {const box=node.getBoundingClientRect(),parent=node.closest('table').parentElement.getBoundingClientRect();return box.left>=parent.left&&box.right<=parent.right}"
+            table_geometry = table.locator("th").last.evaluate(
+                """node => {const container=node.closest('table').parentElement,
+                    parent=container.getBoundingClientRect(),cell=node.getBoundingClientRect(),
+                    range=document.createRange();range.selectNodeContents(node);
+                    const text=range.getBoundingClientRect();return {
+                        parent:[parent.left,parent.right],cell:[cell.left,cell.right],
+                        text:[text.left,text.right],scrollLeft:container.scrollLeft,
+                        scrollWidth:container.scrollWidth,clientWidth:container.clientWidth,
+                        visible:getComputedStyle(node).visibility!=='hidden'&&text.width>0&&text.left>=parent.left&&text.right<=parent.right};} """
             )
-            assert final_header_visible
+            measured["tableGeometry"] = table_geometry
             if os.environ.get("GITHUB_ACTIONS") == "true":
                 output = Path(os.environ["GITHUB_WORKSPACE"]) / "artifacts/information-reports"
                 output.mkdir(parents=True, exist_ok=True)
-                prefix = f"information-grouped-{int(grouped)}-{width}"
+                prefix = f"information-constant-{int(constant)}-grouped-{int(grouped)}-{width}"
                 page.screenshot(path=str(output / f"{prefix}.png"), full_page=True)
                 for index in range(len(measured["panels"]) + 1):
                     page.locator(f"#section-{index}").screenshot(
@@ -84,13 +114,16 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
         finally:
             browser.close()
     assert not errors
+    assert table_geometry["visible"], table_geometry
     assert measured["width"] == measured["scroll"] == width
     assert len(measured["panels"]) == (7 if grouped else 8)
     assert min(measured["labelSizes"]) >= 14
     assert max(measured["titleSizes"]) <= measured["proseSize"]
+    assert all(panel["titleInside"] for panel in measured["panels"]), measured
+    assert not any(panel["annotationOverlap"] for panel in measured["panels"]), measured
     assert all(label["inside"] for panel in measured["panels"] for label in panel["legends"])
     for position in [0, 3]:
-        assert len(measured["panels"][position]["traces"][0]["x"]) == 32
+        assert len(measured["panels"][position]["traces"][0]["x"]) == (25 if constant else 32)
         assert [label["text"] for label in measured["panels"][position]["legends"]] == [
             "Observed IC",
             "22-Observation Rolling Mean",
