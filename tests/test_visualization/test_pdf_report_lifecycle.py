@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 import pytest
 
@@ -52,6 +53,10 @@ def test_pandas_timestamp_return_coordinates_produce_a_real_dated_pdf(tmp_path, 
 def test_multipage_pdf_preserves_pages_and_returns_from_real_public_export(
     scale, observe_renderer, tmp_path
 ):
+    _assert_multipage_pdf_export(scale, observe_renderer, tmp_path)
+
+
+def _assert_multipage_pdf_export(scale, observe_renderer, tmp_path):
     kaleido = pytest.importorskip("kaleido")
     pio = pytest.importorskip("plotly.io")
     pytest.importorskip("pypdf")
@@ -160,3 +165,45 @@ stage('assertions_complete')
         assert all(code is not None for code in result["renderer_returncodes"]), result
     assert result["page_boxes"] == [[0, 0, 600 * scale, 450 * scale]] * 3
     print(json.dumps(result))
+
+
+def test_real_pdf_process_exit_does_not_wait_for_unrelated_inherited_stdout(tmp_path, monkeypatch):
+    original = subprocess.Popen
+    release = tmp_path / "release"
+    started = tmp_path / "descendant-started"
+    finished = tmp_path / "descendant-finished"
+    descendant_code = (
+        "import time\nfrom pathlib import Path\n"
+        f"release=Path({str(release)!r})\n"
+        "deadline=time.monotonic()+30\n"
+        "while not release.exists() and time.monotonic()<deadline: time.sleep(0.05)\n"
+        f"Path({str(finished)!r}).touch()\n"
+    )
+
+    class InheritedStdout(original):
+        def __init__(self, args, *other, **kwargs):
+            if isinstance(args, list) and len(args) > 2 and "assertions_complete" in str(args[2]):
+                args = list(args)
+                injection = (
+                    "import subprocess\n"
+                    f"Path({str(started)!r}).touch()\n"
+                    f"subprocess.Popen([sys.executable,'-c',{descendant_code!r}])\n"
+                    "sys.stdout.flush()"
+                )
+                args[2] = args[2].replace("sys.stdout.flush()", injection)
+            super().__init__(args, *other, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", InheritedStdout)
+    try:
+        _assert_multipage_pdf_export(1, True, tmp_path)
+        assert started.exists()
+        assert not finished.exists(), (
+            "The probe waited for stdout EOF after the exporter had exited"
+        )
+    finally:
+        release.touch()
+        if started.exists():
+            deadline = time.monotonic() + 5
+            while not finished.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert finished.exists(), "Controlled stdout owner did not terminate"
