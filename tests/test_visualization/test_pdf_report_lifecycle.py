@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -121,40 +122,38 @@ stage('final_process_state',pid=os.getpid(),threads=[
 atexit.register(lambda:stage('python_atexit_reached'))
 stage('assertions_complete')
 """
-    with subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            code,
-            str(tmp_path / "report.pdf"),
-            str(scale),
-            "1" if observe_renderer else "0",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=None,
-        text=True,
-        encoding="utf-8",
-        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-    ) as process:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                code,
+                str(tmp_path / "report.pdf"),
+                str(scale),
+                "1" if observe_renderer else "0",
+            ],
+            stdout=output,
+            stderr=None,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        )
         try:
-            stdout, stderr = process.communicate(timeout=120)
-        except subprocess.TimeoutExpired as error:
+            process.wait(timeout=120)
+        except subprocess.TimeoutExpired:
             returncode_at_timeout = process.poll()
             process.kill()
-            if os.name == "nt":
-                stdout, stderr = process.communicate()
-            else:
-                process.wait()
-                stdout, stderr = error.stdout, error.stderr
-            captured = "\n".join(
-                value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
-                for value in (stdout, stderr)
-            )
+            process.wait(timeout=5)
+            output.seek(0)
             pytest.fail(
                 "Actual PDF export subprocess exceeded 120 seconds; "
-                f"returncode before cleanup={returncode_at_timeout}:\n{captured}"
+                f"returncode before cleanup={returncode_at_timeout}:\n{output.read()}"
             )
-    assert process.returncode == 0, stdout + (stderr or "")
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+        output.seek(0)
+        stdout = output.read()
+    assert process.returncode == 0, stdout
     result = json.loads(stdout)
     if observe_renderer:
         assert result["renderer_instances"] == 1, result
