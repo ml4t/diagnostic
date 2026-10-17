@@ -19,13 +19,34 @@ from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio, sortino_ratio
 
 
 def _filled_notional_expr() -> pl.Expr:
-    return pl.col("quantity").abs() * pl.col("price")
+    return pl.col("quantity").abs() * pl.col("price") * pl.col("multiplier")
 
 
 def _implementation_cost_expr() -> pl.Expr:
     return pl.col("commission").fill_null(0.0) + (
-        pl.col("quantity").abs() * pl.col("slippage").fill_null(0.0)
+        pl.col("quantity").abs() * pl.col("slippage").fill_null(0.0) * pl.col("multiplier")
     )
+
+
+def _fill_cash_units(fills: pl.DataFrame, trades: pl.DataFrame | None) -> pl.DataFrame:
+    """Use declared fill units or unambiguous producer trade point values."""
+    if fills.is_empty():
+        return fills.clone()
+    if "multiplier" not in fills.columns:
+        if trades is not None and "multiplier" in trades.columns:
+            units = trades.select(pl.col("symbol").alias("asset"), "multiplier").unique()
+            units = units.join(fills.select("asset").unique(), on="asset", how="inner")
+            if units["asset"].is_duplicated().any():
+                raise ValueError("trade multipliers must be unambiguous for each fill asset")
+            fills = fills.join(units, on="asset", how="left")
+        else:
+            fills = fills.with_columns(pl.lit(1.0).alias("multiplier"))
+    values = fills["multiplier"]
+    if not values.dtype.is_numeric():
+        raise TypeError("fill multipliers must be real numeric values")
+    if values.null_count() or not values.is_finite().all() or (values <= 0).any():
+        raise ValueError("fill multipliers must be finite, positive and declared for every asset")
+    return fills.with_columns(pl.col("multiplier").cast(pl.Float64))
 
 
 def _rebalance_key_expr() -> pl.Expr:
@@ -280,9 +301,17 @@ def compute_edge_metrics(trades_df: pl.DataFrame) -> dict[str, Any]:
 
 
 def compute_activity_metrics(
-    fills_df: pl.DataFrame, portfolio_state_df: pl.DataFrame
+    fills_df: pl.DataFrame,
+    portfolio_state_df: pl.DataFrame,
+    *,
+    trades_df: pl.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """Compute fill and rebalance activity metrics from raw surfaces."""
+    """Compute activity in cash units using declared fill or trade multipliers.
+
+    Legacy tables without either declaration retain cash-per-unit prices.
+    Such tables do not establish support for contract point-value prices.
+    Commission is already cash; per-unit price slippage uses the multiplier.
+    """
     if fills_df.is_empty():
         return {
             "metrics": {
@@ -307,12 +336,16 @@ def compute_activity_metrics(
             },
         }
 
-    fills = fills_df.sort("timestamp").with_columns(
-        [
-            _filled_notional_expr().alias("filled_notional"),
-            _implementation_cost_expr().alias("implementation_cost"),
-            _rebalance_key_expr(),
-        ]
+    fills = (
+        _fill_cash_units(fills_df, trades_df)
+        .sort("timestamp")
+        .with_columns(
+            [
+                _filled_notional_expr().alias("filled_notional"),
+                _implementation_cost_expr().alias("implementation_cost"),
+                _rebalance_key_expr(),
+            ]
+        )
     )
 
     rebalance_summary = (
@@ -502,6 +535,7 @@ def compute_occupancy_metrics(portfolio_state_df: pl.DataFrame) -> dict[str, Any
 
 def compute_attribution_metrics(trades_df: pl.DataFrame, fills_df: pl.DataFrame) -> dict[str, Any]:
     """Compute symbol contribution and burden metrics from trades and fills."""
+    fills_df = _fill_cash_units(fills_df, trades_df)
     trade_group = (
         trades_df.group_by("symbol").agg(
             [

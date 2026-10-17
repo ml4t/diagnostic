@@ -7,8 +7,13 @@ from datetime import UTC, datetime
 import polars as pl
 import pytest
 from ml4t.backtest import AssetClass, BacktestConfig, ContractSpec, DataFeed, Engine, Strategy
+from ml4t.backtest.config import CommissionType, SlippageType
 
 from ml4t.diagnostic.integration import analyze_backtest_result, generate_tearsheet_from_result
+from ml4t.diagnostic.integration.backtest_analytics import (
+    compute_activity_metrics,
+    compute_attribution_metrics,
+)
 from ml4t.diagnostic.visualization.backtest import plot_activity_overview
 
 
@@ -38,9 +43,9 @@ def _executed_contract(multiplier=50.0, quantity=1, costs=False):
         BacktestConfig(
             initial_cash=10000,
             allow_short_selling=True,
-            commission_type="per_trade",
+            commission_type=CommissionType.PER_TRADE,
             commission_per_trade=2.0 if costs else 0.0,
-            slippage_type="fixed",
+            slippage_type=SlippageType.FIXED,
             slippage_fixed=0.5 if costs else 0.0,
         ),
         contract_specs={
@@ -106,3 +111,29 @@ def test_actual_contract_turnover_reaches_public_plot_and_html_report():
         html,
     )
     assert values and set(values) == {"0.50"}
+
+
+def test_explicit_per_fill_point_values_reach_both_existing_cash_analytics_kernels():
+    result, _, _ = _executed_contract(costs=True)
+    fills = result.to_fills_dataframe().with_columns(
+        pl.lit(result.trades[0].multiplier).alias("multiplier")
+    )
+    before = fills.clone()
+    activity = compute_activity_metrics(fills, result.to_portfolio_state_dataframe())
+    assert activity["metrics"]["total_filled_notional"] == 5025.0
+    assert activity["metrics"]["total_implementation_cost"] == 27.0
+    attribution = compute_attribution_metrics(result.to_trades_dataframe(), fills)
+    row = attribution["by_symbol"].row(0, named=True)
+    assert row["turnover_notional"] == 5025.0 and row["implementation_cost"] == 27.0
+    assert fills.equals(before)
+
+
+def test_same_asset_exports_with_conflicting_contract_units_are_not_silently_combined():
+    small, _, _ = _executed_contract(multiplier=1.0)
+    large, _, _ = _executed_contract(multiplier=50.0)
+    trades = pl.concat([small.to_trades_dataframe(), large.to_trades_dataframe()])
+    fills = pl.concat([small.to_fills_dataframe(), large.to_fills_dataframe()])
+    before_trades, before_fills = trades.clone(), fills.clone()
+    with pytest.raises(ValueError, match="multipliers.*unambiguous"):
+        compute_attribution_metrics(trades, fills)
+    assert trades.equals(before_trades) and fills.equals(before_fills)

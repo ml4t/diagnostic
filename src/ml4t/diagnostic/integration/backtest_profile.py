@@ -262,7 +262,9 @@ class BacktestProfile:
     def activity(self) -> dict[str, Any]:
         """Return fill and rebalance activity analytics."""
         if self._activity_cache is None:
-            self._activity_cache = compute_activity_metrics(self.fills_df, self.portfolio_state_df)
+            self._activity_cache = compute_activity_metrics(
+                self.fills_df, self.portfolio_state_df, trades_df=self.trades_df
+            )
         return self._activity_cache
 
     @property
