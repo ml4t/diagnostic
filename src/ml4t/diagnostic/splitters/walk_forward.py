@@ -106,7 +106,8 @@ class WalkForwardCV(BaseSplitter):
           Creates default CalendarConfig with UTC timezone
         - If CalendarConfig: Full configuration with exchange, timezone, and options
         - If TradingCalendar: Pre-configured calendar instance
-        - If None: Uses naive time-based calculation (backward compatible)
+        - If None: Disables calendars; integer horizons count observed rows
+        - If omitted: Uses a declared config calendar, then feed metadata, then NYSE
 
         For intraday data with time-based test_size/train_size (e.g., '4W'),
         using a calendar ensures proper session-aware splitting:
@@ -120,6 +121,11 @@ class WalkForwardCV(BaseSplitter):
         >>> from ml4t.diagnostic.splitters.calendar_config import CME_CONFIG
         >>> cv = WalkForwardCV(test_size='4W', calendar=CME_CONFIG)  # CME futures
         >>> cv = WalkForwardCV(test_size='1W', calendar='NYSE')  # US equities (simple)
+
+    feed_spec : FeedSpec, optional
+        Shared input metadata. Version 2 preserves omitted calendars separately
+        from explicit None. An explicit calendar argument overrides metadata;
+        no temporal version is inferred for legacy metadata.
 
     align_to_sessions : bool, default=False
         If True, align fold boundaries to trading session boundaries.
