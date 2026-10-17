@@ -1,6 +1,7 @@
 """Calendar selection must preserve declaration presence and actual row ownership."""
 
 import warnings
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -8,7 +9,75 @@ import pytest
 from ml4t.specs import FeedSpec
 
 from ml4t.diagnostic.core.purging import apply_purging_and_embargo, calculate_purge_indices
-from ml4t.diagnostic.splitters import CombinatorialCV, WalkForwardConfig, WalkForwardCV
+from ml4t.diagnostic.splitters import (
+    CombinatorialConfig,
+    CombinatorialCV,
+    WalkForwardConfig,
+    WalkForwardCV,
+)
+
+
+@pytest.mark.parametrize(
+    ("model", "payload", "invalid"),
+    [
+        (WalkForwardConfig, {"calendar": None, "calendar_id": "NYSE", "val_size": 1}, True),
+        (WalkForwardConfig, {"calendar_id": None, "val_size": 1, "label_buffer": 2}, False),
+        (
+            CombinatorialConfig,
+            {"n_groups": 4, "n_test_groups": 5, "label_buffer": 1, "feature_buffer": 2},
+            True,
+        ),
+        (
+            CombinatorialConfig,
+            {"n_groups": 4, "n_test_groups": 2, "label_buffer": 1, "feature_buffer": 2},
+            False,
+        ),
+    ],
+    ids=["conflicting-calendars", "valid-walk-forward", "invalid-cpcv", "valid-cpcv"],
+)
+def test_alias_validation_preserves_caller_mapping_even_when_configuration_is_rejected(
+    model, payload, invalid
+):
+    before = deepcopy(payload)
+    if invalid:
+        with pytest.raises(ValueError):
+            model.model_validate(payload)
+    else:
+        config = model.model_validate(payload)
+        assert config.label_horizon == before["label_buffer"]
+        if model is WalkForwardConfig:
+            assert config.calendar is None and config.test_size == 1
+        else:
+            assert config.embargo_td == 2
+    assert payload == before
+
+
+@pytest.mark.parametrize("timezone", [None, "UTC", "undated"])
+@pytest.mark.parametrize(
+    ("horizon", "embargo", "expected"),
+    [
+        (1, None, [([2, 3, 4, 5], [0, 1]), ([0, 4, 5], [2, 3]), ([0, 1, 2], [4, 5])]),
+        (0, 1, [([3, 4, 5], [0, 1]), ([0, 1, 5], [2, 3]), ([0, 1, 2, 3], [4, 5])]),
+        (1, 1, [([3, 4, 5], [0, 1]), ([0, 5], [2, 3]), ([0, 1, 2], [4, 5])]),
+    ],
+    ids=["purge", "embargo", "purge-and-embargo"],
+)
+def test_cpcv_row_boundaries_do_not_move_to_an_earlier_duplicate_timestamp(
+    timezone, horizon, embargo, expected
+):
+    frame = pd.DataFrame({"feature": range(6)})
+    if timezone != "undated":
+        frame.index = pd.to_datetime(["2025-07-03"] * 3 + ["2025-07-07"] * 3)
+        if timezone:
+            frame.index = frame.index.tz_localize(timezone)
+    cv = CombinatorialCV(
+        n_groups=3,
+        n_test_groups=1,
+        label_horizon=horizon,
+        embargo_size=embargo,
+        isolate_groups=False,
+    )
+    assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == expected
 
 
 def test_explicit_none_keeps_actual_holiday_and_weekend_observations_in_row_folds():
