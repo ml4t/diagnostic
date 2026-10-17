@@ -61,7 +61,12 @@ def reduce_columns(
             raise TypeError("out must have floating dtype")
         if not out.flags.writeable:
             raise ValueError("out must be writable")
-        if np.shares_memory(out, original):
+        inputs = (
+            (column.to_numpy(copy=False) for _, column in returns.items())
+            if isinstance(returns, pd.DataFrame)
+            else (np.asarray(returns),)
+        )
+        if any(np.shares_memory(out, values) for values in inputs):
             raise ValueError("out must not overlap input returns")
         output = out
     if len(original) < min_length:

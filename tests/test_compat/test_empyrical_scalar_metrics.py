@@ -379,6 +379,41 @@ def test_invalid_or_aliased_output_buffer_cannot_mutate_price_returns(api, retur
 @pytest.mark.parametrize(
     "name", ["annual_volatility", "sharpe_ratio", "sortino_ratio", "downside_risk"]
 )
+@pytest.mark.parametrize("input_kind", ["array", "frame", "column_blocks"])
+def test_float32_price_return_output_alias_is_rejected_before_normalization_can_hide_it(
+    api, returns, name, input_kind
+):
+    prices = (1 + returns.fillna(0)).cumprod().astype(np.float32)
+    frame = prices.pct_change(fill_method=None).iloc[1:]
+    values = frame.to_numpy(copy=True)
+    sample = (
+        pd.DataFrame(
+            {column: values[:, index] for index, column in enumerate(frame.columns)},
+            index=frame.index,
+            copy=False,
+        )
+        if input_kind == "column_blocks"
+        else pd.DataFrame(values, index=frame.index, columns=frame.columns, copy=False)
+        if input_kind == "frame"
+        else values
+    )
+    assert values.dtype == np.dtype("float32")
+    before = values.copy()
+    output = values[0]
+    sources = (
+        [column.to_numpy(copy=False) for _, column in sample.items()]
+        if isinstance(sample, pd.DataFrame)
+        else [sample]
+    )
+    assert output.flags.writeable and any(np.shares_memory(output, array) for array in sources)
+    with pytest.raises(ValueError, match="overlap"):
+        getattr(api, name)(sample, out=output)
+    np.testing.assert_array_equal(np.asarray(sample), before)
+
+
+@pytest.mark.parametrize(
+    "name", ["annual_volatility", "sharpe_ratio", "sortino_ratio", "downside_risk"]
+)
 def test_float32_output_keeps_buffer_storage_and_its_explicit_precision(api, returns, name):
     out = np.empty(2, dtype=np.float32)
     kwargs = {"annualization": 12, "out": out}
