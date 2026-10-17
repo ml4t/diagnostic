@@ -1,0 +1,476 @@
+"""Calendar selection must preserve declaration presence and actual row ownership."""
+
+import warnings
+from copy import deepcopy
+
+import numpy as np
+import pandas as pd
+import pytest
+from ml4t.specs import FeedSpec
+
+from ml4t.diagnostic.core.purging import (
+    apply_purging_and_embargo,
+    calculate_embargo_indices,
+    calculate_purge_indices,
+)
+from ml4t.diagnostic.splitters import (
+    CombinatorialConfig,
+    CombinatorialCV,
+    WalkForwardConfig,
+    WalkForwardCV,
+)
+from ml4t.diagnostic.splitters.calendar import TradingCalendar
+from ml4t.diagnostic.splitters.calendar_config import CalendarConfig
+
+
+@pytest.mark.parametrize("route", ["argument", "config", "legacy-config"])
+def test_cpcv_calendar_intake_explicit_none_produces_observation_folds(route):
+    frame = pd.DataFrame(
+        {"feature": range(6)},
+        index=pd.to_datetime(["2025-07-03"] * 3 + ["2025-07-07"] * 3, utc=True),
+    )
+    before = frame.copy(deep=True)
+    settings = {"n_groups": 3, "n_test_groups": 1, "label_horizon": 1, "isolate_groups": False}
+    if route == "argument":
+        cv = CombinatorialCV(**settings, calendar=None)
+    else:
+        declaration = {"calendar" if route == "config" else "calendar_id": None}
+        cv = CombinatorialCV(config=CombinatorialConfig(**settings, **declaration))
+    assert cv.calendar is None and cv.config.calendar is None
+    assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == [
+        ([2, 3, 4, 5], [0, 1]),
+        ([0, 4, 5], [2, 3]),
+        ([0, 1, 2], [4, 5]),
+    ]
+    wire = cv.config.to_dict(mode="json")
+    assert wire["calendar"] is None and "calendar_id" not in wire
+    pd.testing.assert_frame_equal(frame, before)
+
+
+def test_cpcv_calendar_intake_resolves_feed_and_explicit_precedence_without_changing_row_units():
+    feed = FeedSpec(time_contract_version=2, calendar="24/7")
+    config = CombinatorialConfig(n_groups=3, n_test_groups=1, isolate_groups=False)
+    before = config.model_dump()
+    cases = [
+        (CombinatorialCV(config=config, feed_spec=feed), "24/7"),
+        (CombinatorialCV(config=config, feed_spec=feed, calendar=None), None),
+        (CombinatorialCV(config=config, feed_spec=feed, calendar="NYSE"), "NYSE"),
+        (CombinatorialCV(feed_spec=FeedSpec(time_contract_version=2)), "NYSE"),
+        (CombinatorialCV(feed_spec=FeedSpec(time_contract_version=2, calendar=None)), None),
+        (CombinatorialCV(feed_spec=FeedSpec(calendar=None)), "NYSE"),
+        (CombinatorialCV(config=CombinatorialConfig(calendar=None), feed_spec=feed), None),
+    ]
+    for cv, expected in cases:
+        assert (None if cv.calendar is None else cv.calendar.config.exchange) == expected
+    frame = pd.DataFrame(
+        {"feature": range(6)},
+        index=pd.to_datetime(["2025-07-03"] * 3 + ["2025-07-07"] * 3, utc=True),
+    )
+    expected = [([2, 3, 4, 5], [0, 1]), ([0, 1, 4, 5], [2, 3]), ([0, 1, 2, 3], [4, 5])]
+    for cv, _ in cases[:3]:
+        assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == expected
+    assert config.model_dump() == before
+    assert "calendar" not in config.model_fields_set
+
+
+@pytest.mark.parametrize("format", ["json", "yaml", "copy"])
+@pytest.mark.parametrize("declaration", [{}, {"calendar": None}, {"calendar": "24/7"}])
+def test_cpcv_calendar_intake_runtime_roundtrip_preserves_calendar_declaration(
+    format, declaration, tmp_path
+):
+    config = CombinatorialConfig(n_groups=3, n_test_groups=1, **declaration)
+    first = CombinatorialCV(
+        config=config, feed_spec=FeedSpec(time_contract_version=2, calendar="24/7")
+    )
+    loaded = _roundtrip_config(first.config, format, tmp_path)
+    assert ("calendar" in loaded.model_fields_set) == bool(declaration)
+    wire = loaded.model_dump(exclude_none=True)
+    assert ("calendar" in wire) == bool(declaration)
+    if declaration:
+        assert wire["calendar"] == declaration["calendar"]
+    second = CombinatorialCV(
+        config=loaded, feed_spec=FeedSpec(time_contract_version=2, calendar="NYSE")
+    )
+    expected = declaration.get("calendar", "NYSE")
+    assert (None if second.calendar is None else second.calendar.config.exchange) == expected
+
+
+def test_cpcv_calendar_intake_conflicting_aliases_reject_without_mutating_the_mapping():
+    payload = {"calendar": None, "calendar_id": "NYSE", "label_buffer": 1}
+    before = deepcopy(payload)
+    with pytest.raises(ValueError, match="calendar and calendar_id must agree"):
+        CombinatorialConfig.model_validate(payload)
+    assert payload == before
+
+
+def test_cpcv_calendar_intake_invalid_metadata_does_not_change_the_callers_config():
+    config = CombinatorialConfig(calendar=None)
+    before = config.model_dump()
+    with pytest.raises(TypeError, match="feed_spec must be a FeedSpec"):
+        CombinatorialCV(config=config, feed_spec={"calendar": "NYSE"})
+    assert config.model_dump() == before
+
+
+@pytest.mark.parametrize("instance", [False, True])
+def test_cpcv_calendar_intake_preserves_explicit_provider_options(instance):
+    settings = CalendarConfig(exchange="CME_Equity", timezone="America/Chicago")
+    before = settings.model_dump()
+    selected = TradingCalendar(settings) if instance else settings
+    cv = CombinatorialCV(calendar=selected)
+    assert cv.calendar.config.exchange == "CME_Equity"
+    assert cv.calendar.config.timezone == "America/Chicago"
+    if instance:
+        assert cv.calendar is selected
+    assert cv.config.to_dict()["calendar"] == "CME_Equity"
+    assert settings.model_dump() == before
+
+
+@pytest.mark.parametrize("timezone", [None, "UTC"])
+@pytest.mark.parametrize("size", [{"embargo_size": 2}, {"embargo_pct": 0.34}])
+def test_core_embargo_none_counts_observations_across_a_sparse_feed(timezone, size):
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"]
+    )
+    if timezone:
+        times = times.tz_localize(timezone)
+    assert calculate_embargo_indices(
+        timestamps=times, test_start=times[3], test_end=times[4], calendar=None, **size
+    ) == [4, 5]
+
+
+@pytest.mark.parametrize(
+    ("horizon", "embargo", "expected"),
+    [
+        (pd.Timedelta(days=1), 2, [0, 1, 2]),
+        (1, pd.Timedelta(days=1), [0, 1, 5]),
+        (pd.Timedelta(days=1), pd.Timedelta(days=2), [0, 1, 2, 5]),
+    ],
+)
+def test_mixed_purge_and_embargo_keep_their_own_units(horizon, embargo, expected):
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"],
+        utc=True,
+    )
+    actual = apply_purging_and_embargo(
+        np.arange(6),
+        timestamps=times,
+        test_start=times[3],
+        test_end=times[4],
+        label_horizon=horizon,
+        embargo_size=embargo,
+        calendar=None,
+    )
+    assert actual.tolist() == expected
+
+
+def test_core_embargo_uses_resolved_calendar_sessions_instead_of_civil_days():
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"],
+        utc=True,
+    )
+    assert calculate_embargo_indices(
+        timestamps=times,
+        test_start=times[0],
+        test_end=times[1],
+        embargo_size=2,
+        calendar=TradingCalendar("NYSE"),
+    ) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("model", "payload", "invalid"),
+    [
+        (WalkForwardConfig, {"calendar": None, "calendar_id": "NYSE", "val_size": 1}, True),
+        (WalkForwardConfig, {"calendar_id": None, "val_size": 1, "label_buffer": 2}, False),
+        (
+            CombinatorialConfig,
+            {"n_groups": 4, "n_test_groups": 5, "label_buffer": 1, "feature_buffer": 2},
+            True,
+        ),
+        (
+            CombinatorialConfig,
+            {"n_groups": 4, "n_test_groups": 2, "label_buffer": 1, "feature_buffer": 2},
+            False,
+        ),
+    ],
+    ids=["conflicting-calendars", "valid-walk-forward", "invalid-cpcv", "valid-cpcv"],
+)
+def test_alias_validation_preserves_caller_mapping_even_when_configuration_is_rejected(
+    model, payload, invalid
+):
+    before = deepcopy(payload)
+    if invalid:
+        with pytest.raises(ValueError):
+            model.model_validate(payload)
+    else:
+        config = model.model_validate(payload)
+        assert config.label_horizon == before["label_buffer"]
+        if model is WalkForwardConfig:
+            assert config.calendar is None and config.test_size == 1
+        else:
+            assert config.embargo_td == 2
+    assert payload == before
+
+
+@pytest.mark.parametrize("timezone", [None, "UTC", "undated"])
+@pytest.mark.parametrize(
+    ("horizon", "embargo", "expected"),
+    [
+        (1, None, [([2, 3, 4, 5], [0, 1]), ([0, 4, 5], [2, 3]), ([0, 1, 2], [4, 5])]),
+        (0, 1, [([3, 4, 5], [0, 1]), ([0, 1, 5], [2, 3]), ([0, 1, 2, 3], [4, 5])]),
+        (1, 1, [([3, 4, 5], [0, 1]), ([0, 5], [2, 3]), ([0, 1, 2], [4, 5])]),
+    ],
+    ids=["purge", "embargo", "purge-and-embargo"],
+)
+def test_cpcv_row_boundaries_do_not_move_to_an_earlier_duplicate_timestamp(
+    timezone, horizon, embargo, expected
+):
+    frame = pd.DataFrame({"feature": range(6)})
+    if timezone != "undated":
+        frame.index = pd.to_datetime(["2025-07-03"] * 3 + ["2025-07-07"] * 3)
+        if timezone:
+            frame.index = frame.index.tz_localize(timezone)
+    cv = CombinatorialCV(
+        n_groups=3,
+        n_test_groups=1,
+        label_horizon=horizon,
+        embargo_size=embargo,
+        isolate_groups=False,
+    )
+    assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == expected
+
+
+def test_explicit_none_keeps_actual_holiday_and_weekend_observations_in_row_folds():
+    frame = pd.DataFrame(
+        {"feature": [1.0, 2.0, 3.0, 4.0]},
+        index=pd.to_datetime(["2025-07-04", "2025-07-05", "2025-07-06", "2025-07-07"]),
+    )
+    cv = WalkForwardCV(n_splits=2, test_size=1, train_size=2, consecutive=True, calendar=None)
+    assert cv.calendar is None
+    assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == [
+        ([0, 1], [2]),
+        ([0, 1, 2], [3]),
+    ]
+
+
+def test_integer_purge_without_calendar_means_rows_across_real_nyse_holiday_gap():
+    times = pd.to_datetime(["2025-07-03T15:00Z", "2025-07-07T15:00Z", "2025-07-08T15:00Z"])
+    with warnings.catch_warnings(record=True) as caught:
+        indices = calculate_purge_indices(
+            timestamps=times, test_start=times[1], test_end=times[2], label_horizon=1, calendar=None
+        )
+    assert indices == [0]
+    assert not caught
+    assert (
+        calculate_purge_indices(
+            timestamps=times,
+            test_start=times[1],
+            test_end=times[2],
+            label_horizon=pd.Timedelta(days=1),
+            calendar=None,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("alias", ["calendar", "calendar_id"])
+def test_canonical_calendar_config_roundtrip_keeps_explicit_disable_and_legacy_alias(alias):
+    config = WalkForwardConfig(**{alias: None})
+    assert config.calendar is None and config.calendar_id is None
+    wire = config.to_dict(mode="json")
+    assert wire["calendar"] is None and "calendar_id" not in wire
+    assert WalkForwardConfig(**wire).calendar is None
+
+
+def test_conflicting_calendar_aliases_are_rejected_instead_of_silently_dropping_one():
+    with pytest.raises(ValueError, match="calendar.*calendar_id"):
+        WalkForwardConfig(calendar=None, calendar_id="NYSE")
+    assert WalkForwardConfig(calendar=None, calendar_id=None).calendar is None
+
+
+def test_shared_feed_precedence_retains_omission_explicit_null_and_caller_override():
+    feed = FeedSpec(time_contract_version=2, calendar="24/7")
+    assert WalkForwardCV(feed_spec=feed).calendar.config.exchange == "24/7"
+    assert WalkForwardCV(feed_spec=feed, calendar=None).calendar is None
+    assert WalkForwardCV(feed_spec=feed, calendar="NYSE").calendar.config.exchange == "NYSE"
+    assert (
+        WalkForwardCV(feed_spec=FeedSpec(time_contract_version=2)).calendar.config.exchange
+        == "NYSE"
+    )
+    assert (
+        WalkForwardCV(feed_spec=FeedSpec(time_contract_version=2, calendar=None)).calendar is None
+    )
+    assert WalkForwardCV(feed_spec=FeedSpec(calendar=None)).calendar.config.exchange == "NYSE"
+
+
+def test_config_roundtrip_does_not_turn_omitted_calendar_into_a_metadata_override():
+    config = WalkForwardConfig(n_splits=2)
+    wire = config.to_dict(mode="json")
+    assert "calendar" not in wire and "calendar_id" not in wire
+    loaded = WalkForwardConfig(**wire)
+    feed = FeedSpec(time_contract_version=2, calendar="24/7")
+    assert WalkForwardCV(config=loaded, feed_spec=feed).calendar.config.exchange == "24/7"
+    assert WalkForwardCV(config=loaded, feed_spec=feed, calendar=None).calendar is None
+    assert config.calendar == "NYSE" and "calendar" not in config.model_fields_set
+
+
+def test_explicit_calendar_can_override_config_without_mutating_caller_configuration():
+    config = WalkForwardConfig(calendar="NYSE")
+    cv = WalkForwardCV(config=config, calendar=None)
+    assert cv.calendar is None and cv.config.calendar is None
+    assert config.calendar == "NYSE"
+
+
+def _roundtrip_config(config, format, tmp_path):
+    if format == "copy":
+        return config.model_copy(deep=True)
+    path = tmp_path / f"calendar.{format}"
+    getattr(config, f"to_{format}")(path)
+    return getattr(type(config), f"from_{format}")(path)
+
+
+@pytest.mark.parametrize("format", ["json", "yaml", "copy"])
+@pytest.mark.parametrize("metadata_calendar", [None, "24/7"])
+def test_runtime_config_roundtrip_does_not_promote_inherited_calendar_to_override(
+    format, metadata_calendar, tmp_path
+):
+    first = WalkForwardCV(
+        config=WalkForwardConfig(n_splits=2),
+        feed_spec=FeedSpec(time_contract_version=2, calendar=metadata_calendar),
+    )
+    assert first.calendar_id == metadata_calendar
+    loaded = _roundtrip_config(first.config, format, tmp_path)
+    assert "calendar" not in loaded.model_fields_set
+    second = WalkForwardCV(
+        config=loaded, feed_spec=FeedSpec(time_contract_version=2, calendar="NYSE")
+    )
+    assert second.calendar_id == "NYSE"
+
+
+@pytest.mark.parametrize("format", ["json", "yaml", "copy"])
+@pytest.mark.parametrize("calendar", [None, "NYSE"])
+def test_explicit_calendar_argument_remains_declared_after_runtime_config_roundtrip(
+    format, calendar, tmp_path
+):
+    first = WalkForwardCV(
+        feed_spec=FeedSpec(time_contract_version=2, calendar="24/7"), calendar=calendar
+    )
+    loaded = _roundtrip_config(first.config, format, tmp_path)
+    assert "calendar" in loaded.model_fields_set and loaded.calendar == calendar
+    second = WalkForwardCV(
+        config=loaded, feed_spec=FeedSpec(time_contract_version=2, calendar="24/7")
+    )
+    assert second.calendar_id == calendar
+
+
+def test_config_serialization_filters_do_not_resurrect_an_explicitly_excluded_calendar():
+    config = WalkForwardConfig(calendar=None)
+    assert config.model_dump(include={"n_splits"}) == {"n_splits": 5}
+    assert "calendar" not in config.model_dump(exclude={"calendar"})
+    assert config.model_dump(exclude_none=True)["calendar"] is None
+
+
+@pytest.mark.parametrize(
+    ("mask", "disabled"), [(False, True), (None, True), ({}, True), (True, False), (..., False)]
+)
+def test_nested_exclusion_masks_do_not_silently_reenable_a_disabled_calendar(mask, disabled):
+    config = WalkForwardConfig(calendar=None)
+    wire = config.model_dump(exclude_none=True, exclude={"calendar": mask})
+    if disabled:
+        assert "calendar" in wire and wire["calendar"] is None
+    else:
+        assert "calendar" not in wire
+    restored = WalkForwardCV(
+        config=WalkForwardConfig(**wire),
+        feed_spec=FeedSpec(time_contract_version=2, calendar="24/7"),
+    )
+    assert restored.calendar_id == (None if disabled else "24/7")
+
+
+@pytest.fixture(params=[None, "UTC"], ids=["naive-rows", "aware-rows"])
+def sparse_observation_times(request):
+    times = pd.to_datetime(
+        ["2025-07-01", "2025-07-02", "2025-07-03", "2025-07-07", "2025-07-08", "2025-07-15"]
+    )
+    return times.tz_localize(request.param) if request.param else times
+
+
+@pytest.mark.parametrize("direction", ["forward", "backward"])
+def test_row_holdouts_do_not_require_timezones_or_claim_calendar_day_sizes(
+    sparse_observation_times, direction
+):
+    frame = pd.DataFrame({"feature": range(6)}, index=sparse_observation_times)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cv = WalkForwardCV(
+            config=WalkForwardConfig(
+                calendar=None, test_period=2, n_splits=1, test_size=1, fold_direction=direction
+            )
+        )
+        folds = [(train.tolist(), test.tolist()) for train, test in cv.split(frame)]
+    assert not caught
+    assert cv.test_indices_.tolist() == [4, 5]
+    assert folds == ([([0], [1])] if direction == "forward" else [([0, 1, 2], [3])])
+
+
+def test_direct_observation_purge_accepts_consistently_naive_or_aware_keys(
+    sparse_observation_times,
+):
+    times = sparse_observation_times
+    assert calculate_purge_indices(
+        timestamps=times, test_start=times[3], test_end=times[4], label_horizon=1, calendar=None
+    ) == [2]
+
+
+def test_observation_embargo_keeps_row_units_across_a_missing_week(sparse_observation_times):
+    times = sparse_observation_times
+    cleaned = apply_purging_and_embargo(
+        np.arange(6),
+        test_start=times[3],
+        test_end=times[4],
+        label_horizon=1,
+        embargo_size=2,
+        timestamps=times,
+        calendar=None,
+    )
+    assert cleaned.tolist() == [0, 1]
+
+
+def test_row_splits_do_not_move_a_purge_boundary_to_an_earlier_duplicate_timestamp():
+    frame = pd.DataFrame(
+        {"feature": range(4)},
+        index=pd.to_datetime(["2025-07-03", "2025-07-03", "2025-07-07", "2025-07-07"], utc=True),
+    )
+    cv = WalkForwardCV(
+        n_splits=2, test_size=1, train_size=2, label_horizon=1, consecutive=True, calendar=None
+    )
+    assert [(train.tolist(), test.tolist()) for train, test in cv.split(frame)] == [
+        ([0], [2]),
+        ([0, 1], [3]),
+    ]
+
+
+def test_panel_purge_uses_each_assets_next_observation_across_holiday_and_other_assets():
+    dates = pd.to_datetime(
+        [
+            "2025-07-01T15:00Z",
+            "2025-07-02T15:00Z",
+            "2025-07-03T15:00Z",
+            "2025-07-07T15:00Z",
+            "2025-07-08T15:00Z",
+            "2025-07-09T15:00Z",
+        ]
+    )
+    panel = pd.DataFrame(
+        {"asset": ["A", "B", "C"] * 6, "feature": list(range(18))},
+        index=dates.repeat(3),
+    )
+    cv = CombinatorialCV(n_groups=6, n_test_groups=1, label_horizon=1, isolate_groups=False)
+    for train, test in cv.split(panel[["feature"]], groups=panel["asset"]):
+        for asset in ["A", "B", "C"]:
+            asset_rows = [row for row, name in enumerate(panel["asset"]) if name == asset]
+            for row, next_observation in zip(asset_rows, asset_rows[1:]):
+                if next_observation in test:
+                    assert row not in train, (
+                        f"{asset}: label endpoint at test row{next_observation} leaked from train row{row}"
+                    )
