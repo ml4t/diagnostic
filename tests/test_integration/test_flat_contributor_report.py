@@ -118,10 +118,10 @@ def test_actual_flat_and_nonflat_accounts_finish_public_reports_without_mutating
     assert result.to_trades_dataframe().equals(trades)
 
 
-def test_actual_losing_total_does_not_rank_the_losing_asset_above_the_winner():
+def _executed_assets(marks_by_asset, initial_cash):
     dates = [datetime(2025, 1, day, 15, tzinfo=UTC) for day in [2, 3, 6, 7]]
     rows = []
-    for asset, marks in [("A", [100.0, 100.0, 110.0, 110.0]), ("B", [100.0, 100.0, 80.0, 80.0])]:
+    for asset, marks in marks_by_asset.items():
         for timestamp, price in zip(dates, marks, strict=True):
             rows.append(
                 {
@@ -134,11 +134,17 @@ def test_actual_losing_total_does_not_rank_the_losing_asset_above_the_winner():
                     "volume": 10000.0,
                 }
             )
-    result = Engine(
+    return Engine(
         DataFeed(prices_df=pl.DataFrame(rows).sort("timestamp", "asset")),
-        _BuyOnce(("A", "B")),
-        BacktestConfig(initial_cash=2000),
+        _BuyOnce(tuple(marks_by_asset)),
+        BacktestConfig(initial_cash=initial_cash),
     ).run()
+
+
+def test_actual_losing_total_does_not_rank_the_losing_asset_above_the_winner():
+    result = _executed_assets(
+        {"A": [100.0, 100.0, 110.0, 110.0], "B": [100.0, 100.0, 80.0, 80.0]}, 2000
+    )
     assert {trade.symbol: trade.pnl for trade in result.trades} == {"A": 40.0, "B": -80.0}
     attribution = analyze_backtest_result(result).attribution
     before = attribution["by_symbol"].clone()
@@ -148,3 +154,15 @@ def test_actual_losing_total_does_not_rank_the_losing_asset_above_the_winner():
     text = html.unescape(re.sub(r"<[^>]+>", " ", rendered))
     assert re.search(r"A \$\+40\s*\|\s*B \$-80", text)
     assert attribution["by_symbol"].equals(before)
+
+
+def test_actual_share_table_keeps_existing_halfway_decimal_rounding():
+    result = _executed_assets(
+        {"A": [100.0, 100.0, 12445.0, 12445.0], "B": [100.0, 100.0, 87755.0, 87755.0]},
+        1000000,
+    )
+    assert {trade.symbol: trade.pnl for trade in result.trades} == {"A": 49380.0, "B": 350620.0}
+    figure = plot_attribution_overview(analyze_backtest_result(result))
+    table = figure.data[1]
+    row = list(table.cells.values[0]).index("A")
+    assert table.cells.values[1][row] == 0.1234
