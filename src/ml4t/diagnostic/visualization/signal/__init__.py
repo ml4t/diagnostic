@@ -42,10 +42,15 @@ All plots follow the ML4T Diagnostic visualization standards:
 
 from ml4t.diagnostic.visualization.signal.dashboard import SignalDashboard
 from ml4t.diagnostic.visualization.signal.event_plots import (
+    generate_aligned_event_report,
+    generate_event_returns_report,
+    plot_aligned_event_paths,
     plot_ar_distribution,
     plot_caar,
     plot_car_by_event,
+    plot_event_count_distribution,
     plot_event_heatmap,
+    plot_event_returns,
 )
 from ml4t.diagnostic.visualization.signal.ic_plots import (
     plot_ic_histogram,
@@ -95,6 +100,11 @@ __all__ = [
     "plot_event_heatmap",
     "plot_ar_distribution",
     "plot_car_by_event",
+    "plot_aligned_event_paths",
+    "plot_event_count_distribution",
+    "generate_aligned_event_report",
+    "generate_event_returns_report",
+    "plot_event_returns",
     # Multi-signal plots
     "plot_ic_ridge",
     "plot_signal_ranking_bar",

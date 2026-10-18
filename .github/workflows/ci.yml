@@ -49,6 +49,34 @@ jobs:
   test:
     uses: ./.github/workflows/test-matrix.yml
 
+  windows-pdf-lifecycle:
+    name: Windows PDF crash lifecycle
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      UV_PYTHON: "3.13"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.10.9"
+      - run: uv python install 3.13
+      - run: uv sync --frozen --dev --extra viz
+      - name: Qualify every actual crash-cleanup attempt
+        shell: bash
+        run: >-
+          uv run --no-sync python scripts/check_windows_pdf_lifecycle.py
+          --repetitions 12 --output "$RUNNER_TEMP/pdf-crash-lifecycle"
+      - name: Retain all crash-cleanup outcomes
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-pdf-crash-lifecycle
+          path: ${{ runner.temp }}/pdf-crash-lifecycle/
+          if-no-files-found: warn
+
   security:
     uses: ./.github/workflows/security.yml
 
@@ -295,6 +323,14 @@ jobs:
           --with "alphalens-reloaded==0.4.6" --with playwright
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q -n auto --timeout 120 tests/test_signal/
+      - name: Run aligned event migration from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task events
+          --output "$RUNNER_TEMP/aligned-events.html"
       - name: Execute prepared portfolio report in a notebook from installed wheel
         shell: bash
         run: >-
@@ -303,6 +339,28 @@ jobs:
           --with nbclient --with ipykernel --with pytest
           pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
           tests/test_evaluation/test_portfolio_notebook_report.py
+      - name: Run complete event-returns workflow from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task event-returns
+          --output "$RUNNER_TEMP/event-returns.html"
+      - name: Execute complete event-returns notebook from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with nbclient --with ipykernel --with pytest
+          pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
+          tests/test_signal/test_event_returns_notebook.py
+      - name: Retain aligned event report browser evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: event-report-browser
+          path: artifacts/event-reports/
+          if-no-files-found: error
       - name: Run all real PDF tests from installed wheel
         shell: bash
         run: >-

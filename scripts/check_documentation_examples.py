@@ -27,9 +27,15 @@ PAGES = {
     "docs/user-guide/workflows.md": ("Validation folds: 4", "DSR probability:"),
     "docs/user-guide/backtest-tearsheets.md": ("Wrote backtest_report.html",),
     "docs/user-guide/trade-analysis.md": ("[-410.0, -240.0, -130.0]",),
-    "docs/user-guide/migration.md": ("One-day IC: 0.347", "Portfolio Sharpe:"),
+    "docs/user-guide/migration.md": (
+        "One-day IC: 0.347",
+        "Portfolio Sharpe:",
+        "Aligned event levels: 55.0; finite date paths: 2/3/2",
+        "Event-returns report: global view and per-quantile sample deviations",
+    ),
     "docs/user-guide/empyrical-migration.md": (
         "Empyrical scalar adapters: columnwise counts, periodic rates and labels checked",
+        "Return paths: dated labels, missing adjacencies and initial capital checked",
     ),
 }
 

@@ -635,6 +635,62 @@ def show_empyrical_native() -> None:
     )
 
 
+def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
+    """Build a grouped event report from one owned, price-produced signal panel."""
+    from ml4t.diagnostic.signal import AlignedEventResult, prepare_signal_panel
+    from ml4t.diagnostic.visualization.signal import generate_aligned_event_report
+
+    dates = pd.bdate_range("2025-01-02", periods=8, tz="UTC")
+    prices = pd.DataFrame(
+        np.arange(100.0, 106.0)
+        * np.exp(np.arange(8)[:, None] * np.array([0.01, 0.02, -0.01, 0.03, -0.02, 0.005])),
+        index=dates,
+        columns=list("ABCDEF"),
+    )
+    factor = prices.iloc[[0, 2, 4, 6]].stack().rename("factor")
+    factor.index.names = ["date", "asset"]
+    forward = prices.pct_change(fill_method=None).shift(-1).stack().rename("1D").to_frame()
+    forward.index.names = ["date", "asset"]
+    groups = pd.Series(
+        [
+            "small" if asset in ("AB" if day < dates[4] else "AC") else "large"
+            for day, asset in factor.index
+        ],
+        index=factor.index,
+        name="group",
+    )
+    panel = prepare_signal_panel(factor, forward, quantiles=2, groups=groups, max_loss=0)
+    analyze = panel.event_returns if complete_report else panel.event_study
+    result = analyze(
+        prices,
+        before=1,
+        after=2,
+        input_kind="levels",
+        demeaned=False,
+        group_adjust=False,
+        by_group=True,
+    )
+    if complete_report:
+        from ml4t.diagnostic.signal import EventReturnsResult
+        from ml4t.diagnostic.visualization.signal import generate_event_returns_report
+
+        assert result.overall.paths.height == 96 and result.groups is not None
+        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(result.groups.paths)
+        path = generate_event_returns_report(result, output_file=output)
+        output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+        print(f"Complete event-returns HTML: {path}")
+        print("5 panels: overall, 2 quantile deviations, 2 group overviews; typed JSON exported")
+        return
+    assert panel.data.height == 24 and result.paths.height == 96
+    assert result.event_counts["n_events"].sum() == 24
+    assert AlignedEventResult.from_json(result.to_json()).paths.equals(result.paths)
+    path = generate_aligned_event_report(result, output_file=output)
+    assert Path(path).is_file()
+    print(f"Aligned event HTML: {path}")
+    print("24 declared events; 96 requested path cells; dynamic groups and buckets retained")
+    print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -650,21 +706,22 @@ def main() -> None:
             "activity",
             "holdings",
             "holdings-report",
+            "events",
+            "event-returns",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("holdings-report.html"),
-        help="HTML path for --task holdings-report",
+        help="HTML path for --task holdings-report, events or event-returns",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task == "holdings-report":
+    if task in ("holdings-report", "events", "event-returns"):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -678,7 +735,13 @@ def main() -> None:
         show_empyrical_native()
         return
     if task == "holdings-report":
-        show_prepared_holdings_report(arguments.output)
+        show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
+        return
+    if task == "events":
+        show_aligned_events(arguments.output or Path("aligned-events.html"))
+        return
+    if task == "event-returns":
+        show_aligned_events(arguments.output or Path("event-returns.html"), complete_report=True)
         return
     if task in ("all", "holdings"):
         show_prepared_holdings()
