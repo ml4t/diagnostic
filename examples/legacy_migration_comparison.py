@@ -675,7 +675,9 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
         from ml4t.diagnostic.visualization.signal import generate_event_returns_report
 
         assert result.overall.paths.height == 96 and result.groups is not None
-        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(result.groups.paths)
+        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(
+            result.groups.paths
+        )
         path = generate_event_returns_report(result, output_file=output)
         output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
         print(f"Complete event-returns HTML: {path}")
