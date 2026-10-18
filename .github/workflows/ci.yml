@@ -243,7 +243,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           python -I scripts/check_documentation_examples.py
-      - name: Run scalar migration with base installation from installed wheel
+      - name: Run scalar and return-path migration with base installation from installed wheel
         shell: bash
         run: >-
           uv run --isolated --no-project
@@ -259,6 +259,17 @@ jobs:
           --with "empyrical-reloaded==0.5.12" --with "pytz==2026.5" --with pytest
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/test_empyrical_scalar_metrics.py
+          tests/test_compat/test_empyrical_return_paths.py
+      - name: Verify scalar and return-path adapters against published Empyrical 0.7.0
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "polars==1.36.1" --with "pandas==3.0.5"
+          --with "empyrical-reloaded==0.7.0" --with pytest
+          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          -q --tb=short tests/test_compat/test_empyrical_scalar_metrics.py
+          tests/test_compat/test_empyrical_return_paths.py
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-

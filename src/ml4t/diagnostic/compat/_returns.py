@@ -35,6 +35,27 @@ def adjust_rate(returns: ReturnInput, rate: float | ReturnInput) -> ReturnInput:
     return returns - rate
 
 
+def output_array(
+    returns: ReturnInput, shape: tuple[int, ...], out: np.ndarray | None
+) -> np.ndarray:
+    if out is None:
+        return np.empty(shape, dtype=float)
+    if not isinstance(out, np.ndarray) or out.shape != shape:
+        raise ValueError(f"out shape must be {shape}")
+    if not np.issubdtype(out.dtype, np.floating):
+        raise TypeError("out must have floating dtype")
+    inputs = (
+        (column.to_numpy(copy=False) for _, column in returns.items())
+        if isinstance(returns, pd.DataFrame)
+        else (np.asarray(returns),)
+    )
+    if any(np.shares_memory(out, values) for values in inputs):
+        raise ValueError("out must not overlap input returns")
+    if not out.flags.writeable:
+        raise ValueError("out must be writable")
+    return out
+
+
 def reduce_columns(
     returns: ReturnInput,
     function: Callable[[np.ndarray, int], float],
@@ -52,23 +73,7 @@ def reduce_columns(
     if empty_scalar and len(original) == 0:
         return float("nan")
     shape = original.shape[1:]
-    if out is None:
-        output = np.empty(shape, dtype=float)
-    else:
-        if not isinstance(out, np.ndarray) or out.shape != shape:
-            raise ValueError(f"out shape must be {shape}")
-        if not np.issubdtype(out.dtype, np.floating):
-            raise TypeError("out must have floating dtype")
-        if not out.flags.writeable:
-            raise ValueError("out must be writable")
-        inputs = (
-            (column.to_numpy(copy=False) for _, column in returns.items())
-            if isinstance(returns, pd.DataFrame)
-            else (np.asarray(returns),)
-        )
-        if any(np.shares_memory(out, values) for values in inputs):
-            raise ValueError("out must not overlap input returns")
-        output = out
+    output = output_array(returns, shape, out)
     if len(original) < min_length:
         output[...] = np.nan
     elif original.ndim == 1:

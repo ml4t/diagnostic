@@ -574,7 +574,7 @@ def show_prepared_holdings_report(output: Path) -> None:
 
 
 def show_empyrical_native() -> None:
-    """Run captured-price scalar adapters without a legacy runtime dependency."""
+    """Run captured-price scalar and path adapters without a legacy dependency."""
     from ml4t.diagnostic.compat import empyrical as metrics
 
     prices = pd.DataFrame(
@@ -612,6 +612,27 @@ def show_empyrical_native() -> None:
     assert metrics.annualization_factor("ignored", 52.5) == 52.5
     pd.testing.assert_frame_equal(returns, before)
     print("Empyrical scalar adapters: 7 routes; 4 dated rows; 2 columns; 1 missing return")
+    path_prices = pd.DataFrame(
+        {"strategy": [100.0, 101.0, 98.0, np.nan, 103.0], "benchmark": [50, 50, 52, 51, 53]},
+        index=pd.date_range("2025-01-02", periods=5, tz="UTC", name="date"),
+    )
+    paths = pd.DataFrame(
+        metrics.simple_returns(path_prices.to_numpy()),
+        index=path_prices.index[1:],
+        columns=path_prices.columns,
+    )
+    wealth = metrics.cum_returns(paths, starting_value=100)
+    np.testing.assert_allclose(wealth, [[101, 100], [98, 104], [98, 102], [98, 106]])
+    np.testing.assert_allclose(metrics.cum_returns_final(paths), [-0.02, 0.06], atol=1e-15)
+    drawdown = metrics.drawdown_series(paths)
+    np.testing.assert_allclose(
+        drawdown, [[0, 0], [-3 / 101, 0], [-3 / 101, -1 / 52], [-3 / 101, 0]], atol=1e-15
+    )
+    np.testing.assert_allclose(metrics.max_drawdown(paths), [-3 / 101, -1 / 52], atol=1e-15)
+    assert wealth.index.equals(paths.index) and drawdown.columns.equals(paths.columns)
+    print(
+        "Empyrical return paths: 5 routes; missing adjacent prices retained; initial capital checked"
+    )
 
 
 def main() -> None:

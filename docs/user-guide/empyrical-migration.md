@@ -169,6 +169,75 @@ sample-deviation and downside formulas are separate checks. Matching these
 scalar cases does not qualify the report, rolling or attribution workflows
 listed below.
 
+## Follow dated price and return paths (unreleased)
+
+The same namespace also exposes `simple_returns`, `cum_returns`,
+`cum_returns_final`, `drawdown_series` and `max_drawdown`. These adapters use
+Diagnostic's existing NaN-neutral compounding and initial-capital drawdown
+calculations. They do not annualize a return path or infer a calendar. The
+`--task empyrical-native` command above executes both the scalar workflow and
+this price-to-wealth workflow without a legacy runtime dependency:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.compat import empyrical as metrics
+
+prices = pd.DataFrame(
+    {"strategy": [100.0, 101.0, 98.0, np.nan, 103.0], "benchmark": [50, 50, 52, 51, 53]},
+    index=pd.date_range("2025-01-02", periods=5, tz="UTC", name="date"),
+)
+returns = pd.DataFrame(
+    metrics.simple_returns(prices.to_numpy()),
+    index=prices.index[1:], columns=prices.columns,
+)
+wealth = metrics.cum_returns(returns, starting_value=100)
+np.testing.assert_allclose(wealth, [[101, 100], [98, 104], [98, 102], [98, 106]])
+np.testing.assert_allclose(metrics.cum_returns_final(returns), [-0.02, 0.06], atol=1e-15)
+drawdown = metrics.drawdown_series(returns)
+np.testing.assert_allclose(metrics.max_drawdown(returns), [-3 / 101, -1 / 52], atol=1e-15)
+assert drawdown.index.equals(returns.index)
+assert list(wealth.columns) == ["strategy", "benchmark"]
+print("Return paths: dated labels, missing adjacencies and initial capital checked")
+```
+
+The missing strategy price makes both adjacent ndarray returns undefined.
+Compounding retains those rows as neutral growth, leaving wealth at 98;
+it does not reconstruct the final price of 103. For `simple_returns`, pandas
+inputs deliberately retain the installed pandas `pct_change()` default, as
+Empyrical does. Pandas 2.3 pads that missing price, yielding final wealth 103;
+pandas 3.0 propagates the gap, yielding 98. NumPy prices propagate missing
+adjacencies under both versions. Use the ndarray route above, or calculate
+`prices.pct_change(fill_method=None).iloc[1:]` explicitly, when the workflow
+requires version-independent gap propagation. Integer ndarray differences are
+computed before float conversion so small ticks above the float64 exact-integer
+range and unsigned declines survive.
+
+`cum_returns(..., starting_value=0)` reports cumulative decimal gains; a
+nonzero starting value reports wealth in the units of that starting capital.
+`cum_returns_final` returns the final gain or wealth, without annualization.
+`drawdown_series` and `max_drawdown` are negative decimal declines from the
+running peak, including the starting capital. All paths compound per column.
+An ndarray drawdown has one row per input return, matching repaired Empyrical
+0.7.0 rather than the extra anchor returned by 0.5.12.
+
+Nonempty Series paths retain dates but omit the Series name, as the reference
+does; DataFrame paths retain dates and columns. Final and maximum reductions
+return a scalar for 1D inputs, a column-labeled Series for a DataFrame, or an
+array for 2D ndarray input. With an explicit buffer, cumulative paths and
+maximum reductions return the array rather than rebuilding labels; drawdown
+paths rebuild pandas labels and share the buffer after its initial zero anchor.
+That drawdown buffer must have one extra row. Buffer validation rejects wrong
+shapes, nonfloating or read-only storage, and overlap with the original input.
+Calculations use float64 and native unit-wealth drawdowns, so low-order rounding
+can differ from reference float32 paths or its 100-unit drawdown calculation.
+
+Empty cumulative paths preserve the empty input; empty final reductions return
+scalar `NaN`. Empty drawdown paths return scalar `NaN` for 1D input or an
+unlabeled `(1, n_columns)` NaN array for 2D input. Empty maximum reductions
+return scalar `NaN` or an unlabeled `(n_columns,)` NaN array. These per-function
+contracts are not a blanket DataFrame-support claim for other Empyrical routes.
+
 ## Metrics that need separate review
 
 Benchmark-relative `alpha` and `beta` are available from Diagnostic when you
