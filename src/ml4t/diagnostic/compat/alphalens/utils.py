@@ -112,10 +112,9 @@ def _legacy_labels(
     if not len(common):
         raise ValueError("factor and prices have no matching date keys")
     calendar = np.busdaycalendar(
-        weekmask=getattr(
-            frequency, "weekmask", "1111111" if isinstance(frequency, Day) else "1111100"
-        ),
-        holidays=np.asarray(getattr(frequency, "holidays", []), dtype="datetime64[D]"),
+        weekmask=getattr(frequency, "weekmask", None)
+        or ("1111111" if isinstance(frequency, Day) else "1111100"),
+        holidays=np.asarray(getattr(frequency, "holidays", None) or [], dtype="datetime64[D]"),
     )
     labels = {}
     for period in sorted({positive_count(period, "periods") for period in periods}):

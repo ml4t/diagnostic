@@ -12,6 +12,8 @@ def _inputs(clock="30min"):
         dates = pd.bdate_range("2025-07-01", periods=12, tz="America/New_York").drop(
             pd.Timestamp("2025-07-04", tz="America/New_York")
         )
+    elif clock == "businessday":
+        dates = pd.bdate_range("2025-07-07", periods=8, tz="UTC")
     elif clock == "overnight":
         dates = pd.date_range("2025-07-06T23:30Z", periods=8, freq="1h")
     elif clock == "dst":
@@ -36,7 +38,15 @@ def _inputs(clock="30min"):
 
 @pytest.mark.parametrize(
     "clock,label",
-    [("30min", "30m"), ("1ns", "1ns"), ("holiday", "1D"), ("overnight", "1h"), ("dst", "1h")],
+    [
+        ("30min", "30m"),
+        ("1ns", "1ns"),
+        ("holiday", "1D"),
+        ("businessday", "1D"),
+        ("1D", "1D"),
+        ("overnight", "1h"),
+        ("dst", "1h"),
+    ],
 )
 @pytest.mark.parametrize("cumulative", [False, True])
 def test_price_adapter_preserves_clock_endpoints_native_samples_and_exact_labels(
@@ -183,7 +193,7 @@ def test_preparation_profiles_are_explicit_and_do_not_change_native_return_defin
         utils.get_clean_factor_and_forward_returns(factor, prices, reference_version="unknown")
 
 
-@pytest.mark.parametrize("clock", ["30min", "1ns", "overnight", "dst"])
+@pytest.mark.parametrize("clock", ["30min", "1ns", "overnight", "dst", "businessday", "1D"])
 @pytest.mark.parametrize("cumulative", [False, True])
 def test_reference_intraday_and_overnight_labels_masks_and_values_match(clock, cumulative):
     reference = pytest.importorskip("alphalens.utils")
