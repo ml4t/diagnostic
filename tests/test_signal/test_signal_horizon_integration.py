@@ -146,3 +146,49 @@ def test_ambiguous_period_and_explicit_selector_arguments_are_not_silently_prior
     panel, _, _ = _supplied_panel()
     with pytest.raises(ValueError, match="periods.*return_columns"):
         analyze_prepared_signal(panel.data, periods=(1,), return_columns=("30m",))
+
+
+@pytest.mark.parametrize("horizon", ["30m", "1ns", "1D1h"])
+@pytest.mark.parametrize("sparse", [False, True])
+@pytest.mark.parametrize("missing", [False, True])
+def test_corrected_alphalens_shared_horizon_membership_and_distinct_reduction_definitions(
+    horizon, sparse, missing
+):
+    utils = pytest.importorskip("alphalens.utils")
+    performance = pytest.importorskip("alphalens.performance")
+    from importlib.metadata import version
+
+    if version("alphalens-reloaded") != "0.5.0":
+        pytest.skip("this regression pins the corrected Alphalens0.5.0 profile")
+    _, factor, outcomes = _supplied_panel((horizon,), sparse=sparse)
+    if missing:
+        outcomes.iloc[0, 0] = np.nan
+    bins = [-10, -5, 0, 5] if sparse else [-4, 0, 4]
+    native = prepare_signal_panel(factor, outcomes, quantiles=None, bins=bins, max_loss=1 / 16)
+    reference = utils.get_clean_factor(factor, outcomes, quantiles=None, bins=bins, max_loss=1 / 16)
+    values = native.data.to_pandas().set_index(["date", "asset"]).sort_index()
+    compared = reference.rename(columns={"factor_quantile": "quantile"}).sort_index()
+    pd.testing.assert_index_equal(values.index, compared.index, check_names=True)
+    pd.testing.assert_frame_equal(
+        values[["factor", horizon, "quantile"]],
+        compared[["factor", horizon, "quantile"]],
+        check_dtype=False,
+        check_freq=False,
+    )
+    assert values.shape[0] == (15 if missing else 16)
+    assert native.metadata["loss_by_stage"]["returns"] == int(missing)
+    result = native.analyze(min_assets=2)
+    reference_ic = performance.factor_information_coefficient(reference)
+    np.testing.assert_allclose(result.ic_series[horizon], reference_ic[horizon], atol=1e-12)
+    native_dates = pd.DatetimeIndex(pd.to_datetime(result.ic_dates[horizon], format="mixed"))
+    np.testing.assert_array_equal(
+        native_dates.as_unit("ns").asi8, reference_ic.index.as_unit("ns").asi8
+    )
+    means, _ = performance.mean_return_by_quantile(reference, demeaned=False)
+    low, high = result.quantile_ids
+    assert result.quantile_returns[horizon][high] == pytest.approx(0.035)
+    assert means.loc[high, horizon] == pytest.approx(0.035)
+    # Removing the actual first low-asset outcome makes date counts unequal.
+    # Native pools seven asset outcomes; Alphalens gives all four dates equal weight.
+    assert result.quantile_returns[horizon][low] == pytest.approx(-0.02 / 7 if missing else -0.005)
+    assert means.loc[low, horizon] == pytest.approx(-0.0025 if missing else -0.005)

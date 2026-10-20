@@ -363,6 +363,16 @@ remain analyzable without invented daily lags. For explicit observation lags use
 sparse cut buckets and actual plotted bucket means. Native pooled/equal-date/report
 differences below still apply; this change does not complete all seven tear sheets.
 
+The installed-artifact comparison with Alphalens 0.5.0 uses shared `30m`, `1ns`
+and `1D1h` outcome columns, nanosecond keys, ordinary/sparse cut buckets and a
+missing-outcome case. Keys, excluded rows, bucket membership and dated ICs agree
+with matched options. Native pooled means remain different from Alphalens'
+equal-date means when date counts differ: in the tested low bucket, seven asset
+outcomes average `-0.02/7`, whereas four date means average `-0.0025`.
+Qualification used Python 3.12.11, pandas 3.0.6, NumPy 2.5.4, Polars 2.0.0 and
+SciPy 1.18.1. This comparison qualifies supplied-panel analysis, not price
+endpoint construction, holding expiry or complete report replacement.
+
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.
