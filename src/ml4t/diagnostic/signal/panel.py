@@ -31,6 +31,10 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.signal.result import SignalResult
 
 
+class MaxLossExceededError(ValueError):
+    """The common sample loses more than its declared maximum fraction."""
+
+
 @dataclass(frozen=True)
 class PreparedSignalPanel:
     """An owned prepared sample with independently accessible loss metadata."""
@@ -835,7 +839,7 @@ def prepare_signal_panel(
     )
     loss_fraction = (input_rows - data.height) / input_rows
     if loss_fraction > max_loss:
-        raise ValueError(
+        raise MaxLossExceededError(
             f"max_loss {max_loss} exceeded by observed exclusion fraction {loss_fraction}; losses={losses}"
         )
     aligned_exclusions = []

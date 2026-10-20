@@ -7,6 +7,7 @@ from importlib.metadata import version
 import numpy as np
 import pandas as pd
 
+from ml4t.diagnostic.compat.alphalens import utils as al
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
 from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import prepare_signal_panel
@@ -85,6 +86,26 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
     )
     assert price_panel.data.equals(panel.data)
     assert price_panel.outcome_data["window_unit"].unique().to_list() == ["observation"]
+    adapted = al.get_clean_factor_and_forward_returns(
+        factor,
+        prices,
+        periods=(1, 2),
+        quantiles=2,
+        filter_zscore=None,
+        groupby={"A": "first", "B": "first", "C": "second", "D": "second"},
+        max_loss=0.5,
+        price_basis="raw",
+        calendar=None,
+    )
+    assert adapted.attrs["diagnostic"]["loss_by_stage"] == panel.metadata["loss_by_stage"]
+    adapted_native = adapted.rename(columns={"factor_quantile": "quantile"}).reset_index()
+    native = panel.data.to_pandas()
+    pd.testing.assert_frame_equal(
+        adapted_native[native.columns],
+        native,
+        check_dtype=False,
+        check_categorical=False,
+    )
     assert panel.data.height == 12
     assert panel.metadata["loss_by_stage"] == {
         "factor": 4,

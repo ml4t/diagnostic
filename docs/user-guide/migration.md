@@ -442,6 +442,65 @@ The shared public return kernel now subtracts integer prices before floating
 conversion, so valid one-tick changes above Float64's integer precision are not
 lost. This kernel emits Float64 returns; it cannot recover input quantization.
 
+### Keep Alphalens preparation calls during migration
+
+Unreleased after 0.1.9, change the preparation import while keeping the pandas
+MultiIndex inputs and familiar cleaning arguments:
+
+```python
+# Previously: from alphalens import utils as al
+from ml4t.diagnostic.compat.alphalens import utils as al
+from ml4t.diagnostic import analyze_prepared_signal
+
+clean = al.get_clean_factor_and_forward_returns(
+    factor, prices, periods=(1, 2), quantiles=2, max_loss=0.5,
+    filter_zscore=None, price_basis="raw", calendar=None,
+)
+result = analyze_prepared_signal(
+    clean, return_columns=["1D", "2D"], min_assets=2, calendar=None,
+)
+```
+
+The labels in this example require daily observations. Intraday inputs retain
+labels such as `30m`, `1ns` and composites. The adapter also exposes
+`compute_forward_returns` and `get_clean_factor` for the two-stage workflow or
+supplied returns. Numeric and opaque hashable asset IDs are restored without
+string conversion; static or dated groups, labels, qcut/cut, custom edges,
+zero-aware buckets and the common-sample loss limit use the native cleaner.
+The returned `factor_quantile` column is accepted directly by prepared analysis.
+The runnable `examples/signal_panel_cleaning.py --plots` compares price,
+supplied-return and adapted samples before executing native diagnostics.
+
+These are explicit legacy preparation defaults, not native defaults:
+
+- Price views forward-fill before computing observation-count returns. The
+  convenience cleaner defaults to `filter_zscore=20`; the standalone return
+  function defaults to no filter. Pass `None` to avoid the lookahead filter.
+- Inferred weekday/holiday calendars determine legacy duration labels only.
+  They are not an exchange schedule. A nonconforming intraday index retains its
+  observed frequency and emits a warning, as corrected Alphalens 0.5.0 does.
+- Without an explicit basis the adapter records `legacy_unspecified`, not raw
+  or adjusted. Supply `price_basis` when known. Use native `outcome_data` when
+  original quote masks, exact endpoints and publication instants are needed.
+- The pandas result retains cleaning audit metadata in `attrs["diagnostic"]`.
+  Passing the return adapter's table to its cleaner preserves declared calendar
+  metadata, including explicit `None`. A conflicting new feed declaration
+  raises unless an explicit `calendar` argument resolves it.
+- `MaxLossExceededError` and `NonMatchingTimezoneError` are available in this
+  namespace. The adapter does not print legacy progress messages. Ambiguous
+  inferred labels raise instead of silently overwriting a horizon; explicit
+  native selectors avoid that inference.
+
+Preparation comparisons use corrected Alphalens 0.5.0, including retained keys,
+missingness, bucket/group membership, cumulative versus terminal-bar returns and
+filter options. Integer-tick/Float32 accuracy is checked against independent
+fractions rather than reproducing legacy cancellation. These preparation calls
+do not yet provide every performance function or all seven legacy report routes.
+The keyword-only `reference_version` defaults to `"0.5.0"`; `"0.4.6"` explicitly
+selects the frozen profile. These preparation definitions are shared; the
+historical intraday frequency-assignment failure is not reproduced. The profile
+is retained and threaded through the convenience call without global state.
+
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.

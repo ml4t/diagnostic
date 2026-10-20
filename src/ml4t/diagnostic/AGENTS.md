@@ -14,6 +14,7 @@
 | Package | Purpose |
 |---------|---------|
 | [signal/](signal/AGENTS.md) | Factor signal analysis and IC/quantile workflows |
+| `compat/` | Thin Reloaded migration adapters using the native analytical kernels |
 | [metrics/](metrics/AGENTS.md) | Feature, signal, and risk metric functions |
 | [splitters/](splitters/AGENTS.md) | Walk-forward, CPCV, calendars, and fold persistence |
 | [evaluation/](evaluation/AGENTS.md) | Core analysis workflows and statistical validation |
