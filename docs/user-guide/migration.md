@@ -400,6 +400,14 @@ with the standalone supplied-return route. Engineer remains optional. Captured
 producer tests also exercise exact `1ns`/`2ns` elapsed endpoints, missing quotes
 and overlapping input batches without installing Engineer in the consumer.
 
+Standalone captures from the qualified Engineer source also exercise native
+session labels, validated expected bars, CME Sunday-night bars and NYSE's July 3
+early close. Diagnostic retains the producer's exact endpoints and declared
+units; it does not relabel session dates as midnight instants. Session-label
+durations and unknown publications remain unknown. These captures use Engineer
+`0.1.7.dev35+g071b87cef`, Specs 0.2.0 and pandas-market-calendars 5.5.0, not a
+claim that all later producer revisions or every option has been qualified.
+
 ### Prepare the same sample directly from prices
 
 Unreleased after 0.1.9, `prepare_signal_panel(factor, prices=prices,
@@ -513,6 +521,11 @@ The keyword-only `reference_version` defaults to `"0.5.0"`; `"0.4.6"` explicitly
 selects the frozen profile. These preparation definitions are shared; the
 historical intraday frequency-assignment failure is not reproduced. The profile
 is retained and threaded through the convenience call without global state.
+The installed preparation profile uses Python 3.12.11, pandas 3.0.6, NumPy 2.5.4,
+Polars 2.0.0, SciPy 1.18.1 and Plotly 7.1.0. A separate consumer/reference profile
+uses pandas 2.3.3, NumPy 2.2.6, Polars 1.36.1 and SciPy 1.17.0. The pinned Engineer
+wheel requires Polars 2, so its live regeneration is not claimed at that floor;
+standalone ingestion of its frozen captures needs no Engineer installation.
 
 ### Inspect grouped IC and adjusted outcomes
 

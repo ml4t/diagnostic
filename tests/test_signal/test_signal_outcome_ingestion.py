@@ -1,9 +1,11 @@
 """Actual native outcome captures feed one cleaner without a producer dependency."""
 
 import json
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import polars as pl
 import pytest
 from ml4t.specs import FeedSpec
@@ -220,3 +222,98 @@ def test_optional_actual_pinned_producer_recreates_captured_samples(missing, exi
         max_loss=1 / 6,
     )
     np.testing.assert_allclose(list(panel.analyze(min_assets=2).ic.values()), [1.0, 1.0])
+
+
+SCHEDULED_CASES = ["session-labels", "expected-bars", "overnight-bars", "early-close"]
+
+
+@pytest.mark.parametrize("name", SCHEDULED_CASES)
+def test_real_scheduled_outcomes_keep_civil_labels_overnight_and_early_close_endpoints(
+    name, tmp_path
+):
+    factor = pl.read_ipc(DATA / f"{name}-factor.arrow")
+    outcomes = pl.read_ipc(DATA / f"{name}-outcomes.arrow")
+    provenance = json.loads((DATA / "scheduled-provenance.json").read_text())
+    case = provenance["cases"][name]
+    panel = prepare_signal_panel(
+        factor,
+        outcomes,
+        horizon_col="horizon",
+        feed_spec=case["feed_spec"],
+        quantiles=2,
+        max_loss=0,
+    )
+    assert panel.outcome_data.select(outcomes.columns).equals(outcomes)
+    assert panel.metadata["retained_rows"] == factor.height
+    assert panel.outcome_data["outcome_available_at"].null_count() == outcomes.height
+    assert panel.outcome_data["window_unit"].unique().to_list() == [
+        "session" if name in ("session-labels", "early-close") else "expected_bar"
+    ]
+    expected = []
+    for index in range(factor.height // 4):
+        for asset in range(4):
+            if name == "session-labels":
+                expected.append(
+                    float(
+                        Fraction(
+                            10 if index == 0 else 11, (100 if index == 0 else 110) + 10 * asset
+                        )
+                    )
+                )
+            else:
+                expected.append(
+                    float(Fraction(10 if name == "early-close" else 20, 100 + 10 * (asset + index)))
+                )
+    np.testing.assert_allclose(panel.data[name], expected, rtol=3e-16, atol=0)
+    if name == "session-labels":
+        assert panel.outcome_data["timestamp"].dtype == pl.Date
+        assert panel.outcome_data["exit_time"].dtype == pl.Date
+        assert (
+            panel.outcome_data["exit_time"].to_list()
+            == [pd.Timestamp("2025-07-07").date()] * 4 + [pd.Timestamp("2025-07-08").date()] * 4
+        )
+        assert panel.outcome_data["duration_ns"].null_count() == outcomes.height
+    else:
+        expected_duration = (21 if name == "early-close" else 2) * 3600 * 10**9
+        assert panel.outcome_data["duration_ns"].to_list() == [expected_duration] * outcomes.height
+        if name == "overnight-bars":
+            assert panel.outcome_data["timestamp"][0] == pd.Timestamp("2025-07-06T22:00Z")
+            assert panel.outcome_data["exit_time"][0] == pd.Timestamp("2025-07-07T00:00Z")
+        if name == "early-close":
+            assert (
+                panel.outcome_data["exit_time"].to_list() == [pd.Timestamp("2025-07-03T16:30Z")] * 4
+            )
+    result = panel.analyze(min_assets=4)
+    assert result.ic[name] == pytest.approx(-1.0)
+    target = tmp_path / "scheduled.json"
+    result.to_json(str(target))
+    assert SignalResult.from_json(str(target)).outcome_data.equals(panel.outcome_data)
+
+
+@pytest.mark.parametrize("name", SCHEDULED_CASES)
+@pytest.mark.parametrize("lazy", [False, True])
+def test_optional_installed_producer_recreates_actual_scheduled_captures(name, lazy):
+    labeling = pytest.importorskip("ml4t.engineer.labeling")
+    from importlib.metadata import version
+
+    provenance = json.loads((DATA / "scheduled-provenance.json").read_text())
+    if version("ml4t-engineer") != provenance["producer_version"]:
+        pytest.skip("this fixture pins its exact qualified native producer")
+    case = provenance["cases"][name]
+    prices = pl.read_ipc(DATA / f"{name}-prices.arrow")
+    factor = pl.read_ipc(DATA / f"{name}-factor.arrow")
+    actual = labeling.forward_returns(
+        prices.lazy() if lazy else prices,
+        horizons={name: case["horizon"]},
+        entries=factor.select("timestamp", "asset"),
+        window_unit=case["window_unit"],
+        feed_spec=FeedSpec.from_mapping(case["feed_spec"]),
+        price_basis="raw",
+    )
+    if lazy:
+        actual = actual.collect()
+    assert actual.equals(pl.read_ipc(DATA / f"{name}-outcomes.arrow"))
+    panel = prepare_signal_panel(
+        factor, actual, horizon_col="horizon", feed_spec=case["feed_spec"], quantiles=2, max_loss=0
+    )
+    assert panel.analyze(min_assets=4).ic[name] == pytest.approx(-1.0)
