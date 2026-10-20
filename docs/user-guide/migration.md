@@ -451,13 +451,26 @@ MultiIndex inputs and familiar cleaning arguments:
 # Previously: from alphalens import utils as al
 from ml4t.diagnostic.compat.alphalens import utils as al
 from ml4t.diagnostic import analyze_prepared_signal
+import pandas as pd
 
-clean = al.get_clean_factor_and_forward_returns(
-    factor, prices, periods=(1, 2), quantiles=2, max_loss=0.5,
+adapter_dates = pd.bdate_range("2025-07-07", periods=4, tz="UTC")
+adapter_prices = pd.DataFrame(
+    {"A": [100, 110, 121, 133.1], "B": [100, 120, 144, 172.8]},
+    index=adapter_dates,
+)
+adapter_factor = pd.Series(
+    [-1.0, 1.0] * 2,
+    index=pd.MultiIndex.from_product(
+        [adapter_dates[:2], ["A", "B"]], names=["date", "asset"]
+    ),
+    name="factor",
+)
+adapter_clean = al.get_clean_factor_and_forward_returns(
+    adapter_factor, adapter_prices, periods=(1, 2), quantiles=2, max_loss=0,
     filter_zscore=None, price_basis="raw", calendar=None,
 )
-result = analyze_prepared_signal(
-    clean, return_columns=["1D", "2D"], min_assets=2, calendar=None,
+adapter_result = analyze_prepared_signal(
+    adapter_clean, return_columns=["1D", "2D"], min_assets=2, calendar=None,
 )
 ```
 
