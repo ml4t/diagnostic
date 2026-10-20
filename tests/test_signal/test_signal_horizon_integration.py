@@ -36,6 +36,37 @@ def _supplied_panel(horizons=("30m",), *, sparse=False):
     return panel, factor, outcomes
 
 
+def test_core_only_html_report_displays_literal_horizon_text_without_creating_markup(tmp_path):
+    from html.parser import HTMLParser
+    from importlib.util import find_spec
+
+    if find_spec("plotly") is not None:
+        pytest.skip("the standalone no-Plotly artifact profile exercises this real fallback")
+    from ml4t.diagnostic.signal._report import generate_html
+
+    class Document(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tags = []
+            self.text = []
+
+        def handle_starttag(self, tag, attrs):
+            self.tags.append(tag)
+
+        def handle_data(self, data):
+            self.text.append(data)
+
+    selector = '<img src="missing" onerror="window.injected=true">'
+    panel, _, _ = _supplied_panel((selector,), sparse=True)
+    result = panel.analyze(min_assets=4)
+    path = tmp_path / "literal-horizon.html"
+    generate_html(result, str(path))
+    document = Document()
+    document.feed(path.read_text())
+    assert "img" not in document.tags
+    assert selector in "".join(document.text)
+
+
 @pytest.mark.parametrize("horizon", ["30m", "1ns", "1D1h", "realized_excess", "21"])
 @pytest.mark.parametrize("sparse", [False, True])
 def test_cleaner_produced_subday_and_custom_buckets_reach_analysis_without_relabeling(

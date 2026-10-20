@@ -497,6 +497,10 @@ These are explicit legacy preparation defaults, not native defaults:
 - Price views forward-fill before computing observation-count returns. The
   convenience cleaner defaults to `filter_zscore=20`; the standalone return
   function defaults to no filter. Pass `None` to avoid the lookahead filter.
+  Legacy filtering uses all retained pandas date-index levels before selecting
+  factor rows, including unused levels left after dropping an entire date. The
+  native price route instead fits actual factor dates. The audit records the
+  selected filter clock's count and hash; no scored observations are invented.
 - Inferred weekday/holiday calendars determine legacy duration labels only.
   They are not an exchange schedule. A nonconforming intraday index retains its
   observed frequency and emits a warning, as corrected Alphalens 0.5.0 does.

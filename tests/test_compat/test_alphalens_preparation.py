@@ -301,3 +301,39 @@ def test_corrected_alphalens_reference_uses_identical_keys_values_masks_and_buck
     assert actual.columns.tolist() == expected.columns.tolist()
     np.testing.assert_array_equal(actual["factor_quantile"], expected["factor_quantile"])
     np.testing.assert_allclose(actual[["1D", "2D"]], expected[["1D", "2D"]], rtol=2e-14, atol=2e-16)
+
+
+def test_legacy_filter_uses_retained_date_levels_before_factor_rows_are_reindexed():
+    reference = _current_reference()
+    from ml4t.diagnostic.compat.alphalens import utils
+
+    dates = pd.bdate_range("2025-07-07", periods=4, tz="UTC")
+    prices = pd.DataFrame({"A": [100, 110, 220, 242], "B": [100] * 4}, index=dates)
+    factor = pd.Series(
+        [-1.0, 1.0] * 3,
+        index=pd.MultiIndex.from_product([dates[:3], ["A", "B"]], names=["date", "asset"]),
+    )
+    factor = factor.drop(dates[1], level="date")
+    assert len(factor.index.levels[0]) == 3 and factor.index.get_level_values(0).nunique() == 2
+    expected = reference.compute_forward_returns(factor, prices, periods=(1,), filter_zscore=0.5)
+    assert expected.loc[(slice(None), "A"), "1D"].isna().all()
+    actual = utils.compute_forward_returns(factor, prices, periods=(1,), filter_zscore=0.5)
+    pd.testing.assert_index_equal(actual.index, expected.index)
+    np.testing.assert_array_equal(actual.isna(), expected.isna())
+    np.testing.assert_allclose(actual, expected, equal_nan=True, rtol=2e-14, atol=2e-16)
+    np.testing.assert_array_equal(actual.isna(), [[True], [False]] * 2)
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    native = prepare_signal_panel(
+        factor.rename("factor"),
+        prices=prices,
+        horizons={"one": 1},
+        price_basis="raw",
+        calendar=None,
+        return_filter_zscore=0.5,
+        quantiles=2,
+        max_loss=0,
+    )
+    assert native.data.height == 4
+    assert actual.attrs["diagnostic"]["filter_clock_rows"] == 3
+    assert native.metadata["price_preparation"]["filter_clock_rows"] == 2

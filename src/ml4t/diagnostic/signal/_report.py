@@ -5,6 +5,7 @@ Internal module for HTML report generation.
 
 from __future__ import annotations
 
+from html import escape
 from typing import TYPE_CHECKING
 
 from ml4t.diagnostic.utils.formatting import format_finite
@@ -143,7 +144,7 @@ def _generate_text_html(result: SignalResult, path: str) -> None:
 </head>
 <body>
     <h1>Signal Analysis Report</h1>
-    <pre>{result.summary()}</pre>
+    <pre>{escape(result.summary())}</pre>
 </body>
 </html>"""
 

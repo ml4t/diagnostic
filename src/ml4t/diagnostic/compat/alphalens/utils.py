@@ -227,6 +227,7 @@ def compute_forward_returns(
         return_filter_zscore=filter_zscore,
         available_at_col=None,
         contract=contract,
+        filter_dates=_signal_frame(pd.DataFrame({"date": factor.index.levels[0]})),
     )
     result = (
         outcomes.select("date", "asset", "horizon", "forward_return")

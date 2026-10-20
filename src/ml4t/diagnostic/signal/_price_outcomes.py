@@ -73,6 +73,7 @@ def price_outcomes(
     return_filter_zscore: float | None,
     available_at_col: str | None,
     contract: dict[str, Any],
+    filter_dates: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, Any]]:
     """Construct observation-count research outcomes without calendar inference."""
     if not isinstance(horizons, Mapping) or not horizons:
@@ -206,6 +207,10 @@ def price_outcomes(
         output_col_template="_research_return_{period}",
     )
     assert isinstance(produced, pl.DataFrame)
+    analysis_clock = factors.select(date_col).unique() if filter_dates is None else filter_dates
+    analysis_clock = analysis_clock.select(date_col).unique().sort(date_col)
+    produced, analysis_clock = _align_datetime_key_resolution(produced, analysis_clock, date_col)
+    factors, produced = _align_datetime_key_resolution(factors, produced, date_col)
     results = []
 
     def shifted(column: str, steps: int) -> pl.Expr:
@@ -255,7 +260,7 @@ def price_outcomes(
                         else shifted("_research_return_1", reference)
                     ).alias("_research_filter_return")
                 )
-                .join(factors.select(date_col).unique(), on=date_col, how="semi")
+                .join(analysis_clock, on=date_col, how="semi")
                 .sort(asset_col, date_col)
             )
             moments = _filter_statistics(filter_sample, asset_col)
@@ -336,7 +341,11 @@ def price_outcomes(
             "horizons": periods,
             "fill_method": fill_method,
             "return_filter_zscore": return_filter_zscore,
-            "filter_scope": "per asset over factor analysis dates before cleaning; lookahead-sensitive research view",
+            "filter_scope": "per asset over supplied legacy factor index date levels before reindexing; lookahead-sensitive research view"
+            if filter_dates is not None
+            else "per asset over actual factor analysis dates before cleaning; lookahead-sensitive research view",
+            "filter_clock_rows": analysis_clock.height,
+            "filter_clock_sha256": sha256(analysis_clock.write_ipc(None).getvalue()).hexdigest(),
             "price_input_sha256": input_hash,
             "factor_input_sha256": factor_hash,
             "price_input_schema": input_schema,
