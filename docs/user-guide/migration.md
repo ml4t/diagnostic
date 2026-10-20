@@ -345,11 +345,23 @@ caller or recovering precision already lost in Float32 inputs.
 
 The [signal API](../api/index.md#signal-analysis) documents static/dated groups,
 probability qcut, cut edges and zero-aware options. Preparing group-relative
-buckets alone does not provide group-neutral inference. The analysis shortcut currently
-requires positive integer `D` selectors and contiguous buckets starting at one.
-Other supplied labels and bucket sets remain inspectable in `panel.data`; the
-shortcut rejects them before writing a report. No calendar grid is inferred or
-validated, and the native pooled/equal-date/report differences below still apply.
+buckets alone does not provide group-neutral inference. Unreleased after 0.1.9,
+`panel.analyze()` retains arbitrary supplied return columns and sparse positive
+bucket IDs without rebucketing. `result.horizon_labels` preserves selector order;
+`result.quantile_ids` preserves the actual IDs in summaries, JSON and quantile
+plots. The strict standalone route accepts `return_columns=("30m", "1ns", "1D1h")`
+instead of integer `periods`; supplying both arguments is an error. Without a
+`quantiles` limit, that route uses the buckets actually present. Existing integer
+`periods` calls retain their five-bucket default and daily-column aliases.
+
+These labels still do not establish durations or validate a calendar grid.
+When persistence is enabled, only positive exact-day labels such as `1D` produce
+automatic turnover lags in observed factor timestamps. Subday/composite selectors
+remain analyzable without invented daily lags. For explicit observation lags use
+`panel.quantile_turnover(lags=(1, 2))`. The executable
+`examples/signal_panel_cleaning.py --plots` includes supplied intraday outcomes,
+sparse cut buckets and actual plotted bucket means. Native pooled/equal-date/report
+differences below still apply; this change does not complete all seven tear sheets.
 
 ### Inspect grouped IC and adjusted outcomes
 
@@ -392,8 +404,8 @@ already has one common finite sample across all selected horizons.
 IC observations retain undefined dates with null IC, actual `n_obs` and a
 reason such as `no_pairs`, `insufficient_pairs`, `constant_factor` or
 `constant_outcome`. The minimum is applied within each output group.
-`ic_by_date` accepts arbitrary supplied return selectors; the integer-D and
-contiguous-bucket restrictions apply to the separate `analyze()` shortcut.
+Both `ic_by_date` and `analyze()` accept arbitrary supplied return selectors;
+the former additionally exposes grouped/adjusted observations and statuses.
 Output dimensions are canonical `date` and, when requested, `group`, even with
 custom physical input names.
 

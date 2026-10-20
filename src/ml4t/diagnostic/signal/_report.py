@@ -56,8 +56,8 @@ def generate_html(result: SignalResult, path: str) -> None:
             )
 
     # Quantile Returns (first period)
-    if result.periods:
-        first_period = f"{result.periods[0]}D"
+    if result.period_keys:
+        first_period = result.period_keys[0]
         q_returns = result.quantile_returns.get(first_period, {})
         if q_returns:
             quantiles = sorted(q_returns.keys())
@@ -74,8 +74,7 @@ def generate_html(result: SignalResult, path: str) -> None:
 
     # IC Summary Table
     ic_data = []
-    for period in result.periods:
-        period_key = f"{period}D"
+    for period_key in result.period_keys:
         ic_data.append(
             [
                 period_key,
@@ -96,8 +95,7 @@ def generate_html(result: SignalResult, path: str) -> None:
 
     # Spread Summary Table
     spread_data = []
-    for period in result.periods:
-        period_key = f"{period}D"
+    for period_key in result.period_keys:
         spread_data.append(
             [
                 period_key,

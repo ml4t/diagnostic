@@ -12,6 +12,38 @@ from ml4t.diagnostic.metrics import compute_forward_returns
 from ml4t.diagnostic.signal import prepare_signal_panel
 
 
+def subday_analysis(*, plots: bool) -> dict:
+    dates = pd.date_range("2025-07-07T14:30Z", periods=4, freq="30min")
+    index = pd.MultiIndex.from_product([dates, list("ABCD")], names=["date", "asset"])
+    factor = pd.Series(np.tile([-3.0, -1.0, 1.0, 3.0], 4), index=index, name="factor")
+    outcomes = pd.DataFrame(
+        {"30m": np.tile([-0.02, 0.0, 0.02, 0.04], 4) + np.repeat([0, 0.01, -0.01, 0.02], 4)},
+        index=index,
+    )
+    panel = prepare_signal_panel(factor, outcomes, quantiles=None, bins=[-10, -5, 0, 5], max_loss=0)
+    result = panel.analyze(min_assets=4, compute_turnover_flag=True)
+    assert result.horizon_labels == ("30m",) and result.quantile_ids == (2, 3)
+    assert result.turnover == {}  # No daily lag inferred from the supplied subday selector.
+    np.testing.assert_allclose(list(result.quantile_returns["30m"].values()), [-0.005, 0.035])
+    plotted = None
+    if plots:
+        from ml4t.diagnostic.visualization.signal import plot_quantile_returns_bar
+
+        figure = plot_quantile_returns_bar(result.to_quantile_result(), period="30m")
+        assert list(figure.data[0].x) == ["Q2", "Q3"]
+        np.testing.assert_allclose(figure.data[0].y, [-0.005, 0.035])
+        plotted = {"labels": list(figure.data[0].x), "means": list(figure.data[0].y)}
+    return {
+        "supplied_horizons": result.horizon_labels,
+        "bucket_ids": result.quantile_ids,
+        "means": result.quantile_returns,
+        "spread": result.spread,
+        "automatic_turnover_lags": result.preparation_metadata["automatic_turnover_lags"],
+        "plotted": plotted,
+        "limit": "Supplied selectors; return endpoints/calendar not validated by ingestion",
+    }
+
+
 def main(*, plots: bool = False) -> None:
     dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
     assets = ["A", "B", "C", "D"]
@@ -163,6 +195,7 @@ def main(*, plots: bool = False) -> None:
                     name: version(name) for name in ["ml4t-diagnostic", "pandas", "numpy", "polars"]
                 },
                 "input_rows": panel.metadata["input_rows"],
+                "subday_sparse_analysis": subday_analysis(plots=plots),
                 "retained_rows": panel.metadata["retained_rows"],
                 "loss_by_stage": panel.metadata["loss_by_stage"],
                 "ic": result.ic,

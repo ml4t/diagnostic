@@ -66,24 +66,30 @@ class PreparedSignalPanel:
         compute_turnover_flag: bool = False,
         autocorrelation_lags: int = 10,
     ) -> SignalResult:
-        """Feed supported integer-day selectors to the existing analysis engine.
+        """Analyze this exact supplied sample, selectors and bucket IDs.
 
         These labels select supplied columns; they do not establish durations or
-        calendar conformance. Other horizon labels remain available in ``data``.
+        calendar conformance. Sparse bucket labels are retained without rebucketing.
+        Automatic persistence lags use only positive exact-day horizon labels.
         """
         from ml4t.diagnostic.signal.core import analyze_prepared_signal
 
         columns = self.metadata["return_columns"]
-        if not all(re.fullmatch(r"[1-9]\d*D", column) for column in columns):
-            raise ValueError("analysis currently requires positive integer D horizon labels")
         data = self.data
-        buckets = sorted(data["quantile"].unique().to_list())
-        if not buckets or buckets != list(range(1, max(buckets) + 1)):
-            raise ValueError("analysis requires a nonempty contiguous bucket range starting at1")
+        buckets = sorted(int(bucket) for bucket in data["quantile"].unique())
+        legacy = (
+            bool(buckets)
+            and buckets == list(range(1, max(buckets) + 1))
+            and all(re.fullmatch(r"[1-9]\d*D", column) for column in columns)
+        )
+        selection = (
+            {"periods": tuple(int(column[:-1]) for column in columns), "quantiles": max(buckets)}
+            if legacy
+            else {"return_columns": columns}
+        )
         result = analyze_prepared_signal(
             data,
-            periods=tuple(int(column[:-1]) for column in columns),
-            quantiles=max(buckets),
+            **selection,
             min_assets=min_assets,
             ic_method=ic_method,
             compute_turnover_flag=compute_turnover_flag,

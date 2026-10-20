@@ -362,14 +362,17 @@ def compute_quantile_spread(
 
 def _compute_quantile_return_statistics(
     data: pl.DataFrame,
-    period: int,
+    period: int | str,
     n_quantiles: int,
     quantile_col: str = "quantile",
+    *,
+    bucket_ids: tuple[int, ...] | None = None,
 ) -> tuple[dict[int, float], dict[int, float]]:
-    return_col = f"{period}D_fwd_return"
+    return_col = period if isinstance(period, str) else f"{period}D_fwd_return"
+    buckets = bucket_ids if bucket_ids is not None else tuple(range(1, n_quantiles + 1))
 
     if return_col not in data.columns:
-        missing = dict.fromkeys(range(1, n_quantiles + 1), float("nan"))
+        missing = dict.fromkeys(buckets, float("nan"))
         return missing, missing.copy()
 
     means: dict[int, float] = {}
@@ -387,7 +390,7 @@ def _compute_quantile_return_statistics(
         )
 
     # Fill missing quantiles
-    for q in range(1, n_quantiles + 1):
+    for q in buckets:
         means.setdefault(q, float("nan"))
         standard_deviations.setdefault(q, float("nan"))
 
@@ -425,9 +428,12 @@ def compute_quantile_returns(
 
 def compute_spread(
     data: pl.DataFrame,
-    period: int,
+    period: int | str,
     n_quantiles: int,
     quantile_col: str = "quantile",
+    *,
+    upper_quantile: int | None = None,
+    lower_quantile: int = 1,
 ) -> dict[str, float]:
     """Compute long-short spread and statistics.
 
@@ -435,19 +441,22 @@ def compute_spread(
     ----------
     data : pl.DataFrame
         Data with quantile and forward return columns.
-    period : int
-        Forward return period in days.
+    period : int or str
+        Integer-day convenience or exact supplied return-column selector.
     n_quantiles : int
         Number of quantiles.
     quantile_col : str, default "quantile"
         Quantile column name.
+    upper_quantile, lower_quantile : int, optional
+        Actual bucket IDs for the two legs. Upper defaults to n_quantiles.
 
     Returns
     -------
     dict[str, float]
         spread, t_stat, p_value
     """
-    return_col = f"{period}D_fwd_return"
+    return_col = period if isinstance(period, str) else f"{period}D_fwd_return"
+    upper_quantile = n_quantiles if upper_quantile is None else upper_quantile
 
     if n_quantiles < 2 or return_col not in data.columns:
         return {
@@ -456,8 +465,8 @@ def compute_spread(
             "p_value": float("nan"),
         }
 
-    top_returns = data.filter(pl.col(quantile_col) == n_quantiles)[return_col].to_numpy()
-    bottom_returns = data.filter(pl.col(quantile_col) == 1)[return_col].to_numpy()
+    top_returns = data.filter(pl.col(quantile_col) == upper_quantile)[return_col].to_numpy()
+    bottom_returns = data.filter(pl.col(quantile_col) == lower_quantile)[return_col].to_numpy()
 
     top_returns = top_returns[~np.isnan(top_returns)]
     bottom_returns = bottom_returns[~np.isnan(bottom_returns)]
