@@ -96,12 +96,21 @@ def plot_signal_information(
             font={"size": 14},
             title_font_size=16,
             showlegend=True,
-            legend={"orientation": "h", "y": -0.25, "x": 0, "font": {"size": 14}},
-            margin={"l": 65, "r": 25, "t": 45, "b": 120},
+            legend={
+                "orientation": "h",
+                "y": -0.38,
+                "yanchor": "top",
+                "x": 0,
+                "font": {"size": 14},
+            },
+            margin={"l": 65, "r": 25, "t": 45, "b": 160},
         )
         figure.update_xaxes(tickfont_size=14, title_font_size=17)
         figure.update_yaxes(tickfont_size=14, title_font_size=17)
         figure.update_annotations(font_size=14)
+        for annotation in figure.layout.annotations:
+            if annotation.text == "KDE unavailable: constant IC":
+                annotation.yanchor = "top"
     return figures
 
 

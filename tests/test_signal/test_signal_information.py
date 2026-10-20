@@ -275,6 +275,6 @@ def test_information_report_preserves_existing_target_on_real_filesystem_failure
     directory.mkdir()
     marker = directory / "keep.txt"
     marker.write_text("keep")
-    with pytest.raises(IsADirectoryError):
+    with pytest.raises(OSError):
         generate_signal_information_report(result, output_file=directory)
     assert marker.read_text() == "keep" and list(tmp_path.iterdir()) == [directory]

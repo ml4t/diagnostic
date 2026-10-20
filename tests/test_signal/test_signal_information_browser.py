@@ -12,8 +12,9 @@ import pytest
 @pytest.mark.parametrize("grouped", [False, True])
 @pytest.mark.parametrize("width", [375, 1200])
 @pytest.mark.parametrize("constant", [False, True])
+@pytest.mark.parametrize("theme", ["default", "dark", "print", "presentation"])
 def test_complete_information_panels_render_actual_samples_without_hidden_or_clipped_labels(
-    grouped, width, constant, tmp_path
+    grouped, width, constant, theme, tmp_path
 ):
     playwright = pytest.importorskip("playwright.sync_api")
     import numpy as np
@@ -56,7 +57,7 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
         by_group=grouped,
     )
     target = tmp_path / "information.html"
-    generate_signal_information_report(result, output_file=target)
+    generate_signal_information_report(result, output_file=target, theme=theme)
     errors = []
     with playwright.sync_playwright() as runtime:
         browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
@@ -82,6 +83,7 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
                         annotationOverlap:(()=>{const boxes=Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.getBoundingClientRect());return boxes.some((a,i)=>boxes.slice(i+1).some(b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))})(),
                         annotationsInside:Array.from(plot.querySelectorAll('.annotation-text')).every(node=>{const box=node.getBoundingClientRect();return box.left>=bounds.left&&box.right<=bounds.right&&box.top>=bounds.top&&box.bottom<=bounds.bottom}),
                         annotationsOverlapDecorations:(()=>{const boxes=Array.from(plot.querySelectorAll('.annotation-text')).map(node=>node.getBoundingClientRect()),decorations=Array.from(plot.querySelectorAll('.g-xtitle,.g-ytitle,.legendtext')).map(node=>node.getBoundingClientRect());return boxes.some(a=>decorations.some(b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))})(),
+                        availabilityLegendGap:(()=>{const note=Array.from(plot.querySelectorAll('.annotation-text')).find(node=>node.textContent.includes('KDE unavailable')),labels=Array.from(plot.querySelectorAll('.legendtext'));return note&&labels.length?Math.min(...labels.map(label=>label.getBoundingClientRect().top-note.getBoundingClientRect().bottom)):null})(),
                         heatmapLabels:(()=>{const boxes=Array.from(plot.querySelectorAll('.heatmaplayer text')).filter(node=>node.textContent).map(node=>node.getBoundingClientRect());return {count:boxes.length,overlap:boxes.some((a,i)=>boxes.slice(i+1).some(b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))}})(),
                         traces:plot.data.map(trace=>({name:trace.name,x:trace.x,y:trace.y})),
                         legends:Array.from(plot.querySelectorAll('.legendtext')).map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,inside:box.left>=bounds.left&&box.right<=bounds.right&&box.top>=bounds.top&&box.bottom<=bounds.bottom}})
@@ -107,7 +109,9 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
             if os.environ.get("GITHUB_ACTIONS") == "true":
                 output = Path(os.environ["GITHUB_WORKSPACE"]) / "artifacts/information-reports"
                 output.mkdir(parents=True, exist_ok=True)
-                prefix = f"information-constant-{int(constant)}-grouped-{int(grouped)}-{width}"
+                prefix = (
+                    f"information-{theme}-constant-{int(constant)}-grouped-{int(grouped)}-{width}"
+                )
                 page.screenshot(path=str(output / f"{prefix}.png"), full_page=True)
                 for index in range(len(measured["panels"]) + 1):
                     page.locator(f"#section-{index}").screenshot(
@@ -126,6 +130,10 @@ def test_complete_information_panels_render_actual_samples_without_hidden_or_cli
     assert not any(panel["annotationOverlap"] for panel in measured["panels"]), measured
     assert all(panel["annotationsInside"] for panel in measured["panels"]), measured
     assert not any(panel["annotationsOverlapDecorations"] for panel in measured["panels"]), measured
+    assert all(
+        panel["availabilityLegendGap"] is None or panel["availabilityLegendGap"] >= 14
+        for panel in measured["panels"]
+    ), measured
     if not grouped:
         assert all(panel["heatmapLabels"]["count"] > 0 for panel in measured["panels"][-2:])
         assert not any(panel["heatmapLabels"]["overlap"] for panel in measured["panels"][-2:]), (
