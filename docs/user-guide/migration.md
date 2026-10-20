@@ -489,6 +489,10 @@ supplied returns. Numeric and opaque hashable asset IDs are restored without
 string conversion; static or dated groups, labels, qcut/cut, custom edges,
 zero-aware buckets and the common-sample loss limit use the native cleaner.
 The returned `factor_quantile` column is accepted directly by prepared analysis.
+Direct `al.quantize_factor` uses the same native qcut/cut backend without
+discarding rows for missing future outcomes. Its `no_raise=True` option excludes
+failed date/group buckets only; strict duplicate-edge failures remain actionable
+`ValueError`s at the compatibility boundary.
 The runnable `examples/signal_panel_cleaning.py --plots` compares price,
 supplied-return and adapted samples before executing native diagnostics.
 
@@ -530,6 +534,29 @@ Polars 2.0.0, SciPy 1.18.1 and Plotly 7.1.0. A separate consumer/reference profi
 uses pandas 2.3.3, NumPy 2.2.6, Polars 1.36.1 and SciPy 1.17.0. The pinned Engineer
 wheel requires Polars 2, so its live regeneration is not claimed at that floor;
 standalone ingestion of its frozen captures needs no Engineer installation.
+
+The same namespace also provides explicit legacy clock/selector conversions:
+`backshift_returns_series`, `get_forward_returns_columns`,
+`turnover_periods_from_columns`, `timedelta_to_string`,
+`timedelta_strings_to_integers`, `make_naive_ts`, `infer_trading_calendar`, and
+the custom-calendar timedelta add/difference helpers. Their shared implementation
+is `ml4t.diagnostic.utils.legacy_time`, not another label or execution engine.
+Backward-return rekeying follows the common date-level clock, preserving missing
+asset rows and session-date labels rather than compressing per asset. Zero shift
+is an identity and an overlong clock gives an empty result; valid sparse input
+does not reproduce the reference helper's first-row assertion failure.
+
+Legacy business-day offset addition preserves local wall-clock time. Pandas
+changed `Day` from a 24-hour tick to a calendar day in
+[version 3](https://pandas.pydata.org/docs/whatsnew/v3.0.0.html); this explicit
+legacy helper follows the supplied pandas offset, not a version-independent
+physical-duration contract. Both dependency profiles are tested. The legacy duration
+difference counts UTC-naive dates and retains a physical subday remainder.
+They are not inverses across DST and are not authoritative session arithmetic.
+Negative duration formatting uses an exact global sign: the independent `-1ns`
+round trip corrects Alphalens 0.5.0's mixed-sign component string. Floored day
+components are a separate utility; automatic turnover selects only positive
+exact-day labels, never a zero lag inferred from `30m` or `1ns`.
 
 ### Inspect grouped IC and adjusted outcomes
 

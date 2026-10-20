@@ -67,6 +67,22 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
     forward = forward.set_index(["date", "asset"])[["fwd_ret_1", "fwd_ret_2"]].rename(
         columns={"fwd_ret_1": "1D", "fwd_ret_2": "2D"}
     )
+    shifted_returns = al.backshift_returns_series(factor, N=1)
+    np.testing.assert_allclose(
+        shifted_returns,
+        forward["1D"].reindex(shifted_returns.index),
+        rtol=1e-12,
+        atol=1e-14,
+    )
+    legacy_clock = al.infer_trading_calendar(factor.index.levels[0], prices.index)
+    assert (
+        al.add_custom_calendar_timedelta(
+            input=dates[0],
+            timedelta=pd.Timedelta("1D"),
+            freq=legacy_clock,
+        )
+        == dates[1]
+    )
     panel = prepare_signal_panel(
         factor,
         forward,
@@ -107,6 +123,11 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
         check_categorical=False,
     )
     assert panel.data.height == 12
+    bucket_sample = panel.data.to_pandas().set_index(["date", "asset"])
+    direct_buckets = al.quantize_factor(bucket_sample, quantiles=2)
+    np.testing.assert_array_equal(
+        direct_buckets.reindex(bucket_sample.index), bucket_sample["quantile"]
+    )
     assert panel.metadata["loss_by_stage"] == {
         "factor": 4,
         "returns": 8,
@@ -275,6 +296,12 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
                 "subday_sparse_analysis": subday_analysis(plots=plots),
                 "optional_native_outcome_producer": producer_evidence,
                 "native_price_preparation": price_panel.metadata["price_preparation"],
+                "legacy_return_alignment": {
+                    "shifted_rows": len(shifted_returns),
+                    "clock": "common observed date levels",
+                    "first_explicit_offset": str(dates[1]),
+                    "direct_buckets": len(direct_buckets),
+                },
                 "retained_rows": panel.metadata["retained_rows"],
                 "loss_by_stage": panel.metadata["loss_by_stage"],
                 "ic": result.ic,

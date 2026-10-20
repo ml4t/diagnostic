@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import warnings
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
+from functools import wraps
 from typing import Any, TypeVar
 
 import numpy as np
@@ -19,10 +20,22 @@ import polars as pl
 from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 from pandas.tseries.offsets import BusinessDay, CustomBusinessDay, Day
 
+from ml4t.diagnostic.backends.polars_backend import PolarsBackend, _bucket_parameters
 from ml4t.diagnostic.signal import MaxLossExceededError, prepare_signal_panel
 from ml4t.diagnostic.signal._prepared import positive_count, signal_input_contract
 from ml4t.diagnostic.signal._price_outcomes import price_outcomes
 from ml4t.diagnostic.signal._utils import _signal_frame
+from ml4t.diagnostic.utils.legacy_time import (
+    add_custom_calendar_timedelta,
+    backshift_returns_series,
+    diff_custom_calendar_timedeltas,
+    get_forward_returns_columns,
+    infer_trading_calendar,
+    make_naive_ts,
+    timedelta_strings_to_integers,
+    timedelta_to_string,
+    turnover_periods_from_columns,
+)
 
 __all__ = [
     "MaxLossExceededError",
@@ -30,9 +43,86 @@ __all__ = [
     "compute_forward_returns",
     "get_clean_factor",
     "get_clean_factor_and_forward_returns",
+    "non_unique_bin_edges_error",
+    "quantize_factor",
+    "add_custom_calendar_timedelta",
+    "backshift_returns_series",
+    "diff_custom_calendar_timedeltas",
+    "get_forward_returns_columns",
+    "infer_trading_calendar",
+    "make_naive_ts",
+    "timedelta_strings_to_integers",
+    "timedelta_to_string",
+    "turnover_periods_from_columns",
 ]
 
 _Frame = TypeVar("_Frame", pd.Series, pd.DataFrame)
+
+
+def non_unique_bin_edges_error[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    """Translate native duplicate-edge failures into actionable legacy ValueErrors."""
+
+    @wraps(func)
+    def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return func(*args, **kwargs)
+        except (ValueError, pl.exceptions.DuplicateError) as error:
+            if "Bin edges must be unique" in str(error):
+                raise ValueError(
+                    f"{error} Choose fewer quantiles, explicit probability edges, or value bins."
+                ) from error
+            raise
+
+    return wrapped
+
+
+@non_unique_bin_edges_error
+def quantize_factor(
+    factor_data: pd.DataFrame,
+    quantiles: int | Sequence[float] | np.ndarray | None = 5,
+    bins: int | Sequence[float] | np.ndarray | None = None,
+    by_group: bool = False,
+    no_raise: bool = False,
+    zero_aware: bool = False,
+) -> pd.Series:
+    """Adapt date/group bucketing without cleaning unrelated supplied outcomes.
+
+    The native backend remains the only qcut/cut calculation. The legacy
+    no_raise policy omits an entire failed date/group, not unrelated dates.
+    """
+    _bucket_parameters(quantiles, bins, zero_aware)
+    if not isinstance(by_group, bool | np.bool_) or not isinstance(no_raise, bool | np.bool_):
+        raise ValueError("by_group and no_raise must be boolean")
+    if not isinstance(factor_data, pd.DataFrame):
+        raise TypeError("factor_data must be a pandas DataFrame")
+    _Keys(factor_data["factor"])
+
+    def assign(sample: pd.Series) -> pd.Series:
+        values = pl.from_pandas(sample.reset_index(drop=True).rename("factor").to_frame())
+        try:
+            assigned = (
+                PolarsBackend.fast_quantile_assignment(
+                    values,
+                    "factor",
+                    quantiles,
+                    bins=bins,
+                    zero_aware=zero_aware,
+                )["factor_quantile"]
+                .cast(pl.String)
+                .cast(pl.Int64)
+            )
+        except (ValueError, pl.exceptions.DuplicateError):
+            if no_raise:
+                return pd.Series(index=sample.index)
+            raise
+        return pd.Series(assigned.to_numpy(), index=sample.index)
+
+    grouping = [factor_data.index.get_level_values("date")]
+    if by_group:
+        grouping.append("group")
+    result = factor_data.groupby(grouping, group_keys=False, observed=False)["factor"].apply(assign)
+    result.name = "factor_quantile"
+    return result.dropna()
 
 
 def _profile(version: str) -> str:
@@ -87,22 +177,11 @@ class _Keys:
 def _frequency(factor_dates: pd.DatetimeIndex, price_dates: pd.DatetimeIndex) -> Any:
     if isinstance(factor_dates.freq, Day | BusinessDay | CustomBusinessDay):
         return factor_dates.freq
-    dates = factor_dates.union(price_dates)
-    weekdays, holidays = [], []
-    for day, name in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
-        observed = dates[dates.dayofweek == day].normalize()
-        if not len(observed):
-            continue
-        weekdays.append(name)
-        expected = pd.date_range(
-            dates.min(), dates.max(), freq=CustomBusinessDay(weekmask=name)
-        ).normalize()
-        holidays.extend(expected.difference(observed).date)
-    return CustomBusinessDay(weekmask=" ".join(weekdays), holidays=holidays)
+    return infer_trading_calendar(factor_dates, price_dates)
 
 
 def _legacy_labels(
-    factor: pd.Series, prices: pd.DataFrame, periods: Sequence[int]
+    factor: pd.Series, prices: pd.DataFrame, periods: Sequence[int] | np.ndarray
 ) -> tuple[dict[str, int], Any]:
     dates = factor.index.levels[0]
     if dates.tz != prices.index.tz:
@@ -111,11 +190,6 @@ def _legacy_labels(
     common = dates.intersection(prices.index)
     if not len(common):
         raise ValueError("factor and prices have no matching date keys")
-    calendar = np.busdaycalendar(
-        weekmask=getattr(frequency, "weekmask", None)
-        or ("1111111" if isinstance(frequency, Day) else "1111100"),
-        holidays=np.asarray(getattr(frequency, "holidays", None) or [], dtype="datetime64[D]"),
-    )
     labels = {}
     for period in sorted({positive_count(period, "periods") for period in periods}):
         durations, days = [], []
@@ -123,31 +197,15 @@ def _legacy_labels(
             if position + period >= len(prices):
                 continue
             start, end = prices.index[position], prices.index[position + period]
-            naive_start = start.tz_convert(None) if start.tzinfo is not None else start
-            naive_end = end.tz_convert(None) if end.tzinfo is not None else end
-            count = int(np.busday_count(naive_start.date(), naive_end.date(), busdaycal=calendar))
-            duration = end - start
-            durations.append(duration - pd.Timedelta(duration.components.days - count, unit="D"))
-            days.append(count)
+            duration = diff_custom_calendar_timedeltas(start, end, frequency)
+            durations.append(duration)
+            days.append(duration.components.days)
         if not durations:
             raise ValueError(f"not enough price observations for period {period}")
         counts = Counter(days)
         mode = min(counts, key=lambda day: (-counts[day], day))
         duration = durations[-1] - pd.Timedelta(days[-1] - mode, unit="D")
-        components = duration.components
-        label = "".join(
-            f"{getattr(components, name)}{unit}"
-            for name, unit in (
-                ("days", "D"),
-                ("hours", "h"),
-                ("minutes", "m"),
-                ("seconds", "s"),
-                ("milliseconds", "ms"),
-                ("microseconds", "us"),
-                ("nanoseconds", "ns"),
-            )
-            if getattr(components, name)
-        )
+        label = timedelta_to_string(duration)
         if not label or label in labels:
             raise ValueError(
                 "legacy inferred horizon labels are empty or ambiguous; supply explicit native selectors"
@@ -174,7 +232,7 @@ def _set_frequency(frame: pd.DataFrame, frequency: Any) -> None:
 def compute_forward_returns(
     factor: pd.Series,
     prices: pd.DataFrame,
-    periods: Sequence[int] = (1, 5, 10),
+    periods: Sequence[int] | np.ndarray = (1, 5, 10),
     filter_zscore: float | None = None,
     cumulative_returns: bool = True,
     *,
@@ -251,13 +309,14 @@ def compute_forward_returns(
     return result
 
 
+@non_unique_bin_edges_error
 def get_clean_factor(
     factor: pd.Series,
     forward_returns: pd.DataFrame,
     groupby: pd.Series | Mapping | None = None,
     binning_by_group: bool = False,
-    quantiles: int | Sequence[float] | None = 5,
-    bins: int | Sequence[float] | None = None,
+    quantiles: int | Sequence[float] | np.ndarray | None = 5,
+    bins: int | Sequence[float] | np.ndarray | None = None,
     groupby_labels: Mapping | None = None,
     max_loss: float = 0.35,
     zero_aware: bool = False,
@@ -338,9 +397,9 @@ def get_clean_factor_and_forward_returns(
     prices: pd.DataFrame,
     groupby: pd.Series | Mapping | None = None,
     binning_by_group: bool = False,
-    quantiles: int | Sequence[float] | None = 5,
-    bins: int | Sequence[float] | None = None,
-    periods: Sequence[int] = (1, 5, 10),
+    quantiles: int | Sequence[float] | np.ndarray | None = 5,
+    bins: int | Sequence[float] | np.ndarray | None = None,
+    periods: Sequence[int] | np.ndarray = (1, 5, 10),
     filter_zscore: float | None = 20,
     groupby_labels: Mapping | None = None,
     max_loss: float = 0.35,
