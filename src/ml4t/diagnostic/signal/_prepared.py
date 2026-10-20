@@ -58,11 +58,20 @@ def signal_input_contract(
         raise ValueError(
             "signal inputs require distinct nonempty timestamp and single-entity names"
         )
+    wire = feed.to_dict()
+    declared = "calendar" in wire and (
+        feed.time_contract_version == 2 or wire["calendar"] is not None
+    )
     metadata = {
         "timestamp_col": timestamp,
         "entity_col": entity,
-        "feed_spec": feed.to_dict(),
+        "feed_spec": wire,
         "calendar": feed.resolve_calendar(calendar=calendar),
+        "calendar_source": "argument"
+        if calendar is not UNSET_CALENDAR
+        else "feed_spec"
+        if declared
+        else "default",
     }
     if calendar is not UNSET_CALENDAR:
         metadata["calendar_argument"] = calendar

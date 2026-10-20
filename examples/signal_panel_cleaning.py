@@ -44,7 +44,7 @@ def subday_analysis(*, plots: bool) -> dict:
     }
 
 
-def main(*, plots: bool = False) -> None:
+def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
     dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
     assets = ["A", "B", "C", "D"]
     prices = pd.DataFrame(
@@ -81,6 +81,50 @@ def main(*, plots: bool = False) -> None:
         "bucketing": 0,
     }
     result = panel.analyze(min_assets=2, compute_turnover_flag=True, autocorrelation_lags=2)
+    producer_evidence = None
+    if engineer_outcomes:
+        import polars as pl
+        from ml4t.engineer.labeling import forward_returns
+        from ml4t.specs import FeedSpec
+
+        feed = FeedSpec(
+            timestamp_col="date", entity_col="asset", time_contract_version=2, calendar=None
+        )
+        outcomes = forward_returns(
+            pl.from_pandas(marks).lazy(),
+            horizons={"1D": 1, "2D": 2},
+            price_basis="raw",
+            entries=pl.from_pandas(factor.reset_index()).select("date", "asset"),
+            feed_spec=feed,
+            missing_price_policy="null",
+        ).collect()
+        produced = prepare_signal_panel(
+            factor,
+            outcomes,
+            horizon_col="horizon",
+            feed_spec=feed,
+            quantiles=2,
+            max_loss=0.5,
+        )
+        actual = produced.data.sort("date", "asset")
+        expected = panel.data.sort("date", "asset")
+        assert actual.select(pl.col("date").dt.cast_time_unit("ns"), "asset").equals(
+            expected.select(pl.col("date").dt.cast_time_unit("ns"), "asset")
+        )
+        np.testing.assert_array_equal(actual["quantile"], expected["quantile"])
+        np.testing.assert_allclose(
+            actual.select("1D", "2D").to_numpy(),
+            expected.select("1D", "2D").to_numpy(),
+            rtol=1e-12,
+            atol=1e-12,
+        )
+        assert produced.analyze(min_assets=2).outcome_data.equals(produced.outcome_data)
+        producer_evidence = {
+            "engineer_version": version("ml4t-engineer"),
+            "outcomes": json.loads(produced.outcome_data.write_json()),
+            "same_retained_rows": produced.data.height,
+            "endpoint_unit": "observation; labels are not elapsed durations",
+        }
     assert result.n_dates == 3 and result.n_assets == 4
     assert sum(result.count_by_quantile.values()) == 12
     ic_component = result.to_ic_result()
@@ -196,6 +240,7 @@ def main(*, plots: bool = False) -> None:
                 },
                 "input_rows": panel.metadata["input_rows"],
                 "subday_sparse_analysis": subday_analysis(plots=plots),
+                "optional_native_outcome_producer": producer_evidence,
                 "retained_rows": panel.metadata["retained_rows"],
                 "loss_by_stage": panel.metadata["loss_by_stage"],
                 "ic": result.ic,
@@ -235,4 +280,10 @@ if __name__ == "__main__":
         action="store_true",
         help="Inspect actual spread, monthly IC and persistence data (viz extra)",
     )
-    main(plots=parser.parse_args().plots)
+    parser.add_argument(
+        "--engineer-outcomes",
+        action="store_true",
+        help="Also exercise optional Engineer native outcomes; requires a version exposing labeling.forward_returns",
+    )
+    arguments = parser.parse_args()
+    main(plots=arguments.plots, engineer_outcomes=arguments.engineer_outcomes)

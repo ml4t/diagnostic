@@ -40,6 +40,7 @@ class PreparedSignalPanel:
     factor_col: str
     date_col: str
     asset_col: str
+    _outcome_payload: bytes | None = field(default=None, repr=False)
 
     @property
     def data(self) -> pl.DataFrame:
@@ -59,6 +60,15 @@ class PreparedSignalPanel:
         base64 representation also survives the existing analysis JSON export.
         """
         return pl.read_ipc(BytesIO(base64.b64decode(self.metadata["excluded_data_ipc_base64"])))
+
+    @property
+    def outcome_data(self) -> pl.DataFrame | None:
+        """Return an owned long source/end/availability snapshot, when supplied."""
+        return (
+            pl.read_ipc(BytesIO(self._outcome_payload))
+            if self._outcome_payload is not None
+            else None
+        )
 
     def analyze(
         self,
@@ -103,7 +113,14 @@ class PreparedSignalPanel:
             calendar=self.metadata.get("calendar_argument", UNSET_CALENDAR),
         )
         return replace(
-            result, preparation_metadata={**result.preparation_metadata, "cleaning": self.metadata}
+            result,
+            _outcome_data=self._outcome_payload,
+            preparation_metadata={
+                **result.preparation_metadata,
+                "calendar": self.metadata["calendar"],
+                "calendar_source": self.metadata["calendar_source"],
+                "cleaning": self.metadata,
+            },
         )
 
     def ic_by_date(
@@ -442,6 +459,8 @@ def _frame(
     date_col: str,
     asset_col: str,
     value_col: str | None = None,
+    *,
+    extra_keys: tuple[str, ...] = (),
 ) -> pl.DataFrame:
     if isinstance(data, pd.Series):
         if value_col is None:
@@ -455,7 +474,7 @@ def _frame(
         frame = data.clone()
     else:
         raise TypeError("signal inputs must be Pandas or Polars frames, or indexed series")
-    _validate_observation_keys(frame, [date_col, asset_col], "signal panel")
+    _validate_observation_keys(frame, [date_col, asset_col, *extra_keys], "signal panel")
     if frame[date_col].dtype != pl.Date and not isinstance(frame[date_col].dtype, pl.Datetime):
         raise TypeError("signal panel dates must contain Date or Datetime values")
     return frame
@@ -480,6 +499,8 @@ def prepare_signal_panel(
     entity_col: str | None = None,
     feed_spec: FeedSpec | Mapping[str, Any] | None = None,
     calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    horizon_col: str | None = None,
+    return_col: str = "forward_return",
 ) -> PreparedSignalPanel:
     """Select one complete supplied-return sample, then assign qcut/cut buckets.
 
@@ -534,6 +555,13 @@ def prepare_signal_panel(
         Explicit selection overrides declared metadata, then NYSE. Explicit None
         disables calendars. This supplied-outcome route records the resolved
         declaration without inferring or validating return endpoints or schedules.
+    horizon_col : str, optional
+        Explicit long-outcome horizon selector column. Pivot the selected named
+        horizons once before common-sample cleaning; retain original source/end/
+        availability fields in outcome_data. No Engineer installation is required.
+    return_col : str
+        Numeric long-outcome value column, default forward_return. Declared log
+        returns are rejected rather than silently treated as arithmetic returns.
 
     Returns
     -------
@@ -580,7 +608,35 @@ def prepare_signal_panel(
             "signal key/value names must be distinct from group, quantile and exclusion columns"
         )
     factors = _frame(factor, date_col, asset_col, factor_col)
-    returns = _frame(forward_returns, date_col, asset_col)
+    returns = _frame(
+        forward_returns,
+        date_col,
+        asset_col,
+        extra_keys=(horizon_col,) if horizon_col is not None else (),
+    )
+    outcome_payload = None
+    outcome_metadata = None
+    if horizon_col is not None:
+        from ml4t.diagnostic.signal._outcomes import normalize_outcomes
+
+        returns, outcome_payload, outcome_metadata = normalize_outcomes(
+            returns,
+            horizon_col=horizon_col,
+            return_col=return_col,
+            return_columns=return_columns,
+            date_col=date_col,
+            asset_col=asset_col,
+        )
+        return_columns = outcome_metadata["return_columns"]
+        if "calendar" in outcome_metadata and contract["calendar_source"] != "argument":
+            if (
+                contract["calendar_source"] == "feed_spec"
+                and contract["calendar"] != outcome_metadata["calendar"]
+            ):
+                raise ValueError("outcome calendar and feed_spec calendar conflict")
+            if contract["calendar_source"] == "default":
+                contract["calendar"] = outcome_metadata["calendar"]
+                contract["calendar_source"] = "outcome_table"
     keys = [date_col, asset_col]
     columns = (
         list(return_columns)
@@ -760,6 +816,13 @@ def prepare_signal_panel(
         "sample_policy": "common finite factor/return/group sample before bucketing",
         "calendar_validation": "not performed; supplied labels do not establish endpoints or a schedule",
     }
+    if outcome_metadata is not None:
+        metadata["outcomes"] = outcome_metadata
     return PreparedSignalPanel(
-        payload, json.dumps(metadata, allow_nan=False), factor_col, date_col, asset_col
+        payload,
+        json.dumps(metadata, allow_nan=False),
+        factor_col,
+        date_col,
+        asset_col,
+        outcome_payload,
     )

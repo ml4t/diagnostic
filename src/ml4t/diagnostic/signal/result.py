@@ -29,6 +29,7 @@ _OWNED_FRAMES = (
     ("_dated_turnover", "dated_turnover"),
     ("_dated_autocorrelation", "dated_autocorrelation"),
     ("_quantile_observations", "quantile_observations"),
+    ("_outcome_data", "outcome_data"),
 )
 
 
@@ -126,6 +127,7 @@ class SignalResult:
     _dated_turnover: bytes | None = field(default=None, repr=False, compare=False)
     _dated_autocorrelation: bytes | None = field(default=None, repr=False, compare=False)
     _quantile_observations: bytes | None = field(default=None, repr=False, compare=False)
+    _outcome_data: bytes | None = field(default=None, repr=False, compare=False)
 
     @property
     def period_keys(self) -> tuple[str, ...]:
@@ -140,6 +142,15 @@ class SignalResult:
         import polars as pl
 
         return pl.read_ipc(BytesIO(self._prepared_data))
+
+    @property
+    def outcome_data(self) -> pl.DataFrame | None:
+        """Return the owned supplied long outcomes and exact endpoint durations."""
+        if self._outcome_data is None:
+            return None
+        import polars as pl
+
+        return pl.read_ipc(BytesIO(self._outcome_data))
 
     @property
     def dated_turnover(self) -> pl.DataFrame | None:

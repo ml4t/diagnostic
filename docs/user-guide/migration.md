@@ -382,6 +382,24 @@ an omitted version-2 calendar separately from explicit null. Recording this
 declaration does not validate supplied outcomes against a schedule or infer their
 endpoints. Version-1 metadata retains its original null-as-unspecified convention.
 
+For supplied long outcomes, set `horizon_col="horizon"` and, if needed,
+`return_col="forward_return"`. `return_columns` then selects horizon names,
+not physical value columns. The cleaner pivots once and still selects one common
+finite sample. `panel.outcome_data` and `result.outcome_data` retain the original
+selected source/end/availability fields and statuses, including excluded outcomes.
+Their derived `duration_ns` and `return_duration_ns` are exact integer nanoseconds
+encoded as Arrow decimal values; session labels and naive keys have no inferred
+physical duration. Analysis JSON retains the owned Arrow snapshot without losing
+nanoseconds. Declared log returns are rejected, not silently compounded as decimal
+returns. Conflicting declared producer/feed calendars raise unless an explicit
+calendar argument chooses the analytical setting; that never recomputes outcomes.
+
+`examples/signal_panel_cleaning.py --plots --engineer-outcomes` optionally runs
+Engineer's native producer and compares its retained keys, buckets and outcomes
+with the standalone supplied-return route. Engineer remains optional. Captured
+producer tests also exercise exact `1ns`/`2ns` elapsed endpoints, missing quotes
+and overlapping input batches without installing Engineer in the consumer.
+
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.
