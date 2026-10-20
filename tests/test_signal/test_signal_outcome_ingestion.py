@@ -137,6 +137,35 @@ def test_owned_outcome_export_can_be_reingested_without_dropping_its_duration_fi
     assert restored.data.equals(panel.data)
 
 
+def test_empty_actual_outcome_shard_is_an_audited_total_loss_not_a_missing_schema():
+    factor, outcomes, provenance = _capture()
+    panel = prepare_signal_panel(
+        factor,
+        outcomes.head(0),
+        horizon_col="horizon",
+        return_columns=["1ns", "2ns"],
+        feed_spec=provenance["feed_spec"],
+        quantiles=2,
+        max_loss=1,
+    )
+    assert panel.data.height == 0
+    assert panel.outcome_data.height == 0
+    assert panel.metadata["loss_by_stage"]["returns"] == factor.height
+    assert panel.metadata["loss_fraction"] == 1
+    with pytest.raises(ValueError, match="max_loss"):
+        prepare_signal_panel(
+            factor,
+            outcomes.head(0),
+            horizon_col="horizon",
+            return_columns=["1ns", "2ns"],
+            feed_spec=provenance["feed_spec"],
+            quantiles=2,
+            max_loss=0,
+        )
+    with pytest.raises(ValueError, match="nonempty"):
+        panel.analyze(min_assets=2)
+
+
 def test_conflicting_real_producer_and_feed_calendars_reject_but_explicit_none_wins():
     factor, outcomes, _ = _capture()
     original = outcomes.clone()

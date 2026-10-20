@@ -73,6 +73,18 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
         groups={"A": "first", "B": "first", "C": "second", "D": "second"},
         max_loss=0.5,
     )
+    price_panel = prepare_signal_panel(
+        factor,
+        prices=marks,
+        horizons={"1D": 1, "2D": 2},
+        price_basis="raw",
+        calendar=None,
+        groups={"A": "first", "B": "first", "C": "second", "D": "second"},
+        quantiles=2,
+        max_loss=0.5,
+    )
+    assert price_panel.data.equals(panel.data)
+    assert price_panel.outcome_data["window_unit"].unique().to_list() == ["observation"]
     assert panel.data.height == 12
     assert panel.metadata["loss_by_stage"] == {
         "factor": 4,
@@ -241,6 +253,7 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
                 "input_rows": panel.metadata["input_rows"],
                 "subday_sparse_analysis": subday_analysis(plots=plots),
                 "optional_native_outcome_producer": producer_evidence,
+                "native_price_preparation": price_panel.metadata["price_preparation"],
                 "retained_rows": panel.metadata["retained_rows"],
                 "loss_by_stage": panel.metadata["loss_by_stage"],
                 "ic": result.ic,

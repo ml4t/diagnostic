@@ -51,12 +51,14 @@ def normalize_outcomes(
         or set(columns).intersection(keys)
     ):
         raise ValueError("return_columns must be distinct nonempty horizon names, not keys")
-    if absent := set(columns).difference(data[horizon_col].unique()):
+    if data.height and (absent := set(columns).difference(data[horizon_col].unique())):
         raise ValueError(f"requested outcome horizons are missing: {sorted(absent)}")
     selected = data.filter(pl.col(horizon_col).is_in(columns))
-    if "return_method" in selected.columns and selected["return_method"].unique().to_list() != [
-        "returns"
-    ]:
+    if (
+        selected.height
+        and "return_method" in selected.columns
+        and selected["return_method"].unique().to_list() != ["returns"]
+    ):
         raise ValueError("signal outcome ingestion requires arithmetic returns, not log returns")
     metadata: dict[str, Any] = {
         "format": "long supplied outcomes",
@@ -114,7 +116,16 @@ def normalize_outcomes(
             if selected.select(pl.col(duration).ne_missing(derived).any()).item():
                 raise ValueError(f"supplied {duration} disagrees with outcome endpoints")
         selected = selected.with_columns(derived.alias(duration))
-    wide = selected.pivot(
-        on=horizon_col, index=keys, values=return_col, maintain_order=True
-    ).select(*keys, *columns)
+    wide = (
+        selected.pivot(on=horizon_col, index=keys, values=return_col, maintain_order=True).select(
+            *keys, *columns
+        )
+        if selected.height
+        else pl.DataFrame(
+            schema={
+                **{key: data.schema[key] for key in keys},
+                **dict.fromkeys(columns, data.schema[return_col]),
+            }
+        )
+    )
     return wide, selected.write_ipc(None).getvalue(), metadata

@@ -482,7 +482,7 @@ def _frame(
 
 def prepare_signal_panel(
     factor: pl.DataFrame | pd.DataFrame | pd.Series,
-    forward_returns: pl.DataFrame | pd.DataFrame,
+    forward_returns: pl.DataFrame | pd.DataFrame | None = None,
     *,
     quantiles: int | Sequence[float] | np.ndarray | None = 5,
     bins: int | Sequence[float] | np.ndarray | None = None,
@@ -501,21 +501,31 @@ def prepare_signal_panel(
     calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     horizon_col: str | None = None,
     return_col: str = "forward_return",
+    prices: pl.DataFrame | pd.DataFrame | None = None,
+    horizons: Mapping[str, int] | None = None,
+    price_basis: str | None = None,
+    price_col: str | None = None,
+    index_mode: Literal["common_grid", "per_asset"] = "common_grid",
+    endpoint_method: Literal["cumulative", "exit_bar"] = "cumulative",
+    fill_method: Literal["ffill"] | None = None,
+    return_filter_zscore: float | None = None,
+    available_at_col: str | None = None,
 ) -> PreparedSignalPanel:
-    """Select one complete supplied-return sample, then assign qcut/cut buckets.
+    """Prepare one owned outcome sample, then assign qcut/cut buckets.
 
     Losses use the original factor count and disjoint factor, return, group and
     bucketing stages. Nonfinite factors/returns and missing group observations
-    are excluded explicitly, not filled. A failed bucket group is excluded only
-    when max_loss>0; max_loss=0 exposes its actual error. No returns or calendar
-    are inferred. Existing price-based preparation defaults remain unchanged.
+    are excluded explicitly. Supplied outcomes are never recalculated or filled.
+    With prices=, an explicit research view feeds the same cleaner. A failed
+    bucket group is excluded only when max_loss>0; max_loss=0 exposes its error.
+    No calendar is inferred. Existing analyze_signal/prepare_data defaults remain.
 
     Parameters
     ----------
     factor : DataFrame or pandas Series
         Numeric factor values with unique date/asset keys. Pandas MultiIndex
         names must match the supplied key names; flat frames are also accepted.
-    forward_returns : DataFrame
+    forward_returns : DataFrame, optional
         Precomputed numeric outcomes with the same key schema. No prices are
         needed. Missing/nonfinite requested outcomes are unavailable, not zeros.
     quantiles : int or sequence, optional
@@ -562,6 +572,30 @@ def prepare_signal_panel(
     return_col : str
         Numeric long-outcome value column, default forward_return. Declared log
         returns are rejected rather than silently treated as arithmetic returns.
+    prices : DataFrame, optional
+        Alternative to forward_returns: keyed long quotes or pandas wide prices.
+    horizons : mapping of str to int, optional
+        Named positive observation counts for prices. Defaults to1D:1,5D:5,21D:21;
+        labels select outcomes and do not establish elapsed/calendar durations.
+    price_basis : str
+        Required declared price basis when prices are supplied; no adjustment
+        is inferred or performed. price_col defaults to the feed mapping.
+    index_mode : str
+        common_grid uses the supplied union price clock; per_asset uses each
+        asset's own rows. Neither infers scheduled bars or sessions.
+    endpoint_method : str
+        cumulative uses entry-to-exit return; exit_bar uses the terminal single
+        observation interval. Exact source/reference/exit keys are retained.
+    fill_method : None or "ffill"
+        Optional analytical price view with original row/price-presence flags.
+        The view does not create observed or executable bars.
+    return_filter_zscore : float, optional
+        Nonnegative per-asset forward-return cutoff over factor analysis dates,
+        before common cleaning. This descriptive research filter uses future data.
+    available_at_col : str, optional
+        Actual price availability instants; otherwise outcome availability stays
+        unknown. Imputed or sample-filtered outcomes retain unknown availability.
+        Naive availability requires an explicit feed timezone.
 
     Returns
     -------
@@ -607,7 +641,43 @@ def prepare_signal_panel(
         raise ValueError(
             "signal key/value names must be distinct from group, quantile and exclusion columns"
         )
+    if (prices is None) == (forward_returns is None):
+        raise ValueError("supply prices or forward_returns, not both or neither")
     factors = _frame(factor, date_col, asset_col, factor_col)
+    price_metadata = None
+    if prices is not None:
+        from ml4t.diagnostic.signal._price_outcomes import price_outcomes
+
+        if horizon_col is not None or return_col != "forward_return":
+            raise ValueError("horizon_col/return_col describe supplied outcomes, not prices")
+        factors, forward_returns, price_metadata = price_outcomes(
+            factors,
+            prices,
+            horizons={"1D": 1, "5D": 5, "21D": 21} if horizons is None else horizons,
+            price_basis=price_basis,
+            date_col=date_col,
+            asset_col=asset_col,
+            price_col=price_col if price_col is not None else contract["feed_spec"]["price_col"],
+            index_mode=index_mode,
+            endpoint_method=endpoint_method,
+            fill_method=fill_method,
+            return_filter_zscore=return_filter_zscore,
+            available_at_col=available_at_col,
+            contract=contract,
+        )
+        horizon_col = "horizon"
+    elif (
+        horizons is not None
+        or price_basis is not None
+        or price_col is not None
+        or fill_method is not None
+        or return_filter_zscore is not None
+        or available_at_col is not None
+        or index_mode != "common_grid"
+        or endpoint_method != "cumulative"
+    ):
+        raise ValueError("price preparation options require prices")
+    assert forward_returns is not None
     returns = _frame(
         forward_returns,
         date_col,
@@ -818,6 +888,8 @@ def prepare_signal_panel(
     }
     if outcome_metadata is not None:
         metadata["outcomes"] = outcome_metadata
+    if price_metadata is not None:
+        metadata["price_preparation"] = price_metadata
     return PreparedSignalPanel(
         payload,
         json.dumps(metadata, allow_nan=False),

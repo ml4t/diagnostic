@@ -400,6 +400,48 @@ with the standalone supplied-return route. Engineer remains optional. Captured
 producer tests also exercise exact `1ns`/`2ns` elapsed endpoints, missing quotes
 and overlapping input batches without installing Engineer in the consumer.
 
+### Prepare the same sample directly from prices
+
+Unreleased after 0.1.9, `prepare_signal_panel(factor, prices=prices,
+horizons={"1D": 1, "2D": 2}, price_basis="raw", calendar=None)` feeds the
+same cleaner. Supply prices or realized outcomes, not both. Prices may be keyed
+long quotes or a pandas wide table; the declared basis is retained, not adjusted.
+`examples/signal_panel_cleaning.py --plots` executes both routes and compares
+the retained sample. Neither a provider nor Engineer is required.
+
+The new price route defaults to the union of supplied price timestamps
+(`index_mode="common_grid"`). An absent asset row stays an unavailable endpoint;
+it is not silently compressed into the next observed asset row. Explicit
+`index_mode="per_asset"` retains per-asset observation shifts. A present row with
+a missing quote is distinguished from an absent row. Neither clock establishes
+exchange-session or expected-bar completeness. Supplied long outcomes can carry
+those separately declared producer units without changing their endpoints.
+
+`endpoint_method="cumulative"` computes entry-to-exit change;
+`endpoint_method="exit_bar"` computes the final single-observation return instead.
+For prices `[100, 110, 121]`, a two-observation outcome is respectively `0.21`
+or `0.10`, with different reference timestamps. `fill_method="ffill"` is an
+explicit analytical view, not the native default. Its original row/price flags
+remain false where quotes were imputed. A wide missing cell alone does not
+establish whether an original source row existed before reshaping.
+
+The optional `return_filter_zscore` fits each asset's returns over all factor
+analysis dates before cleaning, including dates without a factor for that asset.
+It retains unfiltered values and exclusion statuses. This lookahead-sensitive
+research filter is not a causal feature or executable-price policy. Counts,
+losses, exact endpoints and these choices survive analysis JSON.
+
+With `available_at_col`, an unfilled, unfiltered outcome is available only when
+both original reference and exit publications are known. Missing publications
+remain unknown. Imputed outcomes and sample-fitted filtering leave
+`outcome_available_at` unknown: a past quote's publication does not prove that
+the future quote will be missing or that a future-fitted filter will retain it.
+The primitive publication timestamps remain inspectable.
+
+The shared public return kernel now subtracts integer prices before floating
+conversion, so valid one-tick changes above Float64's integer precision are not
+lost. This kernel emits Float64 returns; it cannot recover input quantization.
+
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.
