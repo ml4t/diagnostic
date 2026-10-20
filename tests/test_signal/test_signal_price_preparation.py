@@ -313,7 +313,10 @@ def test_observed_price_availability_uses_declared_timezone_and_keeps_unknown_le
         max_loss=0,
     )
     outcomes = panel.outcome_data.sort("asset")
-    assert outcomes["outcome_available_at"].to_list() == [None, dates[2] + pd.Timedelta(seconds=30)]
+    assert outcomes["outcome_available_at"].to_list() == [
+        None,
+        dates[2] + pd.Timedelta(30, unit="s"),
+    ]
     assert prices.equals(before)
 
 
@@ -352,6 +355,6 @@ def test_sample_fitted_filter_does_not_claim_causal_label_availability():
     assert panel.data.height == 2
     assert (
         panel.outcome_data["exit_available_at"].to_list()
-        == [dates[1] + pd.Timedelta(seconds=30)] * 2
+        == [dates[1] + pd.Timedelta(30, unit="s")] * 2
     )
     assert panel.outcome_data["outcome_available_at"].null_count() == 2

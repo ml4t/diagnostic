@@ -127,13 +127,13 @@ def _legacy_labels(
             naive_end = end.tz_convert(None) if end.tzinfo is not None else end
             count = int(np.busday_count(naive_start.date(), naive_end.date(), busdaycal=calendar))
             duration = end - start
-            durations.append(duration - pd.Timedelta(days=duration.components.days - count))
+            durations.append(duration - pd.Timedelta(duration.components.days - count, unit="D"))
             days.append(count)
         if not durations:
             raise ValueError(f"not enough price observations for period {period}")
         counts = Counter(days)
         mode = min(counts, key=lambda day: (-counts[day], day))
-        duration = durations[-1] - pd.Timedelta(days=days[-1] - mode)
+        duration = durations[-1] - pd.Timedelta(days[-1] - mode, unit="D")
         components = duration.components
         label = "".join(
             f"{getattr(components, name)}{unit}"

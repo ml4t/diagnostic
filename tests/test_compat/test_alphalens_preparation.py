@@ -1,10 +1,19 @@
 """Legacy preparation calls must use the native common sample without rekeying."""
 
+import warnings
 from fractions import Fraction
+from importlib.metadata import version
 
 import numpy as np
 import pandas as pd
 import pytest
+
+
+def _current_reference():
+    reference = pytest.importorskip("alphalens.utils")
+    if version("alphalens-reloaded") != "0.5.0":
+        pytest.skip("these comparisons pin corrected Alphalens0.5.0, not the frozen profile")
+    return reference
 
 
 def _inputs(clock="30min"):
@@ -193,10 +202,23 @@ def test_preparation_profiles_are_explicit_and_do_not_change_native_return_defin
         utils.get_clean_factor_and_forward_returns(factor, prices, reference_version="unknown")
 
 
+def test_legacy_label_arithmetic_does_not_construct_deprecated_unitless_durations():
+    from ml4t.diagnostic.compat.alphalens import utils
+
+    factor, prices = _inputs("holiday")
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "error", category=DeprecationWarning, module=r"ml4t\.diagnostic\.compat\.alphalens"
+        )
+        output = utils.compute_forward_returns(factor, prices, periods=(1, 2))
+    assert output.columns.tolist() == ["1D", "2D"]
+    np.testing.assert_allclose(output.iloc[0], [0.01, 0.02], rtol=3e-16, atol=0)
+
+
 @pytest.mark.parametrize("clock", ["30min", "1ns", "overnight", "dst", "businessday", "1D"])
 @pytest.mark.parametrize("cumulative", [False, True])
 def test_reference_intraday_and_overnight_labels_masks_and_values_match(clock, cumulative):
-    reference = pytest.importorskip("alphalens.utils")
+    reference = _current_reference()
     from ml4t.diagnostic.compat.alphalens import utils
 
     factor, prices = _inputs(clock)
@@ -228,7 +250,7 @@ def test_reference_intraday_and_overnight_labels_masks_and_values_match(clock, c
     ],
 )
 def test_reference_bucket_options_and_static_or_dated_group_membership_match(dated, buckets):
-    reference = pytest.importorskip("alphalens.utils")
+    reference = _current_reference()
     from ml4t.diagnostic.compat.alphalens import utils
 
     factor, prices = _inputs("holiday")
@@ -260,10 +282,7 @@ def test_reference_bucket_options_and_static_or_dated_group_membership_match(dat
 def test_corrected_alphalens_reference_uses_identical_keys_values_masks_and_buckets(
     cumulative, filter_zscore
 ):
-    reference = pytest.importorskip("alphalens.utils")
-    from importlib.metadata import version
-
-    assert version("alphalens-reloaded") == "0.5.0"
+    reference = _current_reference()
     from ml4t.diagnostic.compat.alphalens import utils
 
     factor, prices = _inputs("holiday")
