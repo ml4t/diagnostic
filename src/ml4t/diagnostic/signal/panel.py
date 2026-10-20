@@ -11,13 +11,15 @@ from hashlib import sha256
 from importlib.metadata import version
 from io import BytesIO
 from numbers import Real
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
 from ml4t.diagnostic.backends.polars_backend import PolarsBackend, _bucket_parameters
+from ml4t.diagnostic.signal._prepared import signal_input_contract
 from ml4t.diagnostic.utils.validation import (
     _align_datetime_key_resolution,
     _validate_observation_keys,
@@ -97,6 +99,8 @@ class PreparedSignalPanel:
             factor_col=self.factor_col,
             date_col=self.date_col,
             asset_col=self.asset_col,
+            feed_spec=self.metadata.get("feed_spec"),
+            calendar=self.metadata.get("calendar_argument", UNSET_CALENDAR),
         )
         return replace(
             result, preparation_metadata={**result.preparation_metadata, "cleaning": self.metadata}
@@ -470,8 +474,12 @@ def prepare_signal_panel(
     binning_by_group: bool = False,
     max_loss: float = 0.35,
     factor_col: str = "factor",
-    date_col: str = "date",
-    asset_col: str = "asset",
+    date_col: str | None = None,
+    asset_col: str | None = None,
+    timestamp_col: str | None = None,
+    entity_col: str | None = None,
+    feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
 ) -> PreparedSignalPanel:
     """Select one complete supplied-return sample, then assign qcut/cut buckets.
 
@@ -517,6 +525,15 @@ def prepare_signal_panel(
     factor_col, date_col, asset_col : str
         Explicit input column/index names, distinct from group, quantile and
         the exclusion audit's exclusion_stage/exclusion_reason columns.
+    timestamp_col, entity_col : str, optional
+        Canonical key names, overriding feed metadata. Existing date_col/asset_col
+        aliases remain supported; contradictory explicit names raise.
+    feed_spec : FeedSpec or mapping, optional
+        Shared input column/time declarations retained in the owned audit.
+    calendar : str or None, optional
+        Explicit selection overrides declared metadata, then NYSE. Explicit None
+        disables calendars. This supplied-outcome route records the resolved
+        declaration without inferring or validating return endpoints or schedules.
 
     Returns
     -------
@@ -526,6 +543,14 @@ def prepare_signal_panel(
         Float32 input quantization cannot be recovered. Original input hashes
         precede Float64 conversion; caller objects are not modified.
     """
+    date_col, asset_col, contract = signal_input_contract(
+        feed_spec=feed_spec,
+        timestamp_col=timestamp_col,
+        entity_col=entity_col,
+        date_col=date_col,
+        asset_col=asset_col,
+        calendar=calendar,
+    )
     specification, bucket_count = _bucket_parameters(quantiles, bins, zero_aware)
     quantiles, bins = (specification, None) if bins is None else (None, specification)
     if not isinstance(binning_by_group, bool | np.bool_):
@@ -694,6 +719,7 @@ def prepare_signal_panel(
     excluded_data = pl.concat(aligned_exclusions).sort(keys)
     payload = data.write_ipc(None).getvalue()
     metadata = {
+        **contract,
         "input_rows": input_rows,
         "retained_rows": data.height,
         "loss_fraction": loss_fraction,

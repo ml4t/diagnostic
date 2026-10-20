@@ -373,6 +373,15 @@ Qualification used Python 3.12.11, pandas 3.0.6, NumPy 2.5.4, Polars 2.0.0 and
 SciPy 1.18.1. This comparison qualifies supplied-panel analysis, not price
 endpoint construction, holding expiry or complete report replacement.
 
+Prepared-input entry points also accept the shared `feed_spec` and canonical
+`timestamp_col`/`entity_col` keywords. Explicit column names override feed mappings;
+existing `date_col`/`asset_col` aliases remain supported and conflicting explicit
+names raise. Calendar precedence is explicit argument, declared feed metadata,
+then NYSE; `calendar=None` always disables calendars. The audit and JSON preserve
+an omitted version-2 calendar separately from explicit null. Recording this
+declaration does not validate supplied outcomes against a schedule or infer their
+endpoints. Version-1 metadata retains its original null-as-unspecified convention.
+
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.

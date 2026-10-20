@@ -192,3 +192,89 @@ def test_corrected_alphalens_shared_horizon_membership_and_distinct_reduction_de
     # Native pools seven asset outcomes; Alphalens gives all four dates equal weight.
     assert result.quantile_returns[horizon][low] == pytest.approx(-0.02 / 7 if missing else -0.005)
     assert means.loc[low, horizon] == pytest.approx(-0.0025 if missing else -0.005)
+
+
+@pytest.mark.parametrize("declaration", ["omitted", None, "CME_Equity"])
+@pytest.mark.parametrize("argument", ["omitted", None, "24/7"])
+def test_canonical_feed_keys_and_calendar_presence_survive_cleaner_analysis_and_json(
+    declaration, argument, tmp_path
+):
+    from ml4t.specs import FeedSpec
+
+    _, factor, outcomes = _supplied_panel()
+    factor.index = factor.index.set_names(["when", "instrument"])
+    outcomes.index = outcomes.index.set_names(["when", "instrument"])
+    feed_arguments = {} if declaration == "omitted" else {"calendar": declaration}
+    feed = FeedSpec(
+        timestamp_col="when", entity_col="instrument", time_contract_version=2, **feed_arguments
+    )
+    arguments = {} if argument == "omitted" else {"calendar": argument}
+    panel = prepare_signal_panel(factor, outcomes, quantiles=2, feed_spec=feed, **arguments)
+    expected = (
+        argument if argument != "omitted" else declaration if declaration != "omitted" else "NYSE"
+    )
+    assert panel.date_col == "when" and panel.asset_col == "instrument"
+    assert panel.metadata["calendar"] == expected
+    assert panel.metadata["feed_spec"] == feed.to_dict()
+    assert ("calendar_argument" in panel.metadata) == (argument != "omitted")
+    result = panel.analyze(min_assets=4)
+    assert result.preparation_metadata["calendar"] == expected
+    assert result.preparation_metadata["feed_spec"] == feed.to_dict()
+    assert ("calendar_argument" in result.preparation_metadata) == (argument != "omitted")
+    target = tmp_path / "result.json"
+    result.to_json(str(target))
+    restored = SignalResult.from_json(str(target))
+    assert restored.preparation_metadata == result.preparation_metadata
+    assert restored.prepared_data.equals(panel.data)
+    assert feed.to_dict().get("calendar", "omitted") == declaration
+
+
+@pytest.mark.parametrize("route", ["cleaner", "strict"])
+def test_explicit_canonical_columns_override_feed_mapping_and_conflicting_aliases_reject(route):
+    from ml4t.specs import FeedSpec
+
+    panel, factor, outcomes = _supplied_panel()
+    feed = FeedSpec(timestamp_col="source_time", entity_col="source_asset", time_contract_version=2)
+    canonical = {"timestamp_col": "date", "entity_col": "asset", "feed_spec": feed}
+    if route == "cleaner":
+        result = prepare_signal_panel(factor, outcomes, quantiles=2, **canonical).analyze(
+            min_assets=4
+        )
+    else:
+        result = analyze_prepared_signal(
+            panel.data, return_columns=["30m"], min_assets=4, **canonical
+        )
+    assert result.preparation_metadata["timestamp_col"] == "date"
+    assert result.preparation_metadata["entity_col"] == "asset"
+    assert result.ic["30m"] == pytest.approx(1.0)
+    before = panel.data
+    with pytest.raises(ValueError, match="timestamp_col.*date_col"):
+        analyze_prepared_signal(before, return_columns=["30m"], date_col="other", **canonical)
+    with pytest.raises(ValueError, match="entity_col.*asset_col"):
+        prepare_signal_panel(factor, outcomes, asset_col="other", **canonical)
+    assert panel.data.equals(before)
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+def test_version_one_null_feed_is_not_relabelled_as_version_two_or_silent_opt_out(disabled):
+    from ml4t.specs import FeedSpec
+
+    panel, _, _ = _supplied_panel()
+    feed = FeedSpec(timestamp_col="date", entity_col="asset", calendar=None)
+    original = feed.to_dict()
+    arguments = {"calendar": None} if disabled else {}
+    result = analyze_prepared_signal(
+        panel.data,
+        return_columns=["30m"],
+        min_assets=4,
+        timestamp_col="date",
+        date_col="date",
+        entity_col="asset",
+        asset_col="asset",
+        feed_spec=feed,
+        **arguments,
+    )
+    assert result.preparation_metadata["calendar"] == (None if disabled else "NYSE")
+    assert result.preparation_metadata["feed_spec"] == original
+    assert "time_contract_version" not in original
+    assert feed.to_dict() == original

@@ -7,14 +7,19 @@ an existing return panel and its buckets. Both use the same analysis functions.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from importlib.metadata import version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
-from ml4t.diagnostic.signal._prepared import positive_count, prepared_snapshot
+from ml4t.diagnostic.signal._prepared import (
+    positive_count,
+    prepared_snapshot,
+    signal_input_contract,
+)
 from ml4t.diagnostic.signal._utils import (
     QuantileMethod,
     compute_forward_returns,
@@ -224,8 +229,12 @@ def analyze_prepared_signal(
     autocorrelation_lags: int = 10,
     min_assets: int = 10,
     factor_col: str = "factor",
-    date_col: str = "date",
-    asset_col: str = "asset",
+    date_col: str | None = None,
+    asset_col: str | None = None,
+    timestamp_col: str | None = None,
+    entity_col: str | None = None,
+    feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
 ) -> SignalResult:
     """Analyze an owned prepared sample without prices or reassigned buckets.
 
@@ -237,6 +246,12 @@ def analyze_prepared_signal(
     Pandas MultiIndex tables and ``factor_quantile`` are supported. Conflicting
     representations, duplicate keys, missing/nonfinite values and invalid buckets
     raise before calculations; this route does not clean data.
+
+    Canonical timestamp_col/entity_col arguments override FeedSpec mappings;
+    date_col/asset_col remain aliases and conflicting explicit names raise.
+    Calendar resolution is explicit argument > declared feed metadata > NYSE;
+    explicit None disables calendars. The owned audit preserves declaration
+    presence, but supplied outcomes do not establish schedule conformance.
 
     Supplied horizon labels are selectors, not computed durations. No calendar,
     session grid or return endpoint is inferred or validated. Automatic turnover
@@ -250,6 +265,14 @@ def analyze_prepared_signal(
     This ingestion route does not implement grouped/neutral analytics or complete
     legacy report workflows.
     """
+    date_col, asset_col, contract = signal_input_contract(
+        feed_spec=feed_spec,
+        timestamp_col=timestamp_col,
+        entity_col=entity_col,
+        date_col=date_col,
+        asset_col=asset_col,
+        calendar=calendar,
+    )
     if periods is not None and return_columns is not None:
         raise ValueError("supply periods or return_columns, not both")
     periods = (
@@ -270,6 +293,7 @@ def analyze_prepared_signal(
     owned, payload, metadata = prepared_snapshot(
         data, periods, quantiles, factor_col, date_col, asset_col, return_columns=return_columns
     )
+    metadata.update(contract)
     bucket_ids = (
         tuple(metadata["bucket_ids"]) if quantiles is None else tuple(range(1, quantiles + 1))
     )

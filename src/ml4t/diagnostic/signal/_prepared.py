@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from io import BytesIO
 from numbers import Integral
+from typing import Any
 
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
 from ml4t.diagnostic.utils.validation import _validate_observation_keys
 
@@ -17,6 +19,54 @@ def positive_count(value: int, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, Integral) or value < 1:
         raise ValueError(f"{name} must be a positive integer")
     return int(value)
+
+
+def signal_input_contract(
+    *,
+    feed_spec: FeedSpec | Mapping[str, Any] | None,
+    timestamp_col: str | None,
+    entity_col: str | None,
+    date_col: str | None,
+    asset_col: str | None,
+    calendar: str | CalendarUnset | None,
+) -> tuple[str, str, dict[str, Any]]:
+    """Resolve shared declarations and existing column aliases without inferring a grid."""
+    feed = (
+        FeedSpec.from_any(feed_spec)
+        if feed_spec is not None
+        else FeedSpec(timestamp_col="date", entity_col="asset", time_contract_version=2)
+    )
+    if timestamp_col is not None and date_col is not None and timestamp_col != date_col:
+        raise ValueError("timestamp_col and date_col conflict")
+    if entity_col is not None and asset_col is not None and entity_col != asset_col:
+        raise ValueError("entity_col and asset_col conflict")
+    timestamp = timestamp_col if timestamp_col is not None else date_col
+    entity = entity_col if entity_col is not None else asset_col
+    timestamp = feed.timestamp_col if timestamp is None else timestamp
+    entity = feed.entity_col if entity is None else entity
+    if entity is None:
+        entity = "asset"
+    elif not isinstance(entity, str) and isinstance(entity, Sequence) and len(entity) == 1:
+        entity = entity[0]
+    if (
+        not isinstance(timestamp, str)
+        or not timestamp.strip()
+        or not isinstance(entity, str)
+        or not entity.strip()
+        or timestamp == entity
+    ):
+        raise ValueError(
+            "signal inputs require distinct nonempty timestamp and single-entity names"
+        )
+    metadata = {
+        "timestamp_col": timestamp,
+        "entity_col": entity,
+        "feed_spec": feed.to_dict(),
+        "calendar": feed.resolve_calendar(calendar=calendar),
+    }
+    if calendar is not UNSET_CALENDAR:
+        metadata["calendar_argument"] = calendar
+    return timestamp, entity, metadata
 
 
 def prepared_snapshot(
