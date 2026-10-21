@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import pandas as pd
 import polars as pl
@@ -14,6 +15,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--compare", action="store_true", help="Compare shared inputs with installed Pyfolio0.10.0"
+    )
+    parser.add_argument(
+        "--report", type=Path, help="Save a native round-trip HTML report (Plotly required)"
     )
     args = parser.parse_args()
     dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
@@ -128,6 +132,21 @@ def main() -> None:
     assert familiar_tables["pnl"].loc["Total profit", "All trades"] == 200.0
     assert familiar_tables["returns"].loc["Avg returns all round_trips", "All trades"] == 0.2
     print("Familiar round-trip extraction: gross PnL200, lot return200/1240, NAV contribution.2")
+    if args.report:
+        from ml4t.diagnostic.visualization.portfolio import create_round_trip_dashboard
+
+        report = create_round_trip_dashboard(
+            analysis,
+            result,
+            pnl="net",
+            return_basis="nav",
+            portfolio_value=pd.Series([1000.0], index=dates[-1:]),
+            sector_mappings={7: "Example sector"},
+        )
+        report.save_html(args.report, include_plotlyjs=True)
+        assert len(report.figures["Round-trip Lifetimes"].data) == 1
+        assert report.round_trips.open_lots["quantity"].to_list() == [3.0]
+        print(f"Saved {args.report}: one actual closing fill;3units remain open, not liquidated")
     if args.compare:
         from importlib.metadata import version
 

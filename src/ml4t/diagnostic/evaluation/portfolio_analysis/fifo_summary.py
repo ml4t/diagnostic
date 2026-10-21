@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.DataFrame:
-    from .fifo import _cash, _frame, _known_sum
+    from .fifo import _cash, _frame
 
     if not isinstance(include_synthetic, bool):
         raise TypeError("include_synthetic must be a boolean")
@@ -43,15 +43,13 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
     for (asset, exit_id, direction, synthetic), rows in groups.items():
         quantities = [Fraction(row["quantity_exact"]) for row in rows]
         quantity = sum(quantities, Fraction(0))
-        cash = {
-            name: _known_sum(
-                [
-                    Fraction(row[name + "_exact"]) if row[name + "_exact"] is not None else None
-                    for row in rows
-                ]
-            )
+        exact_cash = {
+            name: sum((Fraction(row[name + "_exact"]) for row in rows), Fraction(0))
+            if all(row[name + "_exact"] is not None for row in rows)
+            else None
             for name in ("gross_pnl", "net_pnl", "commission", "entry_notional")
         }
+        cash = {name: _cash(value) for name, value in exact_cash.items()}
         known_entry = all(row["entry_price"] is not None for row in rows)
         average_entry = (
             _cash(
@@ -90,6 +88,10 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
             "n_segments": len(rows),
             "is_synthetic": synthetic,
             **cash,
+            **{
+                name + "_exact": str(value) if value is not None else None
+                for name, value in exact_cash.items()
+            },
         }
         if grouped:
             record["exit_group_id"] = exit_id
@@ -129,6 +131,10 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
         "multiplier": pl.Float64,
         "n_segments": pl.UInt32,
         "is_synthetic": pl.Boolean,
+        **dict.fromkeys(
+            ("gross_pnl_exact", "net_pnl_exact", "commission_exact", "entry_notional_exact"),
+            pl.String,
+        ),
         **dict.fromkeys(
             (
                 "gross_pnl",

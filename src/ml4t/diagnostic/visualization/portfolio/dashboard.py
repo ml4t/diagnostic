@@ -28,6 +28,8 @@ if TYPE_CHECKING:
         HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
+        RoundTripResult,
+        RoundTripStatisticsResult,
         TransactionAnalysisResult,
     )
 
@@ -54,6 +56,9 @@ class PortfolioTearSheet:
     holdings: HoldingsAnalysisResult | None = None
     availability: dict[str, dict[str, Any]] = field(default_factory=dict)
     transactions: TransactionAnalysisResult | None = None
+    round_trips: RoundTripResult | None = None
+    round_trip_statistics: RoundTripStatisticsResult | None = None
+    round_trip_attribution: pl.DataFrame | None = None
 
     def _availability_html(self) -> str:
         if not self.availability:
@@ -95,11 +100,18 @@ class PortfolioTearSheet:
             display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
             if self.availability:
                 display(HTML(self._availability_html()))
+            if self.round_trip_statistics is not None:
+                from .round_trip_plots import _round_trip_tables_html
+
+                display(HTML(_round_trip_tables_html(self.round_trip_statistics)))
             for fig in self.figures.values():
                 fig.show()
         except ImportError:
             # Terminal fallback: print metrics, show each figure
             print(self.metrics.summary())
+            if self.round_trip_statistics is not None:
+                for name, table in self.round_trip_statistics.tables.items():
+                    print(name, table, sep="\n")
             for name, info in self.availability.items():
                 if info.get("reason") or info["status"] != "available":
                     print(f"{name.replace('_', ' ')}: {info['status']}. {info.get('reason') or ''}")
@@ -199,6 +211,10 @@ class PortfolioTearSheet:
 """)
 
         html_parts.append(self._availability_html())
+        if self.round_trip_statistics is not None:
+            from .round_trip_plots import _round_trip_tables_html
+
+            html_parts.append(_round_trip_tables_html(self.round_trip_statistics))
 
         # Add each figure
         for name, fig in self.figures.items():
@@ -257,6 +273,7 @@ class PortfolioTearSheet:
             Contains metrics and figure data
         """
         from .holdings_plots import _holdings_records
+        from .round_trip_plots import _round_trip_export
 
         holdings = (
             None
@@ -279,6 +296,7 @@ class PortfolioTearSheet:
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
             "holdings": holdings,
             "availability": deepcopy(self.availability),
+            "round_trips": _round_trip_export(self),
             "transactions": None
             if self.transactions is None
             else {

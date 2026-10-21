@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from fractions import Fraction
+from typing import TYPE_CHECKING, Any, Literal
 
 import pandas as pd
 import polars as pl
+
+if TYPE_CHECKING:
+    from .fifo import RoundTripResult
 
 PNL_METRICS = (
     "total_pnl",
@@ -51,6 +56,7 @@ class RoundTripStatisticsResult:
     tables: dict[str, pl.DataFrame]
     coverage: pl.DataFrame
     metadata: dict[str, Any]
+    observations: pl.DataFrame
 
 
 def summarize_round_trips(
@@ -256,5 +262,59 @@ def summarize_round_trips(
             else "known finite PnL",
             "return_sample": "metric-specific signs/missingness; not PnL winner masks",
             "duration_sample": "known typed elapsed durations, not fabricated zero days",
+        },
+        frame.clone(),
+    )
+
+
+def profit_attribution(
+    result: RoundTripResult,
+    *,
+    pnl: Literal["gross", "net"],
+    sector_mappings: Mapping[Any, str] | None,
+    include_synthetic: bool,
+) -> pl.DataFrame:
+    from .fifo import _cash
+    from .fifo_summary import selected_trades
+
+    if sector_mappings is not None:
+        if not isinstance(sector_mappings, Mapping):
+            raise TypeError("sector_mappings must map asset IDs to sector strings")
+        if any(not isinstance(value, str) or not value for value in sector_mappings.values()):
+            raise ValueError("sector mappings must contain nonempty sector strings")
+    frame, _ = selected_trades(
+        result, pnl=pnl, missing="raise", include_synthetic=include_synthetic
+    )
+    cash = [Fraction(value) for value in frame[pnl + "_pnl_exact"].to_list()]
+    total = sum(cash, Fraction(0))
+    groups: dict[tuple[str, Any], list[Fraction]] = {}
+    for asset, value in zip(frame["asset"].to_list(), cash, strict=True):
+        groups.setdefault(("asset", asset), []).append(value)
+        if sector_mappings is not None:
+            groups.setdefault(
+                ("sector", sector_mappings.get(asset, "No Sector Mapping")), []
+            ).append(value)
+    records = []
+    for (scope, label), values in groups.items():
+        amount = sum(values, Fraction(0))
+        records.append(
+            {
+                "scope": scope,
+                "asset": label if scope == "asset" else None,
+                "sector": label if scope == "sector" else None,
+                "pnl": _cash(amount),
+                "pnl_fraction": _cash(amount / total) if total else None,
+                "n_observations": len(values),
+            }
+        )
+    return pl.DataFrame(
+        records,
+        schema={
+            "scope": pl.String,
+            "asset": frame["asset"].dtype,
+            "sector": pl.String,
+            "pnl": pl.Float64,
+            "pnl_fraction": pl.Float64,
+            "n_observations": pl.UInt64,
         },
     )

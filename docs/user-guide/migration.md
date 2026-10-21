@@ -1695,8 +1695,37 @@ separate fields on the returned result. The example compares all five tables.
 Only these named extraction/grouping/statistics calls are implemented here;
 this is not yet the complete legacy round-trip module or tear sheet.
 
-Intraday reconstruction and full legacy reports remain accepted work. The
-incomplete route is not a substitute for those workflows.
+To save a native round-trip report, run
+`uv run python examples/portfolio_fifo.py --report round-trips.html` with Plotly
+installed. `create_round_trip_dashboard(analysis, result, ...)` composes the
+existing portfolio renderer with all five statistics tables, coverage, trade
+lifetimes, Beta(1,1) win-probability uncertainty, fractional elapsed-duration and
+cash/return distributions, and asset/optional-sector cash attribution. It returns
+the same `PortfolioTearSheet` with `.show()`, `.save_html()` and `.to_dict()`;
+prepared observations, raw fills, open lots, synthetic rows and exact nanosecond
+keys remain in its owned export. Supplied net account returns are not reconstructed
+from realized trade PnL. The default report selects net cash and lot returns;
+choose `return_basis="nav", portfolio_value=beginning_nav` explicitly for NAV
+contributions. `sector_mappings` maps original IDs to nonempty strings; unmapped
+assets remain in "No Sector Mapping" without dropping rows for missing NAV/time.
+
+Asset/sector attribution divides cash PnL by signed total PnL, not by NAV. Shares
+may be negative or exceed one; a zero total leaves them undefined. Unknown cash
+raises instead of being displayed as zero. Missing entry time omits only its
+lifeline/duration, and missing denominators omit only their return observations.
+The report displays small samples rather than Pyfolio's fewer-than-five-trades
+suppression, and uses the declared Beta(1,1) prior rather than the reference's
+undefined all-win/all-loss beta parameters. Every asset is displayed without
+random sampling. Browser lifetime axes have millisecond display precision;
+hover and exports preserve the original nanosecond instants.
+
+Native reports do not infer terminal fills from end-of-day position labels.
+Optional `include_synthetic=True` includes only synthetic segments already
+requested from known-at marks in reconstruction, with separate histogram traces,
+dashed lifelines and an explicit sample count. Original fills, actual realized
+PnL and remaining open lots do not change. Intraday reconstruction, the familiar
+full tear-sheet facade and its implicit closing/intraday options remain accepted
+work; these native panels do not yet qualify those original workflows.
 
 For a non-flat book, pass `initial_state="supplied"`, `opening_lots` and
 `opening_as_of`. The opening table requires stable `asset` IDs and signed remaining

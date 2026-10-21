@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from fractions import Fraction
@@ -180,6 +181,26 @@ class RoundTripResult:
             matching_method=self.metadata.get("matching_method", "actual_fifo"),
         )
         return result
+
+    def profit_attribution(
+        self,
+        *,
+        pnl: Literal["gross", "net"] = "net",
+        sector_mappings: Mapping[Any, str] | None = None,
+        include_synthetic: bool = False,
+    ) -> pl.DataFrame:
+        """Attribute completed cash PnL by original asset and optional sector.
+
+        Fractions divide by signed total cash PnL, not NAV. They may be negative
+        or exceed one; a zero total leaves fractions undefined. Unknown cash
+        raises instead of silently disappearing. Missing sector labels form an
+        explicit 'No Sector Mapping' group without dropping other missing fields.
+        """
+        from .fifo_statistics import profit_attribution
+
+        return profit_attribution(
+            self, pnl=pnl, sector_mappings=sector_mappings, include_synthetic=include_synthetic
+        )
 
 
 @dataclass
