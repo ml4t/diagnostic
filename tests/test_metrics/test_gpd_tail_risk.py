@@ -200,3 +200,17 @@ def test_familiar_likelihood_retains_its_nonnegative_shape_model_without_restric
     assert np.isposinf(ep.gpd_loglikelihood([1.0, -0.25], data))
     native = metrics.estimate_gpd_tail_risk(portfolio_returns(), threshold=0.02)
     assert native.status == "ok" and native.shape < 0
+
+
+def test_failed_raw_tail_fit_reports_the_threshold_that_actually_selected_its_sample():
+    changes = np.array([2e-10, 4e-10, 8e-10])
+    prices = pd.Series(
+        100 * np.cumprod(np.r_[1.0, 1 - changes]),
+        index=pd.bdate_range("2025-01-02", periods=4, tz="UTC"),
+    )
+    values = prices.pct_change(fill_method=None).iloc[1:]
+    result = metrics.estimate_gpd_tail_risk(values, method="empyrical_raw_tail")
+    assert result.status == "fit_failed" and result.n_losses == 3
+    assert result.n_exceedances == int((-values >= result.threshold).sum())
+    assert result.threshold > 1e-9
+    assert np.isnan(result.value_at_risk) and np.isnan(result.expected_shortfall)

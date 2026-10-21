@@ -206,6 +206,8 @@ def estimate_gpd_tail_risk(
                             value,
                             _shortfall(value, selected_threshold, scale, shape),
                         )
+            if selected_threshold / 2 <= 1e-9:
+                break
             selected_threshold /= 2
         return result("fit_failed", count)
     sample = losses[losses > selected_threshold] - selected_threshold
