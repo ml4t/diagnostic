@@ -10,6 +10,7 @@ portfolio performance metrics:
 
 from __future__ import annotations
 
+from numbers import Real
 from typing import TYPE_CHECKING, Any, Union, cast
 
 import numpy as np
@@ -18,10 +19,11 @@ from scipy import stats
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
 if TYPE_CHECKING:
+    import pandas as pd
     import polars as pl
 
 # Type aliases - use Union for Python 3.9 compatibility
-ArrayLike = Union[np.ndarray, "pl.Series", "list[float]"]
+ArrayLike = Union[np.ndarray, "pl.Series", "pd.Series", "list[float]"]
 
 
 def _to_numpy(data: ArrayLike) -> np.ndarray:
@@ -241,6 +243,51 @@ def value_at_risk(
         raise ValueError("nan_policy must be 'omit' or 'propagate'")
     quantile = np.nanpercentile if nan_policy == "omit" else np.percentile
     return float(quantile(returns, (1 - confidence) * 100))
+
+
+def _finite_real(value: float, name: str) -> float:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real) or not np.isfinite(value):
+        raise ValueError(f"{name} must be a finite real number")
+    return float(value)
+
+
+def gaussian_value_at_risk(returns: ArrayLike, sigma: float = 2.0) -> float:
+    """Return mean minus sigma sample deviations in the input return period.
+
+    NaNs are omitted; this Gaussian return estimate is neither an empirical
+    quantile nor a cash loss. Aggregate supplied observations explicitly before
+    calling when a different civil period is required.
+    """
+    width = _finite_real(sigma, "sigma")
+    if width < 0:
+        raise ValueError("sigma must be nonnegative")
+    values = np.asarray(_to_numpy(returns), dtype=float)
+    if values.ndim != 1:
+        raise ValueError("Gaussian return VaR requires one series; apply per column")
+    known = values[~np.isnan(values)]
+    if len(known) < 2:
+        return np.nan
+    with np.errstate(invalid="ignore"):
+        return float(np.mean(known) - width * np.std(known, ddof=1))
+
+
+def normal_cash_value_at_risk(
+    portfolio_value: float, confidence: float, mean: float = 0.0, std: float = 1.0
+) -> float:
+    """Scale a modeled lower normal return quantile into a signed cash loss.
+
+    Mean and standard deviation are periodic decimal-return parameters. Positive
+    output denotes loss; a positive lower return quantile gives a negative cash
+    loss rather than a clipped zero. This is not an empirical return statistic.
+    """
+    capital = _finite_real(portfolio_value, "portfolio_value")
+    confidence = _finite_real(confidence, "confidence")
+    mean, std = _finite_real(mean, "mean"), _finite_real(std, "std")
+    if not 0 <= confidence <= 1:
+        raise ValueError("confidence must be between zero and one")
+    if std <= 0:
+        raise ValueError("std must be positive for a nondegenerate normal model")
+    return float(-capital * stats.norm.ppf(1 - confidence, loc=mean, scale=std))
 
 
 def conditional_var(

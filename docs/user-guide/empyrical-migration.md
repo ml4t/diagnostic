@@ -340,6 +340,25 @@ The native metric module exposes `omega_ratio(..., no_loss="nan")`,
 without the familiar signatures. Gaussian return VaR and covariance-based cash
 VaR remain separate workflows, not aliases for the empirical quantile.
 
+The native portfolio-analysis module provides `gaussian_value_at_risk(returns,
+sigma=2)` for Pyfolio-style mean-minus-sample-deviations return VaR, and
+`normal_cash_value_at_risk(portfolio_value, confidence, mean=0, std=1)` for
+covariance-model cash risk. Both are exercised by the same definition recipe.
+For `[-0.02, 0, 0.02]`, Gaussian two-deviation return VaR is `-0.04`, whereas
+the native empirical 95% return quantile is `-0.018`. For capital 1000 and
+a modeled median return of `-0.01`, normal cash VaR at confidence 0.5 is a
+loss of 10 cash units. Positive modeled lower returns can produce a negative
+cash loss; the function does not clip gains to zero.
+
+Pyfolio's `timeseries.value_at_risk(..., period=...)` first aggregates returns.
+Preserve that choice explicitly with `aggregate_returns`, then pass the result
+to `gaussian_value_at_risk`. The actual Pyfolio 0.10.0 / Empyrical 0.7.0 profile
+qualifies weekly, monthly and yearly grouping as well as the unaggregated sigma
+options. `var_cov_var_normal(P, c, mu, sigma)` maps to
+`normal_cash_value_at_risk(P, c, mean=mu, std=sigma)` for a nondegenerate normal
+model. These are separately named native routes; familiar Pyfolio report wiring
+is tracked with its own workflow and is not implied by metric availability.
+
 `aggregate_returns` compounds only observed rows into weekly, monthly, quarterly
 or yearly groups. Weekly keys use ISO year together with ISO week, so the week
 starting 2019-12-30 is `(2020, 1)`, including its January observations. Other

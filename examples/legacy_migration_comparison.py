@@ -684,6 +684,10 @@ def show_empyrical_benchmark() -> None:
 def show_empyrical_definitions() -> None:
     """Keep legacy metric definitions explicit without changing native defaults."""
     from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        gaussian_value_at_risk,
+        normal_cash_value_at_risk,
+    )
     from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as native
 
     returns = pd.Series([-0.2, -0.1, np.nan, -0.1, 0.1], name="strategy")
@@ -713,6 +717,11 @@ def show_empyrical_definitions() -> None:
     assert weekly.index.to_list() == [(2020, 1)]
     np.testing.assert_allclose(weekly.to_numpy(), [1.1 * 1.2 * 0.9 - 1])
     print(f"Observed civil ISO-week products (decimal returns): {weekly.to_dict()}")
+    gaussian = gaussian_value_at_risk(np.array([-0.02, 0.0, 0.02]), sigma=2)
+    cash = normal_cash_value_at_risk(1000, 0.5, mean=-0.01, std=0.02)
+    np.testing.assert_allclose([gaussian, cash], [-0.04, 10])
+    print(f"Gaussian mean-minus-two-deviations VaR (decimal return): {gaussian}")
+    print(f"Normal-model median VaR for 1000 supplied cash units (cash loss): {cash}")
 
 
 def show_empyrical_rolling() -> None:
