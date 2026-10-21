@@ -60,7 +60,9 @@ def _holdings_figures(
     n_defined = result.coverage["n_normalized_observations"]
     normalized = n_defined > 0
     nav_name = (
-        "cash-price NAV"
+        "estimated NAV"
+        if result.snapshot_kind == "estimated_intraday"
+        else "cash-price NAV"
         if result.metadata.get("method") == "explicit_cash_price_reconstruction"
         else "reported NAV"
     )

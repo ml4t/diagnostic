@@ -123,7 +123,7 @@ def analyze_holdings(
     dates: pl.Series,
     *,
     complete_snapshots: bool,
-    snapshot_kind: Literal["observed", "end_of_day", "intraday"],
+    snapshot_kind: Literal["observed", "end_of_day", "intraday", "estimated_intraday"],
     observation_ids: pl.Series | None = None,
 ) -> HoldingsAnalysisResult:
     from ml4t.diagnostic.integration.backtest_analytics import compute_occupancy_metrics
@@ -132,8 +132,10 @@ def analyze_holdings(
         raise ValueError(
             "complete_snapshots=True must explicitly declare complete holdings snapshots"
         )
-    if snapshot_kind not in {"observed", "end_of_day", "intraday"}:
-        raise ValueError("snapshot_kind must be observed, end_of_day or intraday")
+    if snapshot_kind not in {"observed", "end_of_day", "intraday", "estimated_intraday"}:
+        raise ValueError(
+            "snapshot_kind must be observed, end_of_day, intraday or estimated_intraday"
+        )
     account = position_snapshot(valuations)
     if "date" not in account.columns or "date" not in positions.columns:
         raise ValueError("positions and valuations require explicit date observation keys")

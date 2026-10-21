@@ -291,6 +291,22 @@ class PortfolioAnalysis:
             incremental_bps=incremental_bps,
         )
 
+    def compute_intraday_estimate(
+        self,
+        *,
+        method: Literal["legacy_peak_notional"],
+        capital_method: Literal["defined_only", "legacy_zero_fill"] = "defined_only",
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    ) -> HoldingsAnalysisResult:
+        """Explicit daily transaction-notional estimate, not observed intraday holdings."""
+        from .intraday_estimate import _estimate_from_inputs
+
+        if self._input_data is None:
+            raise ValueError("intraday estimate requires owned from_frames account inputs")
+        return _estimate_from_inputs(
+            self._input_data, method=method, calendar=calendar, capital_method=capital_method
+        )
+
     def compute_round_trips(
         self,
         *,

@@ -225,7 +225,14 @@ def create_round_trip_dashboard(
         figures[name] = item
         return item
 
-    lifetimes = figure("Round-trip Lifetimes", "Actual time (ms display)", "Asset")
+    lifetimes = figure("Round-trip Lifetimes", "Time", "Asset")
+    lifetimes.update_layout(
+        meta={
+            **lifetimes.layout.meta,
+            "description": description
+            + " Lifetime axes use browser millisecond date precision; exact nanosecond instants remain on hover and in exports.",
+        }
+    )
     assets = observations["asset"].unique(maintain_order=True).to_list()
     asset_rows = {asset: index for index, asset in enumerate(assets)}
     dated = observations.filter(pl.col("entry_timestamp").is_not_null()).to_pandas()

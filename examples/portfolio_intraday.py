@@ -15,10 +15,16 @@ from ml4t.diagnostic.evaluation.portfolio_analysis import analyze_intraday_expos
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, help="Save the combined report (Plotly required)")
-    parser.add_argument(
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument(
         "--reconstruct",
         action="store_true",
         help="Replay actual fills from explicit opening cash/quantities and marks",
+    )
+    modes.add_argument(
+        "--estimate",
+        action="store_true",
+        help="Show the explicitly retrospective legacy daily notional estimate",
     )
     args = parser.parse_args()
     clock = pd.to_datetime(["2025-07-07T13:30Z", "2025-07-07T14:00Z", "2025-07-07T20:00Z"])
@@ -39,9 +45,21 @@ def main() -> None:
     print(
         "Peak900/999 describes this sample, not a continuous-time maximum; unknown NAV stays unknown"
     )
-    if args.report or args.reconstruct:
+    if args.report or args.reconstruct or args.estimate:
         # One separately supplied daily net return and two actual same-instant fills.
         # The complete carried quantities do not declare unknown original lot costs.
+        account_options = {}
+        if args.estimate:
+            eod = positions.iloc[-1:].copy(deep=True)
+            eod.index = clock[-1:].normalize()
+            reported_nav = nav.iloc[-1:].copy(deep=True)
+            reported_nav.index = eod.index
+            account_options = {
+                "positions": eod,
+                "valuations": reported_nav,
+                "complete_snapshots": True,
+                "snapshot_kind": "end_of_day",
+            }
         analysis = PortfolioAnalysis.from_frames(
             pd.Series([-0.001], index=clock[-1:].normalize()),
             calendar=None,
@@ -55,6 +73,7 @@ def main() -> None:
                     "commission": [0.5] * 2,
                 }
             ),
+            **account_options,
         )
         trips = analysis.compute_round_trips(
             initial_state="supplied",
@@ -77,12 +96,26 @@ def main() -> None:
             print(
                 "Four explicit cash-price states; two same-instant fills stay separate, not mean-aggregated"
             )
+        if args.estimate:
+            prepared = analysis.compute_intraday_estimate(method="legacy_peak_notional")
+            prepared.metadata["EOD_values_available_at"] = clock[-1].isoformat()
+            assert prepared.timeline["gross_exposure"].to_list() == [200.0]
+            assert prepared.timeline["cash"].to_list() == [800.0]
+            assert prepared.snapshot_kind == "estimated_intraday"
+            print(prepared.timeline)
+            print(
+                "Legacy daily estimate: A200/B0/cash800. Missing prior EOD risky book assumed zero; not the carried account A600/B-300/cash699."
+            )
         if args.report:
             from ml4t.diagnostic.visualization.portfolio import create_round_trip_dashboard
 
             report = create_round_trip_dashboard(analysis, trips, intraday=prepared)
-            assert report.intraday.timeline.height == (4 if args.reconstruct else 3)
-            assert report.intraday.timeline["gross_exposure"].max() == 900
+            assert report.intraday.timeline.height == (
+                1 if args.estimate else 4 if args.reconstruct else 3
+            )
+            assert report.intraday.timeline["gross_exposure"].max() == (
+                200 if args.estimate else 900
+            )
             assert report.round_trips.completed_trades().is_empty()
             assert (
                 report.round_trips.open_lots.filter(pl.col("asset") == "A")["quantity"].sum() == 6

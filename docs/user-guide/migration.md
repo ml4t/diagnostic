@@ -1873,9 +1873,79 @@ default pivot mean turns two same-instant one-unit buys at 100 into 100 of
 exposure rather than the independently calculated 200. The same two fills at
 distinct instants give the correct 200 in that reference. Diagnostic preserves
 both actual quantities and returns 200 in both cases; it does not copy that
-reference error. The old inferred daily projection, `check_intraday` facade and
-full report options still require separate qualification. This native route is
-not a full-replacement claim.
+reference error. The explicit daily projection below is a different method;
+full familiar report options still require separate qualification. This native
+route is not a full-replacement claim.
+
+### Keep the daily intraday estimate separate from account facts
+
+Unreleased after 0.1.9, `analysis.compute_intraday_estimate(method="legacy_peak_notional")`
+implements the retrospective daily transaction-notional estimate. It is not
+observed holdings or a quantity/quote reconstruction. Run
+`uv run python examples/portfolio_intraday.py --estimate --report estimated.html`.
+The shared carried account's estimate is A = 200, B = 0 and cash = 800, not its
+actual A = 600, B = -300 and cash = 699. The report labels these panels
+"Estimated Intraday" and keeps the supplied EOD holdings separate.
+
+The method cumulates signed execution cash values within each civil day and
+selects every candidate tied for maximum absolute transacted notional. It adds
+each candidate to the previous supplied EOD marked values, not to a guessed unit
+book. The first risky book is assumed zero; initial cash is inferred from first
+EOD marked total divided by one plus the first EOD return. Transaction fees are
+ignored by this explicit legacy estimate. It does not compute continuous marked
+peaks, actual cash, time-weighted occupancy or causal daily information. A later
+known quote can change actual marked exposure without changing this estimate.
+
+Daily `date` values are labels, not intraday instants. Distinct tied candidates
+retain observation IDs, original nanosecond `candidate_timestamp` and exact source
+membership. Metadata `execution_order`, filtered by civil date and the first
+`member_stop` records, identifies the cumulative sample without copying every
+prefix. Dates with no candidate carry the shifted book and an unavailable
+candidate timestamp, not an invented execution. Simultaneous fills are summed;
+the actual published reference's pivot-mean error is not copied.
+
+The independently callable
+`ml4t.diagnostic.evaluation.portfolio_analysis.estimate_intraday_positions`
+accepts supplied positions, transactions, optional valuations and an explicit
+`first_return` scalar with `complete_snapshots=True`. It reuses normalizers,
+cash-unit calculations and holdings analysis. The scalar is a decimal portfolio
+return for the first EOD period, not an annual rate. `None`/NaN means unknown; no fabricated
+finite return series is needed. Native `from_frames` finite-return validation
+remains unchanged. Use explicit `calendar=None` or declared metadata `None` for
+this civil-date profile; a resolved exchange calendar is not silently disabled.
+The same FeedSpec column and timezone declarations are consumed.
+
+For the familiar interface:
+
+```python
+from ml4t.diagnostic.compat import pyfolio as pf
+
+is_intraday = pf.utils.detect_intraday(positions, transactions)
+estimated = pf.utils.check_intraday("infer", returns, positions, transactions)
+forced = pf.utils.estimate_intraday(returns, positions, transactions, EOD_hour=23)
+```
+
+The classifier retains the nonzero-EOD-position count divided by summed daily
+unique-transacted-symbol counts and its default threshold of 0.25. Disabled
+selection returns the supplied object unchanged; `"infer"` only estimates when
+both inputs exist and classification succeeds. `EOD_hour` is accepted but unused,
+as actual Pyfolio 0.10.0 probes confirm; it does not define a new session close.
+Original asset objects and integer/string distinctions survive projection. The
+wide facade reserves `cash` for account cash; native long inputs can represent a
+security with that ID separately.
+
+Native `capital_method="defined_only"` keeps unidentified initial capital unknown.
+The familiar facade explicitly selects `"legacy_zero_fill"`, matching the reference's
+NaN-capital-to-zero projection. With an unknown first return and a 100 cash buy,
+that legacy profile can produce estimated cash -100; it is not a reported cash
+balance. Infinite implied capital stays unavailable rather than becoming a
+financial cash value. The facade also retains the original profile that treats
+missing position values as zero; its `attrs["diagnostic"]` discloses methods, filled-cell counts,
+candidate clocks and membership. Native unknown holdings are still rejected.
+All marked values, executions and cash must use one supplied cash currency;
+this method does not provide FX conversion, external-flow accounting or margin
+reconstruction. The familiar full tear-sheet facade and standalone plotting
+options remain unfinished; these named helpers are not a full-replacement claim.
 
 ### Supply opening inventory and known-at FIFO marks
 

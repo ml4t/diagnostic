@@ -40,6 +40,7 @@ def _display_figure(original: go.Figure) -> go.Figure:
     if (rendered.layout.meta or {}).get("analysis") in {
         "prepared_holdings",
         "prepared_intraday",
+        "estimated_intraday",
     } and rendered.layout.yaxis.type == "category":
         for trace in rendered.data:
             if trace.y is not None:
@@ -387,6 +388,8 @@ def create_portfolio_dashboard(
         Explicit complete intraday snapshots on their own observation clock.
         They are not resampled or joined onto return/EOD observations. Reported
         maxima describe this supplied sample, not continuous-time peak exposure.
+        Explicit estimated_intraday projections instead use daily labels and
+        distinct estimated panels; they are not promoted to observed account facts.
 
     Returns
     -------
@@ -421,16 +424,20 @@ def create_portfolio_dashboard(
 
         if not isinstance(intraday, HoldingsAnalysisResult):
             raise TypeError("intraday must be a prepared HoldingsAnalysisResult")
-        if intraday.snapshot_kind != "intraday" or not isinstance(
-            intraday.timeline["date"].dtype, pl.Datetime
-        ):
+        estimated = intraday.snapshot_kind == "estimated_intraday"
+        valid_clock = isinstance(intraday.timeline["date"].dtype, pl.Datetime) or (
+            estimated and intraday.timeline["date"].dtype == pl.Date
+        )
+        if intraday.snapshot_kind not in {"intraday", "estimated_intraday"} or not valid_clock:
             raise ValueError(
-                "intraday requires declared complete intraday snapshots with actual Datetime instants, not EOD/date labels"
+                "intraday requires actual Datetime instants, or an explicitly labeled estimated_intraday daily projection; EOD/date labels cannot become observed intraday peaks"
             )
         prepared_intraday = deepcopy(intraday)
         availability["intraday"] = {
             "status": "available" if intraday.timeline.height else "empty",
-            "reason": "Independent supplied intraday clock; no return/EOD resampling. Maximum "
+            "reason": "Explicit retrospective daily transaction-notional estimate; not observed or reconstructed marked account peaks."
+            if estimated
+            else "Independent supplied intraday clock; no return/EOD resampling. Maximum "
             "over supplied observations, not a continuous-time maximum. Means/time-in-market "
             "describe observations, not elapsed-time weighting.",
         }
@@ -604,16 +611,21 @@ def create_portfolio_dashboard(
             prepared_intraday, theme, height_per_row, width, sample_axis=True
         )
         for name, fig in intraday_figures.items():
+            estimated = prepared_intraday.snapshot_kind == "estimated_intraday"
             meta = dict(fig.layout.meta or {})
             meta.update(
-                analysis="prepared_intraday",
-                description="Independent prepared intraday observations; no EOD/return-grid compression. "
-                "Maxima describe the observed sample, not continuous-time peaks. "
-                "Time-series axes show observation order, not elapsed spacing; exact instants remain on hover/export. "
+                analysis="estimated_intraday" if estimated else "prepared_intraday",
+                description=(
+                    "Retrospective daily transaction-notional estimate, not observed positions or continuous marked peaks. Daily labels are not intraday instants; selected execution times and exact sample membership stay in the export. "
+                    if estimated
+                    else "Independent prepared intraday observations; no EOD/return-grid compression. "
+                    "Maxima describe the observed sample, not continuous-time peaks. "
+                    "Time-series axes show observation order, not elapsed spacing; exact instants remain on hover/export. "
+                )
                 + meta.get("description", ""),
             )
             fig.update_layout(meta=meta)
-            figures["Intraday " + name] = fig
+            figures[("Estimated Intraday " if estimated else "Intraday ") + name] = fig
         availability.update(
             {"intraday_" + name: value for name, value in intraday_availability.items()}
         )
