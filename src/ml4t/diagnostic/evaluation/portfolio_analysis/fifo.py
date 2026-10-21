@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_analysis import TradeAnalysis
 
     from .fifo_statistics import RoundTripStatisticsResult
+    from .holdings import HoldingsAnalysisResult
 
 
 @dataclass
@@ -44,6 +45,33 @@ class RoundTripResult:
     marks: pl.DataFrame | None = None
     synthetic_segments: pl.DataFrame | None = None
     matching_groups: pl.DataFrame | None = None
+
+    def reconstruct_intraday_exposure(
+        self,
+        *,
+        opening_cash: float | int | None,
+        cash_model: Literal["cash_price"],
+        opening_as_of: Any = None,
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    ) -> HoldingsAnalysisResult:
+        """Replay owned actual fills from an explicit cash-price account anchor.
+
+        Requires complete opening quantities, an opening instant and a terminal
+        as_of, and supplied known-at marks for every held asset. Opening cash is
+        after any historical fees. Each actual commission is charged once; fill
+        prices already include slippage. This is full-notional cash accounting,
+        not a futures margin model or a broker. Same-instant fills retain source
+        row order and distinct observation IDs. Unknown cash/fees keep NAV unknown.
+        """
+        from .intraday_reconstruction import reconstruct_intraday_exposure
+
+        return reconstruct_intraday_exposure(
+            self,
+            opening_cash=opening_cash,
+            cash_model=cash_model,
+            opening_as_of=opening_as_of,
+            calendar=calendar,
+        )
 
     def completed_trades(self, *, include_synthetic: bool = False) -> pl.DataFrame:
         """Aggregate segments into one closing fill or explicitly selected analytical group.

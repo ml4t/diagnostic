@@ -1767,9 +1767,63 @@ uses one separately supplied daily net return of -0.001, three observed snapshot
 the two actual fills and complete carried quantities. No completed trades or
 terminal fills are invented. Intraday panels, availability, provenance and owned
 export remain separate from return/EOD holdings panels. End-of-day or Date-label
-results cannot be relabeled as intraday report peaks. Opt-in reconstruction from
-opening state, actual fills and known-at marks, and the legacy intraday heuristic
-remain unfinished accepted work, not features implied by this observed route.
+results cannot be relabeled as intraday report peaks.
+
+### Reconstruct an explicit cash-price intraday account
+
+Unreleased after 0.1.9, `RoundTripResult.reconstruct_intraday_exposure` replays
+its owned original fills, complete opening quantities and supplied known-at marks.
+Run `uv run python examples/portfolio_intraday.py --reconstruct`; add
+`--report reconstructed.html` for the combined report. No Backtest, Data, Engineer
+or legacy-package installation is required. This is a separate opt-in route from
+reported snapshots: it derives cash-price NAV, never labels it reported NAV.
+
+Call `trips.reconstruct_intraday_exposure(opening_cash=900.0, cash_model="cash_price")`
+on the example's supplied opening book. Opening cash already includes historical
+fees. Each actual fill changes units and full-notional cash, with its commission
+charged once; actual fill prices already include slippage. Original lot entry
+basis is not needed to mark holdings and is not invented. The shared fixture gives
+cash 900/799.5/699/699, gross marked exposure 700/800/900/900 and cash-price NAV
+1,000/999.5/999/999. Both 14:00 fills remain separate states, identified by
+`observation_id`, with the same original timestamp. They are not grouped into a
+VWAP or assigned fabricated nanoseconds. Counts use exact nonzero quantities,
+including held assets marked at zero; exposure signs follow signed marked cash.
+
+Supply an opening instant and terminal `as_of`. A supplied inventory already owns
+its opening instant; a declared-flat book needs `opening_as_of=` here. Replay
+uses original executions even if FIFO matching selected `consecutive_vwap`.
+Fills before the opening anchor or after `as_of` stay excluded. Each held asset
+requires a supplied mark known at or before each sampled instant; a terminal
+quote cannot value earlier inventory. Fill prices are not silently substituted
+for marks. Same-instant marks are declared known before fills; finer quote/fill
+sequence is not inferred. Quote timestamps and nanosecond ages remain in the
+export, so a stale last-known quote is visible rather than claimed current.
+
+Samples are the opening state, after every actual fill, relevant mark-only
+instants and the terminal state if not already sampled. A mark-only quote for
+an asset not currently held does not create an account observation. Maxima and
+averages describe those event observations, not continuous peaks or time-weighted
+occupancy. Calendar resolution keeps the same explicit argument, metadata, NYSE
+precedence; `None` disables it. Original instants, identity and execution order
+remain intact. The report uses unique observation-order display keys while
+exporting the unchanged repeated timestamps and observation IDs.
+
+Unknown opening cash or commission leaves subsequent cash/NAV unknown, not zero;
+raw marked exposure stays available. Negative commission rebates are retained.
+The explicit full-notional cash-price model is not futures margin accounting.
+It requires one consistent contract multiplier per asset and does not infer FX,
+dividends, external cash flows or corporate actions. Use supplied observed
+snapshots for accounts that require those additional states.
+
+Published Pyfolio 0.10.0's `estimate_intraday` is a different daily heuristic,
+not this event-state contract. An actual published-version regression shows its
+default pivot mean turns two same-instant one-unit buys at 100 into 100 of
+exposure rather than the independently calculated 200. The same two fills at
+distinct instants give the correct 200 in that reference. Diagnostic preserves
+both actual quantities and returns 200 in both cases; it does not copy that
+reference error. The old inferred daily projection, `check_intraday` facade and
+full report options still require separate qualification. This native route is
+not a full-replacement claim.
 
 ### Supply opening inventory and known-at FIFO marks
 

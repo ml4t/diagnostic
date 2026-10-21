@@ -607,7 +607,7 @@ def create_portfolio_dashboard(
             meta = dict(fig.layout.meta or {})
             meta.update(
                 analysis="prepared_intraday",
-                description="Independent supplied intraday snapshots; no EOD/return-grid compression. "
+                description="Independent prepared intraday observations; no EOD/return-grid compression. "
                 "Maxima describe the observed sample, not continuous-time peaks. "
                 "Time-series axes show observation order, not elapsed spacing; exact instants remain on hover/export. "
                 + meta.get("description", ""),

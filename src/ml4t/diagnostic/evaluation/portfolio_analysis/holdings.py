@@ -65,17 +65,18 @@ class HoldingsAnalysisResult:
         )
 
 
-def _exposure_aggregations() -> list[pl.Expr]:
+def _exposure_aggregations(*, count_column: str = "value") -> list[pl.Expr]:
     """Use the same marked-value totals for portfolios and their classifications."""
     values = pl.col("value")
+    counts = pl.col(count_column)
     return [
         values.clip(lower_bound=0).abs().sum().alias("long_exposure"),
         values.clip(upper_bound=0).abs().sum().alias("short_exposure"),
         values.abs().sum().alias("gross_exposure"),
         values.sum().alias("net_exposure"),
-        (values != 0).sum().alias("open_positions"),
-        (values > 0).sum().alias("long_positions"),
-        (values < 0).sum().alias("short_positions"),
+        (counts != 0).sum().alias("open_positions"),
+        (counts > 0).sum().alias("long_positions"),
+        (counts < 0).sum().alias("short_positions"),
     ]
 
 
@@ -123,6 +124,7 @@ def analyze_holdings(
     *,
     complete_snapshots: bool,
     snapshot_kind: Literal["observed", "end_of_day", "intraday"],
+    observation_ids: pl.Series | None = None,
 ) -> HoldingsAnalysisResult:
     from ml4t.diagnostic.integration.backtest_analytics import compute_occupancy_metrics
 
@@ -135,10 +137,26 @@ def analyze_holdings(
     account = position_snapshot(valuations)
     if "date" not in account.columns or "date" not in positions.columns:
         raise ValueError("positions and valuations require explicit date observation keys")
-    _same_dates(account["date"], dates, "valuation")
+    keys = ["date"]
+    if observation_ids is None:
+        _same_dates(account["date"], dates, "valuation")
+    else:
+        keys.append("observation_id")
+        if (
+            len(observation_ids) != len(dates)
+            or observation_ids.null_count()
+            or observation_ids.n_unique() != len(dates)
+            or not (observation_ids.dtype.is_integer() or observation_ids.dtype == pl.String)
+        ):
+            raise ValueError("observation IDs must be unique nonmissing string/integer identities")
+        expected = pl.DataFrame({"date": dates, "observation_id": observation_ids})
+        if not account.select(keys).equals(expected):
+            raise ValueError("valuation keys must match the ordered date/observation_id pairs")
+        if not dates.is_sorted():
+            raise ValueError("event observation dates must be in chronological source order")
     account = account.with_columns(pl.col("date").cast(dates.dtype))
     account = account.select(
-        "date", *[name for name in ["equity", "cash"] if name in account.columns]
+        *keys, *[name for name in ["equity", "cash"] if name in account.columns]
     )
     for name in ["equity", "cash"]:
         if name not in account.columns:
@@ -148,7 +166,16 @@ def analyze_holdings(
     if "asset" in positions.columns or "value" in positions.columns:
         if not {"date", "asset", "value"}.issubset(positions.columns):
             raise ValueError("long positions require date, asset and value columns")
-        long = positions.select("date", "asset", "value")
+        long = positions.select(
+            *keys,
+            "asset",
+            "value",
+            *[
+                name
+                for name in ("quantity", "quantity_sign")
+                if observation_ids is not None and name in positions.columns
+            ],
+        )
         asset = long["asset"]
         if asset.dtype != pl.Utf8 and not asset.dtype.is_integer():
             raise TypeError("asset IDs must be stable strings or integers")
@@ -156,6 +183,10 @@ def analyze_holdings(
             raise ValueError("asset IDs must be nonmissing and nonempty")
         snapshot_dates = long["date"].unique().sort()
     else:
+        if observation_ids is not None:
+            raise ValueError(
+                "event observations require long positions with explicit observation_id"
+            )
         _same_dates(positions["date"], dates, "position")
         assets = [name for name in positions.columns if name not in {"date", "cash"}]
         for asset in assets:
@@ -173,15 +204,24 @@ def analyze_holdings(
         else:
             long = positions.melt(id_vars="date", value_vars=assets, variable_name="asset")
         snapshot_dates = positions["date"]
-    _same_dates(snapshot_dates, dates, "position observation")
+    if observation_ids is None:
+        _same_dates(snapshot_dates, dates, "position observation")
+    else:
+        if long.select(keys).unique().join(account.select(keys), on=keys, how="anti").height:
+            raise ValueError("positions contain unknown date/observation_id pairs")
     long = long.with_columns(pl.col("date").cast(dates.dtype))
-    if long.select(pl.struct("date", "asset").is_duplicated().any()).item():
-        raise ValueError("position date/asset pairs must be unique")
+    if long.select(pl.struct(*keys, "asset").is_duplicated().any()).item():
+        raise ValueError("position date/asset pairs (including observation_id) must be unique")
     long = _numeric(long, "value")
+    if "quantity" in long.columns:
+        long = _numeric(long, "quantity")
     values = pl.col("value")
-    aggregates = long.group_by("date").agg(_exposure_aggregations())
-    raw_columns = [name for name in aggregates.columns if name != "date"]
-    state = account.join(aggregates, on="date", how="left").with_columns(
+    count_column = next(
+        (name for name in ("quantity_sign", "quantity") if name in long.columns), "value"
+    )
+    aggregates = long.group_by(keys).agg(_exposure_aggregations(count_column=count_column))
+    raw_columns = [name for name in aggregates.columns if name not in keys]
+    state = account.join(aggregates, on=keys, how="left", maintain_order="left").with_columns(
         pl.col(raw_columns).fill_null(0)
     )
     occupancy = compute_occupancy_metrics(state.rename({"date": "timestamp"}))
@@ -197,9 +237,10 @@ def analyze_holdings(
         ]
     )
     long = long.join(
-        timeline.select("date", "equity", "gross_exposure", "normalization_status"),
-        on="date",
+        timeline.select(*keys, "equity", "gross_exposure", "normalization_status"),
+        on=keys,
         how="left",
+        maintain_order="left",
     ).with_columns(
         pl.when(pl.col("gross_exposure") > 0)
         .then(values.abs() / pl.col("gross_exposure"))
@@ -207,11 +248,11 @@ def analyze_holdings(
         .alias("gross_share"),
         pl.when(defined).then(values / pl.col("equity")).otherwise(None).alias("nav_weight"),
         pl.when(values != 0)
-        .then(values.abs().rank(method="dense", descending=True).over("date"))
+        .then(values.abs().rank(method="dense", descending=True).over(keys))
         .otherwise(None)
         .alias("gross_rank"),
     )
-    concentration = long.group_by("date").agg(
+    concentration = long.group_by(keys).agg(
         pl.col("gross_share").max().alias("largest_gross_share"),
         pl.when(pl.col("gross_share").count() > 0)
         .then(pl.col("gross_share").pow(2).sum())
@@ -222,9 +263,17 @@ def analyze_holdings(
         pl.col("nav_weight").filter(values < 0).median().alias("median_short_weight"),
         pl.col("nav_weight").filter(values < 0).min().alias("min_short_weight"),
     )
-    timeline = timeline.join(concentration, on="date", how="left")
+    timeline = timeline.join(concentration, on=keys, how="left", maintain_order="left")
     return HoldingsAnalysisResult(
-        positions=long.select("date", "asset", "value", "nav_weight", "gross_share", "gross_rank"),
+        positions=long.select(
+            *keys,
+            "asset",
+            "value",
+            "nav_weight",
+            "gross_share",
+            "gross_rank",
+            *(["quantity"] if "quantity" in long.columns else []),
+        ),
         timeline=timeline,
         metrics=occupancy["metrics"],
         coverage=occupancy["coverage"],

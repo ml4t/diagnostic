@@ -10,6 +10,7 @@ This package holds the main research and validation workflows.
 - `PortfolioAnalysis` for return and risk analytics
 - `PortfolioAnalysis.from_frames` for owned supplied-account inputs, without reconstructing returns or fills
 - `portfolio_analysis.analyze_intraday_exposure` for complete observed marked holdings on their own clock, reusing shared holdings/occupancy calculations without return reconstruction or continuous-peak claims
+- `RoundTripResult.reconstruct_intraday_exposure` for explicit cash-price replay from complete opening quantities/cash, original ordered fills and known-at supplied marks; same-instant states retain observation IDs, not inferred timestamps or a futures margin model
 - `PortfolioAnalysis.compute_round_trips` for actual fractional FIFO segments, explicitly complete opening inventory and known-at open-lot marks; optional synthetic closes remain separate from actual realization
 - `RoundTripResult.completed_trades`, `.to_trade_analysis` and `.win_probability` for closing-fill samples, existing trade summaries and explicit Beta(1,1) uncertainty with gross/net/missingness coverage
 - `RoundTripResult.statistics_tables` for cash/count/duration/return/asset tables, explicit lot/NAV denominators and per-metric coverage; completed-cash summaries reuse `TradeStatistics.from_frame` without invented execution prices

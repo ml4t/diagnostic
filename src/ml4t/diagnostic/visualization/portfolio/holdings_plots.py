@@ -40,9 +40,19 @@ def _holdings_figures(
 ) -> tuple[dict[str, go.Figure], dict[str, dict[str, Any]]]:
     timeline = result.timeline
     dates = _exact_dates(timeline["date"])
+    if "observation_id" in timeline.columns:
+        dates = [
+            f"{timestamp} [observation_id={identity}]"
+            for timestamp, identity in zip(dates, timeline["observation_id"].to_list(), strict=True)
+        ]
     n_defined = result.coverage["n_normalized_observations"]
     normalized = n_defined > 0
-    units = "fraction of reported NAV" if normalized else "account currency"
+    nav_name = (
+        "reconstructed cash-price NAV"
+        if result.metadata.get("method") == "explicit_cash_price_reconstruction"
+        else "reported NAV"
+    )
+    units = f"fraction of {nav_name}" if normalized else "account currency"
     suffix = "_fraction" if normalized else ""
     figures: dict[str, go.Figure] = {}
     availability: dict[str, dict[str, Any]] = {
@@ -91,7 +101,7 @@ def _holdings_figures(
                 "units": unit,
                 "snapshot_kind": result.snapshot_kind,
                 "n_observations": timeline.height,
-                "description": f"{timeline.height} supplied observations. Snapshot kind: {result.snapshot_kind}. Units: {unit}. No calendar grouping or intraday reconstruction. Export preserves exact observation keys and raw values.",
+                "description": f"{timeline.height} observations. Snapshot kind: {result.snapshot_kind}. Units: {unit}. Method: {result.metadata.get('method', 'observed holdings')}. Export preserves exact observation keys and raw values.",
             },
         )
         figures[title] = fig
