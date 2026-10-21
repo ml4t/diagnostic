@@ -454,6 +454,81 @@ factor-statistics registry still depends on separately qualified fragility and
 GPD workflows. It is not silently exposed as a shortened list with missing
 statistics.
 
+## Attribute returns to supplied holdings and loadings (unreleased)
+
+Use this workflow when you already have asset NAV weights and factor loadings.
+It does not estimate betas from portfolio returns. The same calculation serves
+the native result and the familiar `perf_attrib` and `compute_exposures` adapters.
+Neither route requires Data, Engineer, Backtest or a legacy package at runtime.
+
+From this source revision, run the independently checked two-period example:
+
+```bash
+uv run --extra viz python examples/holdings_factor_attribution.py --report holdings-attribution.html
+```
+
+To compare the familiar public tables with Empyrical Reloaded 0.7.0, use its
+qualified pandas 2.3.3 profile in an isolated environment:
+
+```bash
+uv run --no-project --isolated --python 3.12 --with '.[viz]' --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --report holdings-attribution.html
+```
+
+The example prints actual package versions and checks exposures `[1.5, 0.25]`
+and `[1, 0.5]`, common periodic returns `0.02` and `-0.015`, and specific
+returns `0.01` and `0.005`. Wealth-linked common and specific contributions
+finish at `0.00455` and `0.01515`; their sum is the portfolio return `0.0197`.
+The report displays those stored contributions without annualizing or
+compounding each component independently.
+
+For an existing Empyrical workflow, change the import and retain the supplied
+pandas inputs:
+
+```python
+from ml4t.diagnostic.compat import empyrical as ep
+
+exposures, contributions = ep.perf_attrib(
+    returns, positions, factor_returns, factor_loadings
+)
+```
+
+Here `positions` is a fractional NAV-weight Series with a date/asset
+MultiIndex, not dollar holdings. `factor_loadings` has that same kind of index
+and one column per factor. `returns` and `factor_returns` have datetime
+indexes. Original factor labels, including numeric labels or names such as
+`asset`, survive conversion to the native table representation. The adapters
+preserve the tested reference's observed-label alignment and skip-missing
+sums, with warnings for uncovered loadings or missing weights. They do not
+assert that the information was available before trading.
+
+For explicit availability and coverage checks, use
+`evaluation.factor.compute_holdings_attribution` or
+`PortfolioAnalysis.compute_holdings_attribution`. Supply dated returns with
+explicit `period_start`, fractional weights and loadings with `known_at`,
+and same-period factor returns. Declare `complete_snapshots=True` only for
+complete account observations. A genuine all-cash observation may have no
+asset rows; pass its actual timeline through `observed_snapshot_dates` rather
+than inventing asset rows or treating a missing observation as cash. The class
+method accepts `period_starts`, or uses its actual `initial_timestamp` and
+preceding return observations. It does not infer the first interval from a
+calendar frequency.
+
+Native defaults reject future information and uncovered active loadings.
+`missing_loadings="legacy_skip"` and `timing="legacy_observed"` are explicitly
+different choices. Native cumulative contributions use beginning wealth;
+`cumulative_method="arithmetic"` selects a named sum of periodic contributions.
+Full-sample mean exposure defines tilt, not a forecast. Specific returns are
+unexplained returns, not evidence of skill. Without explicitly supplied cash
+contributions, cash remains in the specific residual.
+
+Pass the native result as `metrics={"holdings_attribution": result}` to the
+existing [backtest report](backtest-tearsheets.md) function, builder or workspace
+export. It produces separate supplied-exposure, attribution, and loading-coverage
+sections. The report rejects a different return path or a serialized dictionary
+in place of the typed result before changing output. This supplied-holdings
+workflow remains distinct from the existing fitted factor regression and does
+not yet establish complete Pyfolio performance-attribution tear-sheet coverage.
+
 ## Native definitions still need explicit choices
 
 The native benchmark-relative `alpha` and `beta` remain available when you
@@ -469,7 +544,7 @@ input, Empyrical `stability_of_timeseries` returned `0.252783` and Diagnostic
 Diagnostic fits cumulative simple wealth. Do not relabel one as the other.
 
 This assessment does not yet qualify Empyrical's `gpd_risk_estimates`,
-`perf_attrib` or a general multi-asset matrix rolling contract as drop-in
+the complete `perf_attrib` report workflow or a general multi-asset matrix rolling contract as drop-in
 replacements. Diagnostic has other portfolio and factor analyses, but their
 inputs and result definitions must be checked separately. Keep Empyrical for
 those tasks until a specific migration is verified. All sections marked

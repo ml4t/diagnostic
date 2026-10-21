@@ -1,0 +1,91 @@
+"""Run supplied-weight attribution without a provider, broker or fitted regression."""
+
+from __future__ import annotations
+
+import argparse
+from importlib.metadata import version
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import polars as pl
+
+from ml4t.diagnostic.compat import empyrical
+from ml4t.diagnostic.evaluation.factor import compute_holdings_attribution
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--compare", action="store_true", help="Also call optional Empyrical")
+    parser.add_argument("--report", type=Path, help="Write the existing native HTML report")
+    args = parser.parse_args()
+    dates = pd.DatetimeIndex(["2025-07-07T20:00Z", "2025-07-08T20:00Z"])
+    starts = pd.DatetimeIndex(["2025-07-03T20:00Z", "2025-07-07T20:00Z"])
+    prices = pd.Series([100.0, 103.0, 101.97], index=starts[:1].append(dates))
+    returns = prices.pct_change(fill_method=None).iloc[1:]
+    keys = {"timestamp": dates.repeat(2), "asset": ["A", "B", "A", "B"]}
+    weights = pl.DataFrame({**keys, "known_at": starts.repeat(2), "weight": [0.5, 0.5, 0.25, 0.75]})
+    loadings = pl.DataFrame(
+        {
+            **keys,
+            "known_at": starts.repeat(2),
+            "market": [2.0, 1.0, 1.0, 1.0],
+            "style": [0.0, 0.5, 2.0, 0.0],
+        }
+    )
+    factors = pl.DataFrame({"timestamp": dates, "market": [0.01, -0.02], "style": [0.02, 0.01]})
+    result = compute_holdings_attribution(
+        pl.DataFrame({"timestamp": dates, "period_start": starts, "return": returns.to_numpy()}),
+        weights,
+        factors,
+        loadings,
+        complete_snapshots=True,
+    )
+    np.testing.assert_allclose(result.exposures.select("market", "style"), [[1.5, 0.25], [1, 0.5]])
+    np.testing.assert_allclose(result.contributions["common_returns"], [0.02, -0.015])
+    np.testing.assert_allclose(result.cumulative["total_returns"], [0.03, 0.0197], atol=1e-15)
+    np.testing.assert_allclose(result.cumulative["common_returns"], [0.02, 0.00455], atol=1e-15)
+
+    index = pd.MultiIndex.from_arrays([dates.repeat(2), keys["asset"]], names=["dt", "ticker"])
+    legacy_weights = pd.Series(weights["weight"].to_numpy(), index=index)
+    legacy_loadings = pd.DataFrame(
+        loadings.select("market", "style").to_numpy(), index=index, columns=["market", "style"]
+    )
+    legacy_factors = factors.drop("timestamp").to_pandas().set_axis(dates)
+    exposures, contributions = empyrical.perf_attrib(
+        returns, legacy_weights, legacy_factors, legacy_loadings
+    )
+    np.testing.assert_allclose(exposures, result.exposures.select("market", "style"))
+    np.testing.assert_allclose(contributions["specific_returns"], [0.01, 0.005], atol=1e-15)
+    if args.compare:
+        import empyrical as reference
+
+        expected = reference.perf_attrib(
+            returns.copy(), legacy_weights.copy(), legacy_factors.copy(), legacy_loadings.copy()
+        )
+        for got, wanted in zip((exposures, contributions), expected, strict=True):
+            pd.testing.assert_frame_equal(got, wanted, rtol=1e-12, atol=1e-15)
+        print(
+            f"Reference empyrical-reloaded={version('empyrical-reloaded')}: actual public tables match"
+        )
+    if args.report:
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        generate_backtest_tearsheet(
+            returns=returns.to_numpy(),
+            metrics={"holdings_attribution": result},
+            include_statistical=False,
+            periods_per_year=12,
+            output_path=args.report,
+        )
+        print(f"Supplied-weight report: {args.report}")
+    packages = ("ml4t-diagnostic", "pandas", "polars", "numpy")
+    if args.report:
+        packages += ("plotly",)
+    print({name: version(name) for name in packages})
+    print("Independent exposures, common/specific contributions and wealth-linked total passed")
+    print("Native known-at validation and legacy observed-label alignment are distinct contracts")
+
+
+if __name__ == "__main__":
+    main()
