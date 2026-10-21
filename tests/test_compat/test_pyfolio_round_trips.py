@@ -175,7 +175,7 @@ def test_real_published_pyfolio_frames_match_labels_keys_durations_membership_an
     )
 
 
-def test_classic_ieee_nav_and_zero_entry_notional_ratios_are_distinct_from_native_positive_nav():
+def test_classic_ieee_nav_profile_is_distinct_from_native_positive_nav():
     zero = pd.Series([0.0], index=pd.DatetimeIndex(["2025-07-08T00:00Z"]))
     result = pf.round_trips.extract_round_trips(_fills(), portfolio_value=zero)
     assert np.isposinf(result["returns"].iloc[0])
@@ -183,11 +183,6 @@ def test_classic_ieee_nav_and_zero_entry_notional_ratios_are_distinct_from_nativ
     assert pf.round_trips.extract_round_trips(_fills(), portfolio_value=negative)[
         "returns"
     ].to_list() == [-0.2]
-    assert np.isposinf(
-        pf.round_trips.extract_round_trips(_fills((1.0, 0.0, -1.0), (0.0, 0.0, 10.0)))[
-            "rt_returns"
-        ].iloc[0]
-    )
 
 
 def test_group_helper_retains_declared_symbol_categorical_dtype_without_extra_empty_assets():
@@ -205,8 +200,30 @@ def test_real_reference_ieee_zero_and_negative_nav_outputs_are_not_silently_chan
         actual = pf.round_trips.extract_round_trips(_fills(), portfolio_value=nav)
         expected = reference.extract_round_trips(_fills(), portfolio_value=nav)
         np.testing.assert_allclose(actual["returns"], expected["returns"], rtol=2e-15, atol=1e-12)
+
+
+def test_zero_entry_price_preserves_independent_cash_pnl_with_undefined_lot_return():
     zero_basis = _fills((1.0, 0.0, -1.0), (0.0, 0.0, 10.0))
     actual = pf.round_trips.extract_round_trips(zero_basis)
-    expected = reference.extract_round_trips(zero_basis)
-    assert np.isposinf(actual["rt_returns"].iloc[0])
-    assert np.isposinf(expected["rt_returns"].iloc[0])
+    assert actual["pnl"].to_list() == [10.0]
+    assert actual["rt_returns"].isna().all()
+
+
+def test_published_reference_zero_basis_crash_is_reconciled_without_losing_cash_pnl():
+    reference = pytest.importorskip("pyfolio.round_trips")
+    zero_basis = _fills((1.0, 0.0, -1.0), (0.0, 0.0, 10.0))
+    with pytest.raises(ZeroDivisionError):
+        reference.extract_round_trips(zero_basis)
+    actual = pf.round_trips.extract_round_trips(zero_basis)
+    assert actual["pnl"].to_list() == [10.0]
+    assert actual["rt_returns"].isna().all()
+
+
+def test_published_reference_negative_price_discard_is_reconciled_with_independent10profit():
+    reference = pytest.importorskip("pyfolio.round_trips")
+    negative = _fills((1.0, 0.0, -1.0), (-100.0, -100.0, -90.0))
+    with pytest.raises(KeyError, match="close_dt"):
+        reference.extract_round_trips(negative)
+    actual = pf.round_trips.extract_round_trips(negative)
+    assert actual["pnl"].to_list() == [10.0]
+    assert actual["rt_returns"].to_list() == [0.1]

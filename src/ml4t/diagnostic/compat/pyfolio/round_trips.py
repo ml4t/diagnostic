@@ -15,7 +15,6 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.fifo import (
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_groups import group_executions
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_inputs import clock
 from ml4t.diagnostic.evaluation.portfolio_analysis.frame_inputs import normalize_executions
-from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import cash_fraction_expr
 
 from .txn import _dated
 
@@ -87,29 +86,22 @@ def extract_round_trips(
     in the reference. Native inputs retain actual point-price multipliers.
     portfolio_value is supplied beginning-period NAV, including cash, aligned by
     the explicit legacy civil-date convention. It is not the lot denominator.
-    Legacy IEEE division retains zero/negative-denominator NaN/Inf array behavior;
-    native positive-NAV/defined-lot policies remain separate defaults.
+    Legacy NAV division retains zero/negative-denominator NaN/Inf array behavior;
+    native positive-NAV defaults remain separate. Zero entry-notional lot return
+    stays undefined instead of reproducing the reference's division-by-zero crash.
     Fractional/negative-price reference defects are corrected, not reproduced.
     """
     result, labels = _native_round_trips(transactions)
-    closed = (
-        result.completed_trades()
-        .sort(["asset", "exit_timestamp", "exit_group_id"])
-        .with_columns(
-            cash_fraction_expr(
-                pl.col("gross_pnl"), pl.col("entry_notional"), positive_finite=False
-            ).alias("legacy_lot_return")
-        )
-    )
+    closed = result.completed_trades().sort(["asset", "exit_timestamp", "exit_group_id"])
     frame = (
-        closed.select("gross_pnl", "entry_timestamp", "exit_timestamp", "legacy_lot_return")
+        closed.select("gross_pnl", "entry_timestamp", "exit_timestamp", "gross_lot_return")
         .to_pandas()
         .rename(
             columns={
                 "gross_pnl": "pnl",
                 "entry_timestamp": "open_dt",
                 "exit_timestamp": "close_dt",
-                "legacy_lot_return": "rt_returns",
+                "gross_lot_return": "rt_returns",
             }
         )
     )

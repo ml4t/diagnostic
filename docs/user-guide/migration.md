@@ -1654,12 +1654,14 @@ projection without an execution-package import or row-wise float upcast.
 The returned `pnl`, `open_dt`, `close_dt`, `long`, `rt_returns`, `symbol`, `duration`
 and optional `returns` preserve the familiar symbol-sorted sample and exact
 timestamps. `rt_returns` uses invested entry notional; `returns` uses the supplied
-beginning portfolio NAV on the explicit civil-date clock. The classic arrays
-retain IEEE NaN/Inf/signed-denominator division. Native positive-NAV and defined
+beginning portfolio NAV on the explicit civil-date clock. The classic NAV array
+retains IEEE NaN/Inf/signed-denominator division. Native positive-NAV and defined
 lot-return defaults remain unchanged; an explicit `nav_method="legacy_ieee"`
 selects the array profile on the native contribution method, with native NAV
-validity still reported separately. Fractional/negative-price reference defects
-are corrected, not ported; no-completion inputs return a typed empty frame.
+validity still reported separately. A zero-entry-price trade retains its actual
+cash PnL and undefined lot return instead of the reference's `ZeroDivisionError`.
+Fractional/negative-price reference defects are corrected, not ported;
+no-completion inputs return a typed empty frame.
 
 The example exercises both interfaces and can compare shared inputs with real
 published Pyfolio0.10.0/pandas2.3.3 on Python3.12:
