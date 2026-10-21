@@ -490,6 +490,9 @@ Despite its name, the tested reference's `_aligned` fragility function still
 concatenates labeled Series by their labels. The adapter preserves that actual
 behavior. Matching arrays remain positional; use one series per strategy rather
 than assuming all functions accept a multi-column matrix.
+The native route also accepts one-dimensional Polars Series and numeric
+sequences. These inputs are positional, must have equal lengths and are
+normalized to float64 without changing the caller's data.
 
 One reference numerical error is corrected rather than copied. With benchmark
 coordinates `[-1e308, 0, 1e308]` and strategy values `[-0.01, 0.02, 0.03]`, the

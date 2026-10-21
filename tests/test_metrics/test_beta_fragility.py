@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pytest
 
 from ml4t.diagnostic import metrics
@@ -133,3 +134,47 @@ def test_infinite_benchmark_coordinates_do_not_masquerade_as_a_constant_finite_d
     result = metrics.beta_fragility(values, factor)
     assert result.n_pairs == 0 and result.n_excluded == 3 and np.isnan(result.fragility)
     assert np.isnan(ep.beta_fragility_heuristic(values, factor))
+
+
+@pytest.mark.parametrize("container", [list, np.array, pl.Series])
+def test_native_supplied_returns_keep_positional_pairs_and_do_not_require_legacy_packages(
+    container,
+):
+    returns, benchmark = price_returns()
+    values, factor = container(returns.to_numpy()), container(benchmark.to_numpy())
+    result = metrics.beta_fragility(values, factor)
+    assert result.fragility == pytest.approx(-0.0006, abs=1e-15)
+    assert result.selected_keys == result.selected_ordinals == (0, 1, 2)
+    np.testing.assert_array_equal(np.asarray(values), returns.to_numpy())
+    np.testing.assert_array_equal(np.asarray(factor), benchmark.to_numpy())
+
+
+@pytest.mark.parametrize("shape", [(3, 1), (1, 3)])
+def test_native_rejects_multi_axis_inputs_without_changing_supplied_returns(shape):
+    values = np.array([0.01, 0.02, 0.03]).reshape(shape)
+    original = values.copy()
+    with pytest.raises(ValueError, match="equal-length one-dimensional"):
+        metrics.beta_fragility(values, np.array([-0.02, 0.0, 0.03]))
+    np.testing.assert_array_equal(values, original)
+
+
+def test_native_rejects_unequal_positional_samples_instead_of_truncating_them():
+    with pytest.raises(ValueError, match="equal-length one-dimensional"):
+        metrics.beta_fragility([0.01, 0.02, 0.03], [-0.02, 0.0, 0.02, 0.03])
+
+
+def test_float32_price_pipeline_preserves_observed_coordinates_in_float64_interpolation():
+    from fractions import Fraction
+
+    prices = pd.Series(np.array([100, 101.111, 100.875, 105.617], dtype=np.float32))
+    market = pd.Series(np.array([100, 97.725, 97.931, 100.045], dtype=np.float32))
+    values, factor = ep.simple_returns(prices), ep.simple_returns(market)
+    assert values.dtype == factor.dtype == np.float32
+    result = metrics.beta_fragility(values, factor)
+    order = (0, 1, 2)
+    xs = [Fraction(float(factor.iloc[index])) for index in order]
+    ys = [Fraction(float(values.iloc[index])) for index in order]
+    independent = ((xs[2] - xs[1]) * ys[0] + (xs[1] - xs[0]) * ys[2]) / (xs[2] - xs[0]) - ys[1]
+    assert result.selected_ordinals == order
+    assert result.fragility == pytest.approx(float(independent), rel=0, abs=1e-15)
+    assert ep.beta_fragility_heuristic(values, factor) == result.fragility
