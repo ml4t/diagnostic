@@ -97,11 +97,13 @@ def capture_zipline() -> tuple[pd.DataFrame, dict[str, str]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    choice = parser.add_mutually_exclusive_group(required=True)
+    choice = parser.add_mutually_exclusive_group()
     choice.add_argument("--capture", type=Path)
     choice.add_argument("--input", type=Path)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    if args.capture is None and args.input is None:
+        args.input = Path(__file__).parent / "data/zipline320_account.json"
     if args.input:
         captured = json.loads(args.input.read_text())
         performance = pd.DataFrame(captured["records"])

@@ -318,8 +318,6 @@ def portfolio_analysis_from_result(
         and getattr(result, "holdings_sampling", None) == "bar"
         and getattr(result, "holdings", None) is not None
     ):
-        import pandas as pd
-
         captured = result.to_holdings_dataframe()
         if not state["holdings_complete"].all():
             raise ValueError("bar holdings must declare every account observation complete")
@@ -340,13 +338,23 @@ def portfolio_analysis_from_result(
         ):
             raise ValueError("complete captured holdings must match observed open-position counts")
         assets = sorted({asset for book in books.values() for asset in book})
-        positions = pd.DataFrame(
-            {
-                asset: [books.get(identifier, {}).get(asset, 0.0) for identifier in identifiers]
-                for asset in assets
-            },
-            index=pd.DatetimeIndex(state["timestamp"].to_pandas()),
-        )
+        if assets:
+            if (
+                captured["signed_notional"].null_count()
+                or not captured["signed_notional"].is_finite().all()
+            ):
+                raise ValueError("captured holdings require finite reported signed notional")
+            grid = state.select(pl.col("timestamp").alias("date"), "observation_id").join(
+                captured.select("asset").unique(), how="cross"
+            )
+            positions = grid.join(
+                captured.drop("timestamp"), on=["observation_id", "asset"], how="left"
+            ).with_columns(
+                pl.col("signed_notional").fill_null(0.0).alias("value"),
+                pl.col("quantity").fill_null(0.0),
+            )
+        else:
+            positions = state.select(pl.col("timestamp").alias("date"))
         complete = True
     config = getattr(result, "config", None)
     analysis = PortfolioAnalysis.from_frames(
@@ -373,6 +381,7 @@ def portfolio_analysis_from_result(
         "format": "BacktestResult public DataFrame exports",
         "holdings_sampling": getattr(result, "holdings_sampling", "unavailable"),
         "positions_selected": complete,
+        "positions_value": "reported signed_notional exposure; liquidation_value and original quantities/marks/multipliers retained separately",
         "positions_reason": "complete observed bar capture"
         if complete
         else "not supplied or not converted to aggregated return clock; no positions inferred",

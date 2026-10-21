@@ -1459,6 +1459,10 @@ sessions and scheduled breaks. The Sunday and Monday fills above share the
 July 7 CME session. Event-time returns compound within a session; original
 observations and exact execution timestamps remain in the results. Off-session
 fills or fills without a matching return session raise instead of disappearing.
+Declared `bar_close` observations at touching24-hour boundaries belong to the
+completed session. Actual executions at that instant belong to the newly open
+session. A declared feed timezone localizes naive event instants; without a
+timezone declaration, event inputs must already be timezone-aware.
 With `calendar=None`, no exchange grouping runs: fills must match exact return
 observation keys, not a guessed civil date. No intraday NAV is reconstructed.
 
@@ -1571,7 +1575,7 @@ notional. Ten additional bps costs `.0002` of beginning NAV. The source-qualifie
 recipe is:
 
 ```bash
-uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd' --with plotly python examples/backtest_portfolio_inputs.py --report backtest-account.html
+uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd' --with plotly python examples/backtest_portfolio_inputs.py --run-engine --report backtest-account.html
 ```
 
 Current published Backtest 0.1.12 requires Specs below 0.2 and cannot satisfy
@@ -1581,6 +1585,12 @@ that dropped timezone information recover it only from matching actual public
 Fill/account record timestamps, never from a guessed timezone or return date.
 Standalone supplied-account and captured Zipline analysis need no Backtest
 installation.
+Both producer scripts consume bundled actual captures when run without arguments,
+so ordinary examples need no execution engine. `--capture` explicitly regenerates
+Zipline input; Backtest regeneration requires `--run-engine`. The Backtest minute
+example declares252*390 periods per year, rather than using an hourly scale.
+Original position quantities, marks and multipliers remain in owned inputs;
+reported liquidation value and notional exposure are kept distinct.
 
 ### Analyze prepared holdings on observed keys
 

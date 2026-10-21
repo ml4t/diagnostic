@@ -228,6 +228,7 @@ class TradingCalendar:
         timestamps: pd.DatetimeIndex,
         *,
         include_daily_labels: bool = True,
+        bar_close: bool = False,
     ) -> tuple[pd.Series, np.ndarray]:
         """Assign each timestamp to its trading session date and identify non-trading rows.
 
@@ -237,6 +238,9 @@ class TradingCalendar:
         Other rows retain daily-date classification; this is not an intraday-hours filter.
         With include_daily_labels=False, require an actual open exchange interval,
         excluding scheduled intraday breaks. The closing instant is included.
+        bar_close=True assigns a touching open/close boundary to the completed
+        interval instead of the next session. Ordinary event instants retain the
+        most recent open, and existing daily-label classification is unchanged.
 
         The result does not depend on the order of the input.
 
@@ -278,7 +282,7 @@ class TradingCalendar:
             opens = schedule["market_open"].dt.as_unit("ns").to_numpy(dtype=np.int64)
             closes = schedule["market_close"].dt.as_unit("ns").to_numpy(dtype=np.int64)
             session_dates = schedule.index.to_numpy(dtype="datetime64[ns]")
-            candidates = np.searchsorted(opens, ts_ns, side="right") - 1
+            candidates = np.searchsorted(opens, ts_ns, side="left" if bar_close else "right") - 1
             active = candidates >= 0
             active[active] = (
                 ts_ns[active] < closes[candidates[active]]

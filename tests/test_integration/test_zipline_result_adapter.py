@@ -32,6 +32,9 @@ def test_actual_zipline320_capture_reaches_holdings_and_costs_without_a_legacy_e
     inputs = analysis.input_data
     np.testing.assert_array_equal(analysis.returns, frame["returns"])
     assert inputs.positions["asset"].unique().to_list() == [7]
+    assert inputs.positions["quantity"].to_list() == [0, 3, 3, 2]
+    assert inputs.positions["mark"].to_list() == [None, 100, 110, 120]
+    assert inputs.positions["multiplier"].to_list() == [None, 1, 1, 1]
     assert inputs.transactions["quantity"].to_list() == [3, -1]
     assert inputs.transactions["commission"].to_list() == [None, None]
     holdings = analysis.compute_holdings_analysis()

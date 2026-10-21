@@ -26,6 +26,7 @@ def _transaction_figures(
         f"method: {result.metadata['turnover_method']}. "
         "Observed costs are already in supplied net returns; scenarios subtract only extra bps. "
         "Missing denominators/costs stay undefined. No fills are estimated from weights."
+        " Exact original keys are retained on hover and in the export."
     )
 
     def figure(name: str, units: str) -> go.Figure:
@@ -50,9 +51,7 @@ def _transaction_figures(
             tickvals=[dates[index] for index in selected],
             ticktext=ticks,
             tickangle=0,
-            title_text="Exchange session"
-            if timeline["date"].dtype == pl.Date
-            else "Supplied observation (exact key on hover)",
+            title_text="Exchange session" if timeline["date"].dtype == pl.Date else "Observation",
         )
         figures[name] = fig
         return fig

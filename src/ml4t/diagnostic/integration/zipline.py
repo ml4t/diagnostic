@@ -108,7 +108,14 @@ def portfolio_analysis_from_zipline(
                     for number in (amount, price)
                 ):
                     raise ValueError("Zipline positions require finite amount and last_sale_price")
-                book[identifier] = float(amount) * float(price) * multiplier
+                book[identifier] = {
+                    "value": float(amount) * float(price) * multiplier,
+                    "quantity": amount,
+                    "mark": price,
+                    "multiplier": multiplier,
+                    "symbol": symbol,
+                    "cost_basis": record.get("cost_basis"),
+                }
                 labels.append(
                     {
                         "observation": index,
@@ -121,9 +128,20 @@ def portfolio_analysis_from_zipline(
         assets = sorted({identifier for book in books for identifier in book})
         # Zipline emits complete books. Empty lists explicitly prove all-cash dates;
         # only those known complete snapshots permit zeroing absent assets.
-        positions = pd.DataFrame(
-            {identifier: [book.get(identifier, 0.0) for book in books] for identifier in assets},
-            index=dates,
+        positions = (
+            pd.DataFrame(
+                [
+                    {
+                        "date": date,
+                        "asset": identifier,
+                        **book.get(identifier, {"value": 0.0, "quantity": 0}),
+                    }
+                    for date, book in zip(dates, books, strict=True)
+                    for identifier in assets
+                ]
+            )
+            if assets
+            else pd.DataFrame(index=dates)
         )
     account = None
     if "portfolio_value" in performance or "ending_cash" in performance:
@@ -184,7 +202,7 @@ def portfolio_analysis_from_zipline(
         calendar=calendar,
         periods_per_year=periods_per_year,
         transaction_timestamp_col="timestamp",
-        positions_format="wide",
+        positions_format="auto",
     )
     inputs = analysis.input_data
     assert inputs is not None

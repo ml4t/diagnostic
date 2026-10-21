@@ -160,6 +160,62 @@ def test_declared_timezone_resolves_naive_execution_instants_without_changing_st
     assert analysis.input_data.transactions["timestamp"].dtype.time_zone is None
 
 
+def test_midnight_bar_closes_use_completed_24h_sessions_not_next_session_opens():
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.01, 0.02], index=pd.to_datetime(["2025-07-07T00:00Z", "2025-07-08T00:00Z"])),
+        transactions=pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2025-07-06T12:00Z"]),
+                "asset": ["A"],
+                "quantity": [1.0],
+                "price": [100.0],
+            }
+        ),
+        feed_spec={
+            "timestamp_col": "date",
+            "calendar": "24/7",
+            "time_contract_version": 2,
+            "timestamp_semantics": "bar_close",
+            "bar_label": "right",
+        },
+        transaction_timestamp_col="timestamp",
+        periods_per_year=365,
+    )
+    result = analysis.compute_transaction_analysis()
+    assert result.timeline["date"].to_list() == [
+        pd.Timestamp("2025-07-06").date(),
+        pd.Timestamp("2025-07-07").date(),
+    ]
+    assert result.timeline["filled_notional"].to_list() == [100.0, 0.0]
+
+
+def test_midnight_actual_executions_belong_to_new_24h_session_even_with_bar_close_inputs():
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.01, 0.02], index=pd.to_datetime(["2025-07-07T00:00Z", "2025-07-08T00:00Z"])),
+        transactions=pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2025-07-07T00:00Z"]),
+                "asset": ["A"],
+                "quantity": [1.0],
+                "price": [100.0],
+            }
+        ),
+        feed_spec={
+            "timestamp_col": "date",
+            "calendar": "24/7",
+            "time_contract_version": 2,
+            "timestamp_semantics": "bar_close",
+            "bar_label": "right",
+        },
+        transaction_timestamp_col="timestamp",
+        periods_per_year=365,
+    )
+    assert analysis.compute_transaction_analysis().timeline["filled_notional"].to_list() == [
+        0.0,
+        100.0,
+    ]
+
+
 @pytest.mark.parametrize("instant", ["2025-07-06T20:00Z", "2025-07-07T21:30Z"])
 def test_off_session_fills_are_not_mapped_to_a_different_or_civil_day(instant):
     account = _account()

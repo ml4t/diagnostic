@@ -155,6 +155,7 @@ class PortfolioTearSheet:
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(10,22,40,0.08);
+            overflow-wrap: anywhere;
         }}
         .metrics-summary pre {{
             font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;

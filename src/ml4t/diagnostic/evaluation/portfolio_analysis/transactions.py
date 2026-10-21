@@ -60,7 +60,7 @@ def _clock(
             )
         index = index.tz_localize(timezone)
     sessions, mask = TradingCalendar(calendar).get_sessions_and_mask(
-        index, include_daily_labels=labels
+        index, include_daily_labels=labels, bar_close=not executions and semantics == "bar_close"
     )
     if not mask.all():
         raise ValueError("timestamps fall outside the declared exchange sessions")
