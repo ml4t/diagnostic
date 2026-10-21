@@ -192,3 +192,11 @@ def test_familiar_no_loss_fit_remains_undefined_instead_of_reference_zero_risk(l
     original = values.copy()
     assert np.isnan(ep.gpd_risk_estimates(values)).all()
     np.testing.assert_array_equal(values, original)
+
+
+def test_familiar_likelihood_retains_its_nonnegative_shape_model_without_restricting_native_pot():
+    data = np.array([0.0, 0.1, 0.2])
+    assert np.isneginf(ep.gpd_loglikelihood_scale_and_shape(1.0, -0.25, data))
+    assert np.isposinf(ep.gpd_loglikelihood([1.0, -0.25], data))
+    native = metrics.estimate_gpd_tail_risk(portfolio_returns(), threshold=0.02)
+    assert native.status == "ok" and native.shape < 0

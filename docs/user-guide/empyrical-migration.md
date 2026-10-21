@@ -491,7 +491,10 @@ Both methods exclude and count nonfinite observations. Insufficient or
 degenerate tails, a failed fit, or a requested probability outside the fitted
 tail produce undefined risk with a native status. Familiar unsuccessful
 projections contain NaNs instead of the reference's misleading zero-risk
-sentinel. Distribution helpers support the exponential shape-zero limit;
+sentinel. Familiar likelihood helpers retain their nonnegative-shape model;
+native fitting also permits bounded negative-shape tails. Invalid likelihood
+domains return negative infinity rather than a finite near-overflow sentinel.
+Distribution helpers support the exponential shape-zero limit;
 nonpositive scales and invalid probability domains are rejected. Expected
 shortfall is positive infinity for fitted shape at least one, as in the
 corrected Empyrical 0.7.0 workflow, not zero or a negative loss.

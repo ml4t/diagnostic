@@ -60,18 +60,24 @@ def gpd_loglikelihood_minimizer_aligned(price_data: ReturnInput) -> list[float |
 
 
 def gpd_loglikelihood(params: list[float] | np.ndarray, price_data: ReturnInput) -> float:
-    return -_log_likelihood(float(params[0]), float(params[1]), as_array(price_data))
+    return -gpd_loglikelihood_scale_and_shape(float(params[0]), float(params[1]), price_data)
 
 
-def gpd_loglikelihood_factory(price_data: ReturnInput) -> Callable:
+def gpd_loglikelihood_factory(
+    price_data: ReturnInput,
+) -> Callable[[list[float] | np.ndarray], float]:
     return lambda params: gpd_loglikelihood(params, price_data)
 
 
 def gpd_loglikelihood_scale_and_shape(scale: float, shape: float, price_data: ReturnInput) -> float:
+    if shape < 0:
+        return -np.inf
     return _log_likelihood(scale, shape, as_array(price_data))
 
 
-def gpd_loglikelihood_scale_and_shape_factory(price_data: ReturnInput) -> Callable:
+def gpd_loglikelihood_scale_and_shape_factory(
+    price_data: ReturnInput,
+) -> Callable[[list[float] | np.ndarray], float]:
     return lambda params: -gpd_loglikelihood_scale_and_shape(params[0], params[1], price_data)
 
 
@@ -79,5 +85,5 @@ def gpd_loglikelihood_scale_only(scale: float, price_data: ReturnInput) -> float
     return _log_likelihood(float(np.asarray(scale).item()), 0.0, as_array(price_data))
 
 
-def gpd_loglikelihood_scale_only_factory(price_data: ReturnInput) -> Callable:
+def gpd_loglikelihood_scale_only_factory(price_data: ReturnInput) -> Callable[[float], float]:
     return lambda scale: -gpd_loglikelihood_scale_only(scale, price_data)
