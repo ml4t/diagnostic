@@ -104,6 +104,7 @@ class RoundTripResult:
         value_col: str = "equity",
         calendar: str | CalendarUnset | None = UNSET_CALENDAR,
         alignment: Literal["declared", "civil_date"] = "declared",
+        nav_method: Literal["positive_nav", "legacy_ieee"] = "positive_nav",
         include_synthetic: bool = False,
     ) -> pl.DataFrame:
         """Divide closing-fill cash PnL by supplied beginning-period portfolio NAV.
@@ -113,6 +114,8 @@ class RoundTripResult:
         contributions undefined. Calendar precedence reuses the input declaration;
         explicit None matches exact observation keys. Explicit civil_date is the
         legacy own-timezone date profile and requires calendars disabled.
+        Explicit legacy_ieee retains NaN/Inf/signed denominator array division;
+        normalization_status still flags unavailable native positive-NAV validity.
         """
         from .fifo_summary import portfolio_contributions
 
@@ -123,6 +126,7 @@ class RoundTripResult:
             value_col=value_col,
             calendar=calendar,
             alignment=alignment,
+            nav_method=nav_method,
             include_synthetic=include_synthetic,
         )
 

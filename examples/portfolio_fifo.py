@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import argparse
 import pandas as pd
 
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--compare", action="store_true", help="Compare shared inputs with installed Pyfolio0.10.0"
+    )
+    args = parser.parse_args()
     dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
     # The supplied synthetic net returns are independent of lot attribution.
     analysis = PortfolioAnalysis.from_frames(
@@ -95,6 +101,30 @@ def main() -> None:
     assert grouped.completed_trades().height == 1
     assert grouped.matching_groups["n_source_executions"].to_list() == [2, 1]
     print("Explicit8hconsecutive grouping gives200/172realized, not actual FIFO220/194")
+    from ml4t.diagnostic.compat import pyfolio as pf
+
+    legacy_input = intraday_fills.rename(
+        columns={"asset": "symbol", "quantity": "amount"}
+    ).set_index("timestamp")
+    beginning_nav = pd.Series([1000.0], index=pd.DatetimeIndex(["2025-07-08T00:00Z"]))
+    familiar = pf.round_trips.extract_round_trips(legacy_input, portfolio_value=beginning_nav)
+    assert familiar["pnl"].to_list() == [200.0]
+    assert familiar["returns"].to_list() == [0.2]
+    assert familiar["symbol"].to_list() == [7]
+    print("Familiar round-trip extraction: gross PnL200, lot return200/1240, NAV contribution.2")
+    if args.compare:
+        from importlib.metadata import version
+
+        import pyfolio.round_trips as reference
+
+        compared = legacy_input.copy(deep=True)
+        compared["symbol"] = compared["symbol"].map({7: "A"})
+        actual = pf.round_trips.extract_round_trips(compared, portfolio_value=beginning_nav)
+        expected = reference.extract_round_trips(compared, portfolio_value=beginning_nav)
+        pd.testing.assert_frame_equal(actual, expected, check_exact=False, rtol=2e-15, atol=1e-12)
+        print(
+            f"Reference comparison passed: Pyfolio{version('pyfolio-reloaded')}, pandas{pd.__version__}; explicit display mapping7 -> A"
+        )
 
 
 if __name__ == "__main__":

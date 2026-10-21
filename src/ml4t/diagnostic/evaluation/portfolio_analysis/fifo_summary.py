@@ -293,6 +293,7 @@ def portfolio_contributions(
     value_col: str,
     calendar: str | CalendarUnset | None,
     alignment: str,
+    nav_method: str,
     include_synthetic: bool,
 ) -> pl.DataFrame:
     from ml4t.diagnostic.utils.validation import (
@@ -308,6 +309,8 @@ def portfolio_contributions(
 
     if alignment not in ("declared", "civil_date"):
         raise ValueError("alignment must be 'declared' or explicit 'civil_date'")
+    if nav_method not in ("positive_nav", "legacy_ieee"):
+        raise ValueError("nav_method must be 'positive_nav' or explicit 'legacy_ieee'")
     if not all(isinstance(name, str) and name.strip() for name in (timestamp_col, value_col)):
         raise ValueError("timestamp_col and value_col must name nonempty columns")
     if timestamp_col == value_col:
@@ -370,22 +373,25 @@ def portfolio_contributions(
         nav.rename({"equity": "portfolio_nav"}), on="date", how="left", maintain_order="left"
     )
     contributions = joined.with_columns(
-        cash_fraction_expr(pl.col("gross_pnl"), pl.col("portfolio_nav")).alias(
-            "gross_nav_contribution"
-        ),
-        cash_fraction_expr(pl.col("net_pnl"), pl.col("portfolio_nav")).alias(
-            "net_nav_contribution"
-        ),
+        cash_fraction_expr(
+            pl.col("gross_pnl"),
+            pl.col("portfolio_nav"),
+            positive_finite=nav_method != "legacy_ieee",
+        ).alias("gross_nav_contribution"),
+        cash_fraction_expr(
+            pl.col("net_pnl"), pl.col("portfolio_nav"), positive_finite=nav_method != "legacy_ieee"
+        ).alias("net_nav_contribution"),
         pl.when(pl.col("portfolio_nav").is_finite() & (pl.col("portfolio_nav") > 0))
         .then(pl.lit("defined_nav"))
         .otherwise(pl.lit("unavailable_nav"))
         .alias("normalization_status"),
         pl.lit("supplied beginning-period portfolio NAV including cash").alias("nav_basis"),
         pl.lit(alignment).alias("nav_alignment"),
+        pl.lit(nav_method).alias("nav_method"),
         pl.lit(resolved, dtype=pl.String).alias("calendar"),
     ).rename({"date": "nav_observation"})
     for name in ("gross_nav_contribution", "net_nav_contribution"):
-        if not contributions[name].drop_nulls().is_finite().all():
+        if nav_method != "legacy_ieee" and not contributions[name].drop_nulls().is_finite().all():
             raise ValueError(
                 "NAV contribution exceeds finite Float64; inspect PnL and supplied NAV"
             )

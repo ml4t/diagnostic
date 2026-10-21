@@ -183,3 +183,14 @@ def test_finite_but_unrepresentable_nav_ratio_raises_instead_of_returning_infini
     result = _account().compute_round_trips(initial_state="flat")
     with pytest.raises(ValueError, match="finite.*contribution|contribution.*finite"):
         result.portfolio_contributions(_nav(1e-308))
+
+
+def test_explicit_ieee_profile_does_not_change_positive_nav_default_or_validity_status():
+    result = _account().compute_round_trips(initial_state="flat")
+    assert result.portfolio_contributions(_nav(0.0))["gross_nav_contribution"].to_list() == [None]
+    ieee = result.portfolio_contributions(_nav(0.0), nav_method="legacy_ieee")
+    assert ieee["gross_nav_contribution"].is_infinite().all()
+    assert ieee["normalization_status"].to_list() == ["unavailable_nav"]
+    assert ieee["nav_method"].to_list() == ["legacy_ieee"]
+    with pytest.raises(ValueError, match="nav_method"):
+        result.portfolio_contributions(_nav(), nav_method="guessed")

@@ -1638,6 +1638,42 @@ raw future fills before grouping. Do not use grouped prices as a causal fill or
 intraday state stream. Unknown fees and zero-quantity cash events retain their
 native missingness/separate accounting rather than becoming zero costs.
 
+For the familiar extraction workflow, use
+`from ml4t.diagnostic.compat import pyfolio as pf`, then
+`pf.round_trips.extract_round_trips(transactions, portfolio_value=beginning_nav)`.
+The adapter accepts the original pandas `amount`/`price`/`symbol` ledger and
+DatetimeIndex, without a return-series placeholder or mandatory legacy install.
+It selects the legacy flat-book/eight-hour-group profile over the same native
+normalizer and matcher. Gross PnL ignores commission/slippage fields, as the
+reference does; use native analysis for cost-aware net results and supplied
+opening books. Legacy prices are cash per execution unit, not unscaled contract
+points; use native declared multipliers for point-price contracts. Original
+symbol objects and integer/string distinctions survive
+projection without an execution-package import or row-wise float upcast.
+
+The returned `pnl`, `open_dt`, `close_dt`, `long`, `rt_returns`, `symbol`, `duration`
+and optional `returns` preserve the familiar symbol-sorted sample and exact
+timestamps. `rt_returns` uses invested entry notional; `returns` uses the supplied
+beginning portfolio NAV on the explicit civil-date clock. The classic arrays
+retain IEEE NaN/Inf/signed-denominator division. Native positive-NAV and defined
+lot-return defaults remain unchanged; an explicit `nav_method="legacy_ieee"`
+selects the array profile on the native contribution method, with native NAV
+validity still reported separately. Fractional/negative-price reference defects
+are corrected, not ported; no-completion inputs return a typed empty frame.
+
+The example exercises both interfaces and can compare shared inputs with real
+published Pyfolio0.10.0/pandas2.3.3 on Python3.12:
+
+```bash
+uv run --isolated --python 3.12 --with pyfolio-reloaded==0.10.0 --with pandas==2.3.3 python examples/portfolio_fifo.py --compare
+```
+
+The comparison explicitly maps integer ID7 to display labelA on both sides to
+avoid the reference's integer-symbol upcast defect; it changes no economic
+values or sample. Default native/extraction recipes need no Pyfolio installation.
+Only the named extraction/grouping calls are implemented here; this is not yet
+the complete legacy round-trip module or tear sheet.
+
 Intraday reconstruction and full legacy reports remain accepted work. The
 incomplete route is not a substitute for those workflows.
 
@@ -1706,7 +1742,7 @@ NAV1000 gives .22 gross and .194 net portfolio contributions, alongside unchange
 lot returns 220/1220 and 194/1220. This method neither shifts the supplied NAV nor
 infers it from returns, quantities or holdings. For owned account inputs, the
 existing transaction timeline's `beginning_nav` supplies the corresponding
-already-prepared denominator. Missing/nonpositive NAV leaves the contribution
+already-prepared denominator. By default, missing/nonpositive NAV leaves the contribution
 undefined; missing dates are not forward-filled, and unrepresentable ratios raise.
 These ratios attribute holding-period PnL and allocated entry fees to the closing
 observation. They are not a reconstruction of contemporaneous daily account
