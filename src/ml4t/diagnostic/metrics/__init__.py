@@ -21,6 +21,7 @@ from ml4t.diagnostic.metrics.calibration import (
 )
 from ml4t.diagnostic.metrics.conditional import compute_conditional_ic
 from ml4t.diagnostic.metrics.feature_outcome import analyze_feature_outcome
+from ml4t.diagnostic.metrics.fragility import BetaFragilityResult, beta_fragility
 from ml4t.diagnostic.metrics.ic import (
     compute_ic_by_horizon,
     compute_ic_ir,
@@ -65,6 +66,8 @@ from ml4t.diagnostic.metrics.uncertainty import (
 )
 
 __all__ = [
+    "BetaFragilityResult",
+    "beta_fragility",
     "hit_rate",
     "compute_forward_returns",
     "pooled_ic",
