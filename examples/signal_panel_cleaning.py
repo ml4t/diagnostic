@@ -7,6 +7,7 @@ from importlib.metadata import version
 import numpy as np
 import pandas as pd
 
+from ml4t.diagnostic.compat.alphalens import performance as al_performance
 from ml4t.diagnostic.compat.alphalens import utils as al
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
 from ml4t.diagnostic.metrics import compute_forward_returns
@@ -102,6 +103,14 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
     )
     assert price_panel.data.equals(panel.data)
     assert price_panel.outcome_data["window_unit"].unique().to_list() == ["observation"]
+    synthetic_positions = price_panel.positions(return_column="1D", group_adjust=True)
+    synthetic_inputs = price_panel.to_portfolio_inputs(
+        return_column="1D",
+        group_adjust=True,
+        capital=1000,
+    )
+    synthetic_analysis = synthetic_inputs.analyze(periods_per_year=365)
+    synthetic_report = synthetic_analysis.create_tear_sheet() if plots else None
     adapted = al.get_clean_factor_and_forward_returns(
         factor,
         prices,
@@ -123,6 +132,28 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
         check_categorical=False,
     )
     assert panel.data.height == 12
+    # A named elapsed-duration legacy convention differs from the price panel's
+    # actual next-observation endpoints across weekends. Compare like clocks.
+    explicit_expiries = adapted.reset_index()[["date", "asset"]]
+    explicit_expiries["requested_exit_time"] = explicit_expiries["date"] + pd.Timedelta("1D")
+    legacy_inputs = panel.to_portfolio_inputs(
+        return_column="1D",
+        expiries=explicit_expiries,
+        group_adjust=True,
+        first_return="zero",
+        position_method="legacy_event_sum",
+        capital=1000,
+    ).to_pyfolio()
+    adapted_inputs = al_performance.create_pyfolio_input(
+        adapted,
+        "1D",
+        group_neutral=True,
+        capital=1000,
+        calendar=None,
+    )
+    pd.testing.assert_series_equal(adapted_inputs[0], legacy_inputs[0], check_freq=False)
+    pd.testing.assert_frame_equal(adapted_inputs[1], legacy_inputs[1], check_freq=False)
+    pd.testing.assert_series_equal(adapted_inputs[2], legacy_inputs[2], check_freq=False)
     bucket_sample = panel.data.to_pandas().set_index(["date", "asset"])
     direct_buckets = al.quantize_factor(bucket_sample, quantiles=2)
     np.testing.assert_array_equal(
@@ -173,6 +204,12 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
             atol=1e-12,
         )
         assert produced.analyze(min_assets=2).outcome_data.equals(produced.outcome_data)
+        produced_positions = produced.positions(return_column="1D", group_adjust=True)
+        assert produced_positions.positions.equals(synthetic_positions.positions)
+        produced_portfolio = produced.to_portfolio_inputs(
+            return_column="1D", group_adjust=True, capital=1000
+        )
+        assert produced_portfolio.returns.equals(synthetic_inputs.returns)
         producer_evidence = {
             "engineer_version": version("ml4t-engineer"),
             "outcomes": json.loads(produced.outcome_data.write_json()),
@@ -296,6 +333,16 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
                 "subday_sparse_analysis": subday_analysis(plots=plots),
                 "optional_native_outcome_producer": producer_evidence,
                 "native_price_preparation": price_panel.metadata["price_preparation"],
+                "synthetic_portfolio": {
+                    "allocation_rows": synthetic_positions.allocations.height,
+                    "event_rows": synthetic_positions.timeline.height,
+                    "daily_returns": synthetic_inputs.returns.to_dicts(),
+                    "daily_valuations": synthetic_inputs.valuations.to_dicts(),
+                    "definitions": synthetic_inputs.metadata,
+                    "annualization_factor": 365,
+                    "report_figures": list(synthetic_report.figures) if synthetic_report else None,
+                    "legacy_interchange_clock": "explicit elapsed1D, not native next-observation expiry",
+                },
                 "legacy_return_alignment": {
                     "shifted_rows": len(shifted_returns),
                     "clock": "common observed date levels",

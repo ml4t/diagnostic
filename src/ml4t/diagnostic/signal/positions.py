@@ -256,5 +256,7 @@ def compute_factor_positions(
             "demeaned": bool(demeaned),
             "group_adjust": bool(group_adjust),
             "equal_weight": bool(equal_weight),
+            "factor_col": factor_col,
+            "group_col": group_col,
         },
     )

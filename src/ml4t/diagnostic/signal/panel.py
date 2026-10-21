@@ -28,6 +28,7 @@ from ml4t.diagnostic.utils.validation import (
 if TYPE_CHECKING:
     from ml4t.diagnostic.signal.events import AlignedEventResult, EventReturnsResult
     from ml4t.diagnostic.signal.factor_regression import FactorAlphaBetaResult
+    from ml4t.diagnostic.signal.portfolio_inputs import SyntheticPortfolioInputs
     from ml4t.diagnostic.signal.positions import SyntheticPositionsResult
     from ml4t.diagnostic.signal.result import SignalResult
 
@@ -392,6 +393,50 @@ class PreparedSignalPanel:
         metadata["input_contract"] = {key: contract[key] for key in names}
         metadata["return_column"] = return_column
         return replace(result, _metadata=json.dumps(metadata, allow_nan=False))
+
+    def to_portfolio_inputs(
+        self,
+        *,
+        return_column: str,
+        expiries: pl.DataFrame | pd.DataFrame | None = None,
+        expiry_col: str = "requested_exit_time",
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+        quantiles: Sequence[int] | None = None,
+        groups: Sequence[str] | None = None,
+        benchmark_column: str | None = "1D",
+        capital: float | None = None,
+        position_method: Literal["end_of_day", "legacy_event_sum"] = "end_of_day",
+        first_return: Literal["from_initial_wealth", "zero"] = "from_initial_wealth",
+    ) -> SyntheticPortfolioInputs:
+        """Compose synthetic holdings and daily supplied-outcome portfolio inputs.
+
+        Defaults retain end-of-day active holdings and the first wealth change
+        from initial wealth1. Legacy interchange is explicit: position_method
+        legacy_event_sum and first_return zero. No account execution is inferred.
+        """
+        from ml4t.diagnostic.signal.portfolio_inputs import build_factor_portfolio_inputs
+
+        positions = self.positions(
+            return_column=return_column,
+            expiries=expiries,
+            expiry_col=expiry_col,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            quantiles=quantiles,
+            groups=groups,
+        )
+        return build_factor_portfolio_inputs(
+            self.data,
+            positions=positions,
+            return_column=return_column,
+            benchmark_column=benchmark_column,
+            capital=capital,
+            position_method=position_method,
+            first_return=first_return,
+        )
 
     def rank_autocorrelation(
         self,
