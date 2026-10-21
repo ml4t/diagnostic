@@ -79,7 +79,10 @@ def _betas(values: np.ndarray, factor: np.ndarray) -> np.ndarray:
     result = np.array(
         [
             native._paired_linear_regression(
-                columns[:, index], benchmarks[:, index], variance_floor=1e-30
+                columns[:, index],
+                benchmarks[:, index],
+                variance_floor=1e-30,
+                center_dependent=False,
             )[1]
             for index in range(columns.shape[1])
         ]
@@ -187,11 +190,13 @@ def alpha_aligned(
     scale = annualization_factor(period, annualization)
     values, factor = _arrays(returns, factor_returns)
     output = _output(returns, factor_returns, values.shape[1:], out, risk_free, _beta)
-    betas = (
-        _betas(values, factor)
-        if _beta is None
-        else np.broadcast_to(np.asarray(_beta, dtype=float), values.shape[1:])
-    )
+    if _beta is None:
+        betas = _betas(values, factor)
+    else:
+        supplied = np.asarray(_beta, dtype=float)
+        if values.ndim == 1 and supplied.size == 1:
+            supplied = supplied.reshape(())
+        betas = np.broadcast_to(supplied, values.shape[1:])
     output[...] = _alphas(returns, factor_returns, risk_free, betas, scale)
     if values.ndim == 1:
         return output.item()
@@ -235,7 +240,7 @@ def _sign_alpha_beta(
 ) -> np.ndarray:
     _output(returns, factor_returns, (2,), kwargs.get("out"), kwargs.get("risk_free"))
     values, factor = _arrays(*_aligned_pair(returns, factor_returns))
-    paired = np.isfinite(values) & np.isfinite(factor)
+    paired = ~np.isnan(values) & ~np.isnan(factor)
     mask = paired & (factor > 0 if positive else factor < 0)
     return alpha_beta_aligned(values[mask], factor[mask], **kwargs)
 

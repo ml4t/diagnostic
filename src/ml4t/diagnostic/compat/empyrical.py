@@ -276,7 +276,55 @@ def sortino_ratio(
     )
 
 
+def omega_ratio(
+    returns: ReturnInput,
+    risk_free: float | ReturnInput = 0.0,
+    required_return: float = 0.0,
+    annualization: float = APPROX_BDAYS_PER_YEAR,
+) -> float:
+    """Use an annual hurdle, periodic risk-free returns and undefined no-loss Omega."""
+    values = as_array(returns)
+    scale = annualization_factor(DAILY, annualization)
+    if len(values) < 2 or (scale != 1 and required_return <= -1):
+        return float("nan")
+    hurdle = required_return if scale == 1 else (1 + required_return) ** (1 / scale) - 1
+    return float(
+        _native.omega_ratio(as_array(adjust_rate(returns, risk_free)), hurdle, no_loss="nan")
+    )
+
+
+def tail_ratio(returns: ReturnInput) -> float:
+    """Pool the actual legacy shape, using magnitudes of both empirical tails."""
+    values = as_array(returns)
+    if not np.any(~np.isnan(values)):
+        return float("nan")
+    return _native.tail_ratio(values, absolute=True)
+
+
+def stability_of_timeseries(returns: ReturnInput) -> float:
+    """Fit cumulative log returns on observed rows, not compounded wealth."""
+    return _native.stability_of_timeseries(as_array(returns), method="log")
+
+
+def value_at_risk(returns: ReturnInput, cutoff: float = 0.05) -> float:
+    """Return an empirical lower-return quantile, propagating NaNs as in Empyrical."""
+    values = as_array(returns)
+    if values.size == 0:
+        return float("nan")
+    return _native.value_at_risk(values, 1 - cutoff, nan_policy="propagate")
+
+
+def conditional_value_at_risk(returns: ReturnInput, cutoff: float = 0.05) -> float:
+    """Omit NaNs before choosing the fixed-count worst-return tail, as in 0.7.0."""
+    return _native._fixed_count_tail(as_array(returns), cutoff)
+
+
 __all__ = [
+    "omega_ratio",
+    "tail_ratio",
+    "stability_of_timeseries",
+    "value_at_risk",
+    "conditional_value_at_risk",
     "alpha",
     "alpha_aligned",
     "alpha_beta",

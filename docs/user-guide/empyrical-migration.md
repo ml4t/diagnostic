@@ -284,8 +284,48 @@ fractions and selects that inclusive convention. This is benchmark-relative
 outperformance, not factor-monotonicity or a strategy's positive-return fraction.
 
 These are the first benchmark routes in the broader accepted metric work.
-Capture definitions, tail/stability variants and the complete rolling family
-remain unfinished; this section is not a full-replacement claim.
+Capture definitions and the complete rolling family remain unfinished; this
+section is not a full-replacement claim.
+
+## Select metric definitions explicitly (unreleased)
+
+The same source compatibility namespace also provides `omega_ratio`,
+`tail_ratio`, `stability_of_timeseries`, `value_at_risk` and
+`conditional_value_at_risk`. These adapters select explicit options in the
+native kernels. They do not require Empyrical at runtime or change native
+portfolio-summary defaults. Run their standalone examples with:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task empyrical-definitions
+```
+
+| Statistic | Familiar definition | Existing native default |
+|---|---|---|
+| Omega | Periodic risk-free return, annual hurdle converted to the input period; no-loss result is NaN | Periodic `threshold`; positive gains without losses give infinity |
+| Tail ratio | Magnitudes of both 95th and 5th percentiles; zero denominator can give infinity | Signed upper percentile divided by absolute lower percentile |
+| Stability | Fit cumulative log returns on nonmissing observations | Fit compounded wealth, retaining missing rows as unchanged wealth |
+| Empirical VaR | Lower-return quantile with `cutoff`; any NaN makes the result undefined | `confidence=1-cutoff`; omit NaNs |
+| CVaR | Omit NaNs, then average the lowest `int((n-1)*cutoff)+1` observations | Include every observation at or below the interpolated VaR threshold |
+
+For returns `[-0.2, -0.1, NaN, -0.1, 0.1]` at `cutoff=0.5`, fixed-count CVaR
+is `-0.15`; threshold-tie CVaR is `-2/15`. Missing rows are excluded before
+choosing the fixed tail count, following corrected Empyrical 0.7.0 rather than
+the older published behavior. The original cutoff is retained directly when
+choosing the count, avoiding a floating-point confidence-complement round trip.
+
+VaR and CVaR here are decimal returns, not positive cash losses. Tail ratio,
+stability and Omega are dimensionless. The qualifying reference workflow uses
+Empyrical 0.7.0 with pandas 2.3.3. These scalar tail/stability functions pool
+the supported array shapes rather than inventing per-column results. Use an
+explicit per-column call for independent strategy statistics; support in the
+earlier columnwise metric section does not generalize to these functions.
+
+The native metric module exposes `omega_ratio(..., no_loss="nan")`,
+`tail_ratio(..., absolute=True)`, `stability_of_timeseries(..., method="log")`,
+`value_at_risk(..., nan_policy="propagate")` and
+`conditional_var(..., method="fixed_count")` when selecting these definitions
+without the familiar signatures. Gaussian return VaR and covariance-based cash
+VaR remain separate workflows, not aliases for the empirical quantile.
 
 ## Native definitions still need explicit choices
 

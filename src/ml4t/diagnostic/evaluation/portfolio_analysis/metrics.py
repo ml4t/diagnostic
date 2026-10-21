@@ -92,6 +92,8 @@ def calmar_ratio(
 def omega_ratio(
     returns: ArrayLike,
     threshold: float = 0.0,
+    *,
+    no_loss: str = "infinity",
 ) -> float:
     """Compute Omega ratio.
 
@@ -100,10 +102,13 @@ def omega_ratio(
     Args:
         returns: Daily returns (non-cumulative)
         threshold: Return threshold (default 0)
+        no_loss: Return infinity or NaN when gains exist without losses.
 
     Returns:
         Omega ratio
     """
+    if no_loss not in {"infinity", "nan"}:
+        raise ValueError("no_loss must be 'infinity' or 'nan'")
     returns = _to_numpy(returns)
 
     returns_above = returns[returns > threshold] - threshold
@@ -113,18 +118,19 @@ def omega_ratio(
     sum_below = np.sum(returns_below)
 
     if sum_below == 0:
-        return np.inf if sum_above > 0 else np.nan
+        return np.inf if sum_above > 0 and no_loss == "infinity" else np.nan
 
     return sum_above / sum_below
 
 
-def tail_ratio(returns: ArrayLike) -> float:
+def tail_ratio(returns: ArrayLike, *, absolute: bool = False) -> float:
     """Compute tail ratio (95th percentile / abs(5th percentile)).
 
     Measures asymmetry of return distribution tails.
 
     Args:
         returns: Daily returns
+        absolute: Use magnitudes of both tails rather than a signed numerator.
 
     Returns:
         Tail ratio (>1 means right tail heavier)
@@ -134,6 +140,9 @@ def tail_ratio(returns: ArrayLike) -> float:
     p95 = np.nanpercentile(returns, 95)
     p5 = np.nanpercentile(returns, 5)
 
+    if absolute:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return float(np.abs(p95) / np.abs(p5))
     if p5 == 0:
         return np.nan
 
@@ -214,52 +223,87 @@ def annual_volatility(
 def value_at_risk(
     returns: ArrayLike,
     confidence: float = 0.95,
+    *,
+    nan_policy: str = "omit",
 ) -> float:
     """Compute Value at Risk.
 
     Args:
         returns: Daily returns
         confidence: Confidence level (e.g., 0.95 for 95% VaR)
+        nan_policy: Omit missing observations or propagate an undefined sample.
 
     Returns:
         VaR (negative value representing potential loss)
     """
     returns = _to_numpy(returns)
-    return float(np.nanpercentile(returns, (1 - confidence) * 100))
+    if nan_policy not in {"omit", "propagate"}:
+        raise ValueError("nan_policy must be 'omit' or 'propagate'")
+    quantile = np.nanpercentile if nan_policy == "omit" else np.percentile
+    return float(quantile(returns, (1 - confidence) * 100))
 
 
 def conditional_var(
     returns: ArrayLike,
     confidence: float = 0.95,
+    *,
+    method: str = "threshold",
 ) -> float:
     """Compute Conditional Value at Risk (Expected Shortfall).
 
     Args:
         returns: Daily returns
         confidence: Confidence level
+        method: Include every threshold tie or the lowest fixed count of observations.
 
     Returns:
         CVaR (expected loss given loss exceeds VaR)
     """
     returns = _to_numpy(returns)
+    if method not in {"threshold", "fixed_count"}:
+        raise ValueError("method must be 'threshold' or 'fixed_count'")
+    if method == "fixed_count":
+        return _fixed_count_tail(returns, 1 - confidence)
     var = value_at_risk(returns, confidence)
     return float(np.nanmean(returns[returns <= var]))
 
 
-def stability_of_timeseries(returns: ArrayLike) -> float:
+def _fixed_count_tail(returns: np.ndarray, cutoff: float) -> float:
+    """Choose the count from the original cutoff, without a complement round trip."""
+    if not np.isfinite(cutoff) or not 0 <= cutoff <= 1:
+        raise ValueError("cutoff must be between zero and one")
+    known = returns[~np.isnan(returns)]
+    if len(known) == 0:
+        return np.nan
+    index = int((len(known) - 1) * cutoff)
+    return float(np.mean(np.partition(known, index)[: index + 1]))
+
+
+def stability_of_timeseries(returns: ArrayLike, *, method: str = "wealth") -> float:
     """Compute stability (R² of cumulative returns vs time).
 
     Higher stability indicates more consistent returns.
 
     Args:
         returns: Daily returns
+        method: Fit compounded wealth or cumulative log returns on observed rows.
 
     Returns:
         R² value (0 to 1)
     """
     returns = _to_numpy(returns)
-
-    cum_returns = _safe_cumprod(1 + returns)
+    if method not in {"wealth", "log"}:
+        raise ValueError("method must be 'wealth' or 'log'")
+    if method == "log":
+        known = returns[~np.isnan(returns)]
+        if len(known) < 2:
+            return np.nan
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cum_returns = np.log1p(known).cumsum()
+        if not np.all(np.isfinite(cum_returns)):
+            return np.nan
+    else:
+        cum_returns = _safe_cumprod(1 + returns)
 
     # Fit linear regression
     x = np.arange(len(cum_returns))
@@ -308,7 +352,11 @@ def alpha_beta(
 
 
 def _paired_linear_regression(
-    returns: np.ndarray, benchmark: np.ndarray, *, variance_floor: float = 0.0
+    returns: np.ndarray,
+    benchmark: np.ndarray,
+    *,
+    variance_floor: float = 0.0,
+    center_dependent: bool = True,
 ) -> tuple[float, float]:
     """Shared one-dimensional paired OLS, with an explicit optional variance floor."""
     excess_returns, excess_benchmark = returns, benchmark
@@ -317,6 +365,16 @@ def _paired_linear_regression(
         return np.nan, np.nan
     if variance_floor and np.var(excess_benchmark[mask]) < variance_floor:
         return np.nan, np.nan
+    if not center_dependent:
+        # The equivalent uncentered dependent moment preserves legacy infinity
+        # propagation; the native SciPy fit and its defaults remain unchanged.
+        independent = excess_benchmark[mask]
+        dependent = excess_returns[mask]
+        centered = independent - np.mean(independent)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            slope = float(np.nanmean(centered * dependent) / np.nanmean(centered**2))
+            intercept = _mean_regression_residual(dependent, independent, slope)
+        return intercept, slope
 
     # Linear regression
     slope, intercept, _, _, _ = stats.linregress(excess_benchmark[mask], excess_returns[mask])

@@ -673,6 +673,32 @@ def show_empyrical_benchmark() -> None:
     print(f"Familiar zero-in-up batting: {familiar.to_dict()}")
 
 
+def show_empyrical_definitions() -> None:
+    """Keep legacy metric definitions explicit without changing native defaults."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as native
+
+    returns = pd.Series([-0.2, -0.1, np.nan, -0.1, 0.1], name="strategy")
+    fixed = metrics.conditional_value_at_risk(returns, cutoff=0.5)
+    tied = native.conditional_var(returns, confidence=0.5)
+    np.testing.assert_allclose([fixed, tied], [-0.15, -2 / 15])
+    assert np.isnan(metrics.value_at_risk(returns, cutoff=0.25))
+    np.testing.assert_allclose(native.value_at_risk(returns, confidence=0.75), -0.125)
+    growth = pd.Series([0.1, np.nan, 0.1, 0.1, 0.1])
+    np.testing.assert_allclose(metrics.stability_of_timeseries(growth), 1)
+    assert native.stability_of_timeseries(growth) < 1
+    losses = np.array([-0.4, -0.3, -0.2, -0.1])
+    np.testing.assert_allclose(metrics.tail_ratio(losses), 0.115 / 0.385)
+    np.testing.assert_allclose(native.tail_ratio(losses), -0.115 / 0.385)
+    assert np.isnan(metrics.omega_ratio(np.array([0.1, 0.2])))
+    assert np.isposinf(native.omega_ratio(np.array([0.1, 0.2])))
+    print(f"Fixed-count CVaR (decimal return): {fixed}; threshold-tie native CVaR: {tied}")
+    print("Empirical VaR: legacy propagates NaN; native omits it, yielding -0.125")
+    print("Log stability (dimensionless): 1; native wealth-fit stability remains distinct")
+    print("Legacy tail ratio uses absolute tails; native numerator retains its sign")
+    print("No-loss Omega: legacy undefined; native positive infinity")
+
+
 def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     """Build a grouped event report from one owned, price-produced signal panel."""
     from ml4t.diagnostic.signal import AlignedEventResult, prepare_signal_panel
@@ -743,6 +769,7 @@ def main() -> None:
             "empyrical",
             "empyrical-native",
             "empyrical-benchmark",
+            "empyrical-definitions",
             "exposure",
             "activity",
             "holdings",
@@ -777,6 +804,9 @@ def main() -> None:
         return
     if task == "empyrical-benchmark":
         show_empyrical_benchmark()
+        return
+    if task == "empyrical-definitions":
+        show_empyrical_definitions()
         return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
