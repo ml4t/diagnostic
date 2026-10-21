@@ -39,12 +39,24 @@ class HoldingsAttributionResult:
         return self.contributions.clone()
 
     def to_dict(self) -> dict[str, object]:
-        """Return owned tables and declared methods, without claiming JSON encoding."""
+        """Return owned rows with exact ISO observation keys and declared methods."""
+
+        def records(frame: pl.DataFrame) -> list[dict[str, object]]:
+            rows = frame.to_dicts()
+            dates = (
+                frame["timestamp"].to_list()
+                if frame["timestamp"].dtype == pl.Date
+                else date_index(frame["timestamp"])
+            )
+            for row, stamp in zip(rows, dates, strict=True):
+                row["timestamp"] = stamp.isoformat()
+            return rows
+
         return {
-            "exposures": self.exposures.to_dicts(),
-            "contributions": self.contributions.to_dicts(),
-            "cumulative": self.cumulative.to_dicts(),
-            "coverage": self.coverage.to_dicts(),
+            "exposures": records(self.exposures),
+            "contributions": records(self.contributions),
+            "cumulative": records(self.cumulative),
+            "coverage": records(self.coverage),
             "factor_names": list(self.factor_names),
             "cumulative_method": self.cumulative_method,
             "timing": self.timing,

@@ -171,3 +171,40 @@ def test_bad_holdings_attribution_inputs_leave_existing_portfolio_observations_a
         analysis.compute_holdings_attribution(weights, factors, loadings, complete_snapshots=True)
     np.testing.assert_array_equal(analysis.returns, before)
     assert analysis._metrics_cache is cached
+
+
+def test_nanosecond_account_keys_survive_native_result_export_without_python_datetime_truncation():
+    returns, weights, factors, loadings = inputs()
+    shifted = returns["timestamp"].cast(pl.Datetime("ns", "UTC")) + pl.duration(nanoseconds=1)
+    returns = returns.with_columns(
+        shifted.alias("timestamp"),
+        (pl.col("period_start").cast(pl.Datetime("ns", "UTC")) + pl.duration(nanoseconds=1)),
+    )
+    factors = factors.with_columns(returns["timestamp"])
+    weights = weights.with_columns(returns["timestamp"].gather([0, 0, 1, 1]))
+    loadings = loadings.with_columns(returns["timestamp"].gather([0, 0, 1, 1]))
+    result = run((returns, weights, factors, loadings))
+    expected = [value.isoformat() for value in pd.DatetimeIndex(returns["timestamp"].to_pandas())]
+    exported = result.to_dict()
+    for key in ("exposures", "contributions", "cumulative"):
+        assert [str(row["timestamp"]).replace(" ", "T") for row in exported[key]] == expected
+    assert [str(row["timestamp"]).replace(" ", "T") for row in exported["coverage"]] == [
+        value for value in expected for _ in range(2)
+    ]
+    exported["contributions"][0]["total_returns"] = 99
+    assert result.contributions["total_returns"][0] == 0.03
+
+
+@pytest.mark.parametrize("pandas_inputs", [False, True])
+def test_reordered_asset_factor_and_date_inputs_retain_the_same_owned_public_result(pandas_inputs):
+    returns, weights, factors, loadings = inputs()
+    expected = run((returns, weights, factors, loadings))
+    frames = (returns, weights.reverse(), factors.reverse(), loadings.reverse())
+    if pandas_inputs:
+        frames = tuple(frame.to_pandas() for frame in frames)
+    result = run(frames)
+    for name in ("exposures", "contributions", "cumulative", "coverage"):
+        assert getattr(result, name).equals(getattr(expected, name))
+    exported = result.to_dataframe()
+    exported.replace_column(1, pl.Series("market", [99.0, 99.0]))
+    np.testing.assert_allclose(result.contributions["market"], [0.015, -0.02])
