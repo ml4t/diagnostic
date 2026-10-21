@@ -291,17 +291,38 @@ class PortfolioAnalysis:
             incremental_bps=incremental_bps,
         )
 
-    def compute_round_trips(self, *, initial_state: str | None = None) -> RoundTripResult:
-        """Match actual fractional FIFO lots after an explicit flat-book declaration.
+    def compute_round_trips(
+        self,
+        *,
+        initial_state: Literal["flat", "supplied"] | None = None,
+        opening_lots: DataFrameLike | None = None,
+        opening_as_of: date | datetime | str | None = None,
+        marks: DataFrameLike | None = None,
+        as_of: date | datetime | str | None = None,
+        synthetic_close: bool = False,
+    ) -> RoundTripResult:
+        """Match actual fractional FIFO lots from an explicitly complete opening book.
 
-        Returns matched segments and unmarked remaining lots. Missing commissions
-        leave net PnL unknown; supplied net returns are never modified. Non-flat
-        opening lots, valuation marks and full legacy reports remain separate
-        reconstruction inputs, not inferred from end-of-day holdings here.
+        Supplied opening rows require asset/quantity and opening_as_of; optional
+        lot_id/entry_timestamp/entry_price/multiplier/remaining_commission retain
+        known cost/time, never guessed zero basis. Supplied row order is FIFO.
+        Marks require timestamp/asset/price and an explicit as_of, which also cuts
+        future executions. Only quotes known at/before as_of are used, with age.
+        Optional synthetic closes are separate hypothetical segments, not actual
+        realizations or changes to open inventory. Supplied returns stay unchanged.
         """
         if self._input_data is None:
             raise ValueError("FIFO requires owned from_frames execution inputs")
-        return reconstruct_round_trips(self._input_data.transactions, initial_state=initial_state)
+        return reconstruct_round_trips(
+            self._input_data.transactions,
+            initial_state=initial_state,
+            opening_lots=opening_lots,
+            opening_as_of=opening_as_of,
+            marks=marks,
+            as_of=as_of,
+            synthetic_close=synthetic_close,
+            timezone=self._input_data.metadata["feed_spec"].get("timezone"),
+        )
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:

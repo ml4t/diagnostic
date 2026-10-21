@@ -1574,8 +1574,8 @@ Unreleased after 0.1.9, `analysis.compute_round_trips(initial_state="flat")`
 matches actual owned executions in timestamp order, preserving source order at
 the same instant. The opening flat declaration is required; a first sale could
 otherwise be either a new short or an unknown prior long's closing sale. This
-first native route does not yet accept non-flat opening lots or reconstruct
-intraday marks. Do not use it with an unknown opening book.
+route also accepts explicitly supplied complete opening lots below. Do not use
+either declaration with an unknown opening book.
 
 Run `uv run python examples/portfolio_fifo.py`. The independent example buys
 10 at 100, buys 5 at 110, then sells 12 at 120. It realizes 220 gross and leaves 3
@@ -1612,10 +1612,39 @@ Using the integer directly as the reference's symbol also triggers a row-upcast
 TypeError on these inputs. Native IDs stay integers; the reference comparison
 uses the explicit one-to-one display-label mapping, not a changed economic sample.
 
-Opening-lot input, known-at marks, optional labeled synthetic closes, NAV
-contribution, completed-trade aggregation, existing trade-statistics integration,
+NAV contribution, completed-trade aggregation, automatic trade-statistics integration,
 Beta-prior uncertainty, intraday reconstruction and full legacy reports remain
 accepted work. The incomplete route is not a substitute for those workflows.
+
+For a non-flat book, pass `initial_state="supplied"`, `opening_lots` and
+`opening_as_of`. The opening table requires stable `asset` IDs and signed remaining
+`quantity`. Optional `lot_id`, `entry_timestamp`, `entry_price`, `multiplier` and
+`remaining_commission` describe the remaining lots, not the full fee of a previously
+partially closed fill. Row order explicitly declares FIFO order. Unknown basis,
+entry time or fees remain unknown; they do not become zero cost or invented
+duration. A known entry cannot occur after `opening_as_of`. The book is complete
+immediately before that instant, so earlier executions are excluded from replay.
+Opening lots have their own IDs and no fabricated entry execution record.
+
+For known-at valuation, supply `marks` (`timestamp`, `asset`, `price`) and explicit
+`as_of`. Only the last quote at or before that instant is used; quote age and source
+row remain visible. The same cutoff excludes future executions. Timestamps retain
+nanoseconds; undeclared mixed naive/aware clocks raise rather than acquire an
+assumed timezone. Marks are not interpolated or fetched. Missing marks/basis keep
+unrealized totals unknown, with coverage counts. Marked notional is not inferred
+cash or NAV, particularly for futures. Mixed integer/float price types that would
+round an original integer price raise; supply a common lossless numeric dtype.
+
+The example also marks the three remaining units at 130, giving 60 gross/54 net
+unrealized PnL, separately from actual realized 220/194. Optional
+`synthetic_close=True` adds a separate `synthetic_segments` table at `as_of`, with
+`is_synthetic=True`, no actual exit record ID and explicitly hypothetical zero
+additional closing fees. Actual realized PnL, open inventory and original fills
+are unchanged. Every open asset needs a supplied known-at quote for this option.
+`marked_gross_pnl`/`marked_net_pnl` sum realized and unrealized PnL; they do not
+reclassify hypothetical gains as actual wins. Original opening/mark tables remain
+available on the result. These are source-qualified, unreleased routes, not a
+claim that published 0.1.9 accepts these arguments.
 
 The existing [completed-trade consumer](trade-analysis.md#preserve-execution-units-and-timing)
 now accepts same-instant closures, explicit point multipliers, actual zero/negative

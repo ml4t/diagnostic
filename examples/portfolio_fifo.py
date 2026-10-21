@@ -34,6 +34,37 @@ def main() -> None:
     print(result.segments)
     print(result.open_lots)
     print("FIFO gross220/net194; remaining3@110 with6entry fees, not a fabricated close")
+    marked = analysis.compute_round_trips(
+        initial_state="flat",
+        marks=pd.DataFrame(
+            {"timestamp": pd.to_datetime(["2025-07-09T21:00Z"]), "asset": [7], "price": [130.0]}
+        ),
+        as_of="2025-07-09T22:00Z",
+        synthetic_close=True,
+    )
+    assert marked.metrics["realized_gross_pnl"] == 220.0
+    assert marked.metrics["unrealized_gross_pnl"] == 60.0
+    assert marked.metrics["marked_net_pnl"] == 248.0
+    assert marked.open_lots["quantity"].to_list() == [3.0]
+    assert marked.synthetic_segments["is_synthetic"].to_list() == [True]
+    print("Quote130 known1hour before as_of:60unrealized,54net; synthetic row is not a fill")
+    carried = analysis.compute_round_trips(
+        initial_state="supplied",
+        opening_as_of="2025-07-08T00:00Z",
+        opening_lots=pd.DataFrame(
+            {
+                "asset": [7],
+                "quantity": [10.0],
+                "entry_timestamp": pd.to_datetime(["2025-07-07T00:00Z"]),
+                "entry_price": [100.0],
+                "remaining_commission": [10.0],
+            }
+        ),
+    )
+    assert carried.metrics["realized_gross_pnl"] == 220.0
+    assert carried.metrics["realized_net_pnl"] == 194.0
+    assert carried.metadata["excluded_before_opening"] == 1
+    print("Supplied complete opening inventory excludes its prior fill from replay")
 
 
 if __name__ == "__main__":

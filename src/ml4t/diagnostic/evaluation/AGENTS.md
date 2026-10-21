@@ -9,7 +9,7 @@ This package holds the main research and validation workflows.
 - `FeatureDiagnostics` for feature-quality checks
 - `PortfolioAnalysis` for return and risk analytics
 - `PortfolioAnalysis.from_frames` for owned supplied-account inputs, without reconstructing returns or fills
-- `PortfolioAnalysis.compute_round_trips(initial_state="flat")` for actual fractional FIFO segments and unmarked open lots; non-flat reconstruction/reporting remains separate
+- `PortfolioAnalysis.compute_round_trips` for actual fractional FIFO segments, explicitly complete opening inventory and known-at open-lot marks; optional synthetic closes remain separate from actual realization
 - `TradeAnalysis` and `TradeShapAnalyzer` for trade-level diagnostics
 - `FactorAnalysis` for factor exposure and attribution
 - `Evaluator` for the broader evaluation framework
