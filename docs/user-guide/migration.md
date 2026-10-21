@@ -1459,7 +1459,7 @@ sessions and scheduled breaks. The Sunday and Monday fills above share the
 July 7 CME session. Event-time returns compound within a session; original
 observations and exact execution timestamps remain in the results. Off-session
 fills or fills without a matching return session raise instead of disappearing.
-Declared `bar_close` observations at touching24-hour boundaries belong to the
+Declared `bar_close` observations at touching 24-hour boundaries belong to the
 completed session. Actual executions at that instant belong to the newly open
 session. A declared feed timezone localizes naive event instants; without a
 timezone declaration, event inputs must already be timezone-aware.
@@ -1519,7 +1519,7 @@ published Zipline 3.2.0 `run_algorithm` execution using pandas 2.3.3, NumPy 2.4.
 and exchange-calendars 4.13.2. It includes an opening buy and partial sale,
 reported cash/NAV, an all-cash initial date and unknown per-fill commission.
 The optional producer example
-[zipline_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/49601d0608272452196fd96087f0e070fb92d19d/examples/zipline_portfolio_inputs.py)
+[zipline_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/6ac080f97917e5a149f881edd32553d74a86c575/examples/zipline_portfolio_inputs.py)
 regenerates that local deterministic bundle without market downloads and consumes
 the actual in-memory result, including Zipline Asset objects:
 
@@ -1568,7 +1568,7 @@ of non-bar or differently sampled holdings remains unqualified.
 The tested complete-capture producer is immutable Backtest source
 `da223f904cfa03744152311e3c617c15fdc1ddcd`, not a published 0.1.13 package.
 The executable
-[backtest_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/49601d0608272452196fd96087f0e070fb92d19d/examples/backtest_portfolio_inputs.py)
+[backtest_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/6ac080f97917e5a149f881edd32553d74a86c575/examples/backtest_portfolio_inputs.py)
 runs an actual Engine and checks returns `[0, 0, .02]`, cash `[1000, 800, 800]`,
 marked exposure `[0, 200, 220]`, NAV `[1000, 1000, 1020]` and 200 actual filled
 notional. Ten additional bps costs `.0002` of beginning NAV. The source-qualified
@@ -1588,7 +1588,7 @@ installation.
 Both producer scripts consume bundled actual captures when run without arguments,
 so ordinary examples need no execution engine. `--capture` explicitly regenerates
 Zipline input; Backtest regeneration requires `--run-engine`. The Backtest minute
-example declares252*390 periods per year, rather than using an hourly scale.
+example declares 252*390 periods per year, rather than using an hourly scale.
 Original position quantities, marks and multipliers remain in owned inputs;
 reported liquidation value and notional exposure are kept distinct.
 
