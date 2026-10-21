@@ -30,6 +30,7 @@ startup_delay=STARTUP_DELAY
 observed=Path(OBSERVED)
 original_open=kaleido.Kaleido.open
 original_write=kaleido.Kaleido.write_fig_from_object
+original_close=kaleido.Kaleido.close
 def snapshot(self):
     processes=[psutil.Process(self.subprocess.pid)]
     processes+=processes[0].children(recursive=True)
@@ -60,6 +61,8 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     snapshot(self)
+    if mode in ('shared_status','permanent_status'):
+        return await original_close(self,*args,**kwargs)
     if mode=='exit7': os._exit(7)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
@@ -100,6 +103,55 @@ else:
                 for handle in read_handles: handle.close()
         _pdf_process._OwnedProcesses.observe=hold_first_progress
         _pdf_process._OwnedProcesses.terminate=terminate_then_release
+    if mode in ('shared_status','permanent_status'):
+        import ctypes,threading
+        from ctypes import wintypes
+        api=ctypes.WinDLL('kernel32',use_last_error=True)
+        api.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,
+                                 ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+        api.CreateFileW.restype=wintypes.HANDLE
+        api.CloseHandle.argtypes=[wintypes.HANDLE]
+        api.CloseHandle.restype=wintypes.BOOL
+        original_read=Path.read_text
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        sharing_started=[]
+        sharing_handles=[]
+        sharing_timers=[]
+        sharing_mutex=threading.Lock()
+        actual_denials=[]
+        def release_sharing():
+            with sharing_mutex:
+                handles=sharing_handles[:]
+                sharing_handles.clear()
+            for handle in handles: assert api.CloseHandle(handle)
+        def read_with_real_share_lock(self,*args,**kwargs):
+            if self.name.startswith('status-') and self.suffix=='.json' and not sharing_started:
+                # Real Windows handle permits writes/deletion but denies other readers,
+                # as a scanner can do after the actual worker's atomic publication.
+                handle=api.CreateFileW(str(self),0x80000000,0x00000006,None,3,0x80,None)
+                if handle==ctypes.c_void_p(-1).value:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                sharing_started.append(str(self))
+                sharing_handles.append(handle)
+                if mode=='shared_status':
+                    timer=threading.Timer(.2,release_sharing)
+                    timer.daemon=True
+                    sharing_timers.append(timer)
+                    timer.start()
+            try:
+                return original_read(self,*args,**kwargs)
+            except PermissionError as error:
+                if str(self) in sharing_started:
+                    actual_denials.append({'errno':error.errno,'winerror':getattr(error,'winerror',None)})
+                    observed.with_suffix('.fault.json').write_text(json.dumps({'mode':mode,'denials':actual_denials}))
+                raise
+        def terminate_and_release_sharing(self):
+            try: return original_terminate(self)
+            finally:
+                release_sharing()
+                for timer in sharing_timers: timer.join(timeout=1)
+        Path.read_text=read_with_real_share_lock
+        _pdf_process._OwnedProcesses.terminate=terminate_and_release_sharing
 
 neighbor=subprocess.Popen([sys.executable,'-c','import time;time.sleep(180)'])
 success=False
@@ -110,7 +162,8 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except Exception as error:
-        if mode in ('close_error','close_hang','held_status'): raise
+        if mode in ('close_error','close_hang','held_status','shared_status'): raise
+        if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
         if mode=='render_error': assert 'Actual renderer failed after first page' in str(error),repr(error)
         if mode=='render_hang':
@@ -120,7 +173,7 @@ try:
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','held_status'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','held_status','shared_status'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -128,6 +181,9 @@ try:
         assert all(abs(float(page.mediabox.height)-337.5)<1 for page in pages)
     assert originals==[figure.to_json() for figure in figures]
     if mode=='held_status': assert len(read_handles)==1 and all(handle.closed for handle in read_handles)
+    if mode in ('shared_status','permanent_status'):
+        assert sharing_started and actual_denials, 'No real Windows sharing denial was exercised'
+        assert not sharing_handles and all(not timer.is_alive() for timer in sharing_timers)
     assert neighbor.poll() is None, 'Unrelated process was killed by renderer cleanup'
     rows=json.loads(observed.read_text())
     assert rows, 'No actual browser processes observed'
@@ -184,7 +240,18 @@ finally:
             "held_status",
         ]
     ]
-    + [pytest.param("render_hang", 16, id="render_hang_slow_open")],
+    + [pytest.param("render_hang", 16, id="render_hang_slow_open")]
+    + [
+        pytest.param(
+            mode,
+            0,
+            id=mode,
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="Actual Windows file-sharing denial is required"
+            ),
+        )
+        for mode in ("shared_status", "permanent_status")
+    ],
 )
 def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     mode, startup_delay, tmp_path
