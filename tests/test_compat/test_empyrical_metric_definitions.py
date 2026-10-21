@@ -110,3 +110,14 @@ def test_fixed_tail_count_preserves_original_cutoff_without_complement_rounding(
 
 def test_log_stability_does_not_salvage_a_prefix_when_the_later_return_is_outside_log_domain():
     assert np.isnan(ep.stability_of_timeseries(np.array([0.1, 0.1, -1.1])))
+
+
+def test_simple_stat_registry_runs_the_complete_published_metric_workflow_in_order():
+    reference = pytest.importorskip("empyrical.stats")
+    returns = np.array([-0.02, 0.03, -0.01, 0.01, 0.02])
+    assert [function.__name__ for function in ep.SIMPLE_STAT_FUNCS] == [
+        function.__name__ for function in reference.SIMPLE_STAT_FUNCS
+    ]
+    actual = [function(returns.copy()) for function in ep.SIMPLE_STAT_FUNCS]
+    expected = [function(returns.copy()) for function in reference.SIMPLE_STAT_FUNCS]
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12, equal_nan=True)

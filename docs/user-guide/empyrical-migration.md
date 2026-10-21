@@ -298,8 +298,7 @@ same-shaped benchmark matrix selects cells and pools them, as in the actual
 reference. Use explicit per-column calls for independent sign-subset strategy
 results. No blanket DataFrame or broadcast claim follows from these cases.
 
-The complete rolling family remains unfinished; this section is not a
-full-replacement claim.
+These benchmark workflows are not a full-replacement claim.
 
 ## Select metric definitions explicitly (unreleased)
 
@@ -351,6 +350,50 @@ dates from an integer index. All-missing observed groups have unchanged wealth
 dated pandas input is required; strategy columns and their labels are retained.
 The same `--task empyrical-definitions` recipe checks the ISO-year boundary.
 
+## Continue row-window research (unreleased)
+
+The familiar facade adds row-window drawdown, CAGR, volatility, Sharpe, Sortino,
+downside risk, active Sharpe, alpha/beta and up/down capture functions. These use
+the same native-backed metric kernels and a shared read-only row-window layout;
+the existing optimized native rolling calculations retain their defaults.
+The historical misspelling `roll_downsize_risk` remains a warning-emitting alias
+of `roll_downside_risk`. Generic `roll`, `up`, `down` callback helpers and
+`rolling_window` views support direct migration recipes.
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task empyrical-rolling
+```
+
+| Workflow | Endpoint/sample contract |
+|---|---|
+| Vectorized `roll_*` risk/regression metrics | Trim warmup; when `window > n`, evaluate one short sample if input is nonempty |
+| `roll_alpha_beta` | Align complete labeled streams before forming positional row windows |
+| Other vectorized paired wrappers | Consume rows positionally, including labeled input; dates label output endpoints |
+| `roll_up_capture`, `roll_down_capture`, `roll_up_down_capture`, generic `roll` | Evaluate full windows only; overlong windows have no output |
+| Native `PortfolioAnalysis.compute_rolling_metrics` | Retain the input length and undefined warmup; overlong windows remain undefined |
+
+Irregular or duplicate legacy endpoint labels do not make row windows into
+calendar windows. Native portfolio inputs keep their existing unique-date
+validation. Use a positive integer window; invalid windows and overlapping
+output buffers are rejected without modifying caller data. A row-window view is
+read-only by default; `mutable=True` explicitly allows shared-storage edits.
+For independent strategies, apply these one-series rolling adapters per column;
+no general multi-asset matrix rolling parity is claimed.
+
+`roll_cagr` annualizes each exact compounded window product by its observed row
+count. It is not a renamed native rolling cumulative return. In the tested
+Empyrical 0.7.0 profile, its generated wrapper passes an unsupported `out`
+keyword to `cagr` and raises `TypeError` for nonempty input. Diagnostic's route
+is checked against independent window-product expectations instead of copying
+that reference defect. Direct reference comparisons for the broken wrapper are
+reported separately from passing comparisons for other rolling functions.
+
+`SIMPLE_STAT_FUNCS` runs the complete simple-statistics registry, including the
+native-backed definitions above and SciPy skew/kurtosis. A complete familiar
+factor-statistics registry still depends on separately qualified fragility and
+GPD workflows. It is not silently exposed as a shortened list with missing
+statistics.
+
 ## Native definitions still need explicit choices
 
 The native benchmark-relative `alpha` and `beta` remain available when you
@@ -365,8 +408,9 @@ input, Empyrical `stability_of_timeseries` returned `0.252783` and Diagnostic
 `.stability` returned `0.247302`. Empyrical fits cumulative log returns;
 Diagnostic fits cumulative simple wealth. Do not relabel one as the other.
 
-This assessment does not cover Empyrical's `gpd_risk_estimates`,
-`perf_attrib`, date aggregation, or the `roll_*` function family as drop-in
+This assessment does not yet qualify Empyrical's `gpd_risk_estimates`,
+`perf_attrib` or a general multi-asset matrix rolling contract as drop-in
 replacements. Diagnostic has other portfolio and factor analyses, but their
 inputs and result definitions must be checked separately. Keep Empyrical for
-those tasks until a specific migration is verified.
+those tasks until a specific migration is verified. All sections marked
+unreleased describe source work, not the published 0.1.9 distribution.

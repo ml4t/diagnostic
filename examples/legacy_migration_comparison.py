@@ -715,6 +715,37 @@ def show_empyrical_definitions() -> None:
     print(f"Observed civil ISO-week products (decimal returns): {weekly.to_dict()}")
 
 
+def show_empyrical_rolling() -> None:
+    """Compare legacy row endpoints with the unchanged native padded workflow."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
+
+    dates = pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-07", "2025-01-10"], utc=True)
+    returns = pd.Series([0.1, -0.1, 0.2, 0.05], index=dates)
+    familiar = metrics.roll_sharpe_ratio(returns, window=3, annualization=12)
+    expected = [
+        returns.iloc[:3].mean() / returns.iloc[:3].std() * np.sqrt(12),
+        returns.iloc[1:].mean() / returns.iloc[1:].std() * np.sqrt(12),
+    ]
+    np.testing.assert_allclose(familiar.to_numpy(), expected)
+    assert familiar.index.equals(dates[2:])
+    analysis = PortfolioAnalysis(returns, periods_per_year=12)
+    native = analysis.compute_rolling_metrics(windows=[3], metrics=["sharpe", "returns"])
+    assert native.sharpe[3].null_count() == 2
+    np.testing.assert_allclose(native.sharpe[3].to_numpy()[2:], familiar.to_numpy())
+    cagr = metrics.roll_cagr(returns, window=3, annualization=12)
+    np.testing.assert_allclose(
+        cagr.to_numpy(), [(1.1 * 0.9 * 1.2) ** 4 - 1, (0.9 * 1.2 * 1.05) ** 4 - 1]
+    )
+    assert len(metrics.roll_sharpe_ratio(returns, window=5)) == 1
+    empty = metrics.roll(returns, window=5, function=metrics.sharpe_ratio)
+    assert empty.empty
+    print(f"Legacy row-window Sharpe (dimensionless): {familiar.to_dict()}")
+    print(f"Native full-length padded Sharpe: {native.sharpe[3].to_list()}")
+    print(f"Annualized exact-window CAGR (decimal return): {cagr.to_dict()}")
+    print("Vectorized overlong window: one short sample; generic callback: no full sample")
+
+
 def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     """Build a grouped event report from one owned, price-produced signal panel."""
     from ml4t.diagnostic.signal import AlignedEventResult, prepare_signal_panel
@@ -786,6 +817,7 @@ def main() -> None:
             "empyrical-native",
             "empyrical-benchmark",
             "empyrical-definitions",
+            "empyrical-rolling",
             "exposure",
             "activity",
             "holdings",
@@ -823,6 +855,9 @@ def main() -> None:
         return
     if task == "empyrical-definitions":
         show_empyrical_definitions()
+        return
+    if task == "empyrical-rolling":
+        show_empyrical_rolling()
         return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))

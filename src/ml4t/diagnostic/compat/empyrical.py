@@ -12,6 +12,7 @@ from numbers import Real
 
 import numpy as np
 import pandas as pd
+from scipy import stats as _stats
 
 from ml4t.diagnostic.compat._benchmark import (
     alpha,
@@ -33,6 +34,29 @@ from ml4t.diagnostic.compat._returns import (
     as_array,
     output_array,
     reduce_columns,
+)
+from ml4t.diagnostic.compat._rolling import (
+    down,
+    roll,
+    roll_alpha,
+    roll_alpha_aligned,
+    roll_alpha_beta,
+    roll_alpha_beta_aligned,
+    roll_annual_volatility,
+    roll_beta,
+    roll_beta_aligned,
+    roll_cagr,
+    roll_down_capture,
+    roll_downside_risk,
+    roll_downsize_risk,
+    roll_excess_sharpe,
+    roll_max_drawdown,
+    roll_sharpe_ratio,
+    roll_sortino_ratio,
+    roll_up_capture,
+    roll_up_down_capture,
+    rolling_window,
+    up,
 )
 from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as _native
 from ml4t.diagnostic.metrics.risk_adjusted import (
@@ -339,7 +363,48 @@ def conditional_value_at_risk(returns: ReturnInput, cutoff: float = 0.05) -> flo
     return _native._fixed_count_tail(as_array(returns), cutoff)
 
 
+SIMPLE_STAT_FUNCS = [
+    cum_returns_final,
+    annual_return,
+    annual_volatility,
+    sharpe_ratio,
+    calmar_ratio,
+    stability_of_timeseries,
+    max_drawdown,
+    omega_ratio,
+    sortino_ratio,
+    _stats.skew,
+    _stats.kurtosis,
+    tail_ratio,
+    cagr,
+    value_at_risk,
+    conditional_value_at_risk,
+]
+
+
 __all__ = [
+    "SIMPLE_STAT_FUNCS",
+    "down",
+    "roll",
+    "roll_alpha",
+    "roll_alpha_aligned",
+    "roll_alpha_beta",
+    "roll_alpha_beta_aligned",
+    "roll_annual_volatility",
+    "roll_beta",
+    "roll_beta_aligned",
+    "roll_cagr",
+    "roll_down_capture",
+    "roll_downside_risk",
+    "roll_downsize_risk",
+    "roll_excess_sharpe",
+    "roll_max_drawdown",
+    "roll_sharpe_ratio",
+    "roll_sortino_ratio",
+    "roll_up_capture",
+    "roll_up_down_capture",
+    "rolling_window",
+    "up",
     "aggregate_returns",
     "capture",
     "up_capture",
