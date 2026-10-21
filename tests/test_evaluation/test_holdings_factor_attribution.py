@@ -113,3 +113,61 @@ def test_observed_all_cash_timeline_needs_no_invented_asset_or_factor_loading_ro
     np.testing.assert_array_equal(result.exposures.select("market", "style"), np.zeros((2, 2)))
     np.testing.assert_array_equal(result.contributions["specific_returns"], [0.0, 0.0])
     np.testing.assert_allclose(result.cumulative["cash_returns"], [0.03, 0.0197])
+
+
+def test_existing_portfolio_analysis_consumes_explicit_beginning_weights_without_fitting_betas():
+    from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+    returns, weights, factors, loadings = inputs()
+    analysis = PortfolioAnalysis(
+        returns["return"],
+        dates=returns["timestamp"],
+        initial_timestamp=returns["period_start"][0],
+        periods_per_year=12,
+    )
+    result = analysis.compute_holdings_attribution(
+        weights,
+        factors,
+        loadings,
+        factor_names=["market", "style"],
+        complete_snapshots=True,
+    )
+    np.testing.assert_allclose(result.contributions["common_returns"], [0.02, -0.015])
+    np.testing.assert_allclose(result.cumulative["total_returns"], [0.03, 0.0197])
+    assert result.timing == "beginning_known_at"
+
+
+def test_portfolio_attribution_cannot_guess_the_first_return_interval_from_calendar_cadence():
+    from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+    returns, weights, factors, loadings = inputs()
+    analysis = PortfolioAnalysis(returns["return"], dates=returns["timestamp"])
+    with pytest.raises(ValueError, match="period_starts|initial_timestamp"):
+        analysis.compute_holdings_attribution(weights, factors, loadings, complete_snapshots=True)
+    result = analysis.compute_holdings_attribution(
+        weights,
+        factors,
+        loadings,
+        period_starts=returns["period_start"],
+        complete_snapshots=True,
+    )
+    np.testing.assert_allclose(result.contributions["common_returns"], [0.02, -0.015])
+
+
+def test_bad_holdings_attribution_inputs_leave_existing_portfolio_observations_and_cache_unchanged():
+    from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+    returns, weights, factors, loadings = inputs()
+    analysis = PortfolioAnalysis(
+        returns["return"],
+        dates=returns["timestamp"],
+        initial_timestamp=returns["period_start"][0],
+    )
+    before = analysis.returns
+    analysis.compute_summary_stats()
+    cached = analysis._metrics_cache
+    loadings = loadings.with_columns(pl.col("timestamp").alias("known_at"))
+    with pytest.raises(ValueError, match="known_at"):
+        analysis.compute_holdings_attribution(weights, factors, loadings, complete_snapshots=True)
+    np.testing.assert_array_equal(analysis.returns, before)
+    assert analysis._metrics_cache is cached
