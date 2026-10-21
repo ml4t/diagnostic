@@ -449,11 +449,108 @@ that reference defect. Direct reference comparisons for the broken wrapper are
 reported separately from passing comparisons for other rolling functions.
 
 `SIMPLE_STAT_FUNCS` runs the complete simple-statistics registry, including the
-native-backed definitions above and SciPy skew/kurtosis. A complete familiar
-factor-statistics registry still depends on separately qualified fragility and
-GPD workflows. It is not silently exposed as a shortened list with missing
-statistics.
+native-backed definitions above and SciPy skew/kurtosis. `FACTOR_STAT_FUNCS`
+preserves the complete Empyrical order: excess Sharpe, alpha, beta, beta
+fragility, GPD risk estimates, capture, up capture and down capture. The registry
+does not give these functions a uniform signature. GPD receives a univariate
+return series and `var_p`, and returns five fields; the other entries receive
+strategy and benchmark returns and return scalar statistics.
 
+```python
+registry_dates = pd.bdate_range("2025-01-02", periods=10, tz="UTC")
+registry_returns = pd.Series(
+    [0.01, -0.02, 0.03, -0.04, 0.02, -0.01, -0.03, 0.015, 0.005, -0.025],
+    index=registry_dates,
+)
+registry_benchmark = pd.Series(
+    [0.02, -0.01, 0.025, -0.03, 0.01, -0.02, -0.025, 0.01, 0.005, -0.015],
+    index=registry_dates,
+)
+factor_statistics = {
+    function.__name__: (
+        function(registry_returns, var_p=0.01)
+        if function.__name__ == "gpd_risk_estimates"
+        else function(registry_returns, registry_benchmark)
+    )
+    for function in ep.FACTOR_STAT_FUNCS
+}
+```
+
+Use one strategy series at a time. These statistics have different units:
+alpha is an annual compounded return by default, beta/capture/excess Sharpe
+are dimensionless, fragility is a periodic return, and GPD contains a
+threshold, scale, dimensionless shape, loss VaR and expected shortfall.
+The runnable `--task empyrical-tail` recipe also executes this complete
+registry without requiring Empyrical at runtime.
+
+## Inspect a fitted generalized-Pareto tail (unreleased)
+
+`metrics.estimate_gpd_tail_risk(returns, tail_probability=0.01, threshold=None)`
+returns `GPDTailRiskResult`, including fit status, threshold/scale/shape,
+positive decimal-loss VaR and expected shortfall, finite/excluded observation
+counts, loss/exceedance counts and the actual probability denominator.
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task empyrical-tail
+```
+
+With the optional visualization dependencies, add `--output gpd-tail-risk.html`
+to generate the existing portfolio report with the supplied fit beneath its
+return-distribution chart. Function, builder and performance-workspace export
+routes accept `metrics={"gpd_tail_risk": result}` when `result` is the native
+`GPDTailRiskResult` computed from the same returns. The report displays the fit
+without refitting it, including sample counts, boundary fits, undefined risk and
+positive infinite ES. These loss values are per observation and are not scaled
+by the report's annualization setting. A serialized dictionary or the familiar
+five-field array is not a substitute for the native result object.
+
+The native `peaks_over_threshold` method fits strictly positive excesses over
+the chosen threshold. When omitted, the threshold is the nonnegative 90th
+percentile of all finite losses, where loss is `-return`. The exceedance
+probability uses all finite observations, including gains. Appending gains
+therefore changes unconditional risk without changing the selected tail fit.
+There is no calendar inference or annualization.
+
+The native likelihood fit constrains shape to at least -1. Below that bound,
+the density at the sample maximum can grow without limit as the distribution
+endpoint approaches that maximum. The result reports the bound and whether
+the estimate is on it. A boundary fit and a small exceedance count are not
+evidence of estimator precision or model adequacy.
+
+Choose `method="empyrical_raw_tail"` to inspect the familiar method. It fits
+raw positive losses, not excesses, at thresholds starting at 0.2 and halving
+toward 1e-9; probabilities use the loss-only sample. Its positive-shape
+selection and optimizer initialization differ from the native method. These
+rules require three supplied observations, not three losses or exceedances.
+Small fitted samples remain visible in the result counts. The two
+methods need not produce equal parameter or risk estimates. The familiar
+`gpd_risk_estimates` and `_aligned` calls project the named method into the
+five legacy fields; a supplied pandas Series retains the reference's positional
+result labels, not the input dates. Use one portfolio per call.
+
+The likelihood and optimizer helpers also accept a single-column frame or
+array. They reject multiple portfolio columns rather than combine them into one
+tail fit. Apply the same helper independently to each strategy. For example,
+`{name: ep.gpd_loglikelihood_minimizer_aligned(-values[values < 0])
+for name, values in returns.items()}` fits the positive raw losses per strategy;
+it does not estimate a joint portfolio loss distribution. The top-level
+`gpd_risk_estimates` continues to require a one-dimensional return series.
+
+Both methods exclude and count nonfinite observations. Insufficient or
+degenerate tails, a failed fit, or a requested probability outside the fitted
+tail produce undefined risk with a native status. Familiar unsuccessful
+projections contain NaNs instead of the reference's misleading zero-risk
+sentinel. Familiar likelihood helpers retain their nonnegative-shape model;
+native fitting also permits bounded negative-shape tails. Invalid likelihood
+domains return negative infinity rather than a finite near-overflow sentinel.
+Distribution helpers support the exponential shape-zero limit;
+nonpositive scales and invalid probability domains are rejected. Expected
+shortfall is positive infinity for fitted shape at least one, as in the
+corrected Empyrical 0.7.0 workflow, not zero or a negative loss.
+
+This source implementation is still undergoing reference, artifact and report
+qualification. It does not yet replace the retained-Empyrical recommendation
+below or describe the published 0.1.9 distribution.
 ## Inspect benchmark fragility (unreleased)
 
 `ml4t.diagnostic.metrics.beta_fragility` returns an immutable

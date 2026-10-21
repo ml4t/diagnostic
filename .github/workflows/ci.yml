@@ -274,7 +274,7 @@ jobs:
       - name: Run native metric migration workflows from the installed core wheel
         shell: bash
         run: |
-          for task in empyrical-native empyrical-benchmark empyrical-definitions empyrical-rolling; do
+          for task in empyrical-native empyrical-benchmark empyrical-definitions empyrical-rolling empyrical-fragility empyrical-tail; do
             uv run --isolated --no-project \
               --with "$(find dist -name '*.whl' -print -quit)" \
               --with "pandas==3.0.5" \
@@ -299,6 +299,7 @@ jobs:
           --with "empyrical-reloaded==0.7.0" --with pytest
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
+          tests/test_metrics/test_gpd_tail_risk.py tests/test_metrics/test_gpd_helper_shapes.py
       - name: Verify published Pyfolio risk workflows with its compatible pandas profile
         shell: bash
         run: >-
@@ -309,6 +310,14 @@ jobs:
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
           tests/test_evaluation/test_portfolio_var_definitions.py
+          tests/test_metrics/test_gpd_tail_risk.py tests/test_metrics/test_gpd_helper_shapes.py
+      - name: Run fitted-tail portfolio report from the installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]" --with pytest
+          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          -q --tb=short tests/test_visualization/test_gpd_tail_report.py
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-

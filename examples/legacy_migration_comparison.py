@@ -928,6 +928,59 @@ def show_supplied_transactions(output: Path | None = None) -> None:
         print(f"Actual transaction HTML: {output}")
 
 
+def show_empyrical_tail(output: Path | None = None) -> None:
+    """Inspect native and familiar tail-risk methods on the same supplied account."""
+    from dataclasses import asdict
+
+    from ml4t.diagnostic import metrics
+    from ml4t.diagnostic.compat import empyrical as ep
+
+    returns = np.r_[
+        np.repeat(0.002, 40), -np.array([0.03, 0.04, 0.05, 0.07, 0.09, 0.12, 0.15, 0.2])
+    ]
+    prices = pd.Series(
+        np.r_[100.0, 100 * np.cumprod(1 + returns)],
+        index=pd.bdate_range("2025-01-02", periods=49, tz="UTC"),
+    )
+    supplied = prices.pct_change(fill_method=None).iloc[1:]
+    native = metrics.estimate_gpd_tail_risk(supplied, threshold=0.02, tail_probability=0.02)
+    familiar = metrics.estimate_gpd_tail_risk(
+        supplied, method="empyrical_raw_tail", tail_probability=0.02
+    )
+    assert native.status == "ok" and native.n_finite == 48 and native.n_exceedances == 8
+    np.testing.assert_allclose(native.value_at_risk, 0.1784, rtol=0, atol=1e-8)
+    assert native.expected_shortfall >= native.value_at_risk
+    print("Native positive periodic loss risk:", asdict(native))
+    print("Named raw-tail method (different fit and denominator):", asdict(familiar))
+    print("Familiar five-field projection:", ep.gpd_risk_estimates(supplied, var_p=0.02).tolist())
+    print("No annualization or calendar inference; failed fits are undefined, not zero risk")
+    benchmark = pd.Series(np.linspace(-0.02, 0.02, len(supplied)), index=supplied.index)
+    statistics = {
+        function.__name__: (
+            function(supplied, var_p=0.02)
+            if function.__name__ == "gpd_risk_estimates"
+            else function(supplied, benchmark)
+        )
+        for function in ep.FACTOR_STAT_FUNCS
+    }
+    assert np.shape(statistics["gpd_risk_estimates"]) == (5,)
+    expected_beta = np.cov(supplied, benchmark)[0, 1] / np.var(benchmark, ddof=1)
+    np.testing.assert_allclose(statistics["beta"], expected_beta)
+    print("Complete factor-statistics registry (mixed units/signatures):", statistics)
+    if output is not None:
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        generate_backtest_tearsheet(
+            returns=supplied.to_numpy(),
+            metrics={"gpd_tail_risk": native},
+            output_path=output,
+            include_statistical=False,
+            periods_per_year=252,
+            title="Supplied GPD tail-risk analysis",
+        )
+        print(f"Portfolio report with supplied GPD fit: {output}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -942,6 +995,7 @@ def main() -> None:
             "empyrical-benchmark",
             "empyrical-definitions",
             "empyrical-rolling",
+            "empyrical-tail",
             "empyrical-fragility",
             "exposure",
             "activity",
@@ -957,14 +1011,16 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report, transactions-report, events or event-returns",
+        help="HTML path for holdings-report, transactions-report, events, event-returns or empyrical-tail",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "transactions-report", "events", "event-returns"):
+    if task in ("holdings-report", "transactions-report", "events", "event-returns") or (
+        task == "empyrical-tail" and arguments.output is not None
+    ):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -992,6 +1048,9 @@ def main() -> None:
         return
     if task == "empyrical-rolling":
         show_empyrical_rolling()
+        return
+    if task == "empyrical-tail":
+        show_empyrical_tail(arguments.output)
         return
     if task == "empyrical-fragility":
         show_empyrical_fragility()
