@@ -407,13 +407,6 @@ def create_round_trip_dashboard(
         return item
 
     lifetimes = figure("Round-trip Lifetimes", "Time", "Asset")
-    lifetimes.update_layout(
-        meta={
-            **lifetimes.layout.meta,
-            "description": description
-            + " Lifetime axes use browser millisecond date precision; exact nanosecond instants remain on hover and in exports.",
-        }
-    )
     dated = observations.filter(pl.col("entry_timestamp").is_not_null())
     _draw_lifetimes(
         lifetimes,
