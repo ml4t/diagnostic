@@ -230,6 +230,9 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     "sharpe_bootstrap": "validation",
     "drawdown_anatomy": "validation",
     # Factors
+    "holdings_factor_exposures": "factors",
+    "holdings_factor_attribution": "factors",
+    "holdings_factor_coverage": "factors",
     "factor_exposure": "factors",
     "factor_legend": "factors",
     "factor_regression_table": "factors",
@@ -288,6 +291,9 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
         "drawdown_anatomy",
     ),
     "factors": (
+        "holdings_factor_exposures",
+        "holdings_factor_attribution",
+        "holdings_factor_coverage",
         "factor_exposure",
         "factor_legend",
         "factor_regression_table",
@@ -848,6 +854,9 @@ def generate_backtest_tearsheet(
     ...     n_trials=100,  # For DSR
     ... )
     """
+    from .html_tables import _supplied_holdings_attribution
+
+    _supplied_holdings_attribution(metrics, returns)
     periods_per_year = _resolve_periods_per_year(periods_per_year, profile)
     if profile is not None:
         if periods_per_year != profile.periods_per_year:
@@ -861,6 +870,7 @@ def generate_backtest_tearsheet(
         for key, value in _normalize_profile_metrics(profile).items():
             metrics.setdefault(key, value)
 
+    supplied_holdings = _supplied_holdings_attribution(metrics, returns)
     if returns is not None and len(returns) > 0:
         from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
@@ -934,6 +944,10 @@ def generate_backtest_tearsheet(
                 section.enabled = True
 
     # Auto-enable factor sections when factor_data is provided
+    if supplied_holdings is not None:
+        for section in tmpl.sections:
+            if section.name.startswith("holdings_factor_"):
+                section.enabled = True
     if factor_data is not None:
         for section in tmpl.sections:
             if section.name.startswith("factor_"):
@@ -1265,7 +1279,8 @@ def _generate_section(
             # This avoids "Cost Sensitivity" section title + "Cost Sensitivity Analysis" chart title.
             # Subplot titles (e.g. "Rolling Return (252d)") are preserved — only the top-level title is cleared.
             content.update_layout(title=None, autosize=True, width=None)
-            content.update_layout(margin={"t": 20, "l": 48, "r": 24, "b": 40})
+            if not section_name.startswith("holdings_factor_"):
+                content.update_layout(margin={"t": 20, "l": 48, "r": 24, "b": 40})
             body_html = '<div class="chart-container">' + _figure_to_clean_html(content) + "</div>"
         if section_name == "occupancy_overview" and profile is not None:
             coverage = profile.occupancy["coverage"]
@@ -2459,6 +2474,27 @@ def _build_prediction_vs_outcome_scatter(
 # --- Factor renderers ---
 
 
+def _render_holdings_factor_section(ctx: _SectionContext, section_name: str) -> Any:
+    from .html_tables import (
+        _supplied_holdings_attribution,
+        create_holdings_attribution_summary_html,
+    )
+
+    result = _supplied_holdings_attribution(ctx.metrics, ctx.returns)
+    if result is None:
+        return None
+    from ml4t.diagnostic.visualization.factor import (
+        plot_holdings_attribution,
+        plot_holdings_exposures,
+    )
+
+    if section_name == "holdings_factor_exposures":
+        return plot_holdings_exposures(result, theme=ctx.theme)
+    if section_name == "holdings_factor_attribution":
+        return plot_holdings_attribution(result, theme=ctx.theme)
+    return create_holdings_attribution_summary_html(result)
+
+
 def _render_factor_section(ctx: _SectionContext, section_name: str) -> Any:
     if ctx.factor_analysis is None:
         return None
@@ -2812,6 +2848,15 @@ _SECTION_REGISTRY: dict[str, Any] = {
     "prediction_trade_alignment": _render_prediction_trade_alignment,
     "shap_errors": _render_shap_errors,
     # Factors
+    "holdings_factor_exposures": lambda ctx: _render_holdings_factor_section(
+        ctx, "holdings_factor_exposures"
+    ),
+    "holdings_factor_attribution": lambda ctx: _render_holdings_factor_section(
+        ctx, "holdings_factor_attribution"
+    ),
+    "holdings_factor_coverage": lambda ctx: _render_holdings_factor_section(
+        ctx, "holdings_factor_coverage"
+    ),
     "factor_exposure": lambda ctx: _render_factor_section(ctx, "factor_exposure"),
     "factor_legend": lambda ctx: _render_factor_section(ctx, "factor_legend"),
     "factor_regression_table": lambda ctx: _render_factor_section(ctx, "factor_regression_table"),
@@ -2948,7 +2993,14 @@ class BacktestTearsheet:
 
     def add_metrics(self, metrics: dict[str, Any]) -> BacktestTearsheet:
         """Add or update metrics dictionary."""
+        from .html_tables import _supplied_holdings_attribution
+
+        result = _supplied_holdings_attribution(metrics, self.returns)
         self.metrics.update(metrics)
+        if result is not None:
+            for section in self.template.sections:
+                if section.name.startswith("holdings_factor_"):
+                    section.enabled = True
         return self
 
     def add_benchmark(
@@ -3038,6 +3090,9 @@ class BacktestTearsheet:
                 stacklevel=2,
             )
 
+        from .html_tables import _supplied_holdings_attribution
+
+        _supplied_holdings_attribution(self.metrics, self.returns)
         # Use stored template directly (not recreated from name) to preserve
         # enable_section/disable_section customizations
         periods_per_year = _resolve_periods_per_year(self.periods_per_year, self.profile)

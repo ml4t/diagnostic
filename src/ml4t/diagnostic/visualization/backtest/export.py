@@ -103,6 +103,9 @@ def export_workspaces(
     ...     output_path="investor_report.html",
     ... )
     """
+    from .html_tables import _supplied_holdings_attribution
+
+    _supplied_holdings_attribution(metrics, returns)
     # Resolve bundle name to workspace tuple
     if isinstance(workspaces, str):
         if workspaces not in EXPORT_BUNDLES:
@@ -151,6 +154,7 @@ def export_workspaces(
         for key, value in _normalize_profile_metrics(profile).items():
             metrics.setdefault(key, value)
 
+    supplied_holdings = _supplied_holdings_attribution(metrics, returns)
     benchmark_metrics = _compute_portfolio_summary_metrics(
         benchmark_returns,
         periods_per_year=periods_per_year,
@@ -177,6 +181,10 @@ def export_workspaces(
         _enrich_from_trades(trades, metrics)
 
     # Auto-enable ML/factor sections
+    if supplied_holdings is not None:
+        for section in tmpl.sections:
+            if section.name.startswith("holdings_factor_"):
+                section.enabled = True
     if predictions is not None and not predictions.is_empty():
         for section in tmpl.sections:
             if section.name in (
