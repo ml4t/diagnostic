@@ -454,6 +454,52 @@ factor-statistics registry still depends on separately qualified fragility and
 GPD workflows. It is not silently exposed as a shortened list with missing
 statistics.
 
+## Inspect a fitted generalized-Pareto tail (unreleased)
+
+`metrics.estimate_gpd_tail_risk(returns, tail_probability=0.01, threshold=None)`
+returns `GPDTailRiskResult`, including fit status, threshold/scale/shape,
+positive decimal-loss VaR and expected shortfall, finite/excluded observation
+counts, loss/exceedance counts and the actual probability denominator.
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task empyrical-tail
+```
+
+The native `peaks_over_threshold` method fits strictly positive excesses over
+the chosen threshold. When omitted, the threshold is the nonnegative 90th
+percentile of all finite losses, where loss is `-return`. The exceedance
+probability uses all finite observations, including gains. Appending gains
+therefore changes unconditional risk without changing the selected tail fit.
+There is no calendar inference or annualization.
+
+The native likelihood fit constrains shape to at least -1. Below that bound,
+the density at the sample maximum can grow without limit as the distribution
+endpoint approaches that maximum. The result reports the bound and whether
+the estimate is on it. A boundary fit and a small exceedance count are not
+evidence of estimator precision or model adequacy.
+
+Choose `method="empyrical_raw_tail"` to inspect the familiar method. It fits
+raw positive losses, not excesses, at thresholds starting at 0.2 and halving
+toward 1e-9; probabilities use the loss-only sample. Its positive-shape
+selection and optimizer initialization differ from the native method. These
+methods need not produce equal parameter or risk estimates. The familiar
+`gpd_risk_estimates` and `_aligned` calls project the named method into the
+five legacy fields; a supplied pandas Series retains the reference's positional
+result labels, not the input dates. Use one portfolio per call.
+
+Both methods exclude and count nonfinite observations. Insufficient or
+degenerate tails, a failed fit, or a requested probability outside the fitted
+tail produce undefined risk with a native status. Familiar unsuccessful
+projections contain NaNs instead of the reference's misleading zero-risk
+sentinel. Distribution helpers support the exponential shape-zero limit;
+nonpositive scales and invalid probability domains are rejected. Expected
+shortfall is positive infinity for fitted shape at least one, as in the
+corrected Empyrical 0.7.0 workflow, not zero or a negative loss.
+
+This source implementation is still undergoing reference, artifact and report
+qualification. It does not yet replace the retained-Empyrical recommendation
+below or describe the published 0.1.9 distribution.
+
 ## Native definitions still need explicit choices
 
 The native benchmark-relative `alpha` and `beta` remain available when you

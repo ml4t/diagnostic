@@ -58,6 +58,19 @@ from ml4t.diagnostic.compat._rolling import (
     rolling_window,
     up,
 )
+from ml4t.diagnostic.compat._tail_risk import (
+    gpd_es_calculator,
+    gpd_loglikelihood,
+    gpd_loglikelihood_factory,
+    gpd_loglikelihood_minimizer_aligned,
+    gpd_loglikelihood_scale_and_shape,
+    gpd_loglikelihood_scale_and_shape_factory,
+    gpd_loglikelihood_scale_only,
+    gpd_loglikelihood_scale_only_factory,
+    gpd_risk_estimates,
+    gpd_risk_estimates_aligned,
+    gpd_var_calculator,
+)
 from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as _native
 from ml4t.diagnostic.metrics.risk_adjusted import (
     _drawdown_from_wealth,
@@ -386,6 +399,17 @@ SIMPLE_STAT_FUNCS = [
 
 
 __all__ = [
+    "gpd_es_calculator",
+    "gpd_loglikelihood",
+    "gpd_loglikelihood_factory",
+    "gpd_loglikelihood_minimizer_aligned",
+    "gpd_loglikelihood_scale_and_shape",
+    "gpd_loglikelihood_scale_and_shape_factory",
+    "gpd_loglikelihood_scale_only",
+    "gpd_loglikelihood_scale_only_factory",
+    "gpd_risk_estimates",
+    "gpd_risk_estimates_aligned",
+    "gpd_var_calculator",
     "SIMPLE_STAT_FUNCS",
     "down",
     "roll",
