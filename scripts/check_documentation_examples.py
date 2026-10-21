@@ -33,6 +33,10 @@ PAGES = {
         "Aligned event levels: 55.0; finite date paths: 2/3/2",
         "Event-returns report: global view and per-quantile sample deviations",
     ),
+    "docs/user-guide/empyrical-migration.md": (
+        "Empyrical scalar adapters: columnwise counts, periodic rates and labels checked",
+        "Return paths: dated labels, missing adjacencies and initial capital checked",
+    ),
 }
 
 
