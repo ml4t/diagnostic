@@ -202,3 +202,49 @@ def test_published_material_rolling_options_reach_the_shared_kernel(name, kwargs
     actual = getattr(ep, "roll_" + name)(*args, window=3, **kwargs)
     expected = getattr(reference, "roll_" + name)(*args, window=3, **kwargs)
     np.testing.assert_allclose(actual, expected, rtol=1e-11, atol=1e-11, equal_nan=True)
+
+
+@pytest.mark.parametrize("name", UNARY + BINARY)
+def test_wide_price_migration_preserves_each_strategys_masks_labels_and_rolling_outputs(name):
+    reference = pytest.importorskip("empyrical.stats")
+    dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
+    prices = pd.DataFrame(
+        {"long": [100, 101, 99, 102, 103, 101], "hedge": [100, 100.5, np.nan, 101, 102, 101]},
+        index=dates,
+    )
+    market = pd.Series([100, 100.5, 100, 101, 101.5, 100.8], index=dates)
+    returns, benchmark = (
+        prices.pct_change(fill_method=None).iloc[1:],
+        market.pct_change(fill_method=None).iloc[1:],
+    )
+    original = returns.copy(deep=True)
+    assert returns["hedge"].isna().to_list() == [False, True, True, False, False]
+    if name in {"up_capture", "down_capture", "up_down_capture"}:
+        kwargs = {"period": "monthly"}
+    elif name in {"beta", "beta_aligned", "max_drawdown", "excess_sharpe"}:
+        kwargs = {}
+    else:
+        kwargs = {"annualization": 12}
+    actual, expected = {}, {}
+    for column, values in returns.items():
+        args = (values, benchmark) if name in BINARY else (values,)
+        actual[column] = getattr(ep, "roll_" + name)(*args, window=3, **kwargs)
+        if name == "cagr":
+            products = []
+            for end in range(3, len(values) + 1):
+                product = 1.0
+                for value in values.iloc[end - 3 : end]:
+                    if not np.isnan(value):
+                        product *= 1 + value
+                products.append(product**4 - 1)
+            expected[column] = pd.Series(products, index=values.index[2:])
+        else:
+            expected[column] = getattr(reference, "roll_" + name)(*args, window=3, **kwargs)
+    pd.testing.assert_frame_equal(
+        pd.concat(actual, axis=1),
+        pd.concat(expected, axis=1),
+        check_exact=False,
+        rtol=1e-11,
+        atol=1e-11,
+    )
+    pd.testing.assert_frame_equal(returns, original)

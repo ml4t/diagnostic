@@ -272,8 +272,22 @@ is explicitly `1e-30`; native nonconstant-benchmark regression keeps its existin
 default. A supplied `_beta` lets alpha evaluate known residuals without pretending
 that a singular benchmark can estimate a slope. Output-buffer validation also
 checks original benchmark/rate storage before alignment copies can conceal an
-alias. Calculations are float64; low-order reference float32 differences remain
-separate from buffer shape, ownership and identity guarantees.
+alias. Calculations use float64 and cast once when committing an output buffer.
+This differs from the reference's intermediate float32 arithmetic. For strategy
+prices `[100, 101, 99, 102, 103, 101]` and benchmark prices
+`[100, 100.5, 100, 101, 101.5, 100.8]`, both supplied as float32 pandas Series,
+the qualified Empyrical 0.7.0 / pandas 2.3.3 / NumPy 2.5.4 profile gives:
+
+| Output buffer | Diagnostic annual alpha | Empyrical annual alpha |
+|---|---:|---:|
+| float64 | -0.480214204627 | -0.480214100867 |
+| float32 | -0.480214208364 | -0.480215013027 |
+
+The benchmark recipe includes this price-produced case. An exact-rational OLS
+oracle on the represented input returns supports Diagnostic's result; the final
+float32 buffer receives that result rounded once. Beta differs by about
+`2.35e-7` in this fixture. These measured precision differences are not hidden
+by widening comparison tolerances or claiming bitwise parity.
 
 Native `portfolio_analysis.benchmark_batting_average` returns fractions and
 sample/win counts for finite active-return/benchmark pairs. Ties are nonwins and
@@ -398,6 +412,24 @@ output buffers are rejected without modifying caller data. A row-window view is
 read-only by default; `mutable=True` explicitly allows shared-storage edits.
 For independent strategies, apply these one-series rolling adapters per column;
 no general multi-asset matrix rolling parity is claimed.
+
+For a wide return frame, preserve strategy labels by collecting the one-series
+results. The rolling recipe executes this path, and the reference tests check
+each rolling function on price-produced columns with different missingness:
+
+```python
+from ml4t.diagnostic.compat import empyrical as ep
+
+rolling_sharpe = pd.concat(
+    {name: ep.roll_sharpe_ratio(values, window=63)
+     for name, values in returns.items()},
+    axis=1,
+)
+```
+
+Paired wrappers also receive the same supplied benchmark per strategy. Combined
+alpha/beta results retain a nested strategy/result column index. No asset is
+pooled with another strategy merely to accept a matrix argument.
 
 `roll_cagr` annualizes each exact compounded window product by its observed row
 count. It is not a renamed native rolling cumulative return. In the tested

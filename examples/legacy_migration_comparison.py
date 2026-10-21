@@ -679,6 +679,15 @@ def show_empyrical_benchmark() -> None:
     np.testing.assert_allclose(metrics.down_capture(sample, market, period="monthly"), down)
     np.testing.assert_allclose(metrics.up_down_capture(sample, market, period="monthly"), up / down)
     print(f"Geometric capture (dimensionless): up={up}; down={down}; up/down={up / down}")
+    prices32 = pd.Series([100, 101, 99, 102, 103, 101], index=dates, dtype="float32")
+    market32 = pd.Series([100, 100.5, 100, 101, 101.5, 100.8], index=dates, dtype="float32")
+    fit32 = metrics.alpha_beta(prices32.pct_change().iloc[1:], market32.pct_change().iloc[1:])
+    np.testing.assert_allclose(
+        fit32, [-0.48021420462687964, 2.952578779409444], rtol=1e-12, atol=1e-12
+    )
+    print(
+        f"Float32 price inputs with float64 calculation: annual alpha={fit32[0]}; beta={fit32[1]}"
+    )
 
 
 def show_empyrical_definitions() -> None:
@@ -753,6 +762,18 @@ def show_empyrical_rolling() -> None:
     print(f"Native full-length padded Sharpe: {native.sharpe[3].to_list()}")
     print(f"Annualized exact-window CAGR (decimal return): {cagr.to_dict()}")
     print("Vectorized overlong window: one short sample; generic callback: no full sample")
+    strategies = pd.concat({"long": returns, "hedge": -0.5 * returns}, axis=1)
+    wide = pd.concat(
+        {
+            name: metrics.roll_sharpe_ratio(values, window=3, annualization=12)
+            for name, values in strategies.items()
+        },
+        axis=1,
+    )
+    assert wide.columns.to_list() == ["long", "hedge"] and wide.index.equals(dates[2:])
+    np.testing.assert_allclose(wide["long"], expected)
+    np.testing.assert_allclose(wide["hedge"], -np.array(expected))
+    print(f"Columnwise strategy migration retains labels: {wide.to_dict()}")
 
 
 def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:

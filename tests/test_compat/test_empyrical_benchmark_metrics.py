@@ -1,5 +1,7 @@
 """A dated price-to-return user workflow exercises actual benchmark-relative APIs."""
 
+from fractions import Fraction
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -213,3 +215,25 @@ def test_actual_published_matrix_contract_uses_explicit_benchmark_column(name):
     actual = getattr(ep, name)(returns, benchmark)
     expected = getattr(reference, name)(returns.copy(), benchmark.copy())
     np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12, equal_nan=True)
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_float32_price_pipeline_does_not_quantize_the_fitted_intercept_before_compounding(dtype):
+    dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
+    prices = pd.Series([100, 101, 99, 102, 103, 101], index=dates, dtype="float32")
+    market = pd.Series([100, 100.5, 100, 101, 101.5, 100.8], index=dates, dtype="float32")
+    returns, benchmark = prices.pct_change().iloc[1:], market.pct_change().iloc[1:]
+    original = returns.copy(deep=True)
+    xs = [Fraction.from_float(float(value)) for value in benchmark]
+    ys = [Fraction.from_float(float(value)) for value in returns]
+    mean_x, mean_y = sum(xs) / len(xs), sum(ys) / len(ys)
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / sum(
+        (x - mean_x) ** 2 for x in xs
+    )
+    intercept = mean_y - slope * mean_x
+    expected = np.array([float((1 + intercept) ** 252 - 1), float(slope)], dtype=dtype)
+    output = np.full(2, -99.0, dtype=dtype)
+    actual = ep.alpha_beta(returns, benchmark, out=output)
+    assert actual is output
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+    pd.testing.assert_series_equal(returns, original)
