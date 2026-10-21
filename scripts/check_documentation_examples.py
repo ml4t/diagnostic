@@ -34,6 +34,7 @@ PAGES = {
         "Event-returns report: global view and per-quantile sample deviations",
         "Supplied account preserves net returns and unknown fees",
         "200 actual notional / 1000 beginning NAV; extra 10bps costs .0002 return",
+        "Zipline input preserves sid, reported cash/NAV and unknown fill costs",
     ),
 }
 

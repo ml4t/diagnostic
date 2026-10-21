@@ -139,6 +139,27 @@ def test_disabled_calendar_does_not_silently_match_execution_instants_to_date_la
         _account(calendar=None).compute_transaction_analysis()
 
 
+def test_declared_timezone_resolves_naive_execution_instants_without_changing_stored_inputs():
+    source = _account()
+    fills = source.input_data.transactions.to_pandas()
+    fills["timestamp"] = fills["timestamp"].dt.tz_localize(None)
+    analysis = PortfolioAnalysis.from_frames(
+        source.input_data.returns,
+        return_col="return",
+        transactions=fills,
+        feed_spec={
+            "timestamp_col": "date",
+            "calendar": "CME_Equity",
+            "timezone": "UTC",
+            "timestamp_semantics": "session_label",
+        },
+        transaction_timestamp_col="timestamp",
+    )
+    result = analysis.compute_transaction_analysis()
+    assert result.timeline["filled_notional"].to_list() == [200, 0, 0]
+    assert analysis.input_data.transactions["timestamp"].dtype.time_zone is None
+
+
 @pytest.mark.parametrize("instant", ["2025-07-06T20:00Z", "2025-07-07T21:30Z"])
 def test_off_session_fills_are_not_mapped_to_a_different_or_civil_day(instant):
     account = _account()

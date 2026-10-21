@@ -1472,6 +1472,77 @@ with the visualization dependencies installed. These checks cover the named
 supplied-input workflow, not Zipline extraction, lots, capacity or complete Pyfolio
 report parity.
 
+### Consume a Zipline performance result without a legacy analytics dependency
+
+Unreleased after 0.1.9, `integration.zipline.portfolio_analysis_from_zipline()`
+extracts `run_algorithm` results into the same `PortfolioAnalysis.from_frames`
+boundary. It imports neither Zipline nor Pyfolio. The result's reported returns,
+`portfolio_value` and `ending_cash` remain authoritative. Nested positions are
+complete snapshots; empty lists prove an all-cash date, while missing lists are
+invalid rather than silently empty. Missing optional columns disable their
+dependent analyses without blocking returns-only analysis.
+
+```python
+import pandas as pd
+from ml4t.diagnostic.integration.zipline import portfolio_analysis_from_zipline
+
+zipline_dates = pd.to_datetime(["2025-07-07T20:00Z", "2025-07-08T20:00Z"])
+zipline_example = pd.DataFrame({
+    "returns": [0., -.0003], "portfolio_value": [1000., 999.7],
+    "ending_cash": [1000., 699.7],
+    "positions": [[], [{
+        "sid": {"sid": 7, "symbol": "A", "multiplier": 1.},
+        "amount": 3, "last_sale_price": 100.,
+    }]],
+    "transactions": [[], [{
+        "sid": {"sid": 7, "symbol": "A", "multiplier": 1.},
+        "amount": 3, "price": 100., "dt": zipline_dates[1],
+        "order_id": "observed-order", "commission": None,
+    }]],
+}, index=zipline_dates)
+zipline_analysis = portfolio_analysis_from_zipline(zipline_example, calendar="NYSE")
+zipline_holdings = zipline_analysis.compute_holdings_analysis()
+assert zipline_holdings.timeline["gross_exposure"].to_list() == [0., 300.]
+assert zipline_holdings.timeline["cash"].to_list() == [1000., 699.7]
+assert zipline_analysis.input_data.transactions["asset"].to_list() == [7]
+assert zipline_analysis.input_data.transactions["commission"][0] is None
+print("Zipline input preserves sid, reported cash/NAV and unknown fill costs")
+```
+
+The two-row snippet illustrates the format. The repository fixture
+`tests/test_integration/data/zipline320_account.json` is captured from an actual
+published Zipline 3.2.0 `run_algorithm` execution using pandas 2.3.3, NumPy 2.4.6
+and exchange-calendars 4.13.2. It includes an opening buy and partial sale,
+reported cash/NAV, an all-cash initial date and unknown per-fill commission.
+The optional producer example
+[zipline_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/main/examples/zipline_portfolio_inputs.py)
+regenerates that local deterministic bundle without market downloads and consumes
+the actual in-memory result, including Zipline Asset objects:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --with zipline-reloaded==3.2.0 --with pandas==2.3.3 --with plotly python examples/zipline_portfolio_inputs.py --capture zipline-account.json --report zipline-account.html
+```
+
+For the ordinary consumer path, run
+`uv run --no-dev python examples/zipline_portfolio_inputs.py --input tests/test_integration/data/zipline320_account.json`.
+No execution package is needed to consume the capture. The four-date result has
+420 of actual traded notional; unknown fill commission is not replaced by zero
+or inferred from aggregate account charges. The returns already include the
+observed commissions once. The same prepared transaction results can be passed
+to the existing portfolio report as in the preceding workflow.
+
+Stable integer `sid` identifies each instrument, even if display symbols change
+or are reused. Asset objects supply their declared `price_multiplier`; portable
+asset dictionaries carry `sid`, `symbol` and `multiplier`. Bare integer IDs need
+an explicit `asset_metadata` mapping, such as `{7: {"symbol": "A", "multiplier": 1}}`.
+Marked notional is amount times last sale price times multiplier. That value
+does not replace the producer's cash or NAV for futures or leveraged accounts.
+Actual execution `dt`, order ID and signed amount are retained; no fill is
+reconstructed from a position change. Feed declarations and explicit calendar
+precedence use the same shared contract. This extraction does not implement a
+Zipline broker, data bundle service, Pipeline, capacity model, or full Pyfolio
+tear sheet.
+
 ### Analyze prepared holdings on observed keys
 
 In unreleased source after 0.1.9, use the existing `PortfolioAnalysis` workflow

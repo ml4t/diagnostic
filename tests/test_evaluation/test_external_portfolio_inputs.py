@@ -74,6 +74,16 @@ def test_missing_nav_does_not_become_sum_of_cash_and_signed_positions():
     assert holdings.timeline["gross_exposure_fraction"].null_count() == 2
 
 
+def test_pandas_all_unknown_execution_cost_columns_remain_unknown_not_invalid_or_zero():
+    returns, _, _, fills = _frames()
+    fills["commission"] = pd.Series([None, None], dtype="object")
+    fills["slippage"] = pd.Series([None, None], dtype="object")
+    analysis = PortfolioAnalysis.from_frames(returns, transactions=fills, calendar=None)
+    for column in ("commission", "slippage"):
+        assert analysis.input_data.transactions[column].null_count() == 2
+        assert analysis.input_data.transactions[column].dtype == pl.Float64
+
+
 def test_explicitly_incomplete_positions_are_not_forward_filled_or_liquidated():
     returns, positions, valuations, _ = _frames()
     analysis = PortfolioAnalysis.from_frames(

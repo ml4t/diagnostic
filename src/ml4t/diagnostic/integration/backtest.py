@@ -300,15 +300,107 @@ def portfolio_analysis_from_result(
         return PortfolioAnalysis(returns=np.array([]), periods_per_year=periods_per_year)
 
     date_col = "date" if "date" in daily_df.columns else "session_date"
-    dates = daily_df[date_col]
-    returns = daily_df["return_pct"].to_numpy()
+    observations = daily_df.select(
+        pl.col(date_col).alias("date"), pl.col("return_pct").alias("return")
+    )
+    state = _preserve_export_instants(
+        result.to_portfolio_state_dataframe(), [row[0] for row in result.portfolio_state]
+    )
+    valuations = (
+        state.select(pl.col("timestamp").alias("date"), "equity", "cash")
+        if not state.is_empty()
+        else result.to_equity_dataframe().select(pl.col("timestamp").alias("date"), "equity")
+    )
+    positions = None
+    complete = False
+    if (
+        resolved_calendar is None
+        and getattr(result, "holdings_sampling", None) == "bar"
+        and getattr(result, "holdings", None) is not None
+    ):
+        import pandas as pd
 
-    return PortfolioAnalysis(
-        returns=returns,
-        dates=dates,
+        captured = result.to_holdings_dataframe()
+        if not state["holdings_complete"].all():
+            raise ValueError("bar holdings must declare every account observation complete")
+        books = {}
+        for observation_id, asset, value in captured.select(
+            "observation_id", "asset", "liquidation_value"
+        ).iter_rows():
+            book = books.setdefault(observation_id, {})
+            if asset in book:
+                raise ValueError("captured holdings repeat an asset in one observation")
+            book[asset] = value
+        identifiers = state["observation_id"].to_list()
+        if set(books).difference(identifiers):
+            raise ValueError("captured holdings refer to unknown account observations")
+        if any(
+            len(books.get(identifier, {})) != count
+            for identifier, count in state.select("observation_id", "open_positions").iter_rows()
+        ):
+            raise ValueError("complete captured holdings must match observed open-position counts")
+        assets = sorted({asset for book in books.values() for asset in book})
+        positions = pd.DataFrame(
+            {
+                asset: [books.get(identifier, {}).get(asset, 0.0) for identifier in identifiers]
+                for asset in assets
+            },
+            index=pd.DatetimeIndex(state["timestamp"].to_pandas()),
+        )
+        complete = True
+    config = getattr(result, "config", None)
+    analysis = PortfolioAnalysis.from_frames(
+        observations,
+        return_col="return",
         benchmark=benchmark,
+        valuations=valuations,
+        transactions=_preserve_export_instants(
+            result.to_fills_dataframe(), [fill.timestamp for fill in result.fills]
+        ),
+        positions=positions,
+        complete_snapshots=complete,
+        feed_spec=getattr(config, "resolved_feed_spec", None),
+        timestamp_col="date",
+        entity_col="asset",
+        transaction_timestamp_col="timestamp",
+        calendar=resolved_calendar,
         periods_per_year=periods_per_year,
     )
+    inputs = analysis.input_data
+    assert inputs is not None
+    metadata = inputs.metadata
+    metadata["source"] = {
+        "format": "BacktestResult public DataFrame exports",
+        "holdings_sampling": getattr(result, "holdings_sampling", "unavailable"),
+        "positions_selected": complete,
+        "positions_reason": "complete observed bar capture"
+        if complete
+        else "not supplied or not converted to aggregated return clock; no positions inferred",
+        "account_method": getattr(result, "account_method", None),
+        "returns_include_commissions": getattr(result, "returns_include_commissions", None),
+    }
+    analysis._input_data = replace(inputs, _metadata=json.dumps(metadata, allow_nan=False))
+    return analysis
+
+
+def _preserve_export_instants(frame: pl.DataFrame, recorded: list[Any]) -> pl.DataFrame:
+    """Recover legacy export timezone loss only from actual public source records."""
+    import pandas as pd
+
+    if frame.is_empty() or not isinstance(frame["timestamp"].dtype, pl.Datetime):
+        return frame
+    original = pd.DatetimeIndex(recorded)
+    if original.tz is None or frame["timestamp"].dtype.time_zone is not None:
+        return frame
+    if (
+        len(original) != frame.height
+        or not (
+            original.tz_convert("UTC").tz_localize(None)
+            == pd.DatetimeIndex(frame["timestamp"].to_pandas())
+        ).all()
+    ):
+        raise ValueError("legacy exported timestamps disagree with recorded source instants")
+    return frame.with_columns(pl.from_pandas(original).rename("timestamp"))
 
 
 def compute_metrics_from_result(

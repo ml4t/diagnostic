@@ -157,6 +157,12 @@ def _execution_numeric(frame: pl.DataFrame, column: str) -> None:
 def _observations(
     value: Any, timestamp_col: str, value_col: str, *, benchmark: bool = False
 ) -> pl.DataFrame:
+    if benchmark and (
+        isinstance(value, np.ndarray | pl.Series | list | tuple)
+        or isinstance(value, pd.Series)
+        and not isinstance(value.index, pd.DatetimeIndex)
+    ):
+        return pl.DataFrame({"return": return_snapshot(value, "benchmark")})
     if isinstance(value, pd.Series):
         if not isinstance(value.index, pd.DatetimeIndex):
             raise ValueError("dated portfolio Series require a DatetimeIndex")
@@ -448,6 +454,11 @@ def normalize_portfolio_frames(
         "complete_snapshots": complete_snapshots,
         "snapshot_kind": snapshot_kind,
         "returns_kind": "net",
+        "benchmark_alignment": None
+        if relative is None
+        else "dated keys"
+        if "date" in relative.columns
+        else "explicit positional",
         "positions_unit": "signed reported cash value",
         "missing_commission": "unknown, not zero",
         "unreported_NAV": "unknown, never inferred from holdings/cash",

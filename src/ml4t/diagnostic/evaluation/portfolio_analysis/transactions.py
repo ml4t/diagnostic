@@ -35,7 +35,12 @@ class TransactionAnalysisResult:
 
 
 def _clock(
-    dates: pl.Series, calendar: str | None, semantics: str | None, *, executions: bool = False
+    dates: pl.Series,
+    calendar: str | None,
+    semantics: str | None,
+    *,
+    executions: bool = False,
+    timezone: str | None = None,
 ) -> pl.Series:
     if calendar is None:
         return dates.rename("date")
@@ -49,7 +54,11 @@ def _clock(
             raise ValueError("session_label observations must be date labels at midnight")
         index = index.tz_localize(None) if index.tz is not None else index
     elif index.tz is None:
-        raise ValueError("execution/event instants require timezone-aware timestamps")
+        if timezone is None:
+            raise ValueError(
+                "execution/event instants require timezone-aware timestamps or a declared timezone"
+            )
+        index = index.tz_localize(timezone)
     sessions, mask = TradingCalendar(calendar).get_sessions_and_mask(
         index, include_daily_labels=labels
     )
@@ -97,7 +106,10 @@ def analyze_transactions(
     meta = inputs.metadata
     calendar = meta["calendar"]
     semantics = meta["feed_spec"].get("timestamp_semantics")
-    observations = inputs.returns.with_columns(_clock(inputs.returns["date"], calendar, semantics))
+    timezone = meta["feed_spec"].get("timezone")
+    observations = inputs.returns.with_columns(
+        _clock(inputs.returns["date"], calendar, semantics, timezone=timezone)
+    )
     clock = observations.group_by("date", maintain_order=True).agg(
         pl.when(pl.len() == 1)
         .then(pl.col("return").first())
@@ -112,7 +124,7 @@ def analyze_transactions(
     if not enriched["filled_notional"].is_finite().all():
         raise ValueError("execution notional overflows the account-currency calculation")
     session_keys = (
-        _clock(fills["timestamp"], calendar, None, executions=True)
+        _clock(fills["timestamp"], calendar, None, executions=True, timezone=timezone)
         if not fills.is_empty()
         else pl.Series("date", [], dtype=clock["date"].dtype)
     )
@@ -154,7 +166,9 @@ def analyze_transactions(
         timeline = timeline.with_columns(pl.lit(None, dtype=pl.Float64).alias("beginning_nav"))
     else:
         account = account.sort("date")
-        account = account.with_columns(_clock(account["date"], calendar, semantics))
+        account = account.with_columns(
+            _clock(account["date"], calendar, semantics, timezone=timezone)
+        )
         account = account.group_by("date", maintain_order=True).agg(pl.col("equity").last())
         timeline, account = _align_datetime_key_resolution(timeline, account, "date")
         # Retain the immediately previous reported valuation, including an explicit initial
@@ -173,7 +187,7 @@ def analyze_transactions(
         else:
             gross = positions.select("date").with_columns(pl.lit(0.0).alias("gross"))
         gross = gross.sort("date")
-        gross = gross.with_columns(_clock(gross["date"], calendar, semantics))
+        gross = gross.with_columns(_clock(gross["date"], calendar, semantics, timezone=timezone))
         gross = gross.group_by("date", maintain_order=True).agg(pl.col("gross").last()).sort("date")
         timeline, gross = _align_datetime_key_resolution(timeline, gross, "date")
         gross = gross.with_columns(

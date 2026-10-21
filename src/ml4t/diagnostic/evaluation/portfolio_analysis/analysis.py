@@ -244,7 +244,11 @@ class PortfolioAnalysis:
         instance = cls(
             returns=observed["return"],
             dates=observed["date"],
-            benchmark=relative.to_pandas().set_index("date")["return"]
+            benchmark=(
+                relative.to_pandas().set_index("date")["return"]
+                if "date" in relative.columns
+                else relative["return"]
+            )
             if relative is not None
             else None,
             positions=inputs.positions,

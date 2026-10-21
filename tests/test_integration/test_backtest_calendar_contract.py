@@ -84,6 +84,30 @@ def test_row_mode_uses_observation_keys_and_the_explicit_return_scale_in_every_w
     assert computed["annualized_volatility"] == pytest.approx(expected_volatility)
 
 
+def test_real_engine_result_reaches_the_same_owned_account_boundary_without_fabricated_holdings(
+    overnight_result,
+):
+    raw_fills = overnight_result.to_fills_dataframe().clone()
+    raw_state = overnight_result.to_portfolio_state_dataframe().clone()
+    analysis = portfolio_analysis_from_result(
+        overnight_result,
+        calendar=None,
+        periods_per_year=8760,
+        benchmark=np.array([0.0, 0.0, 0.01]),
+    )
+    assert analysis.input_data is not None
+    assert analysis.input_data.transactions["quantity"].to_list() == [2]
+    assert analysis.input_data.valuations["cash"].to_list() == raw_state["cash"].to_list()
+    assert analysis.input_data.valuations["equity"].to_list() == raw_state["equity"].to_list()
+    assert analysis.input_data.metadata["calendar"] is None
+    assert analysis.input_data.positions is None  # Legacy producer has no complete per-asset book.
+    activity = analysis.compute_transaction_analysis(incremental_bps=[10])
+    assert activity.metrics["total_filled_notional"] == 200
+    assert activity.scenarios["incremental_cost_return"].to_list() == pytest.approx([0, 0.0002, 0])
+    assert overnight_result.to_fills_dataframe().equals(raw_fills)
+    assert overnight_result.to_portfolio_state_dataframe().equals(raw_state)
+
+
 def test_row_mode_reaches_html_with_resolved_metadata_and_no_hidden_calendar_fallback(
     overnight_result, tmp_path
 ):
