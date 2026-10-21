@@ -40,13 +40,13 @@ def compute_exposures(positions: pd.Series, factor_loadings: pd.DataFrame) -> pd
     """
     if not isinstance(positions, pd.Series) or not isinstance(factor_loadings, pd.DataFrame):
         raise TypeError("positions must be a Series and factor_loadings a DataFrame")
-    if not factor_loadings.columns.is_unique or any(
-        not isinstance(name, str) or not name or name in {"timestamp", "asset", "weight"}
-        for name in factor_loadings.columns
-    ):
-        raise ValueError("factor names must be unique nonempty unambiguous strings")
+    if not factor_loadings.columns.is_unique:
+        raise ValueError("factor names must be unique")
+    names = tuple(f"__factor_{index}" for index in range(len(factor_loadings.columns)))
+    transported = factor_loadings.copy(deep=True)
+    transported.columns = pd.Index(names)
     weights = _panel(positions.copy(deep=True), weights=True)
-    loadings = _panel(factor_loadings.copy(deep=True), weights=False)
+    loadings = _panel(transported, weights=False)
     left, right = positions.index.get_level_values(0), factor_loadings.index.get_level_values(0)
     if left.tz != right.tz:
         raise ValueError("weight and loading dates must use the same timezone")
@@ -56,7 +56,7 @@ def compute_exposures(positions: pd.Series, factor_loadings: pd.DataFrame) -> pd
         weights,
         loadings,
         labels,
-        tuple(factor_loadings.columns),
+        names,
         starts=None,
         timing="legacy_observed",
         missing_loadings="legacy_skip",
@@ -75,7 +75,8 @@ def compute_exposures(positions: pd.Series, factor_loadings: pd.DataFrame) -> pd
             UserWarning,
             stacklevel=2,
         )
-    frame = result.select(factor_loadings.columns).to_pandas()
+    frame = result.select(names).to_pandas()
+    frame.columns = factor_loadings.columns.copy()
     frame.index = pd.DatetimeIndex(dates, name="dt")
     frame.index.freq = None
     return frame

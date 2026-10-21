@@ -109,3 +109,30 @@ def test_legacy_uncovered_loadings_warn_instead_of_claiming_complete_zero_exposu
     loadings.iloc[1, 0] = np.nan
     with pytest.warns(UserWarning, match="uncovered"):
         ep.perf_attrib(returns, weights, factors, loadings)
+
+
+@pytest.mark.parametrize("names", [[0, 1], ["timestamp", "asset"], ["weight", ""]])
+def test_familiar_factor_labels_do_not_collide_with_native_transport_columns(names):
+    returns, weights, factors, loadings = inputs()
+    factors = factors.rename(columns=dict(zip(loadings.columns, names, strict=True)))
+    loadings.columns = pd.Index(names, name="factor")
+    exposures, table = ep.perf_attrib(returns, weights, factors, loadings)
+    pd.testing.assert_index_equal(exposures.columns, loadings.columns)
+    np.testing.assert_allclose(exposures, [[1.5, 0.25], [1, 0.5], [1.5, 0.25]])
+    np.testing.assert_allclose(table["common_returns"], [0.02, -0.015, 0.015])
+
+
+@pytest.mark.parametrize("names", [[0, 1], ["timestamp", "asset"], ["weight", ""]])
+def test_actual_reference_preserves_nonstring_and_transport_named_factor_columns(names):
+    reference = pytest.importorskip("empyrical")
+    returns, weights, factors, loadings = inputs()
+    factors = factors.rename(columns=dict(zip(loadings.columns, names, strict=True)))
+    loadings.columns = pd.Index(names, name="factor")
+    original = loadings.copy(deep=True)
+    expected = reference.perf_attrib(
+        returns.copy(), weights.copy(), factors.copy(), loadings.copy()
+    )
+    actual = ep.perf_attrib(returns, weights, factors, loadings)
+    for got, wanted in zip(actual, expected, strict=True):
+        pd.testing.assert_frame_equal(got, wanted, rtol=1e-12, atol=1e-15)
+    pd.testing.assert_frame_equal(loadings, original)
