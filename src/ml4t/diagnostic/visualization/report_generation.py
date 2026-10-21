@@ -30,6 +30,7 @@ Example workflow:
 
 from datetime import datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 import plotly.graph_objects as go
@@ -65,6 +66,7 @@ def combine_figures_to_html(
     output_file: str | Path | None = None,
     theme: str | None = None,
     include_toc: bool = True,
+    include_plotlyjs: bool | str = "cdn",
 ) -> str:
     """Combine multiple Plotly figures into a single HTML document.
 
@@ -93,6 +95,9 @@ def combine_figures_to_html(
     include_toc : bool, optional
         Whether to include a table of contents at the top of the report.
         Default is True. TOC is generated from section titles.
+    include_plotlyjs : bool | str, optional
+        Plotly's script inclusion option for the first figure. The existing
+        default uses its CDN; True embeds the library for an offline report.
 
     Returns
     -------
@@ -153,7 +158,7 @@ def combine_figures_to_html(
 
     Notes
     -----
-    - HTML is self-contained with embedded Plotly.js from CDN
+    - Use include_plotlyjs=True for a self-contained offline report
     - First figure includes full Plotly.js, subsequent figures reuse it
     - CSS styling is embedded in <style> tag
     - Reports are responsive and work on mobile devices
@@ -183,11 +188,10 @@ def combine_figures_to_html(
     # Convert figures to HTML divs
     figure_htmls = []
     for i, fig in enumerate(figures):
-        # First figure includes Plotly.js from CDN, others don't
-        include_plotlyjs = "cdn" if i == 0 else False
-
         fig_html = fig.to_html(
-            full_html=False, include_plotlyjs=include_plotlyjs, div_id=f"plot-{i}"
+            full_html=False,
+            include_plotlyjs=include_plotlyjs if i == 0 else False,
+            div_id=f"plot-{i}",
         )
         figure_htmls.append(fig_html)
 
@@ -204,7 +208,22 @@ def combine_figures_to_html(
     if output_file is not None:
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html_content, encoding="utf-8")
+        temporary = None
+        try:
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=output_path.parent,
+                prefix=f".{output_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(html_content)
+            temporary.replace(output_path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         return str(output_path.absolute())
     else:
         return html_content

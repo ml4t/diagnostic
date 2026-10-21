@@ -29,6 +29,9 @@
 ## Notes
 
 - Public API is defined by `__all__` exports in package modules.
+- `compat.empyrical` and `compat.pyfolio` adapt legacy analytical signatures over
+  native calculations. Pyfolio attribution figures and `tears.create_perf_attrib_tear_sheet`
+  use optional Plotly/HTML presentation, not a mandatory Reloaded or Matplotlib runtime.
 - Reporting and tearsheet entry points are in `integration/` and `visualization/backtest/`.
 - Correlation-adjusted DSR now lives in `evaluation.stats` via
   `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.

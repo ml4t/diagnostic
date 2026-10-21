@@ -8,7 +8,9 @@ that changes covered NAV weights and is deliberately not reproduced here.
 from __future__ import annotations
 
 import warnings
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pandas as pd
 import polars as pl
 
@@ -17,6 +19,9 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_intege
 from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import cash_fraction_expr
 
 from .txn import _books, _dated, get_turnover
+
+if TYPE_CHECKING:
+    import plotly.graph_objects as go
 
 PERF_ATTRIB_TURNOVER_THRESHOLD = 0.25
 
@@ -191,3 +196,154 @@ def show_perf_attrib_stats(
     print(summary.to_string())
     print(factors.to_string())
     return summary, factors
+
+
+def _plot_lines(
+    paths: list[tuple[str, pd.Series]],
+    title: str,
+    units: str,
+    ax: Any,
+    theme: str | None,
+    height: int,
+) -> go.Figure:
+    import plotly.graph_objects as go
+
+    from .plotting import _date_ticks, _figure
+
+    figure = _figure(title, units, ax, {"theme": theme, "height": height})
+    for name, values in paths:
+        _dated(values, name)
+        figure.add_trace(
+            go.Scatter(
+                x=values.index,
+                y=values.to_numpy(dtype=float, na_value=np.nan),
+                name=name,
+                mode="lines+markers" if len(values) < 5 else "lines",
+            )
+        )
+    if paths:
+        _date_ticks(figure, paths[0][1].index)
+    figure.update_layout(
+        title_font_size=14,
+        meta={
+            "analysis": "supplied_holdings_attribution",
+            "cumulative_method": "component_compounded",
+            "interpretation": "Independently compounded component paths are not an additive wealth-linked decomposition.",
+        },
+    )
+    return figure
+
+
+def plot_returns(
+    perf_attrib_data: pd.DataFrame,
+    cost: pd.Series | None = None,
+    ax: Any = None,
+    *,
+    theme: str | None = None,
+    height: int = 420,
+) -> go.Figure:
+    """Plot component growth; explicit periodic costs adjust gross total returns once."""
+    total = perf_attrib_data["total_returns"]
+    paths = [
+        (
+            "Total returns" + (" (adjusted)" if cost is not None else ""),
+            ep.cum_returns(total if cost is None else total - cost),
+        ),
+        ("Cumulative specific returns", ep.cum_returns(perf_attrib_data["specific_returns"])),
+        ("Cumulative common returns", ep.cum_returns(perf_attrib_data["common_returns"])),
+    ]
+    if cost is not None:
+        paths.append(("Cumulative cost spent", -ep.cum_returns(cost)))
+    return _plot_lines(paths, "Time series of cumulative returns", "Returns", ax, theme, height)
+
+
+def plot_factor_contribution_to_perf(
+    perf_attrib_data: pd.DataFrame,
+    ax: Any = None,
+    title: str = "Cumulative common returns attribution",
+    *,
+    theme: str | None = None,
+    height: int = 420,
+) -> go.Figure:
+    """Preserve specific returns alongside factors, excluding named aggregate paths."""
+    components = perf_attrib_data.drop(
+        columns=["total_returns", "common_returns", "tilt_returns", "timing_returns"],
+        errors="ignore",
+    )
+    figure = _plot_lines(
+        [(str(name), ep.cum_returns(components[name])) for name in components],
+        title,
+        "Cumulative returns by factor",
+        ax,
+        theme,
+        height,
+    )
+    figure.add_hline(y=0, line_color="gray")
+    return figure
+
+
+def plot_risk_exposures(
+    exposures: pd.DataFrame,
+    ax: Any = None,
+    title: str = "Daily risk factor exposures",
+    *,
+    theme: str | None = None,
+    height: int = 420,
+) -> go.Figure:
+    """Render supplied exposures without fitting or compounding their loading values."""
+    figure = _plot_lines(
+        [(str(name), exposures[name]) for name in exposures],
+        title,
+        "Factor exposures",
+        ax,
+        theme,
+        height,
+    )
+    figure.update_layout(
+        meta={
+            "analysis": "supplied_holdings_exposures",
+            "interpretation": "NAV-weighted supplied loadings, not estimated regression betas.",
+        }
+    )
+    return figure
+
+
+def plot_alpha_returns(
+    alpha_returns: pd.Series,
+    ax: Any = None,
+    *,
+    theme: str | None = None,
+    height: int = 420,
+) -> go.Figure:
+    """Render ten explicit observed-value bins; count excluded nonfinite values."""
+    import plotly.graph_objects as go
+
+    from .plotting import _figure
+
+    values = alpha_returns.to_numpy(dtype=float, na_value=np.nan)
+    finite = values[np.isfinite(values)]
+    counts, edges = np.histogram(finite, bins=10)
+    figure = _figure("Histogram of alphas", "Observations", ax, {"theme": theme, "height": height})
+    figure.add_trace(
+        go.Bar(
+            x=(edges[1:] + edges[:-1]) / 2,
+            y=counts,
+            width=np.diff(edges),
+            name="Multi-factor alpha",
+        )
+    )
+    figure.add_vline(x=0, line_dash="dash", annotation_text="Zero")
+    if len(finite):
+        mean = float(np.mean(finite))
+        figure.add_vline(x=mean, annotation_text=f"Mean = {mean: 0.5f}")
+    figure.update_xaxes(title_text="Periodic specific return", tickformat=".2%")
+    figure.update_layout(
+        title_font_size=14,
+        meta={
+            "analysis": "supplied_holdings_specific_returns",
+            "n_observations": len(values),
+            "excluded_nonfinite": int(len(values) - len(finite)),
+            "bin_edges": edges.tolist(),
+        },
+    )
+    return figure

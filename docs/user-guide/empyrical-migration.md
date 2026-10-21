@@ -559,8 +559,45 @@ denominator and warns about the uncovered loadings; dollar and equivalent
 fractional inputs therefore agree. Unknown B exposure is still unknown, not
 proved zero. Missing whole loading dates retain the familiar warned sample
 exclusion. A high-turnover warning does not repair missing intraday exposures.
-Full Pyfolio attribution plotting, partitions and tear-sheet options remain
-separate unfinished acceptance, not implied by matching these tables.
+The same module provides `plot_returns`, `plot_alpha_returns`,
+`plot_factor_contribution_to_perf` and `plot_risk_exposures`. These return Plotly
+figures; remove a supplied Matplotlib `ax` and use `write_html` or `show`.
+Explicit periodic costs subtract from gross total returns once, before
+compounding; their separately plotted path is negative compounded cost.
+The factor plot retains `specific_returns` alongside factors, as the reference
+does, and omits total/common/tilt/timing aggregates. Specific-return histograms
+use ten explicit equal-width bins and count nonfinite exclusions.
+
+Run the complete familiar attribution report on the same supplied inputs:
+
+```bash
+uv run --extra viz python examples/holdings_factor_attribution.py --pyfolio-report pyfolio-attribution.html
+```
+
+This writes an offline full sheet and `pyfolio-attribution-specific-returns.html`.
+`ml4t.diagnostic.compat.pyfolio.tears.create_perf_attrib_tear_sheet` includes the
+summary/exposure tables, total/specific/common growth and factor-partition
+contribution/exposure panels. It preserves `transactions`, `pos_in_dollars`
+and `factor_partitions` input choices. Defaults retain Pyfolio's canonical
+style/sector members; pass `factor_partitions=None` to show every supplied
+factor. A custom mapping selects members while preserving input-column order.
+An empty mapping produces only the returns panel; it does not reserve blank
+axes. A named group with no matching supplied factor is visibly unavailable.
+
+Presentation differs explicitly. By default the function returns HTML, or the
+saved path when `output_file` is given, without triggering IPython display.
+`return_fig=True` returns the ordered list of Plotly figures rather than one
+Matplotlib figure. HTML output always contains the tables. `periods_per_year`
+sets table annualization explicitly; it does not annualize already compounded
+paths. `theme` uses Diagnostic's existing report themes.
+
+Actual Pyfolio 0.10.0 with Matplotlib 3.11.2 plots the histogram but then raises
+`AttributeError` while sorting rectangle legend handles. The factor/exposure
+plots draw their paths but raise `ValueError` while constructing an empty
+legend. Diagnostic compares those unmodified artist values and independent
+bin/path expectations; it does not reproduce the rendering exceptions or
+claim those reference calls completed. Complete attribution-report browser,
+artifact and platform qualification is recorded separately from table matches.
 
 ## Inspect benchmark fragility (unreleased)
 

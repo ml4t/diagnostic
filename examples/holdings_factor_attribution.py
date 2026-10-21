@@ -19,6 +19,11 @@ def main() -> None:
     parser.add_argument("--compare", action="store_true", help="Also call optional Empyrical")
     parser.add_argument("--compare-pyfolio", action="store_true", help="Also call optional Pyfolio")
     parser.add_argument("--report", type=Path, help="Write the existing native HTML report")
+    parser.add_argument(
+        "--pyfolio-report",
+        type=Path,
+        help="Write the familiar attribution sheet and a separate specific-return histogram",
+    )
     args = parser.parse_args()
     dates = pd.DatetimeIndex(["2025-07-07T20:00Z", "2025-07-08T20:00Z"])
     starts = pd.DatetimeIndex(["2025-07-03T20:00Z", "2025-07-07T20:00Z"])
@@ -102,8 +107,40 @@ def main() -> None:
             output_path=args.report,
         )
         print(f"Supplied-weight report: {args.report}")
+    if args.pyfolio_report:
+        from ml4t.diagnostic.compat.pyfolio import perf_attrib as pf
+        from ml4t.diagnostic.compat.pyfolio import tears
+        from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
+
+        positions = legacy_weights.unstack("ticker") * 1000
+        positions["cash"] = 0.0
+        figures = tears.create_perf_attrib_tear_sheet(
+            returns,
+            positions,
+            legacy_factors,
+            legacy_loadings,
+            factor_partitions=None,
+            return_fig=True,
+            periods_per_year=12,
+            output_file=args.pyfolio_report,
+        )
+        assert len(figures) == 3
+        np.testing.assert_allclose(figures[0].data[0].y, [0.03, 0.0197], atol=1e-15)
+        histogram = pf.plot_alpha_returns(contributions["specific_returns"])
+        assert sum(histogram.data[0].y) == 2
+        histogram_path = args.pyfolio_report.with_name(
+            args.pyfolio_report.stem + "-specific-returns.html"
+        )
+        combine_figures_to_html(
+            [histogram],
+            title="Supplied specific-return distribution",
+            output_file=histogram_path,
+            include_plotlyjs=True,
+        )
+        print(f"Familiar offline attribution sheet: {args.pyfolio_report}")
+        print(f"Specific-return histogram: {histogram_path}")
     packages = ("ml4t-diagnostic", "pandas", "polars", "numpy")
-    if args.report:
+    if args.report or args.pyfolio_report:
         packages += ("plotly",)
     print({name: version(name) for name in packages})
     print("Independent exposures, common/specific contributions and wealth-linked total passed")
