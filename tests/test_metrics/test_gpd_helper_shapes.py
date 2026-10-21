@@ -59,7 +59,7 @@ def test_single_column_helpers_keep_one_portfolio_shape_and_independent_density(
 
 
 def test_separate_price_produced_columns_keep_reference_fit_and_likelihood_contracts():
-    reference = pytest.importorskip("empyrical")
+    reference = pytest.importorskip("empyrical.stats")
     for _, values in loss_frame().items():
         np.testing.assert_allclose(
             ep.gpd_loglikelihood_minimizer_aligned(values),
