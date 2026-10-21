@@ -277,7 +277,7 @@ def test_real_published_full_sheet_runs_on_the_same_complete_account():
     plt.close(reference)
 
 
-def test_actual_reference_tied_nav_join_duplicates_trades_but_native_does_not():
+def test_real_published_tied_candidates_and_native_keep_two_actual_closes():
     legacy_utils = pytest.importorskip("pyfolio.utils")
     legacy_round_trips = pytest.importorskip("pyfolio.round_trips")
     dates = pd.DatetimeIndex(["2025-07-07"], tz="UTC")
@@ -289,10 +289,10 @@ def test_actual_reference_tied_nav_join_duplicates_trades_but_native_does_not():
     )
     estimate = legacy_utils.estimate_intraday(returns, positions, transactions)
     assert len(estimate) == 2
-    duplicated = legacy_round_trips.extract_round_trips(
+    reference = legacy_round_trips.extract_round_trips(
         transactions, portfolio_value=estimate.sum(axis=1) / (1 + returns)
     )
-    assert len(duplicated) == 4
+    assert len(reference) == 2
     with pytest.warns(UserWarning, match="Fewer"):
         report = pf.tears.create_round_trip_tear_sheet(
             returns, positions, transactions, estimate_intraday=True, return_fig=True
