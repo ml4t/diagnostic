@@ -57,7 +57,7 @@ def test_actual_portfolio_report_renders_supplied_fit_counts_units_and_boundary_
             ("performance",), returns=returns, metrics=supplied, periods_per_year=12
         )
     rows = model_table(html)
-    assert rows["Method"] == "peaks_over_threshold"
+    assert rows["Method"] == "Peaks over threshold"
     assert rows["Fit status"] == "ok"
     assert rows["Finite / supplied observations"] == "48 / 48"
     assert rows["Exceedances / probability denominator"] == "8 / 48"
@@ -121,3 +121,60 @@ def test_serialized_model_dictionary_is_rejected_before_report_metrics_or_output
     if route == "builder":
         assert builder.metrics == before
     assert output.read_text() == "Previous report"
+
+
+@pytest.mark.parametrize("width", [375, 1280])
+def test_rendered_fitted_tail_table_matches_prose_and_remains_readable_at_phone_width(
+    width, tmp_path
+):
+    import shutil
+
+    playwright_api = pytest.importorskip("playwright.sync_api")
+    executable = shutil.which("chromium") or shutil.which("google-chrome")
+    if executable is None:
+        pytest.skip("Actual Chrome/Chromium is required for browser typography checks")
+    returns = np.r_[
+        np.repeat(0.002, 40), -np.array([0.03, 0.04, 0.05, 0.07, 0.09, 0.12, 0.15, 0.2])
+    ]
+    fitted = estimate_gpd_tail_risk(returns, threshold=0.02)
+    path = tmp_path / "report.html"
+    generate_backtest_tearsheet(
+        returns=returns,
+        metrics={"gpd_tail_risk": fitted},
+        output_path=path,
+        include_statistical=False,
+    )
+    with playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(executable_path=executable, headless=True)
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1000})
+            page.goto(path.as_uri())
+            page.locator('button.workspace-tab[data-target="performance"]').click()
+            details = page.locator('details[data-section="distribution"]')
+            if details.count() and not details.evaluate("e=>e.open"):
+                details.locator("summary").click()
+            component = page.locator(".gpd-tail-fit")
+            component.wait_for(state="visible")
+            measured = component.evaluate("""e=>({
+                proseSize:parseFloat(getComputedStyle(e.querySelector('p')).fontSize),
+                proseFamily:getComputedStyle(e.querySelector('p')).fontFamily,
+                cells:[...e.querySelectorAll('th,td,caption')].map(x=>({size:parseFloat(getComputedStyle(x).fontSize),family:getComputedStyle(x).fontFamily})),
+                tableWidth:e.querySelector('table').getBoundingClientRect().width,
+                wrapperWidth:e.querySelector('.metrics-table-wrap').getBoundingClientRect().width,
+                width:e.getBoundingClientRect().width,
+                scroll:e.scrollWidth,client:e.clientWidth,
+                noteSize:parseFloat(getComputedStyle(e.querySelector('.gpd-tail-fit-note')).fontSize)
+            })""")
+            assert measured["width"] > 0 and measured["scroll"] <= measured["client"] + 1
+            assert measured["tableWidth"] <= measured["wrapperWidth"] + 1
+            assert all(cell["family"] == measured["proseFamily"] for cell in measured["cells"])
+            assert all(
+                0.8 * measured["proseSize"] <= cell["size"] <= measured["proseSize"]
+                for cell in measured["cells"]
+            )
+            if width == 375:
+                assert all(cell["size"] >= 14 for cell in measured["cells"])
+                assert measured["noteSize"] >= 13
+            component.screenshot(path=str(tmp_path / f"gpd-tail-fit-{width}.png"))
+        finally:
+            browser.close()

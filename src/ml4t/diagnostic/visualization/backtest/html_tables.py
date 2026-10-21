@@ -49,7 +49,13 @@ def create_gpd_tail_summary_html(fit: GPDTailRiskResult) -> str:
         return f"{value:.2%}"
 
     rows = [
-        ("Method", fit.method),
+        (
+            "Method",
+            {
+                "peaks_over_threshold": "Peaks over threshold",
+                "empyrical_raw_tail": "Empyrical raw tail",
+            }.get(fit.method, fit.method),
+        ),
         ("Fit status", fit.status),
         ("Finite / supplied observations", f"{fit.n_finite} / {fit.n_observations}"),
         ("Excluded observations", str(fit.n_excluded)),

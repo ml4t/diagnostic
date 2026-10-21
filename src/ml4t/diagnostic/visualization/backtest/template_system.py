@@ -1060,6 +1060,7 @@ TEARSHEET_CSS = """
     }
 
     .gpd-tail-fit tbody th {
+        width: 60%;
         padding: 5px 12px;
         font-weight: 500;
         border-bottom: 1px solid var(--c-border-light);
