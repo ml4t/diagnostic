@@ -19,7 +19,7 @@ FIXTURE = Path(__file__).parent / "data/zipline320_account.json"
 
 
 def _performance():
-    captured = json.loads(FIXTURE.read_text())
+    captured = json.loads(FIXTURE.read_text(encoding="utf-8"))
     frame = pd.DataFrame(captured["records"])
     frame.index = pd.DatetimeIndex(pd.to_datetime(frame.pop("date")))
     return frame

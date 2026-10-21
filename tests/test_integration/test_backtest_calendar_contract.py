@@ -150,7 +150,7 @@ def test_row_mode_reaches_html_with_resolved_metadata_and_no_hidden_calendar_fal
         include_statistical=False,
         output_path=destination,
     )
-    assert destination.read_text() == html
+    assert destination.read_text(encoding="utf-8") == html
     assert "calendar CME_Equity" not in html
 
 

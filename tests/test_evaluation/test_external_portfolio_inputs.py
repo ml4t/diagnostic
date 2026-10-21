@@ -291,7 +291,7 @@ def test_normalized_supplied_holdings_reach_the_existing_report(tmp_path):
     assert report.holdings.timeline["gross_exposure"].to_list() == [700.0, 550.0]
     output = tmp_path / "reported-holdings.html"
     report.save_html(output, include_plotlyjs=False)
-    assert "Portfolio Tear Sheet" in output.read_text()
+    assert "Portfolio Tear Sheet" in output.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
