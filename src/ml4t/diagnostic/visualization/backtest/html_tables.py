@@ -24,6 +24,71 @@ if TYPE_CHECKING:
     import polars as pl
 
     from ml4t.diagnostic.evaluation.portfolio_analysis.results import DrawdownPeriod
+    from ml4t.diagnostic.metrics.tail_risk import GPDTailRiskResult
+
+
+def _gpd_tail_fit(metrics: dict[str, Any] | None) -> GPDTailRiskResult | None:
+    from ml4t.diagnostic.metrics.tail_risk import GPDTailRiskResult
+
+    fit = metrics.get("gpd_tail_risk") if metrics is not None else None
+    if fit is not None and not isinstance(fit, GPDTailRiskResult):
+        raise TypeError("gpd_tail_risk must be a GPDTailRiskResult from estimate_gpd_tail_risk")
+    return fit
+
+
+def create_gpd_tail_summary_html(fit: GPDTailRiskResult) -> str:
+    """Display the supplied model's own sample, units and undefined/infinite risk."""
+
+    def loss(value: float) -> str:
+        if np.isnan(value):
+            return "Unavailable"
+        if np.isposinf(value):
+            return "Positive infinity"
+        if np.isneginf(value):
+            return "Negative infinity"
+        return f"{value:.2%}"
+
+    rows = [
+        (
+            "Method",
+            {
+                "peaks_over_threshold": "Peaks over threshold",
+                "empyrical_raw_tail": "Empyrical raw tail",
+            }.get(fit.method, fit.method),
+        ),
+        ("Fit status", fit.status),
+        ("Finite / supplied observations", f"{fit.n_finite} / {fit.n_observations}"),
+        ("Excluded observations", str(fit.n_excluded)),
+        ("Positive losses", str(fit.n_losses)),
+        (
+            "Exceedances / probability denominator",
+            f"{fit.n_exceedances} / {fit.probability_denominator}",
+        ),
+        ("Tail probability", f"{fit.tail_probability:.2%}"),
+        ("Threshold (positive periodic loss)", loss(fit.threshold)),
+        ("Scale (periodic loss)", loss(fit.scale)),
+        ("Shape (dimensionless)", f"{fit.shape:.4f}" if np.isfinite(fit.shape) else "Unavailable"),
+        ("Shape lower bound", f"{fit.shape_lower_bound:g}"),
+        ("At shape lower bound", "Yes" if fit.shape_at_lower_bound else "No"),
+        ("VaR (positive periodic loss)", loss(fit.value_at_risk)),
+        ("ES (positive periodic loss)", loss(fit.expected_shortfall)),
+    ]
+    body = "".join(
+        f'<tr><th scope="row">{html_mod.escape(label)}</th><td>{html_mod.escape(value)}</td></tr>'
+        for label, value in rows
+    )
+    return (
+        '<section class="gpd-tail-fit">'
+        "<p>Supplied GPD tail fit. Positive periodic loss units; not annualized.</p>"
+        '<div class="metrics-table-wrap"><table class="metrics-table">'
+        "<caption>Fitted generalized-Pareto tail risk</caption>"
+        '<thead><tr><th scope="col">Fitted tail quantity</th><th scope="col">Value</th></tr></thead>'
+        f"<tbody>{body}</tbody></table></div>"
+        '<p class="gpd-tail-fit-note">This report does not refit the supplied model. '
+        "Use a fit computed from the same returns. A boundary fit is not evidence of "
+        "model precision. Unavailable values are not zero risk; infinite ES denotes "
+        "divergence of the fitted model mean.</p></section>"
+    )
 
 
 def create_credibility_box_html(
