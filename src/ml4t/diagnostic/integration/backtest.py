@@ -6,13 +6,17 @@ import json
 import math
 import sqlite3
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset
 
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_integer
+from ml4t.diagnostic.integration._calendar import resolve_result_calendar
 from ml4t.diagnostic.integration.backtest_profile import (
     BacktestProfile,
 )
@@ -37,8 +41,8 @@ else:
         ) from exc
 
 
-def _resolve_calendar(result: BacktestResult, calendar: str | None) -> str | None:
-    return calendar or (result.config.resolved_calendar if result.config else None)
+def _resolve_calendar(result: BacktestResult, calendar: str | CalendarUnset | None) -> str | None:
+    return resolve_result_calendar(result, calendar)
 
 
 def _compact_rate(value: float | None) -> str | None:
@@ -196,7 +200,7 @@ def _build_report_metadata_from_result(
             if spec_dict.get("library_version") is not None
             else None
         ),
-        calendar=_resolve_calendar(result, None),
+        calendar=profile.resolved_calendar,
         execution_summary=execution_summary,
         cost_summary=cost_summary,
         data_summary=_build_data_summary(profile),
@@ -206,6 +210,11 @@ def _build_report_metadata_from_result(
 
 def _extract_daily_frame(result: BacktestResult, calendar: str | None) -> pl.DataFrame:
     resolved_calendar = _resolve_calendar(result, calendar)
+    if resolved_calendar is None:
+        equity = result.to_equity_dataframe()
+        return equity.select(pl.col("timestamp").alias("date")).with_columns(
+            result.to_returns_series().alias("return_pct"),
+        )
     session_aligned = result._auto_session_aligned(resolved_calendar)
     return result.to_daily_pnl(session_aligned=session_aligned)
 
@@ -268,12 +277,21 @@ def _normalize_tearsheet_metrics(
 
 def portfolio_analysis_from_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
+    *,
+    periods_per_year: int | None = None,
 ) -> PortfolioAnalysis:
     """Create a PortfolioAnalysis from a BacktestResult."""
     resolved_calendar = _resolve_calendar(result, calendar)
-    periods_per_year = get_annualization_factor(resolved_calendar)
+    if periods_per_year is None:
+        if resolved_calendar is None:
+            raise ValueError(
+                "periods_per_year is required when calendar=None retains observation returns"
+            )
+        periods_per_year = get_annualization_factor(resolved_calendar)
+    else:
+        periods_per_year = positive_integer(periods_per_year, "periods_per_year")
     daily_df = _extract_daily_frame(result, resolved_calendar)
 
     if daily_df.is_empty():
@@ -282,7 +300,7 @@ def portfolio_analysis_from_result(
         return PortfolioAnalysis(returns=np.array([]), periods_per_year=periods_per_year)
 
     date_col = "date" if "date" in daily_df.columns else "session_date"
-    dates = daily_df[date_col].to_list()
+    dates = daily_df[date_col]
     returns = daily_df["return_pct"].to_numpy()
 
     return PortfolioAnalysis(
@@ -295,8 +313,10 @@ def portfolio_analysis_from_result(
 
 def compute_metrics_from_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     confidence_intervals: bool = False,
+    *,
+    periods_per_year: int | None = None,
 ) -> dict[str, Any]:
     """Compute portfolio and trade metrics from a BacktestResult.
 
@@ -309,6 +329,7 @@ def compute_metrics_from_result(
         result=result,
         calendar=calendar,
         confidence_intervals=confidence_intervals,
+        periods_per_year=periods_per_year,
     )
     metrics = dict(profile.summary)
     if result.trade_analyzer is not None:
@@ -327,9 +348,11 @@ def compute_metrics_from_result(
 
 def analyze_backtest_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     confidence_intervals: bool = False,
+    *,
+    periods_per_year: int | None = None,
 ) -> BacktestProfile:
     """Create a lazy BacktestProfile from a BacktestResult."""
     return _analyze_backtest_result(
@@ -337,6 +360,7 @@ def analyze_backtest_result(
         calendar=calendar,
         benchmark=benchmark,
         confidence_intervals=confidence_intervals,
+        periods_per_year=periods_per_year,
     )
 
 
@@ -345,9 +369,10 @@ def profile_from_run_artifacts(
     *,
     predictions_path: str | Path | None = None,
     signals_path: str | Path | None = None,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     confidence_intervals: bool = False,
+    periods_per_year: int | None = None,
 ) -> BacktestProfile:
     """Build a BacktestProfile from backtest run artifacts."""
     artifact_dir = Path(backtest_dir)
@@ -455,6 +480,7 @@ def profile_from_run_artifacts(
         signals_override=signals_df,
         strategy_metadata_override=_build_strategy_metadata(spec, predictions_df, artifact_dir),
         data_sources=data_sources,
+        annualization_factor=periods_per_year,
     )
 
 
@@ -465,7 +491,7 @@ def generate_tearsheet_from_result(
     title: str | None = None,
     output_path: str | Path | None = None,
     include_statistical: bool = True,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
@@ -475,7 +501,15 @@ def generate_tearsheet_from_result(
     """Generate an HTML tearsheet, optionally excluding statistical inference."""
     from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
-    profile = analyze_backtest_result(result, calendar=calendar, benchmark=benchmark)
+    profile = analyze_backtest_result(
+        result, calendar=calendar, benchmark=benchmark, periods_per_year=periods_per_year
+    )
+    if (
+        report_metadata is not None
+        and report_metadata.calendar is not None
+        and report_metadata.calendar != profile.resolved_calendar
+    ):
+        raise ValueError("report metadata calendar conflicts with the resolved analysis calendar")
     effective_metadata = _build_report_metadata_from_result(
         result,
         profile,
@@ -483,8 +517,9 @@ def generate_tearsheet_from_result(
     )
     if report_metadata is not None:
         effective_metadata = report_metadata.merged_with(effective_metadata)
+    effective_metadata = replace(effective_metadata, calendar=profile.resolved_calendar)
     trades_df = result.to_trades_dataframe()
-    returns = result.to_daily_returns(calendar=calendar).to_numpy()
+    returns = profile.daily_returns.to_numpy()
     tearsheet_metrics = (
         _normalize_tearsheet_metrics(result, calendar=calendar) if periods_per_year is None else {}
     )
@@ -526,7 +561,7 @@ def generate_tearsheet_from_run_artifacts(
     template: Literal["quant_trader", "hedge_fund", "risk_manager", "full"] = "full",
     theme: Literal["default", "dark", "print", "presentation"] = "default",
     output_path: str | Path | None = None,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
@@ -541,7 +576,14 @@ def generate_tearsheet_from_run_artifacts(
         signals_path=signals_path,
         calendar=calendar,
         benchmark=benchmark,
+        periods_per_year=periods_per_year,
     )
+    if (
+        report_metadata is not None
+        and report_metadata.calendar is not None
+        and report_metadata.calendar != profile.resolved_calendar
+    ):
+        raise ValueError("report metadata calendar conflicts with the resolved analysis calendar")
     effective_metadata = _build_report_metadata_from_result(
         profile.result,
         profile,
@@ -553,6 +595,7 @@ def generate_tearsheet_from_run_artifacts(
     ).merged_with(effective_metadata)
     if report_metadata is not None:
         effective_metadata = report_metadata.merged_with(effective_metadata)
+    effective_metadata = replace(effective_metadata, calendar=profile.resolved_calendar)
 
     html = generate_backtest_tearsheet(
         profile=profile,

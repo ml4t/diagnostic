@@ -15,6 +15,7 @@ Integration points for `ml4t-data`, `ml4t-engineer`, and `ml4t-backtest`.
 
 - `backtest.py` - public bridge functions
 - `backtest_profile.py` - lazy profile object
+- `_calendar.py` - shared argument/feed/default calendar resolution; explicit None retains producer observations
 - `backtest_analytics.py` - normalized analytics assembly
 - `report_metadata.py` - report metadata model
 - `backtest_contract.py` - compatibility models for trade/result exchange

@@ -67,6 +67,40 @@ correction applies to subsequent source revisions. Portfolio input alignment,
 calendar selection and full Pyfolio/Alphalens capability coverage are separate
 requirements, not guarantees established by report generation.
 
+### Keep calendar omission distinct from disabling aggregation
+
+Unreleased after 0.1.9, the lazy Backtest bridge uses the shared calendar
+contract: an explicit argument overrides declared producer feed metadata, then
+the default is NYSE. Omitting `calendar` inherits that resolution. Explicit
+`calendar=None` instead keeps the producer's observation-level returns and exact
+timestamp keys, without daily/session aggregation. It does not mean "inherit the
+engine calendar". No return is reconstructed from NAV by this choice.
+
+For an existing `result = engine.run()`, choose the return scale explicitly:
+
+```pycon
+>>> from ml4t.diagnostic.integration import analyze_backtest_result
+>>> observed = analyze_backtest_result(result, calendar=None, periods_per_year=252)
+>>> observed.resolved_calendar is None
+True
+>>> observed.daily_returns.equals(result.to_returns_series().alias("daily_return"))
+True
+```
+
+Here 252 declares a daily trading-year convention for already-daily observations;
+use the scale appropriate to the actual return cadence. Observation-mode metrics
+and reports reject a missing scale. The same `periods_per_year` override reaches
+`compute_metrics_from_result`, `portfolio_analysis_from_result`, artifact profiles
+and HTML reports. Passing a descriptive report calendar that conflicts with the
+resolved analysis calendar is rejected before writing an output file.
+
+The runnable `examples/legacy_migration_comparison.py --task exposure` exercises
+this bridge on actual engine output. The captured calendar regression uses a
+Sunday-night CME run: omission retains the declared CME calendar while explicit
+None retains all three observed bars. Neither a selected scale nor three received
+bars establishes a complete exchange grid. The optional producer remains optional
+for ordinary supplied-return analysis.
+
 ## Choose a template
 
 Profile attribution bars and contributor rankings use signed cash P&L. The

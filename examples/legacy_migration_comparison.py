@@ -381,6 +381,10 @@ def show_backtest_exposure() -> None:
         assert len(result.fills) == 1
         assert result.fills[0].quantity == 10 and result.fills[0].price == 100
         assert result.fills[0].timestamp == prices["timestamp"][1]
+        observed = analyze_backtest_result(result, calendar=None, periods_per_year=252)
+        assert observed.resolved_calendar is None
+        assert observed.daily_returns.equals(result.to_returns_series().alias("daily_return"))
+        assert observed.periods_per_year == 252
         occupancy = analyze_backtest_result(result).occupancy
         last = occupancy["timeline"].row(-1, named=True)
         assert last["cash"] == 2000
@@ -613,7 +617,9 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
         from ml4t.diagnostic.visualization.signal import generate_event_returns_report
 
         assert result.overall.paths.height == 96 and result.groups is not None
-        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(result.groups.paths)
+        assert EventReturnsResult.from_json(result.to_json()).groups.paths.equals(
+            result.groups.paths
+        )
         path = generate_event_returns_report(result, output_file=output)
         output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
         print(f"Complete event-returns HTML: {path}")
