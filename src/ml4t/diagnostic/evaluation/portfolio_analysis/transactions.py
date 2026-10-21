@@ -14,6 +14,7 @@ import polars as pl
 from ml4t.diagnostic.utils.validation import _align_datetime_key_resolution
 
 from .frame_inputs import PortfolioInputData
+from .transaction_metrics import adjusted_return_expr, average_gross_book
 
 
 @dataclass
@@ -190,9 +191,7 @@ def analyze_transactions(
         gross = gross.with_columns(_clock(gross["date"], calendar, semantics, timezone=timezone))
         gross = gross.group_by("date", maintain_order=True).agg(pl.col("gross").last()).sort("date")
         timeline, gross = _align_datetime_key_resolution(timeline, gross, "date")
-        gross = gross.with_columns(
-            ((pl.col("gross") + pl.col("gross").shift(1)) / 2).alias("denominator")
-        )
+        gross = average_gross_book(gross)
         timeline = timeline.join(gross.select("date", "denominator"), on="date", how="left")
     else:
         timeline = timeline.with_columns(pl.col("beginning_nav").alias("denominator"))
@@ -233,7 +232,9 @@ def analyze_transactions(
                 .alias("incremental_cost_return")
             )
             .with_columns(
-                (pl.col("return") - pl.col("incremental_cost_return")).alias("net_return")
+                adjusted_return_expr(
+                    pl.col("return"), pl.col("incremental_cost"), pl.col("beginning_nav")
+                ).alias("net_return")
             )
         )
         scenarios.append(scenario)

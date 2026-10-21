@@ -15,11 +15,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
     calmar_ratio,
     max_drawdown,
 )
+from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import (
+    filled_notional_expr as _filled_notional_expr,
+)
 from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio, sortino_ratio
-
-
-def _filled_notional_expr() -> pl.Expr:
-    return pl.col("quantity").cast(pl.Float64).abs() * pl.col("price").abs() * pl.col("multiplier")
 
 
 def _implementation_cost_expr() -> pl.Expr:

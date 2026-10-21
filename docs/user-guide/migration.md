@@ -1476,6 +1476,51 @@ with the visualization dependencies installed. These checks cover the named
 supplied-input workflow, not Zipline extraction, lots, capacity or complete Pyfolio
 report parity.
 
+### Keep familiar Pyfolio transaction calculations
+
+Unreleased after 0.1.9, replace `from pyfolio import txn` with
+`from ml4t.diagnostic.compat.pyfolio import txn` for `map_transaction`,
+`make_transaction_frame`, `get_txn_vol`, `get_turnover` and
+`adjust_returns_for_slippage`. These pandas-facing adapters use the same native
+execution-value, gross-exposure and cost calculations; Pyfolio is not a runtime
+dependency. Use the native owned-account workflow above for exchange-session
+semantics, contract multipliers and reported beginning NAV.
+
+The adapter intentionally retains the legacy daily definitions: grouping by
+civil date in the input timezone, signed execution price for cash volume,
+absolute units for share volume, gross two-sided turnover, default `AGB` with
+the first previous book seeded at zero, and `portfolio_value` as the closing
+sum of signed positions plus cash. Slippage bps adjusts PnL using that closing
+value, not native beginning NAV. Existing net returns retain observed fees
+once. Metric-specific missingness and IEEE division by zero remain explicit
+legacy behavior; this is not the native positive-NAV normalization contract.
+
+The runnable `examples/pyfolio_transaction_adapters.py` supplies three daily
+observations, two cash-volume totals of 200 and two unit-volume totals of 2.
+Independent expected AGB turnover is `[2, 0, .4]`; 10bps extra slippage changes
+net returns `[.01, -.02, .03]` to `[.0098, -.02, .0298]`. Run without Pyfolio:
+
+```bash
+uv run python examples/pyfolio_transaction_adapters.py
+```
+
+The same sample and both denominator options are compared with published
+Pyfolio 0.10.0 using pandas 2.3.3; the reference package requires pandas below 3.
+From this source checkout, the optional reference command is:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --with pyfolio-reloaded==0.10.0 --with pandas==2.3.3 python examples/pyfolio_transaction_adapters.py --compare
+```
+
+Two deliberate corrections are not output-parity claims: nested transaction
+conversion preserves the actual timezone and nanoseconds rather than losing
+them through a datetime ndarray, and widened integer accumulation avoids
+signed-64-bit absolute-value overflow. An actually empty nested ledger returns
+an empty table instead of the reference's missing-column error. The reference
+tests cover intermediate amounts, prices, date keys, missingness and labels,
+not just aggregate correlation. These helpers do not yet qualify complete
+transaction tear sheets, intraday reconstruction, round trips or capacity.
+
 ### Consume a Zipline performance result without a legacy analytics dependency
 
 Unreleased after 0.1.9, `integration.zipline.portfolio_analysis_from_zipline()`
