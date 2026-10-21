@@ -1617,6 +1617,14 @@ contribution, completed-trade aggregation, existing trade-statistics integration
 Beta-prior uncertainty, intraday reconstruction and full legacy reports remain
 accepted work. The incomplete route is not a substitute for those workflows.
 
+The existing [completed-trade consumer](trade-analysis.md#preserve-execution-units-and-timing)
+now accepts same-instant closures, explicit point multipliers, actual zero/negative
+prices and signed cash-fee rebates. Producer-to-consumer tests pass these real
+FIFO rows through `TradeRecord` and `TradeAnalysis` without altering the execution
+quantity, prices or fees. Undefined price/duration ratios remain undefined;
+nanosecond instants survive metric tables and JSON. Automatic closing-fill
+aggregation, gross/net coverage selection and full report wiring remain unfinished.
+
 ### Consume a Zipline performance result without a legacy analytics dependency
 
 The familiar extraction call is also available as
