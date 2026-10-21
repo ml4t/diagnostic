@@ -521,6 +521,12 @@ Full-sample mean exposure defines tilt, not a forecast. Specific returns are
 unexplained returns, not evidence of skill. Without explicitly supplied cash
 contributions, cash remains in the specific residual.
 
+`result.to_dataframe()` returns an owned Polars contribution table with its
+temporal dtype. `result.to_dict()` exports exact ISO observation keys, including
+nanoseconds and timezone offsets. Explicit legacy Date labels remain dates;
+the export does not turn them into invented midnight instants. Modifying either
+export does not change the stored analytical result.
+
 Pass the native result as `metrics={"holdings_attribution": result}` to the
 existing [backtest report](backtest-tearsheets.md) function, builder or workspace
 export. It produces separate supplied-exposure, attribution, and loading-coverage

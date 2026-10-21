@@ -199,7 +199,7 @@ def test_nanosecond_account_keys_survive_native_result_export_without_python_dat
 def test_reordered_asset_factor_and_date_inputs_retain_the_same_owned_public_result(pandas_inputs):
     returns, weights, factors, loadings = inputs()
     expected = run((returns, weights, factors, loadings))
-    frames = (returns, weights.reverse(), factors.reverse(), loadings.reverse())
+    frames = (returns, weights.reverse(), factors.reverse(), loadings)
     if pandas_inputs:
         frames = tuple(frame.to_pandas() for frame in frames)
     result = run(frames)
@@ -208,3 +208,14 @@ def test_reordered_asset_factor_and_date_inputs_retain_the_same_owned_public_res
     exported = result.to_dataframe()
     exported.replace_column(1, pl.Series("market", [99.0, 99.0]))
     np.testing.assert_allclose(result.contributions["market"], [0.015, -0.02])
+
+
+def test_explicit_legacy_date_labels_are_exported_as_dates_not_invented_midnight_instants():
+    frames = tuple(frame.with_columns(pl.col("timestamp").dt.date()) for frame in inputs())
+    result = run(frames, timing="legacy_observed")
+    assert result.exposures["timestamp"].dtype == pl.Date
+    assert [row["timestamp"] for row in result.to_dict()["contributions"]] == [
+        "2025-07-07",
+        "2025-07-08",
+    ]
+    np.testing.assert_allclose(result.contributions["common_returns"], [0.02, -0.015])
