@@ -1077,7 +1077,14 @@ TEARSHEET_CSS = """
         font-size: 13px;
     }
 
-    .holdings-attribution-summary caption {
+    .gpd-tail-fit .metrics-table,
+    .gpd-tail-fit .metrics-table thead th {
+        font-size: inherit;
+        font-family: inherit;
+    }
+
+    .holdings-attribution-summary caption,
+    .gpd-tail-fit caption {
         text-align: left;
         font-weight: 600;
         padding: 8px 12px;
@@ -1090,7 +1097,20 @@ TEARSHEET_CSS = """
         border-bottom: 1px solid var(--c-border-light);
     }
 
-    .holdings-attribution-summary p {
+    .gpd-tail-fit tbody th {
+        width: 60%;
+        padding: 5px 12px;
+        font-weight: 500;
+        border-bottom: 1px solid var(--c-border-light);
+        overflow-wrap: anywhere;
+    }
+
+    .gpd-tail-fit td {
+        overflow-wrap: anywhere;
+    }
+
+    .holdings-attribution-summary p,
+    .gpd-tail-fit-note {
         font-size: 13px;
         line-height: 1.5;
     }
@@ -1101,6 +1121,7 @@ TEARSHEET_CSS = """
         .holdings-attribution-summary .metrics-table td {
             font-size: 14px;
         }
+        .gpd-tail-fit { font-size: 14px; }
     }
 
     /* -- Metrics Table ----------------------------------- */

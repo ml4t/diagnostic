@@ -106,6 +106,10 @@ def export_workspaces(
     from .html_tables import _supplied_holdings_attribution
 
     _supplied_holdings_attribution(metrics, returns)
+    if metrics is not None and "gpd_tail_risk" in metrics:
+        from .html_tables import _gpd_tail_fit
+
+        _gpd_tail_fit(metrics)
     # Resolve bundle name to workspace tuple
     if isinstance(workspaces, str):
         if workspaces not in EXPORT_BUNDLES:

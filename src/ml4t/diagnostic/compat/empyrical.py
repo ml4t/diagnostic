@@ -63,6 +63,19 @@ from ml4t.diagnostic.compat._rolling import (
     rolling_window,
     up,
 )
+from ml4t.diagnostic.compat._tail_risk import (
+    gpd_es_calculator,
+    gpd_loglikelihood,
+    gpd_loglikelihood_factory,
+    gpd_loglikelihood_minimizer_aligned,
+    gpd_loglikelihood_scale_and_shape,
+    gpd_loglikelihood_scale_and_shape_factory,
+    gpd_loglikelihood_scale_only,
+    gpd_loglikelihood_scale_only_factory,
+    gpd_risk_estimates,
+    gpd_risk_estimates_aligned,
+    gpd_var_calculator,
+)
 from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as _native
 from ml4t.diagnostic.metrics.risk_adjusted import (
     _drawdown_from_wealth,
@@ -389,10 +402,33 @@ SIMPLE_STAT_FUNCS = [
     conditional_value_at_risk,
 ]
 
+FACTOR_STAT_FUNCS = [
+    excess_sharpe,
+    alpha,
+    beta,
+    beta_fragility_heuristic,
+    gpd_risk_estimates,
+    capture,
+    up_capture,
+    down_capture,
+]
+
 
 __all__ = [
     "compute_exposures",
     "perf_attrib",
+    "FACTOR_STAT_FUNCS",
+    "gpd_es_calculator",
+    "gpd_loglikelihood",
+    "gpd_loglikelihood_factory",
+    "gpd_loglikelihood_minimizer_aligned",
+    "gpd_loglikelihood_scale_and_shape",
+    "gpd_loglikelihood_scale_and_shape_factory",
+    "gpd_loglikelihood_scale_only",
+    "gpd_loglikelihood_scale_only_factory",
+    "gpd_risk_estimates",
+    "gpd_risk_estimates_aligned",
+    "gpd_var_calculator",
     "beta_fragility_heuristic",
     "beta_fragility_heuristic_aligned",
     "SIMPLE_STAT_FUNCS",

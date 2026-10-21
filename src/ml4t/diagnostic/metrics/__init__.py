@@ -59,6 +59,7 @@ from ml4t.diagnostic.metrics.risk_adjusted import (
     sharpe_ratio_with_ci,
     sortino_ratio,
 )
+from ml4t.diagnostic.metrics.tail_risk import GPDTailRiskResult, estimate_gpd_tail_risk
 from ml4t.diagnostic.metrics.uncertainty import (
     compute_auc_uncertainty,
     compute_ic_uncertainty,
@@ -66,6 +67,8 @@ from ml4t.diagnostic.metrics.uncertainty import (
 )
 
 __all__ = [
+    "GPDTailRiskResult",
+    "estimate_gpd_tail_risk",
     "BetaFragilityResult",
     "beta_fragility",
     "hit_rate",
