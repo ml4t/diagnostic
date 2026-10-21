@@ -49,6 +49,7 @@ def subday_analysis(*, plots: bool) -> dict:
 def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
     dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
     assets = ["A", "B", "C", "D"]
+    asset_groups = {"A": "first", "B": "first", "C": "second", "D": "second"}
     prices = pd.DataFrame(
         {
             asset: [100.0 + 11 * i + 3 * day + ((day * (i + 2)) % 7) for day in range(6)]
@@ -88,7 +89,7 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
         factor,
         forward,
         quantiles=2,
-        groups={"A": "first", "B": "first", "C": "second", "D": "second"},
+        groups=asset_groups,
         max_loss=0.5,
     )
     price_panel = prepare_signal_panel(
@@ -97,7 +98,7 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
         horizons={"1D": 1, "2D": 2},
         price_basis="raw",
         calendar=None,
-        groups={"A": "first", "B": "first", "C": "second", "D": "second"},
+        groups=asset_groups,
         quantiles=2,
         max_loss=0.5,
     )
@@ -117,7 +118,7 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
         periods=(1, 2),
         quantiles=2,
         filter_zscore=None,
-        groupby={"A": "first", "B": "first", "C": "second", "D": "second"},
+        groupby=asset_groups,
         max_loss=0.5,
         price_basis="raw",
         calendar=None,
@@ -188,6 +189,7 @@ def main(*, plots: bool = False, engineer_outcomes: bool = False) -> None:
             outcomes,
             horizon_col="horizon",
             feed_spec=feed,
+            groups=asset_groups,
             quantiles=2,
             max_loss=0.5,
         )
