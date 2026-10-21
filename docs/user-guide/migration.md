@@ -1612,9 +1612,8 @@ Using the integer directly as the reference's symbol also triggers a row-upcast
 TypeError on these inputs. Native IDs stay integers; the reference comparison
 uses the explicit one-to-one display-label mapping, not a changed economic sample.
 
-NAV contribution, completed-trade aggregation, automatic trade-statistics integration,
-Beta-prior uncertainty, intraday reconstruction and full legacy reports remain
-accepted work. The incomplete route is not a substitute for those workflows.
+NAV contribution, intraday reconstruction and full legacy reports remain accepted
+work. The incomplete route is not a substitute for those workflows.
 
 For a non-flat book, pass `initial_state="supplied"`, `opening_lots` and
 `opening_as_of`. The opening table requires stable `asset` IDs and signed remaining
@@ -1646,13 +1645,39 @@ reclassify hypothetical gains as actual wins. Original opening/mark tables remai
 available on the result. These are source-qualified, unreleased routes, not a
 claim that published 0.1.9 accepts these arguments.
 
+`result.completed_trades()` aggregates entry-lot segments into one observation per
+actual closing fill. The example's two segments therefore give one trade, with
+absolute entry notional 1220 and gross/net lot returns 220/1220 and 194/1220.
+They are not the mean of segment returns, and neither ratio is a portfolio NAV
+contribution. The average entry price is an analytical projection, not a new
+execution. Exact rational quantity/cash columns retain components before derived
+Float64 conversion; original execution prices remain in the source segments.
+
+`result.to_trade_analysis(pnl="net")` feeds those observations to the existing
+`TradeAnalysis` statistics, without a second summary implementation. Native
+`TradeMetrics` still defaults to price return; this bridge explicitly selects
+PnL over absolute entry notional. Unknown selected PnL raises by default. Select
+`pnl="gross"` when fees are unknown, or explicitly choose `missing="exclude"` and
+inspect `source_metadata` for excluded counts. Known PnL from a carried lot with
+unknown entry time stays in PnL statistics, but duration summaries report only
+known durations and their count. No fictitious zero-day holding period is added.
+
+`result.win_probability()` reports a separate Beta(1,1) posterior for strictly
+positive PnL on the same closing-fill sample. One winning observation gives
+Beta(2,1), posterior mean 2/3 and equal-tail 95% interval
+`[sqrt(.025), sqrt(.975)]`. Break-even observations are nonwins; an empty known
+sample retains the declared uniform prior. Missing-PnL handling is explicit.
+The existing frequentist `TradeStatistics.win_rate` is unchanged. Synthetic rows
+are excluded from tables/statistics/posteriors unless `include_synthetic=True`
+is explicitly selected; they remain labeled and do not alter actual realization.
+
 The existing [completed-trade consumer](trade-analysis.md#preserve-execution-units-and-timing)
 now accepts same-instant closures, explicit point multipliers, actual zero/negative
 prices and signed cash-fee rebates. Producer-to-consumer tests pass these real
 FIFO rows through `TradeRecord` and `TradeAnalysis` without altering the execution
 quantity, prices or fees. Undefined price/duration ratios remain undefined;
-nanosecond instants survive metric tables and JSON. Automatic closing-fill
-aggregation, gross/net coverage selection and full report wiring remain unfinished.
+nanosecond instants survive metric tables and JSON. Full legacy report wiring,
+NAV contributions and intraday reconstruction remain unfinished.
 
 ### Consume a Zipline performance result without a legacy analytics dependency
 

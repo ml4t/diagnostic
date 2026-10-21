@@ -77,7 +77,7 @@ their definitions. A trade's supplied PnL includes its cash costs; prices alread
 reflect execution-price slippage, which must not be charged a second time.
 
 Same-instant entry/exit is valid with zero duration. Negative duration and
-reversed entry/exit chronology remain errors. `TradeMetrics.return_pct` uses
+reversed entry/exit chronology remain errors. `TradeMetrics.return_pct` defaults to
 absolute entry-price magnitude and is undefined (`None`) for zero entry price;
 `pnl_per_day` is undefined for zero duration. Defined cash PnL is retained in
 statistics and summaries even when a ratio is undefined. These are price and
@@ -87,7 +87,18 @@ Pandas nanosecond timestamps and durations retain their precision in JSON and
 metric tables. Plain Python datetime inputs cannot recover nanoseconds already
 lost upstream. Actual fractional-fill reconstruction is described in the
 [FIFO migration workflow](migration.md#match-actual-fractional-fifo-lots-from-an-explicitly-flat-book);
-non-flat opening inventory and complete round-trip reports remain separate work.
+including supplied non-flat opening inventory and known-at marks. Complete
+round-trip reports remain separate work.
+
+`RoundTripResult.to_trade_analysis()` aggregates matched lots into actual closing-fill
+observations and explicitly selects net PnL divided by summed absolute entry
+notional. Choose `pnl="gross"` explicitly when fees are unknown; missing selected
+PnL otherwise raises unless exclusion is requested with coverage. This analytical
+return basis does not change native price-return defaults or become a NAV return.
+Known PnL with unknown opening time remains usable through nullable
+`TradeMetrics.duration`; duration summaries include only `n_known_durations` and
+remain unknown if none are available. Single/constant-PnL samples have undefined
+skewness/kurtosis (`None`), rather than NaN standardized moments.
 
 See the [evaluation API surface](../api/index.md#evaluation-workflows)
 for `TradeAnalysis` and the book's

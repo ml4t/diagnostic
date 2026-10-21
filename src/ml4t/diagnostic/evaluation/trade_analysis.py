@@ -80,6 +80,7 @@ Example - Integration with SHAP diagnostics:
 from __future__ import annotations
 
 import heapq
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, SupportsFloat, cast
 
@@ -161,7 +162,18 @@ class TradeMetrics(BaseModel):
         ..., allow_inf_nan=False, description="Actual average exit price"
     )
     pnl: float = Field(..., allow_inf_nan=False, description="Realized profit/loss")
-    duration: timedelta = Field(..., description="Time between entry and exit")
+    duration: timedelta | None = Field(
+        ..., description="Known elapsed duration, or unknown entry time"
+    )
+    return_basis: Literal["price", "entry_notional"] = Field(
+        "price", description="Native price return or explicit analytical PnL/entry-notional return"
+    )
+    entry_notional: float | None = Field(
+        None,
+        ge=0.0,
+        allow_inf_nan=False,
+        description="Absolute matched entry cash notional for the explicit analytical return basis",
+    )
     direction: Literal["long", "short"] | None = Field(None, description="Trade direction")
 
     # Optional fields (from TradeRecord)
@@ -179,9 +191,9 @@ class TradeMetrics(BaseModel):
 
     @field_validator("duration")
     @classmethod
-    def validate_duration_positive(cls, v: timedelta) -> timedelta:
+    def validate_duration_positive(cls, v: timedelta | None) -> timedelta | None:
         """Retain real zero-duration trades and reject reversed chronology."""
-        if v < timedelta(0):
+        if v is not None and v < timedelta(0):
             raise ValueError(f"Duration must be positive or zero, got {v}")
         return v
 
@@ -200,7 +212,9 @@ class TradeMetrics(BaseModel):
         return _preserve_trade_duration(value)
 
     @field_serializer("duration", mode="wrap", when_used="json")
-    def serialize_duration(self, value: timedelta, handler: SerializerFunctionWrapHandler) -> Any:
+    def serialize_duration(
+        self, value: timedelta | None, handler: SerializerFunctionWrapHandler
+    ) -> Any:
         return (
             value.isoformat()
             if isinstance(value, pd.Timedelta) and value.nanoseconds
@@ -227,6 +241,8 @@ class TradeMetrics(BaseModel):
         Example:
             >>> metrics.return_pct  # 0.0333 = 3.33%
         """
+        if self.return_basis == "entry_notional":
+            return self.pnl / self.entry_notional if self.entry_notional else None
         if self.entry_price == 0:
             return None
         if self.direction == "long":
@@ -238,12 +254,12 @@ class TradeMetrics(BaseModel):
             return abs(self.exit_price - self.entry_price) / abs(self.entry_price)
 
     @property
-    def duration_seconds(self) -> float:
+    def duration_seconds(self) -> float | None:
         """Elapsed seconds, including retained pandas nanosecond residuals."""
-        return _trade_duration_seconds(self.duration)
+        return _trade_duration_seconds(self.duration) if self.duration is not None else None
 
     @property
-    def duration_hours(self) -> float:
+    def duration_hours(self) -> float | None:
         """Duration in hours.
 
         Returns:
@@ -252,10 +268,10 @@ class TradeMetrics(BaseModel):
         Example:
             >>> metrics.duration_hours  # 120.5
         """
-        return self.duration_seconds / 3600.0
+        return self.duration_seconds / 3600.0 if self.duration_seconds is not None else None
 
     @property
-    def duration_days(self) -> float:
+    def duration_days(self) -> float | None:
         """Duration in days.
 
         Returns:
@@ -264,7 +280,7 @@ class TradeMetrics(BaseModel):
         Example:
             >>> metrics.duration_days  # 5.02
         """
-        return self.duration_seconds / 86400.0
+        return self.duration_seconds / 86400.0 if self.duration_seconds is not None else None
 
     @property
     def pnl_per_day(self) -> float | None:
@@ -279,7 +295,7 @@ class TradeMetrics(BaseModel):
         Example:
             >>> metrics.pnl_per_day  # 100.0 (earned $100/day)
         """
-        if self.duration_days == 0:
+        if not self.duration_days:
             return None
         return self.pnl / self.duration_days
 
@@ -374,6 +390,8 @@ class TradeMetrics(BaseModel):
                     "fees": pl.Float64,
                     "slippage": pl.Float64,
                     "return_pct": pl.Float64,
+                    "return_basis": pl.String,
+                    "entry_notional": pl.Float64,
                     "duration_hours": pl.Float64,
                     "duration_days": pl.Float64,
                     "pnl_per_day": pl.Float64,
@@ -395,6 +413,8 @@ class TradeMetrics(BaseModel):
                 "fees": trade.fees,
                 "slippage": trade.slippage,
                 "return_pct": trade.return_pct,
+                "return_basis": trade.return_basis,
+                "entry_notional": trade.entry_notional,
                 "duration_hours": trade.duration_hours,
                 "duration_days": trade.duration_days,
                 "pnl_per_day": trade.pnl_per_day,
@@ -402,7 +422,18 @@ class TradeMetrics(BaseModel):
             data.append(trade_dict)
 
         frame = pl.DataFrame(
-            data, schema_overrides={"return_pct": pl.Float64, "pnl_per_day": pl.Float64}
+            data,
+            schema_overrides=dict.fromkeys(
+                (
+                    "return_pct",
+                    "pnl_per_day",
+                    "entry_notional",
+                    "duration_seconds",
+                    "duration_hours",
+                    "duration_days",
+                ),
+                pl.Float64,
+            ),
         )
         for name in ("timestamp", "entry_timestamp"):
             values = [getattr(trade, name) for trade in trades]
@@ -526,9 +557,14 @@ class TradeStatistics(BaseModel):
     profit_factor: float | None = Field(None, description="Gross profit / gross loss")
 
     # Duration metrics
-    avg_duration_days: float = Field(..., ge=0.0, description="Average duration in days")
-    median_duration_days: float = Field(..., ge=0.0, description="Median duration in days")
-    duration_quartiles: dict[str, float] = Field(
+    avg_duration_days: float | None = Field(
+        ..., ge=0.0, description="Average known duration in days"
+    )
+    median_duration_days: float | None = Field(
+        ..., ge=0.0, description="Median known duration in days"
+    )
+    n_known_durations: int = Field(0, ge=0, description="Trades contributing observed duration")
+    duration_quartiles: dict[str, float | None] = Field(
         ..., description="Duration quartiles (q25, q50, q75)"
     )
 
@@ -571,9 +607,12 @@ class TradeStatistics(BaseModel):
         try:
             from scipy import stats as scipy_stats
 
-            pnl_values = pnl_series.to_numpy()
-            pnl_skewness = float(scipy_stats.skew(pnl_values))
-            pnl_kurtosis = float(scipy_stats.kurtosis(pnl_values))
+            if pnl_series.n_unique() < 2:
+                pnl_skewness, pnl_kurtosis = None, None
+            else:
+                pnl_values = pnl_series.to_numpy()
+                pnl_skewness = float(scipy_stats.skew(pnl_values))
+                pnl_kurtosis = float(scipy_stats.kurtosis(pnl_values))
         except ImportError:
             pnl_skewness = None
             pnl_kurtosis = None
@@ -603,11 +642,28 @@ class TradeStatistics(BaseModel):
 
         # Duration metrics
         duration_series = df["duration_days"]
-        avg_duration_days = float(cast(SupportsFloat, duration_series.mean()))
-        median_duration_days = float(cast(SupportsFloat, duration_series.median()))
-        dur_q25 = float(cast(SupportsFloat, duration_series.quantile(0.25)))
-        dur_q50 = float(cast(SupportsFloat, duration_series.quantile(0.50)))
-        dur_q75 = float(cast(SupportsFloat, duration_series.quantile(0.75)))
+        known_duration = duration_series.drop_nulls()
+        avg_duration_days = (
+            float(cast(SupportsFloat, known_duration.mean())) if len(known_duration) else None
+        )
+        median_duration_days = (
+            float(cast(SupportsFloat, known_duration.median())) if len(known_duration) else None
+        )
+        dur_q25 = (
+            float(cast(SupportsFloat, known_duration.quantile(0.25)))
+            if len(known_duration)
+            else None
+        )
+        dur_q50 = (
+            float(cast(SupportsFloat, known_duration.quantile(0.50)))
+            if len(known_duration)
+            else None
+        )
+        dur_q75 = (
+            float(cast(SupportsFloat, known_duration.quantile(0.75)))
+            if len(known_duration)
+            else None
+        )
         duration_quartiles = {"q25": dur_q25, "q50": dur_q50, "q75": dur_q75}
 
         return TradeStatistics(
@@ -625,6 +681,7 @@ class TradeStatistics(BaseModel):
             avg_loser=avg_loser,
             profit_factor=profit_factor,
             avg_duration_days=avg_duration_days,
+            n_known_durations=len(known_duration),
             median_duration_days=median_duration_days,
             duration_quartiles=duration_quartiles,
         )
@@ -681,12 +738,24 @@ class TradeStatistics(BaseModel):
         # Duration
         lines.append("Duration Metrics")
         lines.append("-" * 50)
-        lines.append(f"Average: {self.avg_duration_days:.2f} days")
-        lines.append(f"Median: {self.median_duration_days:.2f} days")
+        lines.append(f"Known duration observations: {self.n_known_durations}/{self.n_trades}")
         lines.append(
-            f"Q25: {self.duration_quartiles['q25']:.2f} | "
-            f"Q50: {self.duration_quartiles['q50']:.2f} | "
-            f"Q75: {self.duration_quartiles['q75']:.2f}"
+            f"Average: {self.avg_duration_days:.2f} days"
+            if self.avg_duration_days is not None
+            else "Average: unknown"
+        )
+        lines.append(
+            f"Median: {self.median_duration_days:.2f} days"
+            if self.median_duration_days is not None
+            else "Median: unknown"
+        )
+        lines.append(
+            " | ".join(
+                f"{label.upper()}: {value:.2f}"
+                if value is not None
+                else f"{label.upper()}: unknown"
+                for label, value in self.duration_quartiles.items()
+            )
         )
 
         return "\n".join(lines)
@@ -719,6 +788,7 @@ class TradeStatistics(BaseModel):
                     "avg_loser": self.avg_loser,
                     "profit_factor": self.profit_factor,
                     "avg_duration_days": self.avg_duration_days,
+                    "n_known_durations": self.n_known_durations,
                     "median_duration_days": self.median_duration_days,
                     "dur_q25": self.duration_quartiles["q25"],
                     "dur_q50": self.duration_quartiles["q50"],
@@ -777,10 +847,11 @@ class TradeAnalysis:
 
     def __init__(
         self,
-        trades: list[TradeRecord],
+        trades: list[TradeRecord] | list[TradeMetrics],
         filter_config: dict[str, Any] | None = None,
         *,
         filters: TradeFilters | None = None,
+        source_metadata: dict[str, Any] | None = None,
     ):
         """Initialize analyzer with trades.
 
@@ -801,7 +872,13 @@ class TradeAnalysis:
             raise ValueError("Cannot analyze empty trade list")
 
         # Convert to TradeMetrics
-        self.trades = [TradeMetrics.from_trade_record(t) for t in trades]
+        self.trades = [
+            t.model_copy(deep=True)
+            if isinstance(t, TradeMetrics)
+            else TradeMetrics.from_trade_record(t)
+            for t in trades
+        ]
+        self.source_metadata = deepcopy(source_metadata) if source_metadata is not None else None
 
         # Normalize filters to dict format (TradeFilters takes precedence)
         if filters is not None:
@@ -867,7 +944,7 @@ class TradeAnalysis:
         def matches(t: TradeMetrics) -> bool:
             if symbols is not None and t.symbol not in symbols:
                 return False
-            if min_dur is not None and t.duration.total_seconds() < min_dur:
+            if min_dur is not None and (t.duration_seconds is None or t.duration_seconds < min_dur):
                 return False
             if min_pnl is not None and t.pnl < min_pnl:
                 return False

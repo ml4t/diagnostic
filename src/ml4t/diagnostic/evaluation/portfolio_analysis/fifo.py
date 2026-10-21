@@ -6,23 +6,28 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from fractions import Fraction
 from math import isfinite
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import pandas as pd
 import polars as pl
 
 from .fifo_inputs import clock, instant, mark_inventory, opening_inventory, price_dtype
 
+if TYPE_CHECKING:
+    from ml4t.diagnostic.evaluation.trade_analysis import TradeAnalysis
+
 
 @dataclass
 class RoundTripResult:
-    """Matched lot segments and remaining unmarked lots, with original executions.
+    """Matched lot segments, remaining inventory and optional known-at valuation.
 
     Cash calculations are Float64. Matching units use exact rational arithmetic
     on decimal input representations, avoiding both integer truncation and
     phantom residual lots. quantity_exact retains the exact rational units when
     the numeric quantity cannot represent a large integer or tiny fraction.
     Commission is allocated once; execution slippage is already in actual prices.
+    Exact cash component columns support closing-fill aggregation before rounding.
+    Hypothetical closes stay separate from actual segments and remaining inventory.
     """
 
     segments: pl.DataFrame
@@ -33,6 +38,60 @@ class RoundTripResult:
     opening_lots: pl.DataFrame | None = None
     marks: pl.DataFrame | None = None
     synthetic_segments: pl.DataFrame | None = None
+
+    def completed_trades(self, *, include_synthetic: bool = False) -> pl.DataFrame:
+        """Aggregate matched segments into one actual closing-fill observation.
+
+        Lot return divides summed PnL by summed absolute entry notional, not the
+        average of segment returns or portfolio NAV. Optional hypothetical rows
+        remain explicitly synthetic. Unknown basis/time/fees stay unknown.
+        """
+        from .fifo_summary import completed_trades
+
+        return completed_trades(self, include_synthetic=include_synthetic)
+
+    def to_trade_analysis(
+        self,
+        *,
+        pnl: Literal["gross", "net"] = "net",
+        missing: str = "raise",
+        include_synthetic: bool = False,
+    ) -> TradeAnalysis:
+        """Use existing trade statistics with explicit cash view and sample coverage.
+
+        Unknown selected PnL raises by default, or is explicitly excluded with
+        coverage. Known PnL with unknown entry time remains in PnL statistics;
+        duration summaries use only known durations, without inventing zero days.
+        """
+        from .fifo_summary import to_trade_analysis
+
+        return to_trade_analysis(
+            self, pnl=pnl, missing=missing, include_synthetic=include_synthetic
+        )
+
+    def win_probability(
+        self,
+        *,
+        pnl: Literal["gross", "net"] = "net",
+        missing: str = "raise",
+        include_synthetic: bool = False,
+        confidence: float = 0.95,
+    ) -> dict[str, Any]:
+        """Beta(1,1) posterior over strictly positive closing-fill PnL.
+
+        Break-even observations are nonwins. Empty known samples retain the
+        declared prior. Synthetic observations are excluded unless requested.
+        Existing native frequentist win_rate is unchanged.
+        """
+        from .fifo_summary import win_probability
+
+        return win_probability(
+            self,
+            pnl=pnl,
+            missing=missing,
+            include_synthetic=include_synthetic,
+            confidence=confidence,
+        )
 
 
 @dataclass
@@ -230,6 +289,16 @@ def reconstruct_round_trips(
                     "gross_pnl": _cash(pnl),
                     "commission": _cash(commission),
                     "net_pnl": _cash(net),
+                    "entry_notional": _cash(invested),
+                    **{
+                        name + "_exact": str(value) if value is not None else None
+                        for name, value in (
+                            ("gross_pnl", pnl),
+                            ("net_pnl", net),
+                            ("commission", commission),
+                            ("entry_notional", invested),
+                        )
+                    },
                     "gross_lot_return": _cash(pnl / invested)
                     if invested and pnl is not None
                     else None,
@@ -297,6 +366,11 @@ def reconstruct_round_trips(
         "gross_pnl": pl.Float64,
         "commission": pl.Float64,
         "net_pnl": pl.Float64,
+        "entry_notional": pl.Float64,
+        **{
+            name + "_exact": pl.String
+            for name in ("gross_pnl", "net_pnl", "commission", "entry_notional")
+        },
         "gross_lot_return": pl.Float64,
         "net_lot_return": pl.Float64,
     }
@@ -421,6 +495,16 @@ def _mark_open_lots(
                         "gross_pnl": _cash(pnl),
                         "net_pnl": _cash(net),
                         "commission": _cash(lot.commission),
+                        "entry_notional": _cash(invested),
+                        **{
+                            name + "_exact": str(value) if value is not None else None
+                            for name, value in (
+                                ("gross_pnl", pnl),
+                                ("net_pnl", net),
+                                ("commission", lot.commission),
+                                ("entry_notional", invested),
+                            )
+                        },
                         "gross_lot_return": _cash(pnl / invested)
                         if invested and pnl is not None
                         else None,
@@ -456,6 +540,7 @@ def _mark_open_lots(
     )
     result.metrics["n_known_unrealized_net_lots"] = sum(value is not None for value in net_values)
     result.metadata.update(
+        open_lots="actual remaining inventory, separately marked when known; never implicitly closed",
         marks="last supplied timestamp at/before as_of; quote age is explicit, not guaranteed current",
         marked_notional="signed units * price * multiplier; not inferred cash or NAV",
         synthetic_close="separate hypothetical closes, zero additional closing fee; actual inventory/realized PnL unchanged"

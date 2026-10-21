@@ -34,6 +34,15 @@ def main() -> None:
     print(result.segments)
     print(result.open_lots)
     print("FIFO gross220/net194; remaining3@110 with6entry fees, not a fabricated close")
+    completed = result.completed_trades()
+    statistics = result.to_trade_analysis().compute_statistics()
+    assert completed.height == statistics.n_trades == 1
+    assert completed["entry_notional"].to_list() == [1220.0]
+    assert statistics.total_pnl == 194.0
+    posterior = result.win_probability()
+    assert posterior["n_observations"] == 1
+    assert posterior["mean"] == 2 / 3
+    print("One closing fill, not two independent trades; net lot return194/1220, Beta(2,1)")
     marked = analysis.compute_round_trips(
         initial_state="flat",
         marks=pd.DataFrame(
