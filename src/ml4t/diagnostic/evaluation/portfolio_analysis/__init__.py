@@ -49,12 +49,14 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
     PortfolioMetrics,
     RollingMetricsResult,
 )
+from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import TransactionAnalysisResult
 
 __all__ = [
     # Main class
     "PortfolioAnalysis",
     "HoldingsAnalysisResult",
     "PortfolioInputData",
+    "TransactionAnalysisResult",
     # Result classes
     "PortfolioMetrics",
     "RollingMetricsResult",

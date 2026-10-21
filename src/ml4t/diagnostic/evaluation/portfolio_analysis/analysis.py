@@ -20,7 +20,7 @@ Example:
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import replace
 from inspect import signature
@@ -67,6 +67,7 @@ from .results import (
     PortfolioMetrics,
     RollingMetricsResult,
 )
+from .transactions import TransactionAnalysisResult, analyze_transactions
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -261,6 +262,29 @@ class PortfolioAnalysis:
     def input_data(self) -> PortfolioInputData | None:
         """Return immutable supplied-frame provenance, or None for the array constructor."""
         return self._input_data
+
+    def compute_transaction_analysis(
+        self,
+        *,
+        turnover_denom: str = "beginning_nav",
+        turnover_method: str = "gross",
+        incremental_bps: Sequence[float] = (0.0, 10.0),
+    ) -> TransactionAnalysisResult:
+        """Analyze actual supplied fills, explicit turnover and extra cash-bps costs.
+
+        Requires from_frames inputs. Named calendars use the declared FeedSpec
+        timestamp semantics and aggregate to exchange sessions; calendar=None
+        matches exact observation keys without calendar resampling. Missing NAV
+        retains raw notional/cost dollars but cannot define a nonzero cost return.
+        """
+        if self._input_data is None:
+            raise ValueError("transaction analysis requires owned from_frames inputs")
+        return analyze_transactions(
+            self._input_data,
+            turnover_denom=turnover_denom,
+            turnover_method=turnover_method,
+            incremental_bps=incremental_bps,
+        )
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:
@@ -947,6 +971,8 @@ class PortfolioAnalysis:
         self,
         theme: str | None = None,
         cost_info: dict[str, str] | None = None,
+        *,
+        transactions: TransactionAnalysisResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -958,6 +984,9 @@ class PortfolioAnalysis:
             Plot theme ("default", "dark", "print", "presentation")
         cost_info : dict[str, str] | None
             Deprecated legacy parameter. Retained for backward compatibility.
+        transactions : TransactionAnalysisResult, optional
+            Explicitly prepared actual-fill turnover and incremental cost scenarios.
+            Computed results are rendered without selecting financial methods again.
 
         Returns
         -------
@@ -974,7 +1003,9 @@ class PortfolioAnalysis:
             and self._input_data.metadata["complete_snapshots"]
         ):
             holdings = self.compute_holdings_analysis()
-        return create_portfolio_dashboard(self, theme=theme, holdings=holdings)
+        return create_portfolio_dashboard(
+            self, theme=theme, holdings=holdings, transactions=transactions
+        )
 
 
 __all__ = ["PortfolioAnalysis"]

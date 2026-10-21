@@ -139,7 +139,7 @@ nonfinite or nonpositive declared multipliers raise an error. Direct
 Legacy inputs with no multiplier declaration retain cash-per-unit prices; they
 do not establish support for contract prices quoted in points.
 
-Filled notional is absolute quantity times execution price times multiplier.
+Filled notional is the absolute cash value of quantity times execution price times multiplier.
 Slippage quoted in price points uses the same multiplier; commission is already
 cash and is not multiplied again. In the tested one-contract example, price
 100 and multiplier 50 produce $5,000 notional and 0.50 turnover against $10,000
@@ -151,6 +151,17 @@ These activity ratios use the NAV at the matched observed timestamp. They do
 not establish exchange-session aggregation, Pyfolio's average-gross-book
 denominator, or beginning-session-NAV return scenarios. Those workflows require
 separate input and calendar contracts.
+For supplied accounts, the unreleased native
+[transaction workflow](migration.md#analyze-actual-transactions-and-incremental-costs)
+provides explicit beginning-NAV/average-gross-book turnover and extra-bps scenarios.
+It does not change this profile's matched-observation default.
+
+Saved target weights do not establish executed quantities, prices or account
+cash. Unreleased artifact loading now leaves execution and occupancy panels
+unavailable when `fills.parquet` or `portfolio_state.parquet` is absent, rather
+than manufacturing fills at price 1 or deriving cash as NAV times one minus gross
+weight. Saved weights remain available as intended signals. Real execution and
+account-state artifacts continue to take precedence.
 
 Trade profit factor divides gross positive lifecycle cash P&L by gross loss
 magnitude. Empty or all-flat samples have an unavailable `0/0` ratio, displayed

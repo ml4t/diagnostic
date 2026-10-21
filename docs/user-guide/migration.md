@@ -1390,9 +1390,87 @@ No execution is reconstructed from portfolio weights.
 The existing `--task holdings` and `--task holdings-report` migration examples now
 use this boundary. With `viz`, `account_analysis.create_tear_sheet()` also prepares
 the declared complete holdings for the existing portfolio dashboard. Source input
-normalization is not qualification of all transaction-cost, Zipline, round-trip,
+normalization is not qualification of all Zipline, round-trip,
 attribution or full legacy report workflows; those remain accepted implementation
 and integration work.
+
+### Analyze actual transactions and incremental costs
+
+Unreleased after 0.1.9, supplied accounts can prepare actual execution activity
+through `compute_transaction_analysis()`. This recipe uses two real-format
+execution records and explicitly synthetic net returns/NAV. Neither NAV changes
+nor target weights determine the returns or fills.
+
+```python
+import pandas as pd
+import polars as pl
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+cost_dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+cost_analysis = PortfolioAnalysis.from_frames(
+    pd.Series([.01, -.02, .03], index=cost_dates),
+    positions=pd.DataFrame({"A": [200., 400., 600.]}, index=cost_dates),
+    valuations=pd.DataFrame({
+        "date": pd.DatetimeIndex(["2025-07-03T00:00Z", *cost_dates]),
+        "equity": [1000., 1100., 1200., 1300.],
+    }),
+    transactions=pd.DataFrame({
+        "timestamp": pd.to_datetime(["2025-07-06T23:30Z", "2025-07-07T00:30Z"]),
+        "asset": ["A", "A"], "quantity": [.5, -.5], "price": [2., 2.],
+        "multiplier": [100., 100.], "commission": [.1, .1], "slippage": [0., 0.],
+    }),
+    complete_snapshots=True, transaction_timestamp_col="timestamp",
+    feed_spec={
+        "timestamp_col": "date", "entity_col": "asset", "calendar": "CME_Equity",
+        "time_contract_version": 2, "timestamp_semantics": "session_label",
+    },
+    periods_per_year=252,
+)
+cost_result = cost_analysis.compute_transaction_analysis(incremental_bps=[0, 10])
+assert cost_result.timeline["turnover"].to_list() == [.2, 0, 0]
+extra_cost = cost_result.scenarios.filter(pl.col("incremental_bps") == 10)
+assert extra_cost["incremental_cost_return"][0] == .0002
+assert extra_cost["net_return"][0] == .0098
+print("200 actual notional / 1000 beginning NAV; extra 10bps costs .0002 return")
+```
+
+The native turnover default is gross traded cash notional divided by beginning
+reported NAV. `turnover_method="one_way"` explicitly halves that ratio. Choose
+`turnover_denom="average_gross_book"` for the mean of adjacent complete closing
+gross exposures. The first gross-book denominator is unknown without a previous
+snapshot; it is not silently half the first exposure. Full-clock and active-fill
+means/counts are both returned. These choices differ from Pyfolio's default
+average-gross-book turnover and its first-observation convention. No single
+turnover definition is implied by the name alone.
+
+Notional is `abs(quantity * price * multiplier)`, including negative execution
+prices. Commission is cash; slippage is a per-unit price difference multiplied
+by absolute quantity and multiplier. Unknown commission or slippage leaves
+observed total cost unknown. A zero-fill ledger proves zero activity, whereas
+an absent ledger cannot. Missing or nonpositive NAV leaves raw dollars available
+and active cost-return scenarios undefined. A known zero extra cost leaves net
+returns unchanged even without NAV. Already-observed fees are never subtracted
+from supplied net returns again. Extra-bps scenarios always use beginning NAV,
+even when turnover uses gross book or the one-way convention.
+
+With a named calendar, declared `session_label` return/NAV keys stay labels;
+timezone-aware event instants use actual exchange intervals, including overnight
+sessions and scheduled breaks. The Sunday and Monday fills above share the
+July 7 CME session. Event-time returns compound within a session; original
+observations and exact execution timestamps remain in the results. Off-session
+fills or fills without a matching return session raise instead of disappearing.
+With `calendar=None`, no exchange grouping runs: fills must match exact return
+observation keys, not a guessed civil date. No intraday NAV is reconstructed.
+
+For an interactive report, use `cost_analysis.create_tear_sheet(transactions=cost_result)`.
+The existing report renders prepared notional, turnover, known costs and extra-cost
+scenarios without selecting methods again. Returns-only/holdings reports remain
+independently usable. From the source checkout, run
+`uv run python examples/legacy_migration_comparison.py --task transactions`, or
+`uv run python examples/legacy_migration_comparison.py --task transactions-report --output transactions-report.html`
+with the visualization dependencies installed. These checks cover the named
+supplied-input workflow, not Zipline extraction, lots, capacity or complete Pyfolio
+report parity.
 
 ### Analyze prepared holdings on observed keys
 

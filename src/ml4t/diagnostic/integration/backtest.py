@@ -423,16 +423,16 @@ def profile_from_run_artifacts(
         portfolio_state = _portfolio_state_from_parquet(portfolio_state_path)
         data_sources["portfolio_state"] = "artifact"
     else:
-        portfolio_state = _portfolio_state_from_weights(weights_df, equity_curve)
-        data_sources["portfolio_state"] = "reconstructed from weights"
+        portfolio_state = []
+        data_sources["portfolio_state"] = "unavailable (no account-state artifact)"
 
     fills_path = artifact_dir / "fills.parquet"
     if fills_path.exists():
         fills = _fills_from_parquet(fills_path)
         data_sources["fills"] = "artifact"
     else:
-        fills = _fills_from_weights(weights_df, equity_curve)
-        data_sources["fills"] = "reconstructed from weights (no real execution data)"
+        fills = []
+        data_sources["fills"] = "unavailable (no execution artifact)"
 
     result = BacktestResult(
         trades=_trades_from_dataframe(trades_df),
@@ -896,6 +896,10 @@ def _infer_active_start_timestamp(
             if not active_weights.is_empty():
                 candidates.append(_to_datetime(active_weights[weight_ts_col].min()))
 
+    if len({value.tzinfo is None for value in candidates}) > 1:
+        # Session/date labels and event instants have no common undeclared zone.
+        # Retain observations rather than guessing a trimming boundary.
+        return None
     return min(candidates) if candidates else None
 
 
@@ -949,121 +953,6 @@ def _align_timestamp_precision(*dfs: pl.DataFrame) -> tuple[pl.DataFrame, ...]:
             df = df.with_columns(pl.col("timestamp").cast(target))
         out.append(df)
     return tuple(out)
-
-
-def _portfolio_state_from_weights(
-    weights_df: pl.DataFrame,
-    equity_curve: list[tuple[datetime, float]],
-) -> list[tuple[datetime, float, float, float, float, int]]:
-    if weights_df.is_empty() or not equity_curve:
-        return []
-
-    weights = (
-        weights_df.rename(
-            {
-                "symbol": "asset",
-                "weight": "signal_value",
-            }
-        )
-        if "symbol" in weights_df.columns
-        else weights_df.rename({"weight": "signal_value"})
-    )
-    summary = (
-        weights.group_by("timestamp")
-        .agg(
-            [
-                pl.col("signal_value").abs().sum().alias("gross_weight"),
-                pl.col("signal_value").sum().alias("net_weight"),
-                (pl.col("signal_value").abs() > 1e-9).sum().cast(pl.Int32).alias("open_positions"),
-            ]
-        )
-        .sort("timestamp")
-    )
-    equity_df = pl.DataFrame(
-        {
-            "timestamp": [timestamp for timestamp, _ in equity_curve],
-            "equity": [float(value) for _, value in equity_curve],
-        }
-    )
-    equity_df, summary = _align_timestamp_precision(equity_df, summary)
-    timeline = (
-        equity_df.join(summary, on="timestamp", how="left")
-        .with_columns(
-            [
-                pl.col("gross_weight").fill_null(0.0),
-                pl.col("net_weight").fill_null(0.0),
-                pl.col("open_positions").fill_null(0).cast(pl.Int32),
-            ]
-        )
-        .with_columns(
-            [
-                (pl.col("equity") * pl.col("gross_weight")).alias("gross_exposure"),
-                (pl.col("equity") * pl.col("net_weight")).alias("net_exposure"),
-                (pl.col("equity") * (1.0 - pl.col("gross_weight"))).alias("cash"),
-            ]
-        )
-        .select(
-            [
-                "timestamp",
-                "equity",
-                "cash",
-                "gross_exposure",
-                "net_exposure",
-                "open_positions",
-            ]
-        )
-    )
-    return [tuple(row) for row in timeline.iter_rows()]
-
-
-def _fills_from_weights(
-    weights_df: pl.DataFrame,
-    equity_curve: list[tuple[datetime, float]],
-) -> list[Fill]:
-    if weights_df.is_empty() or not equity_curve or "symbol" not in weights_df.columns:
-        return []
-
-    weights = (
-        weights_df.sort(["symbol", "timestamp"])
-        .with_columns(
-            (pl.col("weight") - pl.col("weight").shift(1).fill_null(0.0).over("symbol")).alias(
-                "weight_delta"
-            )
-        )
-        .filter(pl.col("weight_delta").abs() > 1e-6)
-    )
-    if weights.is_empty():
-        return []
-
-    equity_df = pl.DataFrame(
-        {
-            "timestamp": [timestamp for timestamp, _ in equity_curve],
-            "equity": [float(value) for _, value in equity_curve],
-        }
-    )
-    weights, equity_df = _align_timestamp_precision(weights, equity_df)
-    enriched = weights.join(equity_df, on="timestamp", how="left").with_columns(
-        pl.col("equity").fill_null(strategy="forward").fill_null(strategy="backward")
-    )
-
-    fills: list[Fill] = []
-    for index, row in enumerate(enriched.iter_rows(named=True)):
-        delta = float(row["weight_delta"])
-        timestamp = _to_datetime(row["timestamp"])
-        fills.append(
-            Fill(
-                order_id=f"weights-{index}",
-                rebalance_id=timestamp.isoformat(),
-                asset=str(row["symbol"]),
-                side=OrderSide.BUY if delta > 0 else OrderSide.SELL,
-                quantity=abs(delta) * float(row["equity"] or 0.0),
-                price=1.0,
-                timestamp=timestamp,
-                commission=0.0,
-                slippage=0.0,
-            )
-        )
-    return fills
 
 
 def _build_strategy_metadata(

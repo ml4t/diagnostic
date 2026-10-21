@@ -647,6 +647,58 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
 
 
+def show_supplied_transactions(output: Path | None = None) -> None:
+    """Actual overnight fills, explicit turnover and extra costs, without a broker."""
+    import polars as pl
+
+    dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.01, -0.02, 0.03], index=dates),
+        positions=pd.DataFrame({"A": [200.0, 400.0, 600.0]}, index=dates),
+        valuations=pd.DataFrame(
+            {
+                "date": pd.DatetimeIndex(["2025-07-03T00:00Z", *dates]),
+                "equity": [1000.0, 1100.0, 1200.0, 1300.0],
+            }
+        ),
+        transactions=pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2025-07-06T23:30Z", "2025-07-07T00:30Z"]),
+                "asset": ["A", "A"],
+                "quantity": [0.5, -0.5],
+                "price": [2.0, 2.0],
+                "multiplier": [100.0, 100.0],
+                "commission": [0.1, 0.1],
+                "slippage": [0.0, 0.0],
+            }
+        ),
+        complete_snapshots=True,
+        feed_spec={
+            "timestamp_col": "date",
+            "entity_col": "asset",
+            "calendar": "CME_Equity",
+            "time_contract_version": 2,
+            "timestamp_semantics": "session_label",
+        },
+        transaction_timestamp_col="timestamp",
+        periods_per_year=252,
+    )
+    activity = analysis.compute_transaction_analysis(incremental_bps=[0, 10])
+    np.testing.assert_allclose(activity.timeline["turnover"], [0.2, 0, 0])
+    np.testing.assert_allclose(
+        activity.scenarios.filter(pl.col("incremental_bps") == 10)["net_return"],
+        [0.0098, -0.02, 0.03],
+    )
+    print(activity.executions.select("timestamp", "session", "filled_notional"))
+    print(activity.timeline)
+    print(activity.scenarios)
+    print("200 traded / 1000 beginning NAV = .2 gross turnover; 10 extra bps = .0002 return")
+    print("Supplied net returns already include observed fees; only extra cost is subtracted")
+    if output is not None:
+        analysis.create_tear_sheet(transactions=activity).save_html(output, include_plotlyjs=True)
+        print(f"Actual transaction HTML: {output}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -663,20 +715,22 @@ def main() -> None:
             "holdings-report",
             "events",
             "event-returns",
+            "transactions",
+            "transactions-report",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report, events or event-returns",
+        help="HTML path for --task holdings-report, transactions-report, events or event-returns",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "events", "event-returns"):
+    if task in ("holdings-report", "transactions-report", "events", "event-returns"):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -686,6 +740,13 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
+    if task in ("transactions", "transactions-report"):
+        show_supplied_transactions(
+            arguments.output or Path("transactions-report.html")
+            if task == "transactions-report"
+            else None
+        )
+        return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
         return
