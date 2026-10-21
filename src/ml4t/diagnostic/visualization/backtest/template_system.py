@@ -1047,6 +1047,38 @@ TEARSHEET_CSS = """
         font-weight: 600;
     }
 
+    .gpd-tail-fit .metrics-table,
+    .gpd-tail-fit .metrics-table thead th {
+        font-size: inherit;
+        font-family: inherit;
+    }
+
+    .gpd-tail-fit caption {
+        text-align: left;
+        font-weight: 600;
+        padding: 8px 12px;
+    }
+
+    .gpd-tail-fit tbody th {
+        padding: 5px 12px;
+        font-weight: 500;
+        border-bottom: 1px solid var(--c-border-light);
+        overflow-wrap: anywhere;
+    }
+
+    .gpd-tail-fit td {
+        overflow-wrap: anywhere;
+    }
+
+    .gpd-tail-fit-note {
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    @media (max-width: 600px) {
+        .gpd-tail-fit { font-size: 14px; }
+    }
+
     /* -- Metrics Table ----------------------------------- */
     .metrics-table-wrap {
         overflow-x: auto;

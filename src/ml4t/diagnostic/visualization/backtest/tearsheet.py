@@ -792,6 +792,8 @@ def generate_backtest_tearsheet(
         Pre-computed metrics dict with keys like:
         - sharpe, cagr, max_drawdown, win_rate, profit_factor
         - dsr_probability, min_trl, etc. for statistical validity
+        - gpd_tail_risk: a supplied GPDTailRiskResult from the same returns;
+          displayed beneath the return-distribution chart without refitting
     output_path : str or Path, optional
         If provided, save HTML to this path
     template : {"quant_trader", "hedge_fund", "risk_manager", "full"}
@@ -848,6 +850,10 @@ def generate_backtest_tearsheet(
     ...     n_trials=100,  # For DSR
     ... )
     """
+    if metrics is not None and "gpd_tail_risk" in metrics:
+        from .html_tables import _gpd_tail_fit
+
+        _gpd_tail_fit(metrics)
     periods_per_year = _resolve_periods_per_year(periods_per_year, profile)
     if profile is not None:
         if periods_per_year != profile.periods_per_year:
@@ -1267,6 +1273,12 @@ def _generate_section(
             content.update_layout(title=None, autosize=True, width=None)
             content.update_layout(margin={"t": 20, "l": 48, "r": 24, "b": 40})
             body_html = '<div class="chart-container">' + _figure_to_clean_html(content) + "</div>"
+        if section_name == "distribution" and metrics is not None:
+            from .html_tables import _gpd_tail_fit, create_gpd_tail_summary_html
+
+            fit = _gpd_tail_fit(metrics)
+            if fit is not None:
+                body_html += create_gpd_tail_summary_html(fit)
         if section_name == "occupancy_overview" and profile is not None:
             coverage = profile.occupancy["coverage"]
             status = html_mod.escape(coverage["status"])
@@ -3038,6 +3050,10 @@ class BacktestTearsheet:
                 stacklevel=2,
             )
 
+        if "gpd_tail_risk" in self.metrics:
+            from .html_tables import _gpd_tail_fit
+
+            _gpd_tail_fit(self.metrics)
         # Use stored template directly (not recreated from name) to preserve
         # enable_section/disable_section customizations
         periods_per_year = _resolve_periods_per_year(self.periods_per_year, self.profile)

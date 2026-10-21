@@ -834,7 +834,7 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
 
 
-def show_empyrical_tail() -> None:
+def show_empyrical_tail(output: Path | None = None) -> None:
     """Inspect native and familiar tail-risk methods on the same supplied account."""
     from dataclasses import asdict
 
@@ -860,6 +860,18 @@ def show_empyrical_tail() -> None:
     print("Named raw-tail method (different fit and denominator):", asdict(familiar))
     print("Familiar five-field projection:", ep.gpd_risk_estimates(supplied, var_p=0.02).tolist())
     print("No annualization or calendar inference; failed fits are undefined, not zero risk")
+    if output is not None:
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        generate_backtest_tearsheet(
+            returns=supplied.to_numpy(),
+            metrics={"gpd_tail_risk": native},
+            output_path=output,
+            include_statistical=False,
+            periods_per_year=252,
+            title="Supplied GPD tail-risk analysis",
+        )
+        print(f"Portfolio report with supplied GPD fit: {output}")
 
 
 def main() -> None:
@@ -889,14 +901,16 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report, events or event-returns",
+        help="HTML path for --task holdings-report, events, event-returns or empyrical-tail",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "events", "event-returns"):
+    if task in ("holdings-report", "events", "event-returns") or (
+        task == "empyrical-tail" and arguments.output is not None
+    ):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -919,7 +933,7 @@ def main() -> None:
         show_empyrical_rolling()
         return
     if task == "empyrical-tail":
-        show_empyrical_tail()
+        show_empyrical_tail(arguments.output)
         return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))

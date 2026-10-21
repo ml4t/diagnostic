@@ -465,6 +465,16 @@ counts, loss/exceedance counts and the actual probability denominator.
 uv run python examples/legacy_migration_comparison.py --task empyrical-tail
 ```
 
+With the optional visualization dependencies, add `--output gpd-tail-risk.html`
+to generate the existing portfolio report with the supplied fit beneath its
+return-distribution chart. Function, builder and performance-workspace export
+routes accept `metrics={"gpd_tail_risk": result}` when `result` is the native
+`GPDTailRiskResult` computed from the same returns. The report displays the fit
+without refitting it, including sample counts, boundary fits, undefined risk and
+positive infinite ES. These loss values are per observation and are not scaled
+by the report's annualization setting. A serialized dictionary or the familiar
+five-field array is not a substitute for the native result object.
+
 The native `peaks_over_threshold` method fits strictly positive excesses over
 the chosen threshold. When omitted, the threshold is the nonnegative 90th
 percentile of all finite losses, where loss is `-return`. The exceedance
