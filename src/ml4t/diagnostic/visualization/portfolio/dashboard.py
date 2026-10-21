@@ -204,7 +204,7 @@ class PortfolioTearSheet:
             border-bottom: 2px solid {COLORS["amber"]};
             padding-bottom: 10px;
         }}
-        h2 {{
+        h2, h3 {{
             color: {COLORS["slate"]};
             margin-top: 0;
             font-size: 16px;
