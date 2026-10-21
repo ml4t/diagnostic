@@ -185,8 +185,10 @@ def estimate_gpd_tail_risk(
     if method == "empyrical_raw_tail":
         selected_threshold = 0.2
         count = 0
-        if len(positive) < 3:
-            return result("insufficient_exceedances", len(positive))
+        if len(values) < 3 or not len(positive):
+            return result(
+                "insufficient_exceedances", int(np.count_nonzero(positive >= selected_threshold))
+            )
         while selected_threshold > 1e-9:
             sample = positive[positive >= selected_threshold]
             count = len(sample)

@@ -492,6 +492,8 @@ Choose `method="empyrical_raw_tail"` to inspect the familiar method. It fits
 raw positive losses, not excesses, at thresholds starting at 0.2 and halving
 toward 1e-9; probabilities use the loss-only sample. Its positive-shape
 selection and optimizer initialization differ from the native method. These
+rules require three supplied observations, not three losses or exceedances.
+Small fitted samples remain visible in the result counts. The two
 methods need not produce equal parameter or risk estimates. The familiar
 `gpd_risk_estimates` and `_aligned` calls project the named method into the
 five legacy fields; a supplied pandas Series retains the reference's positional

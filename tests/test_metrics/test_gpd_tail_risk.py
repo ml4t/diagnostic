@@ -214,3 +214,16 @@ def test_failed_raw_tail_fit_reports_the_threshold_that_actually_selected_its_sa
     assert result.n_exceedances == int((-values >= result.threshold).sum())
     assert result.threshold > 1e-9
     assert np.isnan(result.value_at_risk) and np.isnan(result.expected_shortfall)
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_familiar_method_does_not_discard_real_losses_in_a_long_mostly_profitable_sample(count):
+    values = np.r_[np.repeat(0.01, 40), -0.01 * np.arange(1, count + 1)]
+    fitted = metrics.estimate_gpd_tail_risk(values, method="empyrical_raw_tail")
+    assert fitted.status == "ok" and fitted.n_losses == count
+    assert fitted.n_exceedances == int((-values >= fitted.threshold).sum())
+    assert fitted.probability_denominator == count
+    assert (
+        fitted.value_at_risk > fitted.threshold and fitted.expected_shortfall > fitted.value_at_risk
+    )
+    assert np.isfinite(ep.gpd_risk_estimates(values)).all()
