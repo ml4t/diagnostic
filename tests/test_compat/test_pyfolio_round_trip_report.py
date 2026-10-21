@@ -317,3 +317,55 @@ def test_actual_reference_one_sided_density_crashes_on_real_extracted_trades():
     import matplotlib.pyplot as plt
 
     plt.close("all")
+
+
+def _two_day_tied_account():
+    dates = pd.date_range("2025-07-07", periods=2, tz="UTC")
+    returns = pd.Series([0.0, 0.005], index=dates)
+    positions = pd.DataFrame({"A": [0.0, 0.0], "cash": [1000.0, 1005.0]}, index=dates)
+    transactions = pd.DataFrame(
+        {
+            "symbol": ["A"] * 5,
+            "amount": [1.0, -2.0, 1.0, 1.0, -1.0],
+            "price": [100.0, 100.0, 100.0, 100.0, 105.0],
+        },
+        index=pd.to_datetime(
+            [
+                "2025-07-07T14:00Z",
+                "2025-07-07T15:00Z",
+                "2025-07-07T16:00Z",
+                "2025-07-08T14:00Z",
+                "2025-07-08T15:00Z",
+            ]
+        ),
+    )
+    return returns, positions, transactions
+
+
+def test_tied_first_day_does_not_replace_next_days_actual_profit_with_zero():
+    with pytest.warns(UserWarning, match="Fewer"):
+        report = pf.tears.create_round_trip_tear_sheet(
+            *_two_day_tied_account(), estimate_intraday=True, return_fig=True
+        )
+    observations = report.round_trip_statistics.observations
+    assert observations["gross_pnl"].to_list() == [0.0, 0.0, 5.0]
+    assert observations["gross_nav_contribution"].to_list() == pytest.approx([0.0, 0.0, 0.005025])
+    assert report.round_trip_statistics.metadata["denominator"]["values"] == pytest.approx(
+        [1000.0, 1000 / 1.005]
+    )
+
+
+def test_real_reference_tied_first_day_misassigns_later_profit_by_join_index():
+    legacy_utils = pytest.importorskip("pyfolio.utils")
+    legacy_round_trips = pytest.importorskip("pyfolio.round_trips")
+    returns, positions, transactions = _two_day_tied_account()
+    estimate = legacy_utils.estimate_intraday(returns, positions, transactions)
+    assert len(estimate) == 3
+    reference = legacy_round_trips.extract_round_trips(
+        transactions, portfolio_value=estimate.sum(axis=1) / (1 + returns)
+    )
+    assert reference["pnl"].to_list() == [0.0, 0.0, 5.0]
+    # Published merge creates five joined rows, then aligns them to three old indices.
+    # The day2 five-cash profit is replaced by a day1 zero in the return projection.
+    assert reference["returns"].to_list() == [0.0, 0.0, 0.0]
+    test_tied_first_day_does_not_replace_next_days_actual_profit_with_zero()

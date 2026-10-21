@@ -2022,6 +2022,11 @@ Tied peak candidates remain separate exposure observations. Their equal daily
 denominator is used once per actual closing trade, not joined repeatedly to
 multiply the trade count. The candidate clocks and collapse count remain in
 metadata; disagreement between candidate denominators raises explicitly.
+The shared two-day regression exposes a published Pyfolio 0.10.0 error: after
+two day-one peak candidates, its positional join assigns a day-one zero to the
+next day's return observation despite retaining the 5-unit cash profit. Diagnostic
+keeps the three actual closes and the selected-denominator return `5 / (1000 / 1.005) = 0.005025`.
+That denominator is the explicit legacy estimate, not the supplied net return.
 
 All five tables and lifetime, probability, holding-time, PnL, return and asset/sector
 panels use native calculations. The familiar probability is the explicit
