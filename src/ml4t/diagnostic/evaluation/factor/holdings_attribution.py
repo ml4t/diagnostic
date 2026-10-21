@@ -127,7 +127,7 @@ def _exposures(
         _validate_asset_ids(frame["asset"])
         if frame.select(pl.struct("timestamp", "asset").is_duplicated().any()).item():
             raise ValueError(f"{label} timestamp/asset keys must be unique")
-    weights = _numeric(weights, "weight")
+    weights = _numeric(weights, "weight", nullable=timing == "legacy_observed")
     for name in names:
         _required(loadings, [name], "loadings")
         loadings = _numeric(loadings, name, nullable=True)
@@ -159,6 +159,8 @@ def _exposures(
     )
     selected = right.get_indexer(left)
     values = weights["weight"].to_numpy()
+    if timing == "legacy_observed":
+        values = np.where(np.isnan(values), 0.0, values)
     matrix = np.full((len(values), len(names)), np.nan)
     matched = selected >= 0
     matrix[matched] = loadings.select(names).to_numpy()[selected[matched]]
@@ -186,6 +188,37 @@ def _exposures(
         }
     )
     return exposure_frame, coverage
+
+
+def _attribute_exposures(
+    exposures: pd.DataFrame,
+    factor_returns: pd.DataFrame,
+    returns: pd.Series,
+    *,
+    legacy_missing: bool = False,
+) -> pd.DataFrame:
+    """One labeled per-period calculation with explicit legacy skip-missing sums."""
+    by_factor = exposures.multiply(factor_returns)
+    common = by_factor.sum(axis="columns", skipna=legacy_missing)
+    tilt = factor_returns.multiply(exposures.mean(skipna=legacy_missing)).sum(
+        axis="columns", skipna=legacy_missing
+    )
+    return pd.concat(
+        [
+            by_factor,
+            pd.DataFrame(
+                {
+                    "total_returns": returns,
+                    "common_returns": common,
+                    "specific_returns": returns - common,
+                    "tilt_returns": tilt,
+                    "timing_returns": common - tilt,
+                }
+            ),
+        ],
+        axis="columns",
+        sort=False,
+    )
 
 
 def compute_holdings_attribution(
@@ -288,26 +321,20 @@ def compute_holdings_attribution(
         missing_loadings=missing_loadings,
         observed_snapshot_dates=observed_snapshot_dates,
     )
-    exposure_values = exposures.select(names).to_numpy()
-    factor_values = factors.select(names).to_numpy()
-    contributions = exposure_values * factor_values
-    common = contributions.sum(axis=1)
-    tilt = (exposure_values.mean(axis=0) * factor_values).sum(axis=1)
-    columns = {
-        **dict(zip(names, contributions.T, strict=True)),
-        "total_returns": total,
-        "common_returns": common,
-        "specific_returns": total - common,
-        "tilt_returns": tilt,
-        "timing_returns": common - tilt,
-    }
+    index = date_index(dates)
+    table = _attribute_exposures(
+        pd.DataFrame(exposures.select(names).to_numpy(), index=index, columns=names),
+        pd.DataFrame(factors.select(names).to_numpy(), index=index, columns=names),
+        pd.Series(total, index=index),
+    )
+    columns = {name: table[name].to_numpy() for name in table.columns}
     if cash_contributions is not None:
         cash = _frame(cash_contributions, timestamp_col=timestamp_col, entity_col=entity_col)
         _required(cash, ["cash_contribution"], "cash contributions")
         cash = _numeric(_aligned(cash, dates, "cash contributions"), "cash_contribution")
         cash_values = cash["cash_contribution"].to_numpy()
         columns["cash_returns"] = cash_values
-        columns["specific_returns"] = total - common - cash_values
+        columns["specific_returns"] = columns["specific_returns"] - cash_values
     prior_wealth = np.r_[1.0, np.cumprod(1 + total[:-1])]
     multiplier = prior_wealth if cumulative_method == "wealth_linked" else np.ones_like(total)
     return HoldingsAttributionResult(
