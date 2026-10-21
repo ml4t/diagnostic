@@ -1915,14 +1915,31 @@ remains unchanged. Use explicit `calendar=None` or declared metadata `None` for
 this civil-date profile; a resolved exchange calendar is not silently disabled.
 The same FeedSpec column and timezone declarations are consumed.
 
-For the familiar interface:
+For the familiar interface, this flat-at-EOD round trip starts with 1000 cash,
+buys two shares at 100 and sells at 102. The selected estimate is 200 in the
+asset and 800 cash, not the actual terminal book of 0 and 1004:
 
 ```python
+import pandas as pd
+
 from ml4t.diagnostic.compat import pyfolio as pf
 
-is_intraday = pf.utils.detect_intraday(positions, transactions)
-estimated = pf.utils.check_intraday("infer", returns, positions, transactions)
-forced = pf.utils.estimate_intraday(returns, positions, transactions, EOD_hour=23)
+estimate_dates = pd.DatetimeIndex(["2025-07-07"], tz="UTC")
+estimate_returns = pd.Series([0.004], index=estimate_dates)
+estimate_positions = pd.DataFrame({"A": [0.0], "cash": [1004.0]}, index=estimate_dates)
+estimate_transactions = pd.DataFrame(
+    {"symbol": ["A", "A"], "amount": [2.0, -2.0], "price": [100.0, 102.0]},
+    index=pd.to_datetime(["2025-07-07T14:00Z", "2025-07-07T15:00Z"]),
+)
+is_intraday = pf.utils.detect_intraday(estimate_positions, estimate_transactions)
+estimated = pf.utils.check_intraday(
+    "infer", estimate_returns, estimate_positions, estimate_transactions
+)
+forced = pf.utils.estimate_intraday(
+    estimate_returns, estimate_positions, estimate_transactions, EOD_hour=23
+)
+assert is_intraday and forced["A"].iloc[0] == 200.0
+assert forced["cash"].iloc[0] == 800.0
 ```
 
 The classifier retains the nonzero-EOD-position count divided by summed daily
