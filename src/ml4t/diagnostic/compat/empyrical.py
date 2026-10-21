@@ -107,6 +107,25 @@ def cum_returns_final(returns: ReturnInput, starting_value: float = 0) -> Metric
     return np.float64(result) if isinstance(result, float) and len(returns) else result
 
 
+def aggregate_returns(
+    returns: pd.Series | pd.DataFrame, convert_to: str
+) -> pd.Series | pd.DataFrame:
+    """Compound observed civil groups, using ISO year/week and the supplied timezone."""
+    if not isinstance(returns, pd.Series | pd.DataFrame) or not isinstance(
+        returns.index, pd.DatetimeIndex
+    ):
+        raise TypeError("aggregate_returns requires pandas returns with a DatetimeIndex")
+    groups = {
+        WEEKLY: [lambda label: label.isocalendar()[0], lambda label: label.isocalendar()[1]],
+        MONTHLY: [lambda label: label.year, lambda label: label.month],
+        QUARTERLY: [lambda label: label.year, lambda label: label.quarter],
+        YEARLY: [lambda label: label.year],
+    }
+    if convert_to not in groups:
+        raise ValueError("convert_to must be weekly, monthly, quarterly or yearly")
+    return returns.groupby(groups[convert_to]).apply(cum_returns_final)
+
+
 def drawdown_series(returns: ReturnInput, out: np.ndarray | None = None) -> ReturnInput | float:
     """Use native initial-capital drawdowns with one output per supplied row.
 
@@ -321,6 +340,7 @@ def conditional_value_at_risk(returns: ReturnInput, cutoff: float = 0.05) -> flo
 
 
 __all__ = [
+    "aggregate_returns",
     "capture",
     "up_capture",
     "down_capture",

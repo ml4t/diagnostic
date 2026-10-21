@@ -341,6 +341,16 @@ The native metric module exposes `omega_ratio(..., no_loss="nan")`,
 without the familiar signatures. Gaussian return VaR and covariance-based cash
 VaR remain separate workflows, not aliases for the empirical quantile.
 
+`aggregate_returns` compounds only observed rows into weekly, monthly, quarterly
+or yearly groups. Weekly keys use ISO year together with ISO week, so the week
+starting 2019-12-30 is `(2020, 1)`, including its January observations. Other
+groups use the supplied civil date labels and timezone. The adapter does not
+convert to UTC, resolve a trading calendar, fill absent holidays/months or infer
+dates from an integer index. All-missing observed groups have unchanged wealth
+(zero cumulative return), consistent with the return-path adapter. Genuine
+dated pandas input is required; strategy columns and their labels are retained.
+The same `--task empyrical-definitions` recipe checks the ISO-year boundary.
+
 ## Native definitions still need explicit choices
 
 The native benchmark-relative `alpha` and `beta` remain available when you

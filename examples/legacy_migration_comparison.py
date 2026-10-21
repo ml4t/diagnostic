@@ -705,6 +705,14 @@ def show_empyrical_definitions() -> None:
     print("Log stability (dimensionless): 1; native wealth-fit stability remains distinct")
     print("Legacy tail ratio uses absolute tails; native numerator retains its sign")
     print("No-loss Omega: legacy undefined; native positive infinity")
+    crossing = pd.Series(
+        [0.1, 0.2, np.nan, -0.1],
+        index=pd.to_datetime(["2019-12-30", "2019-12-31", "2020-01-02", "2020-01-03"], utc=True),
+    )
+    weekly = metrics.aggregate_returns(crossing, "weekly")
+    assert weekly.index.to_list() == [(2020, 1)]
+    np.testing.assert_allclose(weekly.to_numpy(), [1.1 * 1.2 * 0.9 - 1])
+    print(f"Observed civil ISO-week products (decimal returns): {weekly.to_dict()}")
 
 
 def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
