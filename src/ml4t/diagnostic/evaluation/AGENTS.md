@@ -11,6 +11,7 @@ This package holds the main research and validation workflows.
 - `PortfolioAnalysis.from_frames` for owned supplied-account inputs, without reconstructing returns or fills
 - `PortfolioAnalysis.compute_round_trips` for actual fractional FIFO segments, explicitly complete opening inventory and known-at open-lot marks; optional synthetic closes remain separate from actual realization
 - `RoundTripResult.completed_trades`, `.to_trade_analysis` and `.win_probability` for closing-fill samples, existing trade summaries and explicit Beta(1,1) uncertainty with gross/net/missingness coverage
+- `RoundTripResult.statistics_tables` for cash/count/duration/return/asset tables, explicit lot/NAV denominators and per-metric coverage; completed-cash summaries reuse `TradeStatistics.from_frame` without invented execution prices
 - `TradeAnalysis` and `TradeShapAnalyzer` for trade-level diagnostics
 - `FactorAnalysis` for factor exposure and attribution
 - `Evaluator` for the broader evaluation framework

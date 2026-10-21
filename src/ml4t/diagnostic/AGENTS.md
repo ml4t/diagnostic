@@ -17,7 +17,7 @@
 | [metrics/](metrics/AGENTS.md) | Feature, signal, and risk metric functions |
 | [splitters/](splitters/AGENTS.md) | Walk-forward, CPCV, calendars, and fold persistence |
 | [evaluation/](evaluation/AGENTS.md) | Core analysis workflows and statistical validation |
-| `compat.pyfolio.txn`, `compat.pyfolio.utils`, `compat.pyfolio.round_trips`, `compat.pyfolio.plotting` | Thin pandas transaction/Zipline-tuple and round-trip extraction adapters, plus optional Plotly transaction charts over native calculations/inputs; no legacy runtime dependency |
+| `compat.pyfolio.txn`, `compat.pyfolio.utils`, `compat.pyfolio.round_trips`, `compat.pyfolio.plotting` | Thin pandas transaction/Zipline-tuple, round-trip extraction and five-table statistics adapters, plus optional Plotly transaction charts over native calculations/inputs; no legacy runtime dependency |
 | [selection/](selection/AGENTS.md) | Systematic feature selection pipeline |
 | [integration/](integration/AGENTS.md) | `ml4t-backtest`, `ml4t-data`, and `ml4t-engineer` bridges |
 | [visualization/](visualization/AGENTS.md) | Plotly charts, dashboards, and tearsheets |

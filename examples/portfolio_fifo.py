@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+
 import pandas as pd
+import polars as pl
 
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
@@ -52,6 +54,17 @@ def main() -> None:
     contributions = result.portfolio_contributions(pd.Series([1000.0], index=dates[-1:]))
     assert contributions["gross_nav_contribution"].to_list() == [0.22]
     assert contributions["net_nav_contribution"].to_list() == [0.194]
+    native_tables = result.statistics_tables(
+        return_basis="nav", portfolio_value=pd.Series([1000.0], index=dates[-1:])
+    )
+    assert native_tables.metadata["pnl"] == "net"
+    assert (
+        native_tables.tables["pnl"]
+        .filter((pl.col("scope") == "all") & (pl.col("metric") == "total_pnl"))["value"]
+        .item()
+        == 194.0
+    )
+    assert native_tables.coverage.filter(pl.col("scope") == "all")["n_known_returns"].item() == 1
     print(
         "Supplied beginning NAV1000: .22gross/.194net portfolio contribution, not220/1220lot return"
     )
@@ -111,6 +124,9 @@ def main() -> None:
     assert familiar["pnl"].to_list() == [200.0]
     assert familiar["returns"].to_list() == [0.2]
     assert familiar["symbol"].to_list() == [7]
+    familiar_tables = pf.round_trips.gen_round_trip_stats(familiar)
+    assert familiar_tables["pnl"].loc["Total profit", "All trades"] == 200.0
+    assert familiar_tables["returns"].loc["Avg returns all round_trips", "All trades"] == 0.2
     print("Familiar round-trip extraction: gross PnL200, lot return200/1240, NAV contribution.2")
     if args.compare:
         from importlib.metadata import version
@@ -122,8 +138,18 @@ def main() -> None:
         actual = pf.round_trips.extract_round_trips(compared, portfolio_value=beginning_nav)
         expected = reference.extract_round_trips(compared, portfolio_value=beginning_nav)
         pd.testing.assert_frame_equal(actual, expected, check_exact=False, rtol=2e-15, atol=1e-12)
+        actual_tables = pf.round_trips.gen_round_trip_stats(actual)
+        expected_tables = reference.gen_round_trip_stats(expected)
+        for name in ("pnl", "summary", "duration", "returns", "symbols"):
+            pd.testing.assert_frame_equal(
+                actual_tables[name],
+                expected_tables[name],
+                check_exact=False,
+                rtol=2e-15,
+                atol=1e-12,
+            )
         print(
-            f"Reference comparison passed: Pyfolio{version('pyfolio-reloaded')}, pandas{pd.__version__}; explicit display mapping7 -> A"
+            f"Extraction and five tables match Pyfolio{version('pyfolio-reloaded')}, pandas{pd.__version__}; explicit display mapping7 -> A"
         )
 
 

@@ -555,6 +555,18 @@ class TradeStatistics(BaseModel):
     avg_winner: float | None = Field(None, description="Average PnL of winners")
     avg_loser: float | None = Field(None, description="Average PnL of losers")
     profit_factor: float | None = Field(None, description="Gross profit / gross loss")
+    gross_profit: float | None = Field(
+        None, ge=0.0, allow_inf_nan=False, description="Sum of positive selected cash PnL"
+    )
+    gross_loss: float | None = Field(
+        None, le=0.0, allow_inf_nan=False, description="Signed sum of negative selected cash PnL"
+    )
+    max_pnl: float | None = Field(
+        None, allow_inf_nan=False, description="Largest selected cash PnL"
+    )
+    min_pnl: float | None = Field(
+        None, allow_inf_nan=False, description="Smallest selected cash PnL"
+    )
 
     # Duration metrics
     avg_duration_days: float | None = Field(
@@ -587,8 +599,36 @@ class TradeStatistics(BaseModel):
         if not trades:
             raise ValueError("Cannot compute statistics for empty trade list")
 
-        # Convert to DataFrame for efficient computation
-        df = TradeMetrics.to_dataframe(trades)
+        return TradeStatistics.from_frame(TradeMetrics.to_dataframe(trades))
+
+    @staticmethod
+    def from_frame(trades: pl.DataFrame | pd.DataFrame) -> TradeStatistics:
+        """Summarize owned completed observations without inventing execution prices.
+
+        pnl contains finite selected cash PnL, not a price-derived reconstruction.
+        Optional duration_days contains nonnegative elapsed days or unknown/null;
+        no duration column means unknown durations, not fabricated zero days.
+        Missing PnL must be explicitly resolved by the producing workflow before
+        this native summary. Native win-rate/profit-factor definitions stay unchanged.
+        """
+        from ml4t.diagnostic.evaluation.portfolio_analysis.holdings import _numeric
+
+        if isinstance(trades, pl.DataFrame):
+            df = trades.clone()
+        elif isinstance(trades, pd.DataFrame):
+            df = pl.from_pandas(trades)
+        else:
+            raise TypeError("completed observations must be a pandas or Polars DataFrame")
+        if df.is_empty():
+            raise ValueError("Cannot compute statistics for an empty completed-observation table")
+        if "pnl" not in df.columns:
+            raise ValueError("completed observations require a pnl column in selected cash units")
+        df = _numeric(df, "pnl")
+        if "duration_days" not in df.columns:
+            df = df.with_columns(pl.lit(None, dtype=pl.Float64).alias("duration_days"))
+        df = _numeric(df, "duration_days", nullable=True)
+        if (df["duration_days"].drop_nulls() < 0).any():
+            raise ValueError("duration_days must be nonnegative elapsed days or unknown")
 
         # Count trades
         n_trades = len(df)
@@ -680,6 +720,10 @@ class TradeStatistics(BaseModel):
             avg_winner=avg_winner,
             avg_loser=avg_loser,
             profit_factor=profit_factor,
+            gross_profit=gross_profit,
+            gross_loss=-gross_loss if gross_loss else 0.0,
+            max_pnl=float(cast(SupportsFloat, pnl_series.max())),
+            min_pnl=float(cast(SupportsFloat, pnl_series.min())),
             avg_duration_days=avg_duration_days,
             n_known_durations=len(known_duration),
             median_duration_days=median_duration_days,
@@ -787,6 +831,10 @@ class TradeStatistics(BaseModel):
                     "avg_winner": self.avg_winner,
                     "avg_loser": self.avg_loser,
                     "profit_factor": self.profit_factor,
+                    "gross_profit": self.gross_profit,
+                    "gross_loss": self.gross_loss,
+                    "max_pnl": self.max_pnl,
+                    "min_pnl": self.min_pnl,
                     "avg_duration_days": self.avg_duration_days,
                     "n_known_durations": self.n_known_durations,
                     "median_duration_days": self.median_duration_days,

@@ -14,6 +14,13 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.fifo import (
 )
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_groups import group_executions
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_inputs import clock
+from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_statistics import (
+    DURATION_METRICS,
+    PNL_METRICS,
+    RETURN_METRICS,
+    SUMMARY_METRICS,
+    summarize_round_trips,
+)
 from ml4t.diagnostic.evaluation.portfolio_analysis.frame_inputs import normalize_executions
 
 from .txn import _dated
@@ -119,4 +126,142 @@ def extract_round_trips(
     return frame
 
 
-__all__ = ["extract_round_trips"]
+_PNL_LABELS = dict(
+    zip(
+        PNL_METRICS,
+        (
+            "Total profit",
+            "Gross profit",
+            "Gross loss",
+            "Profit factor",
+            "Avg. trade net profit",
+            "Avg. winning trade",
+            "Avg. losing trade",
+            "Ratio Avg. Win:Avg. Loss",
+            "Largest winning trade",
+            "Largest losing trade",
+        ),
+        strict=True,
+    )
+)
+_SUMMARY_LABELS = dict(
+    zip(
+        SUMMARY_METRICS,
+        (
+            "Total number of round_trips",
+            "Percent profitable",
+            "Winning round_trips",
+            "Losing round_trips",
+            "Even round_trips",
+        ),
+        strict=True,
+    )
+)
+_DURATION_LABELS = dict(
+    zip(
+        DURATION_METRICS,
+        ("Avg duration", "Median duration", "Longest duration", "Shortest duration"),
+        strict=True,
+    )
+)
+_RETURN_LABELS = dict(
+    zip(
+        RETURN_METRICS,
+        (
+            "Avg returns all round_trips",
+            "Avg returns winning",
+            "Avg returns losing",
+            "Median returns all round_trips",
+            "Median returns winning",
+            "Median returns losing",
+            "Largest winning trade",
+            "Largest losing trade",
+        ),
+        strict=True,
+    )
+)
+
+
+def _wide_statistics(
+    table: pl.DataFrame, metric_labels: dict[str, str], asset_labels: pd.Index | None = None
+) -> pd.DataFrame:
+    if table.is_empty():
+        result = pd.DataFrame(index=list(metric_labels))
+    elif asset_labels is None:
+        result = table.to_pandas().pivot(index="metric", columns="scope", values="value")
+        order = [scope for scope in ("all", "short", "long") if scope in result.columns]
+        result = result.reindex(index=list(metric_labels), columns=order).rename(
+            columns={"all": "All trades", "short": "Short trades", "long": "Long trades"}
+        )
+    else:
+        result = table.to_pandas().pivot(index="metric", columns="asset", values="value")
+        result = result.reindex(index=list(metric_labels), columns=sorted(result.columns))
+        result.columns = asset_labels.take([int(value) for value in result.columns])
+    result.index = pd.Index([metric_labels[name] for name in result.index], name=None)
+    result.columns.name = "symbol" if asset_labels is not None else None
+    return result
+
+
+def gen_round_trip_stats(round_trips: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Project all five original tables from native completed-observation statistics.
+
+    returns must be supplied NAV-relative observations; rt_returns are not a
+    substitute. Each metric retains its own missingness/sign sample. The explicit
+    legacy count and all-loss profit-factor conventions do not change native
+    TradeStatistics defaults. Duration remains typed, not invented zero days.
+    """
+    if not isinstance(round_trips, pd.DataFrame):
+        raise TypeError("round_trips must be a pandas DataFrame")
+    if round_trips.columns.has_duplicates:
+        raise ValueError("round-trip columns must be distinct")
+    if "returns" not in round_trips.columns:
+        raise ValueError(
+            "portfolio NAV-relative returns are required; pass portfolio_value to extraction, not rt_returns"
+        )
+    required = {"pnl", "duration", "symbol", "long"}
+    if missing := required.difference(round_trips.columns):
+        raise ValueError(f"round-trip statistics require columns: {sorted(missing)}")
+    if not round_trips["long"].dropna().isin([True, False]).all():
+        raise ValueError("long must contain true/false or unknown direction")
+    codes, labels = pd.factorize(round_trips["symbol"], sort=True)
+    projected = (
+        round_trips[["pnl", "duration", "returns"]]
+        .reset_index(drop=True)
+        .rename(columns={"pnl": "gross_pnl", "returns": "gross_nav_contribution"})
+    )
+    projected["asset"] = pd.array(
+        [int(code) if code >= 0 else None for code in codes], dtype="Int64"
+    )
+    projected["direction"] = pd.Series(
+        [
+            None if pd.isna(value) else "long" if bool(value) else "short"
+            for value in round_trips["long"]
+        ],
+        dtype="string",
+    )
+    native = summarize_round_trips(
+        pl.from_pandas(projected),
+        pnl_col="gross_pnl",
+        return_col="gross_nav_contribution",
+        method="legacy_pyfolio",
+    )
+    results = {
+        name: _wide_statistics(native.tables[name], mapping)
+        for name, mapping in (
+            ("pnl", _PNL_LABELS),
+            ("summary", _SUMMARY_LABELS),
+            ("duration", _DURATION_LABELS),
+            ("returns", _RETURN_LABELS),
+        )
+    }
+    results["symbols"] = _wide_statistics(native.tables["symbols"], _RETURN_LABELS, labels)
+    coverage = native.coverage.to_dicts()
+    for row in coverage:
+        if row["asset"] is not None:
+            row["asset"] = labels[int(row["asset"])]
+    for table in results.values():
+        table.attrs["diagnostic"] = {**native.metadata, "coverage": [dict(row) for row in coverage]}
+    return results
+
+
+__all__ = ["extract_round_trips", "gen_round_trip_stats"]

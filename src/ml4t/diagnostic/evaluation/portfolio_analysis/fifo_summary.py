@@ -154,13 +154,17 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
                 {"exit_price": "entry_price", "entry_price": "original_entry_price"}
             ),
         )
-    return _frame(
+    frame = _frame(
         records,
         schema,
         ["entry_timestamp", "exit_timestamp"]
         + (["entry_available_at", "exit_available_at"] if grouped else []),
         result.segments["exit_timestamp"].dtype.time_zone,
     )
+    duration = frame["exit_timestamp"] - frame["entry_timestamp"]
+    if (duration.drop_nulls().cast(pl.Int64) < 0).any():
+        raise ValueError("completed duration cannot be represented in nanoseconds")
+    return frame.with_columns(duration.alias("duration"))
 
 
 def selected_trades(

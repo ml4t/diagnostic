@@ -18,6 +18,8 @@ from .fifo_inputs import clock, instant, mark_inventory, opening_inventory, pric
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_analysis import TradeAnalysis
 
+    from .fifo_statistics import RoundTripStatisticsResult
+
 
 @dataclass
 class RoundTripResult:
@@ -129,6 +131,55 @@ class RoundTripResult:
             nav_method=nav_method,
             include_synthetic=include_synthetic,
         )
+
+    def statistics_tables(
+        self,
+        *,
+        pnl: Literal["gross", "net"] = "net",
+        return_basis: Literal["lot", "nav"] = "lot",
+        portfolio_value: pl.DataFrame | pd.DataFrame | pd.Series | None = None,
+        method: Literal["native", "legacy_pyfolio"] = "native",
+        include_synthetic: bool = False,
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+        alignment: Literal["declared", "civil_date"] = "declared",
+    ) -> RoundTripStatisticsResult:
+        """Build full report tables with an explicit cash view and return denominator.
+
+        Lot statistics do not claim NAV contributions. NAV tables require supplied
+        beginning portfolio_value; no inferred denominator or substituted lot
+        return. Definition/missingness choices and per-metric coverage stay in
+        the result. Synthetic observations remain explicit and opt-in.
+        """
+        from .fifo_statistics import summarize_round_trips
+
+        if pnl not in ("gross", "net") or return_basis not in ("lot", "nav"):
+            raise ValueError("pnl must be gross/net and return_basis must be lot/nav")
+        if return_basis == "nav":
+            if portfolio_value is None:
+                raise ValueError("NAV return tables require supplied beginning portfolio_value")
+            frame = self.portfolio_contributions(
+                portfolio_value,
+                calendar=calendar,
+                alignment=alignment,
+                nav_method="legacy_ieee" if method == "legacy_pyfolio" else "positive_nav",
+                include_synthetic=include_synthetic,
+            )
+            return_col = pnl + "_nav_contribution"
+        else:
+            if portfolio_value is not None:
+                raise ValueError("portfolio_value requires return_basis='nav'; it is not ignored")
+            frame = self.completed_trades(include_synthetic=include_synthetic)
+            return_col = pnl + "_lot_return"
+        result = summarize_round_trips(
+            frame, pnl_col=pnl + "_pnl", return_col=return_col, method=method
+        )
+        result.metadata.update(
+            return_basis=return_basis,
+            pnl=pnl,
+            include_synthetic=include_synthetic,
+            matching_method=self.metadata.get("matching_method", "actual_fifo"),
+        )
+        return result
 
 
 @dataclass

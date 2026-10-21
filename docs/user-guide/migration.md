@@ -1673,8 +1673,27 @@ uv run --isolated --python 3.12 --with pyfolio-reloaded==0.10.0 --with pandas==2
 The comparison explicitly maps integer ID7 to display labelA on both sides to
 avoid the reference's integer-symbol upcast defect; it changes no economic
 values or sample. Default native/extraction recipes need no Pyfolio installation.
-Only the named extraction/grouping calls are implemented here; this is not yet
-the complete legacy round-trip module or tear sheet.
+`pf.round_trips.gen_round_trip_stats(trades)` returns the five familiar `pnl`,
+`summary`, `duration`, `returns` and `symbols` tables with their original labels.
+It requires the NAV-relative `returns` field. Available `rt_returns` do not replace
+missing NAV returns. The classic "Avg. trade net profit" label describes the
+supplied `pnl` column; extraction uses gross PnL and does not deduct costs.
+
+For the native tables, call
+`result.statistics_tables(pnl="net", return_basis="nav", portfolio_value=beginning_nav)`.
+Its default `return_basis="lot"` instead uses invested entry notional. Native
+long-form tables keep asset IDs as values. Both interfaces share completed-cash
+statistics, retain typed nanosecond durations and expose per-metric coverage.
+Missing NAV does not remove known cash PnL; unknown entry time does not become
+zero elapsed time. Native unknown cash is rejected rather than reported as zero.
+The explicit `method="legacy_pyfolio"` uses the reference's independent masks,
+all-row profitable fraction and all-loss profit factor of zero. Native
+`TradeStatistics` definitions remain unchanged. Familiar table metadata lives in
+each pandas table's `attrs["diagnostic"]`; native metadata and coverage are
+separate fields on the returned result. The example compares all five tables.
+
+Only these named extraction/grouping/statistics calls are implemented here;
+this is not yet the complete legacy round-trip module or tear sheet.
 
 Intraday reconstruction and full legacy reports remain accepted work. The
 incomplete route is not a substitute for those workflows.
