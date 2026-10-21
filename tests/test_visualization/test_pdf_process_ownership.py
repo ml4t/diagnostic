@@ -31,6 +31,7 @@ observed=Path(OBSERVED)
 original_open=kaleido.Kaleido.open
 original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
+original_close=kaleido.Kaleido.close
 def snapshot(self):
     processes=[psutil.Process(self.subprocess.pid)]
     processes+=processes[0].children(recursive=True)
@@ -61,6 +62,13 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     snapshot(self)
+    if mode.startswith('resource_error'):
+        marker=observed.with_suffix('.close.json')
+        marker.write_text(json.dumps({'entered':True,'finished':False}))
+        if mode=='resource_error_close_hang': await asyncio.sleep(3600)
+        result=await original_close(self,*args,**kwargs)
+        marker.write_text(json.dumps({'entered':True,'finished':True}))
+        return result
     if mode in ('shared_status','permanent_status'):
         return await original_close(self,*args,**kwargs)
     if mode=='exit7': os._exit(7)
@@ -154,9 +162,24 @@ else:
         _pdf_process._OwnedProcesses.terminate=terminate_and_release_sharing
 
 neighbor=subprocess.Popen([sys.executable,'-c','import time;time.sleep(180)'])
+server=None
+requests=[]
 success=False
 try:
     figures=[go.Figure(go.Scatter(x=[1,2,3],y=[1,3,2])) for _ in range(2)]
+    if mode.startswith('resource_error'):
+        import threading
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        import plotly.io as pio
+        class MissingTopojson(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(self.path)
+                self.send_error(404,'Deliberately unavailable map resource')
+            def log_message(self,*args): pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),MissingTopojson)
+        threading.Thread(target=server.serve_forever,daemon=True).start()
+        pio.defaults.topojson=f'http://127.0.0.1:{server.server_port}/'
+        figures[1]=go.Figure(go.Choropleth(locations=['USA'],z=[1]))
     for i,figure in enumerate(figures): figure.update_layout(title=f'Owned PDF page {i+1}')
     originals=[figure.to_json() for figure in figures]
     try:
@@ -166,6 +189,12 @@ try:
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
         if mode=='render_error': assert 'Actual renderer failed after first page' in str(error),repr(error)
+        if mode.startswith('resource_error'):
+            assert requests and any('world' in path for path in requests),requests
+            assert 'topojson' in str(error).lower(),repr(error)
+            marker=observed.with_suffix('.close.json')
+            assert marker.exists(), 'A real rendering error skipped graceful browser shutdown'
+            assert json.loads(marker.read_text())=={'entered':True,'finished':mode=='resource_error'}
         if mode=='render_hang':
             assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'after_first_valid_page'}
             assert "phase='rendering', completed=0, expected=2" in str(error),repr(error)
@@ -211,6 +240,9 @@ try:
                       'neighbor_alive':True,'input_figures_unchanged':True}),flush=True)
     success=True
 finally:
+    if server is not None:
+        server.shutdown()
+        server.server_close()
     # A deliberately broken base provider must not leak its real browser in the red run.
     descendants=psutil.Process().children(recursive=True)
     for process in reversed(descendants):
@@ -238,6 +270,8 @@ finally:
             "invalid_page",
             "exit7",
             "held_status",
+            "resource_error",
+            "resource_error_close_hang",
         ]
     ]
     + [pytest.param("render_hang", 16, id="render_hang_slow_open")]
