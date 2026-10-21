@@ -176,6 +176,11 @@ def annual_return(
 
     total = _safe_prod(1 + returns)
     n_periods = len(returns)
+    return _annualize_growth(total, n_periods, periods_per_year)
+
+
+def _annualize_growth(total: float, n_periods: int, periods_per_year: float) -> float:
+    """Annualize an observed product or one periodic fitted-intercept growth."""
 
     if n_periods == 0:
         return np.nan
@@ -298,19 +303,32 @@ def alpha_beta(
     excess_returns = returns - daily_rf
     excess_benchmark = benchmark - daily_rf
 
-    # Remove NaN
+    intercept, beta = _paired_linear_regression(excess_returns, excess_benchmark)
+    return intercept * periods_per_year, beta
+
+
+def _paired_linear_regression(
+    returns: np.ndarray, benchmark: np.ndarray, *, variance_floor: float = 0.0
+) -> tuple[float, float]:
+    """Shared one-dimensional paired OLS, with an explicit optional variance floor."""
+    excess_returns, excess_benchmark = returns, benchmark
     mask = ~(np.isnan(excess_returns) | np.isnan(excess_benchmark))
     if mask.sum() < 2 or np.ptp(excess_benchmark[mask]) == 0:
+        return np.nan, np.nan
+    if variance_floor and np.var(excess_benchmark[mask]) < variance_floor:
         return np.nan, np.nan
 
     # Linear regression
     slope, intercept, _, _, _ = stats.linregress(excess_benchmark[mask], excess_returns[mask])
 
-    beta = slope
-    # Annualize alpha
-    alpha = intercept * periods_per_year
+    return intercept, slope
 
-    return alpha, beta
+
+def _mean_regression_residual(returns: np.ndarray, benchmark: np.ndarray, beta: float) -> float:
+    """Mean paired residual for a supplied slope, retaining infinite domain outcomes."""
+    residual = returns - beta * benchmark
+    known = residual[~np.isnan(residual)]
+    return float(np.mean(known)) if len(known) else np.nan
 
 
 def information_ratio(

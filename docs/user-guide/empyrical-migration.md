@@ -238,10 +238,59 @@ unlabeled `(1, n_columns)` NaN array for 2D input. Empty maximum reductions
 return scalar `NaN` or an unlabeled `(n_columns,)` NaN array. These per-function
 contracts are not a blanket DataFrame-support claim for other Empyrical routes.
 
-## Metrics that need separate review
+## Compare arbitrary supplied benchmarks (unreleased)
 
-Benchmark-relative `alpha` and `beta` are available from Diagnostic when you
-pass aligned benchmark returns. On the [Pyfolio comparison](migration.md#pyfolio-portfolio-and-performance-analysis),
+The source after 0.1.9 adds `alpha_beta`, `alpha`, `beta`, their `_aligned`
+forms, `excess_sharpe`, `up_alpha_beta`, `down_alpha_beta` and `batting_average`
+to the same explicit compatibility namespace. These methods reuse native
+regression, compounding and periodic Sharpe kernels, not an Empyrical runtime.
+Run the complete price -> return -> external benchmark workflow with:
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task empyrical-benchmark
+```
+
+The supplied price path has periodic intercept 0.0003 and beta 1.2. Familiar
+annual alpha is `(1.0003)**252 - 1`; native arithmetic annual alpha remains
+`0.0003 * 252 = 0.0756`. Beta and active Sharpe are dimensionless, not decimal
+return values. `excess_sharpe` does not apply the native information ratio's
+square-root annualization. A nonzero `risk_free` is periodic and adjusts both
+returns and benchmark in the alpha residual; fitted beta uses the original paired
+returns. The reference accepts but does not use beta's `risk_free` argument.
+
+Ordinary functions align labeled Series; `_aligned` functions consume rows
+positionally. Matching ndarray inputs also remain positional. Combined regression
+returns an array ending in `[alpha, beta]`. For a strategy matrix, supply the
+benchmark as an explicit column, `benchmark[:, None]`, and retain the input column
+order. The combined output has shape `(n_columns, 2)`; beta returns column-ordered
+arrays, while supported `alpha_aligned` DataFrame inputs retain their column
+labels. Unaligned multi-column DataFrames are not a universal supported shape:
+apply the one-series function per column or use the explicit aligned matrix route.
+
+Each column has its own paired missingness mask. The familiar beta variance floor
+is explicitly `1e-30`; native nonconstant-benchmark regression keeps its existing
+default. A supplied `_beta` lets alpha evaluate known residuals without pretending
+that a singular benchmark can estimate a slope. Output-buffer validation also
+checks original benchmark/rate storage before alignment copies can conceal an
+alias. Calculations are float64; low-order reference float32 differences remain
+separate from buffer shape, ownership and identity guarantees.
+
+Native `portfolio_analysis.benchmark_batting_average` returns fractions and
+sample/win counts for finite active-return/benchmark pairs. Ties are nonwins and
+empty subsets are undefined. Its up market is strictly positive by default;
+`up_includes_zero=True` selects the legitimate Empyrical convention that includes
+zero benchmark returns. The familiar facade returns the original three labeled
+fractions and selects that inclusive convention. This is benchmark-relative
+outperformance, not factor-monotonicity or a strategy's positive-return fraction.
+
+These are the first benchmark routes in the broader accepted metric work.
+Capture definitions, tail/stability variants and the complete rolling family
+remain unfinished; this section is not a full-replacement claim.
+
+## Native definitions still need explicit choices
+
+The native benchmark-relative `alpha` and `beta` remain available when you
+pass aligned benchmark returns. On the historical [Pyfolio comparison](migration.md#pyfolio-portfolio-and-performance-analysis),
 beta matched at `0.795601`, while annualized alpha was `0.100369` in Pyfolio's
 Empyrical calculation and `0.095663` in Diagnostic. Empyrical compounds the
 mean periodic alpha; Diagnostic multiplies the fitted daily intercept by 252.

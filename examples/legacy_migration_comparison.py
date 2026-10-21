@@ -635,6 +635,44 @@ def show_empyrical_native() -> None:
     )
 
 
+def show_empyrical_benchmark() -> None:
+    """Exercise arbitrary supplied-benchmark adapters without a legacy dependency."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        alpha_beta,
+        benchmark_batting_average,
+        information_ratio,
+    )
+
+    dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
+    factor = pd.Series([-0.02, -0.01, 0.0, 0.01, 0.02], index=dates[1:])
+    prices = np.concatenate(([100.0], 100 * np.cumprod(1 + 0.0003 + 1.2 * factor.to_numpy())))
+    returns = pd.Series(metrics.simple_returns(prices), index=dates[1:])
+    actual = metrics.alpha_beta(returns, factor.iloc[::-1], annualization=252)
+    np.testing.assert_allclose(actual, [(1.0003) ** 252 - 1, 1.2], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(alpha_beta(returns, factor), [0.0756, 1.2], rtol=1e-12, atol=1e-12)
+    excess = metrics.excess_sharpe(returns, factor)
+    np.testing.assert_allclose(information_ratio(returns, factor), excess * np.sqrt(252))
+    for function in (metrics.up_alpha_beta, metrics.down_alpha_beta):
+        np.testing.assert_allclose(
+            function(returns, factor, annualization=12),
+            [(1.0003) ** 12 - 1, 1.2],
+            rtol=1e-12,
+            atol=1e-12,
+        )
+    tied = 1.2 * factor
+    native = benchmark_batting_average(tied, factor)
+    familiar = metrics.batting_average(tied, factor)
+    assert native["overall"] == 0.4 and native["up"] == 1 and native["n_up"] == 2
+    np.testing.assert_allclose(familiar.to_numpy(), [0.4, 2 / 3, 0])
+    print(
+        f"Benchmark alpha (annual compounded return): {actual[0]}; beta (dimensionless): {actual[1]}"
+    )
+    print(f"Active Sharpe (dimensionless, not annualized): {excess}")
+    print(f"Native strict-positive-up batting/counts: {native}")
+    print(f"Familiar zero-in-up batting: {familiar.to_dict()}")
+
+
 def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     """Build a grouped event report from one owned, price-produced signal panel."""
     from ml4t.diagnostic.signal import AlignedEventResult, prepare_signal_panel
@@ -704,6 +742,7 @@ def main() -> None:
             "alphalens",
             "empyrical",
             "empyrical-native",
+            "empyrical-benchmark",
             "exposure",
             "activity",
             "holdings",
@@ -735,6 +774,9 @@ def main() -> None:
         print(f"{package}=={version(package)}")
     if task == "empyrical-native":
         show_empyrical_native()
+        return
+    if task == "empyrical-benchmark":
+        show_empyrical_benchmark()
         return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))

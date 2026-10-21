@@ -13,6 +13,18 @@ from numbers import Real
 import numpy as np
 import pandas as pd
 
+from ml4t.diagnostic.compat._benchmark import (
+    alpha,
+    alpha_aligned,
+    alpha_beta,
+    alpha_beta_aligned,
+    batting_average,
+    beta,
+    beta_aligned,
+    down_alpha_beta,
+    excess_sharpe,
+    up_alpha_beta,
+)
 from ml4t.diagnostic.compat._returns import (
     MetricOutput,
     ReturnInput,
@@ -265,6 +277,16 @@ def sortino_ratio(
 
 
 __all__ = [
+    "alpha",
+    "alpha_aligned",
+    "alpha_beta",
+    "alpha_beta_aligned",
+    "beta",
+    "beta_aligned",
+    "excess_sharpe",
+    "up_alpha_beta",
+    "down_alpha_beta",
+    "batting_average",
     "simple_returns",
     "cum_returns",
     "cum_returns_final",
