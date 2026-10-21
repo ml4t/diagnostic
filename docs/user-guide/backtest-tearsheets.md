@@ -88,8 +88,8 @@ True
 ```
 
 Here 252 declares a daily trading-year convention for already-daily observations;
-use the scale appropriate to the actual return cadence. Observation-mode metrics
-and reports reject a missing scale. The same `periods_per_year` override reaches
+use the scale appropriate to the actual return cadence. Backtest observation-mode
+metrics and reports reject a missing scale. The same `periods_per_year` override reaches
 `compute_metrics_from_result`, `portfolio_analysis_from_result`, artifact profiles
 and HTML reports. Passing a descriptive report calendar that conflicts with the
 resolved analysis calendar is rejected before writing an output file.

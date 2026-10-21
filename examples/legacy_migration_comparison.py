@@ -488,12 +488,17 @@ def show_prepared_holdings() -> None:
     )
     canonical["asset"] = canonical["asset"].map({"A": 1, "B": 2})
     for shape, snapshot, short_id in [("wide", positions, "B"), ("integer-ID long", canonical, 2)]:
-        analysis = PortfolioAnalysis(returns, positions=snapshot)
+        analysis = PortfolioAnalysis.from_frames(
+            returns,
+            positions=snapshot,
+            valuations=valuations,
+            complete_snapshots=True,
+            calendar=None,
+            periods_per_year=252,
+        )
         long_id = "A" if shape == "wide" else 1
         mapping = {long_id: "Technology", short_id: "Finance"}
-        holdings = analysis.compute_holdings_analysis(
-            valuations, complete_snapshots=True, sector_mapping=mapping
-        )
+        holdings = analysis.compute_holdings_analysis(sector_mapping=mapping)
         assert holdings.sectors is not None
         final = holdings.timeline.row(-1, named=True)
         np.testing.assert_allclose(
@@ -558,7 +563,14 @@ def show_prepared_holdings_report(output: Path) -> None:
     from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
 
     returns, positions, valuations = _prepared_holdings_inputs()
-    analysis = PortfolioAnalysis(returns, positions=positions)
+    analysis = PortfolioAnalysis.from_frames(
+        returns,
+        positions=positions,
+        valuations=valuations,
+        complete_snapshots=True,
+        calendar=None,
+        periods_per_year=252,
+    )
     holdings = analysis.compute_holdings_analysis(
         valuations, complete_snapshots=True, sector_mapping={"A": "Technology"}
     )

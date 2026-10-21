@@ -1321,6 +1321,79 @@ Single-series uncertainty retains its finite-value filter; neither route validat
 a calendar grid or records excluded dates in its result. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
 intervals; matching point estimates does not establish interval equivalence.
 
+### Normalize a supplied account without a backtest engine
+
+Unreleased after 0.1.9, `PortfolioAnalysis.from_frames()` accepts dated returns,
+an optional dated benchmark, signed marked holdings, reported cash/NAV and
+actual transaction records. It uses the existing portfolio metrics and holdings
+analysis. Ordinary supplied-account analysis needs no Pyfolio, Zipline,
+Backtest, Engineer or Data installation.
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+account_dates = pd.date_range("2025-07-07", periods=2, tz="UTC")
+account_returns = pd.Series([.01, -.02], index=account_dates)
+account_positions = pd.DataFrame(
+    {"A": [600., 500.], "B": [-100., -50.], "cash": [510., 539.8]},
+    index=account_dates,
+)
+account_valuations = pd.DataFrame({"date": account_dates, "equity": [1010., 989.8]})
+account_transactions = pd.DataFrame({
+    "timestamp": account_dates, "asset": ["A", "B"],
+    "quantity": [.5, -.25], "price": [100., 200.],
+    "commission": [None, .25],
+})
+account_analysis = PortfolioAnalysis.from_frames(
+    account_returns, positions=account_positions, valuations=account_valuations,
+    transactions=account_transactions, complete_snapshots=True,
+    calendar=None, periods_per_year=252,
+)
+np.testing.assert_allclose(account_analysis.returns, [.01, -.02])
+account_holdings = account_analysis.compute_holdings_analysis()
+np.testing.assert_allclose(account_holdings.timeline["gross_exposure"], [700., 550.])
+np.testing.assert_allclose(account_holdings.timeline["cash"], [510., 539.8])
+assert account_analysis.input_data.transactions["commission"].null_count() == 1
+print("Supplied account preserves net returns and unknown fees")
+```
+
+Returns are authoritative net simple returns. NAV changes can include unknown
+flows and never replace them. Wide `cash` is reported cash; NAV is not inferred
+from cash plus signed holdings or futures notional. Missing NAV leaves raw
+exposure available and dependent ratios unknown. `complete_snapshots=True`
+declares absent assets zero within each supplied date, not across missing dates.
+Incomplete holdings remain incomplete: no forward fill or inferred liquidation.
+The existing array constructor remains available with its original defaults.
+
+`input_data` owns Arrow/JSON snapshots of normalized returns, the full benchmark,
+positions, valuations and transactions. Frame/metadata accessors return independent
+values. Exact nanosecond keys and string/integer asset IDs are retained. Numeric
+pandas wide IDs are not stringified. Use `positions_format="wide"` for ambiguous
+wide asset names such as `asset` and `value`; long inputs can represent an actual
+asset named `cash` separately from account cash. Cash-only wide dates remain
+explicit snapshots without a fabricated cash asset.
+
+Supply `feed_spec`, `timestamp_col` and `entity_col` for declared physical names;
+`return_col` selects a table's return values. Calendar argument precedence and
+explicit None follow the shared contract, but normalization itself does not
+resample returns or establish schedule completeness. Fills can use a separate
+`transaction_timestamp_col`. `quantity` is signed; a supplied buy/sell side is
+reconciled and contradictory signs rejected. Integer quantities and prices are
+retained before accounting, including values beyond Float64's exact integer
+range. `multiplier` must be finite/positive; absent multipliers use the documented
+one cash-price unit per quantity unit convention. Futures inputs must supply
+their actual multiplier. Unknown commission/slippage remain unknown, not zero.
+No execution is reconstructed from portfolio weights.
+
+The existing `--task holdings` and `--task holdings-report` migration examples now
+use this boundary. With `viz`, `account_analysis.create_tear_sheet()` also prepares
+the declared complete holdings for the existing portfolio dashboard. Source input
+normalization is not qualification of all transaction-cost, Zipline, round-trip,
+attribution or full legacy report workflows; those remain accepted implementation
+and integration work.
+
 ### Analyze prepared holdings on observed keys
 
 In unreleased source after 0.1.9, use the existing `PortfolioAnalysis` workflow
@@ -1549,8 +1622,17 @@ The existing migration example runs a real short order through the Backtest
 engine, verifies the actual fill, and checks marks of 150, 200 and 250 after
 shorting 10 shares at 100 from initial equity 1000:
 
+Current Diagnostic source requires Specs 0.2.0 or newer, while published
+Backtest 0.1.12 requires Specs below 0.2. These versions cannot be installed
+together. The following source examples pin the compatible immutable Backtest
+revision qualified as `0.1.13.dev32+gc6feb2408`, with Specs 0.2.0. This is an
+unpublished producer qualification, not a claim that PyPI Backtest 0.1.13 is
+available. A compatible published producer remains necessary for a new
+published-package workflow. The supplied-frame examples above do not require it.
+
 ```bash
-uv run --with ml4t-backtest==0.1.12 --with plotly \
+uv run --isolated --no-dev --python 3.12 --with plotly \
+  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
   python examples/legacy_migration_comparison.py --task exposure
 ```
 
@@ -1597,7 +1679,8 @@ summary uses another convention. The producer's metrics are not mutated.
 Run the existing migration example with actual next-bar short and cover fills:
 
 ```bash
-uv run --with ml4t-backtest==0.1.12 --with plotly \
+uv run --isolated --no-dev --python 3.12 --with plotly \
+  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
   python examples/legacy_migration_comparison.py --task activity
 ```
 
