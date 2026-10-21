@@ -535,6 +535,33 @@ in place of the typed result before changing output. This supplied-holdings
 workflow remains distinct from the existing fitted factor regression and does
 not yet establish complete Pyfolio performance-attribution tear-sheet coverage.
 
+The same native calculation also backs
+`ml4t.diagnostic.compat.pyfolio.perf_attrib.perf_attrib` and `compute_exposures`.
+These accept the familiar wide dollar/fractional positions with an explicit
+account `cash` column. `create_perf_attrib_stats` retains the reference's
+independently compounded component statistics, with explicit
+`periods_per_year=252` by default. These component growth paths do not add up to
+the wealth-linked decomposition. `show_perf_attrib_stats` prints and returns
+the tables without requiring IPython; it does not produce Pyfolio's notebook
+display object. Use `--compare-pyfolio` in the example with optional Pyfolio
+Reloaded 0.10.0, Empyrical 0.7.0 and pandas 2.3.3 to run both public workflows.
+
+```bash
+uv run --no-project --isolated --python 3.12 --with '.[viz]' --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --compare-pyfolio --report holdings-attribution.html
+```
+
+One numerical correction is intentional. Pyfolio 0.10.0 drops an asset without
+loadings before normalizing dollar holdings. On the tested full-NAV-1000 book,
+covered asset A has fractions `0.5, 0.25, 0.5` and market loadings `2, 1, 2`.
+The correct covered exposure is `1, 0.25, 1`. The reference returns `2, 1, 2`
+after removing B from its NAV denominator. Diagnostic retains the full account
+denominator and warns about the uncovered loadings; dollar and equivalent
+fractional inputs therefore agree. Unknown B exposure is still unknown, not
+proved zero. Missing whole loading dates retain the familiar warned sample
+exclusion. A high-turnover warning does not repair missing intraday exposures.
+Full Pyfolio attribution plotting, partitions and tear-sheet options remain
+separate unfinished acceptance, not implied by matching these tables.
+
 ## Native definitions still need explicit choices
 
 The native benchmark-relative `alpha` and `beta` remain available when you

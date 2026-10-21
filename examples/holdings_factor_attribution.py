@@ -17,6 +17,7 @@ from ml4t.diagnostic.evaluation.factor import compute_holdings_attribution
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compare", action="store_true", help="Also call optional Empyrical")
+    parser.add_argument("--compare-pyfolio", action="store_true", help="Also call optional Pyfolio")
     parser.add_argument("--report", type=Path, help="Write the existing native HTML report")
     args = parser.parse_args()
     dates = pd.DatetimeIndex(["2025-07-07T20:00Z", "2025-07-08T20:00Z"])
@@ -67,6 +68,28 @@ def main() -> None:
             pd.testing.assert_frame_equal(got, wanted, rtol=1e-12, atol=1e-15)
         print(
             f"Reference empyrical-reloaded={version('empyrical-reloaded')}: actual public tables match"
+        )
+    if args.compare_pyfolio:
+        import importlib
+
+        from ml4t.diagnostic.compat.pyfolio import perf_attrib as current_pyfolio
+
+        reference_pyfolio = importlib.import_module("pyfolio.perf_attrib")
+        dollar_positions = legacy_weights.unstack("ticker") * 1000
+        dollar_positions["cash"] = 0.0
+        arguments = (returns, dollar_positions, legacy_factors, legacy_loadings)
+        actual_pyfolio = current_pyfolio.perf_attrib(*arguments)
+        expected_pyfolio = reference_pyfolio.perf_attrib(*arguments)
+        for got, wanted in zip(actual_pyfolio, expected_pyfolio, strict=True):
+            pd.testing.assert_frame_equal(got, wanted, rtol=1e-12, atol=1e-15)
+        got_stats = current_pyfolio.create_perf_attrib_stats(actual_pyfolio[1], actual_pyfolio[0])
+        wanted_stats = reference_pyfolio.create_perf_attrib_stats(
+            expected_pyfolio[1], expected_pyfolio[0]
+        )
+        pd.testing.assert_series_equal(got_stats[0], wanted_stats[0], rtol=1e-12, atol=1e-15)
+        pd.testing.assert_frame_equal(got_stats[1], wanted_stats[1], rtol=1e-12, atol=1e-15)
+        print(
+            f"Reference pyfolio-reloaded={version('pyfolio-reloaded')}: complete-book tables and statistics match"
         )
     if args.report:
         from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
