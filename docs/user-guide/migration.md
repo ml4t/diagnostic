@@ -1467,8 +1467,19 @@ With `calendar=None`, no exchange grouping runs: fills must match exact return
 observation keys, not a guessed civil date. No intraday NAV is reconstructed.
 
 For an interactive report, use `cost_analysis.create_tear_sheet(transactions=cost_result)`.
-The existing report renders prepared notional, turnover, known costs and extra-cost
-scenarios without selecting methods again. Returns-only/holdings reports remain
+The existing report renders prepared notional, absolute execution units, turnover,
+all-clock versus active turnover distributions, execution timing, known costs and
+extra-cost scenarios without selecting methods again. Absolute units use the
+supplied instrument units, not an assumption that every instrument is a share.
+`cost_result.execution_timing(bin_minutes=5, timezone="America/New_York")`
+returns counts, absolute units, actual notional and notional fractions for the
+whole civil day. The optional timezone changes display only; overnight fills are
+not discarded. Native default timing retains the source instant timezone, or a
+declared feed timezone for naive inputs. Date labels and undeclared naive instants
+leave timing unavailable without removing raw activity or other report panels.
+Pyfolio's time histogram instead defaults to New York and retains only
+09:30 through 16:00, so that filtered distribution differs for overnight fills.
+Returns-only/holdings reports remain
 independently usable. From the source checkout, run
 `uv run python examples/legacy_migration_comparison.py --task transactions`, or
 `uv run python examples/legacy_migration_comparison.py --task transactions-report --output transactions-report.html`
@@ -1522,6 +1533,25 @@ not just aggregate correlation. These helpers do not yet qualify complete
 transaction tear sheets, intraday reconstruction, round trips or capacity.
 
 ### Consume a Zipline performance result without a legacy analytics dependency
+
+The familiar extraction call is also available as
+`ml4t.diagnostic.compat.pyfolio.utils.extract_rets_pos_txn_from_zipline(performance)`.
+It projects the same normalized native inputs into a pandas `(returns, positions,
+transactions)` tuple. Actual Asset objects need no Zipline import in the consumer;
+portable dictionaries retain stable integer SID labels. Raw integer SIDs use
+the legacy cash-price-per-unit convention, or explicitly supplied
+`asset_metadata={sid: {"multiplier": ...}}` for point-price contracts.
+Closing cash comes from the producer, not an inferred exposure residual.
+
+Daily tuple return/position labels follow the legacy civil-date/naive-UTC
+convention. Original event timestamps remain timezone/ns precise in the
+transaction ledger. Unlike the reference extractor, it does not mutate the
+source index or drop a complete all-cash date before the first position. The
+captured first-day cash1000 is therefore retained, not replaced with a missing
+book. Unknown commissions remain unknown. Native `portfolio_analysis_from_zipline`
+below preserves the original observation clock instead of this explicit daily
+compatibility projection. Both routes are exercised by
+`examples/zipline_portfolio_inputs.py` on portable captures and actual engine output.
 
 Unreleased after 0.1.9, `integration.zipline.portfolio_analysis_from_zipline()`
 extracts `run_algorithm` results into the same `PortfolioAnalysis.from_frames`

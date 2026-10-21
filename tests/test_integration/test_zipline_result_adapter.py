@@ -52,6 +52,81 @@ def test_actual_zipline320_capture_reaches_holdings_and_costs_without_a_legacy_e
     pd.testing.assert_frame_equal(frame, before)
 
 
+def test_familiar_zipline_tuple_retains_cash_only_dates_and_actual_units_without_mutation():
+    from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
+
+    performance = _performance()
+    before = deepcopy(performance)
+    returns, positions, transactions = extract_rets_pos_txn_from_zipline(performance)
+    np.testing.assert_array_equal(returns, performance["returns"])
+    assert returns.index.equals(performance.index.normalize())
+    assert positions[7].to_list() == [0, 300, 330, 240]
+    assert positions["cash"].to_list() == [1000, 699.7, 699.7, 819.6]
+    assert transactions["amount"].to_list() == [3, -1]
+    assert transactions["txn_dollars"].to_list() == [-300, 120]
+    assert transactions["commission"].isna().all()
+    assert transactions["sid"].to_list() == [7, 7]
+    assert transactions.index.equals(pd.DatetimeIndex(["2025-07-08T20:00Z", "2025-07-10T20:00Z"]))
+    pd.testing.assert_frame_equal(performance, before)
+
+
+def test_cash_only_zipline_tuple_is_an_empty_asset_book_not_an_absent_account():
+    from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
+
+    performance = _performance()
+    performance["positions"] = [[] for _ in range(len(performance))]
+    performance["transactions"] = [[] for _ in range(len(performance))]
+    _, positions, transactions = extract_rets_pos_txn_from_zipline(performance)
+    assert list(positions.columns) == ["cash"]
+    assert positions["cash"].to_list() == [1000, 699.7, 699.7, 819.6]
+    assert transactions.empty
+
+
+def test_raw_sid_zipline_tuple_uses_declared_cash_price_units_or_actual_point_multiplier():
+    from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
+
+    performance = _performance()
+    for name in ("positions", "transactions"):
+        performance[name] = [
+            [{**row, "sid": row["sid"]["sid"]} for row in records] for records in performance[name]
+        ]
+    _, ordinary, _ = extract_rets_pos_txn_from_zipline(performance)
+    _, futures, _ = extract_rets_pos_txn_from_zipline(
+        performance, asset_metadata={7: {"multiplier": 50}}
+    )
+    assert ordinary[7].to_list() == [0, 300, 330, 240]
+    assert futures[7].to_list() == [0, 15000, 16500, 12000]
+    pd.testing.assert_series_equal(ordinary["cash"], futures["cash"])
+
+
+def test_zipline_tuple_matches_published_reference_on_shared_nonempty_equity_books():
+    reference = pytest.importorskip("pyfolio.utils")
+    from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
+
+    performance = _performance()
+    performance.iat[0, performance.columns.get_loc("positions")] = [
+        {"sid": 7, "amount": 0, "last_sale_price": 100.0}
+    ]
+    for name in ("positions", "transactions"):
+        performance[name] = [
+            [
+                {**row, "sid": row["sid"]["sid"] if isinstance(row["sid"], dict) else row["sid"]}
+                for row in records
+            ]
+            for records in performance[name]
+        ]
+    # JSON captured Timestamp instants as strings; restore the actual producer type.
+    performance["transactions"] = [
+        [{**row, "dt": pd.Timestamp(row["dt"])} for row in records]
+        for records in performance["transactions"]
+    ]
+    expected = reference.extract_rets_pos_txn_from_zipline(deepcopy(performance))
+    actual = extract_rets_pos_txn_from_zipline(performance)
+    pd.testing.assert_series_equal(actual[0], expected[0], check_freq=False)
+    pd.testing.assert_frame_equal(actual[1], expected[1], check_freq=False)
+    pd.testing.assert_frame_equal(actual[2], expected[2], check_freq=False)
+
+
 def test_actual_zipline320_capture_reaches_the_existing_portfolio_report(tmp_path):
     pytest.importorskip("plotly")
     analysis = portfolio_analysis_from_zipline(_performance(), calendar="NYSE")

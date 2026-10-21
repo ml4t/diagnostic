@@ -16,6 +16,7 @@ from typing import Any
 
 import pandas as pd
 
+from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
 from ml4t.diagnostic.integration.zipline import portfolio_analysis_from_zipline
 
 
@@ -141,6 +142,13 @@ def main() -> None:
     print(activity.timeline)
     assert activity.metrics["total_filled_notional"] == 420
     assert activity.metrics["total_implementation_cost"] is None
+    legacy_returns, legacy_positions, legacy_transactions = extract_rets_pos_txn_from_zipline(
+        performance
+    )
+    assert legacy_returns.to_list() == analysis.returns.tolist()
+    assert legacy_positions["cash"].to_list() == [1000.0, 699.7, 699.7, 819.6]
+    assert legacy_transactions["amount"].to_list() == [3, -1]
+    print("Familiar pandas tuple retains complete all-cash dates and actual transaction units")
     print("Actual Zipline account: stable sid7, 420 traded, unknown fill commissions retained")
     if args.report:
         analysis.create_tear_sheet(transactions=activity).save_html(

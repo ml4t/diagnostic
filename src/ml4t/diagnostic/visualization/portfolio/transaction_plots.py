@@ -60,6 +60,15 @@ def _transaction_figures(
     notional.add_trace(
         go.Bar(x=dates, y=timeline["filled_notional"].to_list(), name="Gross actual notional")
     )
+    units = figure("Absolute Executed Units", "supplied execution units")
+    units.add_trace(go.Bar(x=dates, y=timeline["absolute_units"].to_list(), name="Absolute units"))
+    units.update_layout(
+        meta={
+            "analysis": "prepared_transactions",
+            "units": "execution units",
+            "description": result.metadata["quantity_units"],
+        }
+    )
     turnover = figure("Transaction Turnover", "fraction of selected denominator")
     turnover.add_trace(
         go.Scatter(
@@ -70,6 +79,72 @@ def _transaction_figures(
             mode="lines+markers",
         )
     )
+    distribution = create_base_figure(
+        title="Turnover Distribution",
+        xaxis_title="turnover fraction",
+        yaxis_title="observations",
+        theme=theme,
+        height=max(320, height),
+        width=width,
+    )
+    for label, frame in (
+        ("All defined", timeline),
+        ("Active defined", timeline.filter(pl.col("num_fills") > 0)),
+    ):
+        distribution.add_trace(go.Histogram(x=frame["turnover"].drop_nulls().to_list(), name=label))
+    distribution.update_layout(
+        barmode="overlay",
+        showlegend=True,
+        legend={"orientation": "h", "y": -0.3},
+        margin={"l": 65, "r": 25, "t": 45, "b": 110},
+        meta={
+            "analysis": "prepared_transactions",
+            "description": "Finite defined turnover only; active excludes no-fill observations. Unknown denominators are omitted, not zero-filled.",
+        },
+    )
+    figures["Turnover Distribution"] = distribution
+    timing_availability = {
+        "status": "available",
+        "reason": "All actual event hours retained; no US market-hours filter.",
+    }
+    try:
+        timing = result.execution_timing()
+    except ValueError as error:
+        timing_availability = {"status": "unavailable", "reason": str(error)}
+    else:
+        timing_figure = create_base_figure(
+            title="Execution Time Distribution",
+            xaxis_title="civil time (retained timezone)",
+            yaxis_title="fraction of actual notional",
+            theme=theme,
+            height=max(320, height),
+            width=width,
+        )
+        timing_figure.add_trace(
+            go.Bar(x=timing["time"].to_list(), y=timing["notional_fraction"].to_list())
+        )
+        active_timing = timing.filter(pl.col("num_fills") > 0)
+        timing_figure.add_trace(
+            go.Scatter(
+                x=active_timing["time"].to_list(),
+                y=active_timing["notional_fraction"].to_list(),
+                mode="markers",
+                marker={"size": 6},
+                showlegend=False,
+            )
+        )
+        timing_figure.update_xaxes(
+            type="category", tickmode="array", tickvals=["00:00", "06:00", "12:00", "18:00"]
+        )
+        timing_figure.update_layout(
+            meta={
+                "analysis": "prepared_transactions",
+                "timezone": timing["timezone"][0],
+                "bin_minutes": 5,
+                "description": "All actual event hours in the retained timezone, in five-minute bins; no US equity-hours filter.",
+            }
+        )
+        figures["Execution Time Distribution"] = timing_figure
     costs = figure("Observed Execution Costs", "account currency")
     costs.add_trace(
         go.Scatter(
@@ -94,6 +169,7 @@ def _transaction_figures(
     defined = result.metrics["n_normalized_observations"]
     total = result.metrics["n_observations"]
     return figures, {
+        "execution_timing": timing_availability,
         "transaction_normalization": {
             "status": "available" if defined == total else "partial" if defined else "unavailable",
             "reason": f"Turnover defined for {defined} of {total} supplied clock observations; raw notional remains available. Means use only defined ratios; both all-clock and active counts are exported.",

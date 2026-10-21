@@ -68,6 +68,54 @@ def test_overnight_fills_share_one_exchange_session_and_use_beginning_not_closin
     ]
 
 
+def test_overnight_execution_timing_keeps_all_hours_and_converts_only_the_display_zone():
+    result = _account().compute_transaction_analysis()
+    assert result.timeline["absolute_units"].to_list() == [1.0, 0.0, 0.0]
+    assert result.metrics["total_absolute_units"] == 1.0
+    before = result.executions.clone()
+    original = result.execution_timing()
+    assert original.height == 288
+    active = original.filter(pl.col("num_fills") > 0)
+    assert active["time"].to_list() == ["00:30", "23:30"]
+    assert active["absolute_units"].to_list() == [0.5, 0.5]
+    assert active["filled_notional"].to_list() == [100.0, 100.0]
+    assert active["notional_fraction"].to_list() == [0.5, 0.5]
+    display = result.execution_timing(bin_minutes=60, timezone="America/New_York")
+    assert display.height == 24
+    assert display.filter(pl.col("num_fills") > 0)["time"].to_list() == ["19:00", "20:00"]
+    assert result.executions.equals(before)
+
+
+@pytest.mark.parametrize("bin_minutes", [0, 1441, True, 1.5])
+def test_execution_timing_rejects_invalid_bin_widths_without_changing_results(bin_minutes):
+    result = _account().compute_transaction_analysis()
+    before = result.executions.clone()
+    with pytest.raises((ValueError, TypeError), match="bin_minutes"):
+        result.execution_timing(bin_minutes=bin_minutes)
+    assert result.executions.equals(before)
+
+
+def test_unknown_naive_execution_timezone_disables_only_timing_not_actual_activity():
+    dates = pd.date_range("2025-07-07T15:00", periods=2)
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.01, 0.02], index=dates),
+        transactions=pd.DataFrame(
+            {"timestamp": dates, "asset": [7, 7], "quantity": [1, -1], "price": [100, 110]}
+        ),
+        calendar=None,
+        transaction_timestamp_col="timestamp",
+    )
+    result = analysis.compute_transaction_analysis()
+    assert result.metrics["total_filled_notional"] == 210
+    with pytest.raises(ValueError, match="declared feed timezone"):
+        result.execution_timing()
+    pytest.importorskip("plotly")
+    report = analysis.create_tear_sheet(transactions=result)
+    assert report.availability["execution_timing"]["status"] == "unavailable"
+    assert "Execution Time Distribution" not in report.figures
+    assert list(report.figures["Absolute Executed Units"].data[0].y) == [1, 1]
+
+
 def test_unknown_observed_commission_never_becomes_zero_but_incremental_cost_is_known():
     result = _account(unknown_cost=True).compute_transaction_analysis(incremental_bps=[10])
     assert result.executions["implementation_cost"].null_count() == 1
@@ -301,6 +349,10 @@ def test_supplied_empty_execution_ledger_proves_zero_activity_on_the_entire_cloc
     assert result.metrics["mean_turnover_active"] is None
     assert result.timeline["implementation_cost"].to_list() == [0, 0, 0]
     assert result.scenarios["net_return"].to_list() == [0.01, -0.02, 0.03] * 2
+    timing = result.execution_timing()
+    assert timing["num_fills"].sum() == 0
+    assert timing["absolute_units"].sum() == 0
+    assert timing["notional_fraction"].null_count() == timing.height
 
 
 def test_real_portfolio_report_renders_prepared_transaction_values_and_keeps_owned_copy(tmp_path):
@@ -313,6 +365,10 @@ def test_real_portfolio_report_renders_prepared_transaction_values_and_keeps_own
     assert sheet.availability["transactions"]["status"] == "available"
     assert list(sheet.figures["Actual Traded Notional"].data[0].y) == [200, 0, 0]
     assert list(sheet.figures["Transaction Turnover"].data[0].y) == [0.2, 0, 0]
+    assert list(sheet.figures["Absolute Executed Units"].data[0].y) == [1, 0, 0]
+    assert list(sheet.figures["Turnover Distribution"].data[0].x) == [0.2, 0, 0]
+    assert list(sheet.figures["Turnover Distribution"].data[1].x) == [0.2]
+    assert sum(sheet.figures["Execution Time Distribution"].data[0].y) == 1
     assert list(sheet.figures["Observed Execution Costs"].data[0].y) == [None, 0, 0]
     assert list(sheet.figures["Incremental Cost Return Scenarios"].data[1].y) == pytest.approx(
         [0.0098, -0.02, 0.03]
