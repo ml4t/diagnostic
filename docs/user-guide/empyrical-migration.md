@@ -482,14 +482,31 @@ The report displays those stored contributions without annualizing or
 compounding each component independently.
 
 For an existing Empyrical workflow, change the import and retain the supplied
-pandas inputs:
+pandas inputs. This executable two-date book uses the same weights and loadings:
 
 ```python
+import numpy as np
+import pandas as pd
 from ml4t.diagnostic.compat import empyrical as ep
 
-exposures, contributions = ep.perf_attrib(
-    returns, positions, factor_returns, factor_loadings
+attribution_dates = pd.DatetimeIndex(["2025-07-07T20:00Z", "2025-07-08T20:00Z"])
+attribution_keys = pd.MultiIndex.from_product(
+    [attribution_dates, ["A", "B"]], names=["dt", "ticker"]
 )
+attribution_returns = pd.Series([0.03, -0.01], index=attribution_dates)
+positions = pd.Series([0.5, 0.5, 0.25, 0.75], index=attribution_keys)
+factor_loadings = pd.DataFrame(
+    {"market": [2.0, 1.0, 1.0, 1.0], "style": [0.0, 0.5, 2.0, 0.0]},
+    index=attribution_keys,
+)
+factor_returns = pd.DataFrame(
+    {"market": [0.01, -0.02], "style": [0.02, 0.01]}, index=attribution_dates
+)
+exposures, contributions = ep.perf_attrib(
+    attribution_returns, positions, factor_returns, factor_loadings
+)
+np.testing.assert_allclose(exposures, [[1.5, 0.25], [1.0, 0.5]])
+np.testing.assert_allclose(contributions["common_returns"], [0.02, -0.015])
 ```
 
 Here `positions` is a fractional NAV-weight Series with a date/asset

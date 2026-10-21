@@ -90,7 +90,11 @@ def create_perf_attrib_tear_sheet(
             "wealth-linked decomposition.</p>"
             '<div class="attribution-statistics" style="overflow-x:auto">'
             + summary.to_frame("Value").to_html(float_format=lambda value: f"{value:.6g}")
-            + factors.to_html(float_format=lambda value: f"{value:.6g}")
+            + "</div><p>Scroll the factor statistics horizontally on narrow displays.</p>"
+            '<div class="attribution-statistics" style="overflow-x:auto">'
+            + factors.to_html(
+                classes="attribution-factor-statistics", float_format=lambda value: f"{value:.6g}"
+            )
             + "</div>",
             "figure_index": 0,
         }

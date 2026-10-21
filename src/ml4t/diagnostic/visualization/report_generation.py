@@ -856,19 +856,28 @@ def _build_html_document(
     str
         Complete HTML document
     """
-    # Extract colors from theme
-    bg_color = theme_config.get("plot_bgcolor", _ML4T_COLORS["bg_light"])
-    text_color = theme_config.get("font_color", _ML4T_COLORS["blue"])
-    grid_color = theme_config.get("gridcolor", "#E5E5E5")
+    layout = theme_config.get("layout", {})
+    font = layout.get("font", {})
+    bg_color = layout.get("paper_bgcolor", _ML4T_COLORS["bg_light"])
+    if bg_color == "rgba(0,0,0,0)":
+        bg_color = _ML4T_COLORS["bg_light"]
+    text_color = font.get("color", _ML4T_COLORS["blue"])
+    grid_color = layout.get("xaxis", {}).get("gridcolor", "#E5E5E5")
 
     # Determine if dark theme
-    is_dark = "dark" in theme_config.get("template", "").lower() or bg_color in [
+    is_dark = theme_config.get("name") == "dark" or bg_color in [
         _ML4T_COLORS["bg_dark"],
         _ML4T_COLORS["blue_light"],
     ]
 
     # Generate CSS
-    css = _generate_css(bg_color, text_color, grid_color, is_dark)
+    css = _generate_css(
+        bg_color,
+        text_color,
+        grid_color,
+        is_dark,
+        font.get("family", "DM Sans, DejaVu Sans, sans-serif"),
+    )
 
     # Generate TOC if requested
     toc_html = ""
@@ -916,7 +925,13 @@ def _build_html_document(
     return html
 
 
-def _generate_css(bg_color: str, text_color: str, grid_color: str, is_dark: bool) -> str:
+def _generate_css(
+    bg_color: str,
+    text_color: str,
+    grid_color: str,
+    is_dark: bool,
+    font_family: str = "DM Sans, DejaVu Sans, sans-serif",
+) -> str:
     """Generate CSS styles for report."""
     # Derive additional colors
     if is_dark:
@@ -939,7 +954,7 @@ def _generate_css(bg_color: str, text_color: str, grid_color: str, is_dark: bool
         }}
 
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: {font_family};
             background-color: {bg_color};
             color: {text_color};
             line-height: 1.6;
@@ -1022,6 +1037,27 @@ def _generate_css(bg_color: str, text_color: str, grid_color: str, is_dark: bool
             font-size: 1.1em;
             margin-bottom: 20px;
             line-height: 1.8;
+        }}
+
+        .section-text table {{
+            border-collapse: collapse;
+            font-size: 14px;
+            width: 100%;
+            margin: 16px 0;
+        }}
+
+        .section-text th, .section-text td {{
+            padding: 8px 10px;
+            border: 1px solid {border_color};
+            text-align: right;
+        }}
+
+        .section-text th:first-child, .section-text td:first-child {{
+            text-align: left;
+        }}
+
+        .attribution-factor-statistics {{
+            min-width: 560px;
         }}
 
         /* Plot containers */
