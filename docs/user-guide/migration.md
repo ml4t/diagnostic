@@ -1529,8 +1529,44 @@ them through a datetime ndarray, and widened integer accumulation avoids
 signed-64-bit absolute-value overflow. An actually empty nested ledger returns
 an empty table instead of the reference's missing-column error. The reference
 tests cover intermediate amounts, prices, date keys, missingness and labels,
-not just aggregate correlation. These helpers do not yet qualify complete
-transaction tear sheets, intraday reconstruction, round trips or capacity.
+not just aggregate correlation.
+
+With the `viz` extra, `from ml4t.diagnostic.compat.pyfolio import plotting`
+also provides `plot_turnover`, `plot_daily_volume`,
+`plot_daily_turnover_hist`, `plot_txn_time_hist`, `plot_slippage_sweep` and
+`plot_slippage_sensitivity`. They return native Plotly figures with
+`show()`, `write_html()` and `to_dict()`, not Matplotlib axes. Remove `ax=`
+when migrating; Matplotlib axis reuse/style callbacks and legend placement are
+not preserved. Histogram bin presentation may differ, but the underlying
+turnover sample is retained, with any excluded nonfinite values counted.
+
+Daily turnover retains civil-month and all-time mean overlays. Daily volume
+uses the mean over actual activity dates, not the native full return clock.
+Legacy timing defaults to five-minute New York buckets and includes only
+09:30 through the entire 16:00 minute. It normalizes selected actual notional,
+counts excluded fills and leaves an empty selection undefined. Native complete-day
+timing above remains the route for overnight strategies.
+
+Slippage sweep defaults remain `(3, 8, 10, 12, 15, 20, 50)` cash bps. Wealth
+starts at 1 and compounds the exact adjusted return path, with legacy missing
+returns contributing no change. Sensitivity evaluates the original 1 through 99 bps
+sample using native CAGR, not arithmetic mean return. Its legacy daily scale
+is 252; pass `periods_per_year=` for a different declared return cadence.
+Three observations with `periods_per_year=3` use one exact window product;
+`periods_per_year=6` squares that product. This is not rolling-return
+annualization or an assumption about exchange sessions.
+
+Run the six-plot, self-contained HTML recipe without Pyfolio:
+
+```bash
+uv run python examples/pyfolio_transaction_adapters.py --report transaction-adapters.html
+```
+
+The optional `--compare` flag also checks the published reference helpers on the
+same inputs. Reference tests additionally inspect real Matplotlib plot payloads
+under matched turnover, bps and timing-bin choices. These observed-input
+transaction routes do not yet qualify the complete `create_txn_tear_sheet`
+intraday-estimation options, round trips or capacity. Those remain accepted work.
 
 ### Consume a Zipline performance result without a legacy analytics dependency
 
@@ -1542,6 +1578,9 @@ portable dictionaries retain stable integer SID labels. Raw integer SIDs use
 the legacy cash-price-per-unit convention, or explicitly supplied
 `asset_metadata={sid: {"multiplier": ...}}` for point-price contracts.
 Closing cash comes from the producer, not an inferred exposure residual.
+If a partial export omits a cash observation, it remains unknown, not zero.
+This deliberately corrects the reference extractor's blanket zero fill; the
+normalizer already supplies zero only for assets absent from a complete book.
 
 Daily tuple return/position labels follow the legacy civil-date/naive-UTC
 convention. Original event timestamps remain timezone/ns precise in the

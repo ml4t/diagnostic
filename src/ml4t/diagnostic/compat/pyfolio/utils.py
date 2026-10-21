@@ -74,7 +74,6 @@ def extract_rets_pos_txn_from_zipline(
     account = inputs.valuations
     assert account is not None
     positions["cash"] = account["cash"].to_numpy()
-    positions = positions.fillna(0.0)
     positions.columns.name = "sid"
     positions.index.name = "index"
     fills = inputs.transactions

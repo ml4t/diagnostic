@@ -82,6 +82,19 @@ def test_cash_only_zipline_tuple_is_an_empty_asset_book_not_an_absent_account():
     assert transactions.empty
 
 
+def test_partial_cash_export_stays_unknown_in_familiar_tuple_instead_of_becoming_zero():
+    from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
+
+    performance = _performance()
+    # A partial account export can lose cash while retaining marks/return observations.
+    performance.loc[performance.index[1], "ending_cash"] = np.nan
+    native = portfolio_analysis_from_zipline(performance, calendar=None)
+    assert native.input_data.valuations["cash"][1] is None
+    _, positions, _ = extract_rets_pos_txn_from_zipline(performance)
+    assert pd.isna(positions["cash"].iloc[1])
+    assert positions[7].to_list() == [0, 300, 330, 240]
+
+
 def test_raw_sid_zipline_tuple_uses_declared_cash_price_units_or_actual_point_multiplier():
     from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
 

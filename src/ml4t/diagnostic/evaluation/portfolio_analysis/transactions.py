@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from numbers import Integral, Real
+from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -14,7 +14,12 @@ import polars as pl
 from ml4t.diagnostic.utils.validation import _align_datetime_key_resolution
 
 from .frame_inputs import PortfolioInputData
-from .transaction_metrics import absolute_quantity_expr, adjusted_return_expr, average_gross_book
+from .transaction_metrics import (
+    absolute_quantity_expr,
+    adjusted_return_expr,
+    average_gross_book,
+    execution_timing_frame,
+)
 
 
 @dataclass
@@ -45,51 +50,11 @@ class TransactionAnalysisResult:
         applied: overnight executions remain in the returned bins. Proportions
         use actual cash notional, not execution counts or signed share totals.
         """
-        if isinstance(bin_minutes, bool) or not isinstance(bin_minutes, Integral):
-            raise TypeError("bin_minutes must be a positive integer")
-        if not 1 <= bin_minutes <= 1440:
-            raise ValueError("bin_minutes must be between1 and1440")
-        timestamps = self.executions["timestamp"]
-        if not isinstance(timestamps.dtype, pl.Datetime):
-            raise ValueError("execution timing requires event timestamps, not date labels")
-        instants = pd.DatetimeIndex(timestamps.to_pandas())
-        declared = self.metadata.get("input_timezone")
-        if instants.tz is None:
-            if declared is None:
-                raise ValueError("naive execution instants require a declared feed timezone")
-            instants = instants.tz_localize(declared, ambiguous="raise", nonexistent="raise")
-        if timezone is not None:
-            instants = instants.tz_convert(timezone)
-        minutes = instants.hour * 60 + instants.minute
-        events = self.executions.with_columns(
-            pl.Series("minute", (minutes // bin_minutes * bin_minutes).to_numpy()).cast(pl.Int32),
-            absolute_quantity_expr(self.executions["quantity"].dtype).alias("absolute_units"),
-        )
-        grouped = events.group_by("minute").agg(
-            pl.len().alias("num_fills"),
-            pl.col("absolute_units").sum(),
-            pl.col("filled_notional").sum(),
-        )
-        total = self.executions["filled_notional"].sum()
-        return (
-            pl.DataFrame({"minute": range(0, 1440, bin_minutes)}, schema={"minute": pl.Int32})
-            .join(grouped, on="minute", how="left")
-            .with_columns(
-                pl.col("num_fills").fill_null(0),
-                pl.col("absolute_units").fill_null(0),
-                pl.col("filled_notional").fill_null(0.0),
-                pl.lit(str(instants.tz)).alias("timezone"),
-                (
-                    (pl.col("minute") // 60).cast(pl.String).str.pad_start(2, "0")
-                    + ":"
-                    + (pl.col("minute") % 60).cast(pl.String).str.pad_start(2, "0")
-                ).alias("time"),
-            )
-            .with_columns(
-                (
-                    pl.col("filled_notional") / total if total else pl.lit(None, dtype=pl.Float64)
-                ).alias("notional_fraction")
-            )
+        return execution_timing_frame(
+            self.executions,
+            bin_minutes=bin_minutes,
+            timezone=timezone,
+            input_timezone=self.metadata.get("input_timezone"),
         )
 
 

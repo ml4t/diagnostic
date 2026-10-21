@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from numbers import Integral
 from typing import Literal
 
+import pandas as pd
 import polars as pl
 
 
@@ -86,3 +88,74 @@ def adjusted_return_expr(
         .otherwise(pnl.fill_null(0.0) - cash_cost.fill_null(0.0))
     )
     return cash_fraction_expr(numerator, denominator, positive_finite=False)
+
+
+def execution_timing_frame(
+    fills: pl.DataFrame,
+    *,
+    bin_minutes: int = 5,
+    timezone: str | None = None,
+    input_timezone: str | None = None,
+    start_minute: int = 0,
+    end_minute: int = 1440,
+) -> pl.DataFrame:
+    """Aggregate actual events, with an explicit optional civil-time selection.
+
+    The interval is [start_minute,end_minute). Native full-day timing and the
+    legacy inclusive16:00 selection use this same calculation. Fractions use
+    only notional actually included in that selection, never outside fills.
+    """
+    if isinstance(bin_minutes, bool) or not isinstance(bin_minutes, Integral):
+        raise TypeError("bin_minutes must be a positive integer")
+    if not 1 <= bin_minutes <= 1440:
+        raise ValueError("bin_minutes must be between1 and1440")
+    if not 0 <= start_minute < end_minute <= 1440:
+        raise ValueError("civil-time selection must fall within one day")
+    timestamps = fills["timestamp"]
+    if not isinstance(timestamps.dtype, pl.Datetime):
+        raise ValueError("execution timing requires event timestamps, not date labels")
+    instants = pd.DatetimeIndex(timestamps.to_pandas())
+    if instants.tz is None:
+        if input_timezone is None:
+            raise ValueError("naive execution instants require a declared feed timezone")
+        instants = instants.tz_localize(input_timezone, ambiguous="raise", nonexistent="raise")
+    if timezone is not None:
+        instants = instants.tz_convert(timezone)
+    minutes = instants.hour * 60 + instants.minute
+    events = (
+        fills.with_columns(
+            pl.Series("minute", minutes.to_numpy()).cast(pl.Int32),
+            absolute_quantity_expr(fills["quantity"].dtype).alias("absolute_units"),
+        )
+        .filter(pl.col("minute").is_between(start_minute, end_minute, closed="left"))
+        .with_columns((pl.col("minute") // bin_minutes * bin_minutes).alias("minute"))
+    )
+    grouped = events.group_by("minute").agg(
+        pl.len().alias("num_fills"),
+        pl.col("absolute_units").sum(),
+        pl.col("filled_notional").sum(),
+    )
+    total = events["filled_notional"].sum()
+    return (
+        pl.DataFrame(
+            {"minute": range(start_minute // bin_minutes * bin_minutes, end_minute, bin_minutes)},
+            schema={"minute": pl.Int32},
+        )
+        .join(grouped, on="minute", how="left")
+        .with_columns(
+            pl.col("num_fills").fill_null(0),
+            pl.col("absolute_units").fill_null(0),
+            pl.col("filled_notional").fill_null(0.0),
+            pl.lit(str(instants.tz)).alias("timezone"),
+            (
+                (pl.col("minute") // 60).cast(pl.String).str.pad_start(2, "0")
+                + ":"
+                + (pl.col("minute") % 60).cast(pl.String).str.pad_start(2, "0")
+            ).alias("time"),
+        )
+        .with_columns(
+            (pl.col("filled_notional") / total if total else pl.lit(None, dtype=pl.Float64)).alias(
+                "notional_fraction"
+            )
+        )
+    )
