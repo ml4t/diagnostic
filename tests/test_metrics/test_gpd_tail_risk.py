@@ -121,6 +121,7 @@ def test_likelihood_helpers_share_the_actual_exponential_and_shape_one_density_c
     assert ep.gpd_loglikelihood_scale_only_factory(values)(2.0) == pytest.approx(
         3 * math.log(2) + 4
     )
+    assert ep.gpd_loglikelihood([2.0, 0.0], values) == pytest.approx(3 * math.log(2) + 4)
 
 
 def test_probability_above_fitted_tail_is_not_extrapolated_into_an_unmodeled_body():
@@ -158,3 +159,36 @@ def test_actual_heavy_tail_fit_keeps_corrected_reference_infinite_expected_short
     np.testing.assert_allclose(
         [result.scale, result.shape, result.value_at_risk], expected[1:4], rtol=1e-5, atol=1e-10
     )
+
+
+def test_real_optimizer_budget_failure_cannot_be_reported_as_a_successful_or_zero_risk_fit(
+    monkeypatch,
+):
+    from ml4t.diagnostic.metrics import tail_risk
+
+    original = tail_risk.optimize.minimize
+    observed = []
+
+    def run_with_exhausted_budget(*args, **kwargs):
+        kwargs["options"] = {**(kwargs.get("options") or {}), "maxiter": 1}
+        actual = original(*args, **kwargs)
+        assert not actual.success and actual.nit == 1
+        observed.append(actual)
+        return actual
+
+    monkeypatch.setattr(tail_risk.optimize, "minimize", run_with_exhausted_budget)
+    result = metrics.estimate_gpd_tail_risk(portfolio_returns(), threshold=0.02)
+    assert len(observed) == 1 and result.status == "fit_failed"
+    assert result.n_finite == 48 and result.n_exceedances == 8
+    assert np.isnan(result.scale) and np.isnan(result.shape)
+    assert np.isnan(result.value_at_risk) and np.isnan(result.expected_shortfall)
+
+
+@pytest.mark.parametrize("labelled", [False, True])
+def test_familiar_no_loss_fit_remains_undefined_instead_of_reference_zero_risk(labelled):
+    values = np.repeat(0.01, 10)
+    if labelled:
+        values = pd.Series(values, index=pd.bdate_range("2025-01-02", periods=10))
+    original = values.copy()
+    assert np.isnan(ep.gpd_risk_estimates(values)).all()
+    np.testing.assert_array_equal(values, original)
