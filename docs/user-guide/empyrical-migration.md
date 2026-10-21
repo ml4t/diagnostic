@@ -449,10 +449,30 @@ that reference defect. Direct reference comparisons for the broken wrapper are
 reported separately from passing comparisons for other rolling functions.
 
 `SIMPLE_STAT_FUNCS` runs the complete simple-statistics registry, including the
-native-backed definitions above and SciPy skew/kurtosis. A complete familiar
-factor-statistics registry still depends on separately qualified fragility and
-GPD workflows. It is not silently exposed as a shortened list with missing
-statistics.
+native-backed definitions above and SciPy skew/kurtosis. `FACTOR_STAT_FUNCS`
+preserves the complete Empyrical order: excess Sharpe, alpha, beta, beta
+fragility, GPD risk estimates, capture, up capture and down capture. The registry
+does not give these functions a uniform signature. GPD receives a univariate
+return series and `var_p`, and returns five fields; the other entries receive
+strategy and benchmark returns and return scalar statistics.
+
+```python
+factor_statistics = {
+    function.__name__: (
+        function(returns, var_p=0.01)
+        if function.__name__ == "gpd_risk_estimates"
+        else function(returns, benchmark)
+    )
+    for function in ep.FACTOR_STAT_FUNCS
+}
+```
+
+Use one strategy series at a time. These statistics have different units:
+alpha is an annual compounded return by default, beta/capture/excess Sharpe
+are dimensionless, fragility is a periodic return, and GPD contains a
+threshold, scale, dimensionless shape, loss VaR and expected shortfall.
+The runnable `--task empyrical-tail` recipe also executes this complete
+registry without requiring Empyrical at runtime.
 
 ## Inspect a fitted generalized-Pareto tail (unreleased)
 

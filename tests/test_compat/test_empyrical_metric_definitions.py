@@ -121,3 +121,51 @@ def test_simple_stat_registry_runs_the_complete_published_metric_workflow_in_ord
     actual = [function(returns.copy()) for function in ep.SIMPLE_STAT_FUNCS]
     expected = [function(returns.copy()) for function in reference.SIMPLE_STAT_FUNCS]
     np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12, equal_nan=True)
+
+
+def _run_factor_registry(registry, returns, benchmark):
+    return {
+        function.__name__: (
+            function(returns.copy(), var_p=0.01)
+            if function.__name__ == "gpd_risk_estimates"
+            else function(returns.copy(), benchmark.copy())
+        )
+        for function in registry
+    }
+
+
+def test_factor_registry_supports_paired_metrics_and_univariate_five_field_tail_workflow():
+    returns = np.array([0.01, -0.02, 0.03, -0.04, 0.02, -0.01, -0.03, 0.015, 0.005, -0.025])
+    benchmark = np.array([0.02, -0.01, 0.025, -0.03, 0.01, -0.02, -0.025, 0.01, 0.005, -0.015])
+    original = returns.copy(), benchmark.copy()
+    actual = _run_factor_registry(ep.FACTOR_STAT_FUNCS, returns, benchmark)
+    assert list(actual) == [
+        "excess_sharpe",
+        "alpha",
+        "beta",
+        "beta_fragility_heuristic",
+        "gpd_risk_estimates",
+        "capture",
+        "up_capture",
+        "down_capture",
+    ]
+    expected_beta = np.cov(returns, benchmark)[0, 1] / np.var(benchmark, ddof=1)
+    assert actual["beta"] == pytest.approx(expected_beta)
+    assert actual["alpha"] == pytest.approx(
+        (1 + returns.mean() - expected_beta * benchmark.mean()) ** 252 - 1
+    )
+    tail = np.asarray(actual["gpd_risk_estimates"])
+    assert tail.shape == (5,) and np.isfinite(tail).all() and (tail > 0).all()
+    np.testing.assert_array_equal(returns, original[0])
+    np.testing.assert_array_equal(benchmark, original[1])
+
+
+def test_factor_registry_executes_every_actual_reference_signature_in_original_order():
+    reference = pytest.importorskip("empyrical.stats")
+    returns = np.array([0.01, -0.02, 0.03, -0.04, 0.02, -0.01, -0.03, 0.015, 0.005, -0.025])
+    benchmark = np.array([0.02, -0.01, 0.025, -0.03, 0.01, -0.02, -0.025, 0.01, 0.005, -0.015])
+    actual = _run_factor_registry(ep.FACTOR_STAT_FUNCS, returns, benchmark)
+    expected = _run_factor_registry(reference.FACTOR_STAT_FUNCS, returns, benchmark)
+    assert list(actual) == list(expected)
+    for name in actual:
+        np.testing.assert_allclose(actual[name], expected[name], rtol=1e-5, atol=1e-10)

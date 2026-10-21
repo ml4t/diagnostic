@@ -401,8 +401,20 @@ SIMPLE_STAT_FUNCS = [
     conditional_value_at_risk,
 ]
 
+FACTOR_STAT_FUNCS = [
+    excess_sharpe,
+    alpha,
+    beta,
+    beta_fragility_heuristic,
+    gpd_risk_estimates,
+    capture,
+    up_capture,
+    down_capture,
+]
+
 
 __all__ = [
+    "FACTOR_STAT_FUNCS",
     "gpd_es_calculator",
     "gpd_loglikelihood",
     "gpd_loglikelihood_factory",

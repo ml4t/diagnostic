@@ -886,6 +886,19 @@ def show_empyrical_tail(output: Path | None = None) -> None:
     print("Named raw-tail method (different fit and denominator):", asdict(familiar))
     print("Familiar five-field projection:", ep.gpd_risk_estimates(supplied, var_p=0.02).tolist())
     print("No annualization or calendar inference; failed fits are undefined, not zero risk")
+    benchmark = pd.Series(np.linspace(-0.02, 0.02, len(supplied)), index=supplied.index)
+    statistics = {
+        function.__name__: (
+            function(supplied, var_p=0.02)
+            if function.__name__ == "gpd_risk_estimates"
+            else function(supplied, benchmark)
+        )
+        for function in ep.FACTOR_STAT_FUNCS
+    }
+    assert np.shape(statistics["gpd_risk_estimates"]) == (5,)
+    expected_beta = np.cov(supplied, benchmark)[0, 1] / np.var(benchmark, ddof=1)
+    np.testing.assert_allclose(statistics["beta"], expected_beta)
+    print("Complete factor-statistics registry (mixed units/signatures):", statistics)
     if output is not None:
         from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
