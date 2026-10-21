@@ -671,6 +671,14 @@ def show_empyrical_benchmark() -> None:
     print(f"Active Sharpe (dimensionless, not annualized): {excess}")
     print(f"Native strict-positive-up batting/counts: {native}")
     print(f"Familiar zero-in-up batting: {familiar.to_dict()}")
+    sample = np.array([0.04, 0.01, -0.01, -0.03])
+    market = np.array([0.02, 0.01, -0.02, -0.01])
+    up = ((1.04 * 1.01) ** 6 - 1) / ((1.02 * 1.01) ** 6 - 1)
+    down = ((0.99 * 0.97) ** 6 - 1) / ((0.98 * 0.99) ** 6 - 1)
+    np.testing.assert_allclose(metrics.up_capture(sample, market, period="monthly"), up)
+    np.testing.assert_allclose(metrics.down_capture(sample, market, period="monthly"), down)
+    np.testing.assert_allclose(metrics.up_down_capture(sample, market, period="monthly"), up / down)
+    print(f"Geometric capture (dimensionless): up={up}; down={down}; up/down={up / down}")
 
 
 def show_empyrical_definitions() -> None:

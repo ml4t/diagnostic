@@ -283,9 +283,23 @@ zero benchmark returns. The familiar facade returns the original three labeled
 fractions and selects that inclusive convention. This is benchmark-relative
 outperformance, not factor-monotonicity or a strategy's positive-return fraction.
 
-These are the first benchmark routes in the broader accepted metric work.
-Capture definitions and the complete rolling family remain unfinished; this
-section is not a full-replacement claim.
+The same example exercises `capture`, `up_capture`, `down_capture` and
+`up_down_capture`. These divide annualized geometric return gains; they are
+dimensionless ratios. The existing native `up_down_capture` continues to return
+a tuple of terminal-wealth ratios. It is not the familiar scalar up/down ratio.
+Full-stream capture compounds each supplied stream independently, counting its
+missing rows as elapsed observations. Sign-subset one-series calls first select
+present pairs using the benchmark's strict sign. Zero benchmark returns are
+excluded from both subsets, and empty subsets are undefined.
+
+Array matrix shapes remain function-specific. `capture` returns column ratios;
+for up/down capture, a one-dimensional benchmark selects whole rows, while a
+same-shaped benchmark matrix selects cells and pools them, as in the actual
+reference. Use explicit per-column calls for independent sign-subset strategy
+results. No blanket DataFrame or broadcast claim follows from these cases.
+
+The complete rolling family remains unfinished; this section is not a
+full-replacement claim.
 
 ## Select metric definitions explicitly (unreleased)
 

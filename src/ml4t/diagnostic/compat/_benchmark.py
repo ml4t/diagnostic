@@ -11,7 +11,15 @@ from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as native
 from ml4t.diagnostic.evaluation.portfolio_analysis.benchmark import benchmark_batting_average
 from ml4t.diagnostic.metrics.risk_adjusted import periodic_sharpe_ratio
 
-from ._returns import MetricOutput, ReturnInput, adjust_rate, as_array, output_array, reduce_columns
+from ._returns import (
+    MetricOutput,
+    ReturnInput,
+    adjust_rate,
+    as_array,
+    output_array,
+    reduce_columns,
+    select_benchmark_sign,
+)
 
 
 def _aligned_pair(
@@ -238,11 +246,10 @@ def excess_sharpe(
 def _sign_alpha_beta(
     returns: ReturnInput, factor_returns: ReturnInput, positive: bool, **kwargs: Any
 ) -> np.ndarray:
-    _output(returns, factor_returns, (2,), kwargs.get("out"), kwargs.get("risk_free"))
-    values, factor = _arrays(*_aligned_pair(returns, factor_returns))
-    paired = ~np.isnan(values) & ~np.isnan(factor)
-    mask = paired & (factor > 0 if positive else factor < 0)
-    return alpha_beta_aligned(values[mask], factor[mask], **kwargs)
+    selected = select_benchmark_sign(returns, factor_returns, positive=positive)
+    shape = as_array(selected[0]).shape[1:] + (2,)
+    _output(returns, factor_returns, shape, kwargs.get("out"), kwargs.get("risk_free"))
+    return alpha_beta(*selected, **kwargs)
 
 
 def up_alpha_beta(returns: ReturnInput, factor_returns: ReturnInput, **kwargs: Any) -> np.ndarray:

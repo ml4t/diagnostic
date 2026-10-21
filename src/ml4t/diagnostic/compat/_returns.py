@@ -35,6 +35,21 @@ def adjust_rate(returns: ReturnInput, rate: float | ReturnInput) -> ReturnInput:
     return returns - rate
 
 
+def select_benchmark_sign(
+    returns: ReturnInput, factor: ReturnInput, *, positive: bool
+) -> tuple[ReturnInput, ReturnInput]:
+    """Retain legacy row selection versus ndarray cell selection and pandas labels."""
+    values, benchmark = as_array(returns), as_array(factor)
+    if isinstance(returns, pd.Series) and isinstance(factor, pd.Series):
+        paired = ~(returns.isna() | factor.isna())
+    elif values.ndim == benchmark.ndim == 1:
+        paired = ~(np.isnan(values) | np.isnan(benchmark))
+    else:
+        paired = np.ones_like(benchmark, dtype=bool)
+    mask = paired & (factor > 0 if positive else factor < 0)
+    return returns[mask], factor[mask]
+
+
 def output_array(
     returns: ReturnInput, shape: tuple[int, ...], out: np.ndarray | None
 ) -> np.ndarray:

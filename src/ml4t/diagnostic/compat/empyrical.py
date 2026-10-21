@@ -25,6 +25,7 @@ from ml4t.diagnostic.compat._benchmark import (
     excess_sharpe,
     up_alpha_beta,
 )
+from ml4t.diagnostic.compat._capture import capture, down_capture, up_capture, up_down_capture
 from ml4t.diagnostic.compat._returns import (
     MetricOutput,
     ReturnInput,
@@ -320,6 +321,10 @@ def conditional_value_at_risk(returns: ReturnInput, cutoff: float = 0.05) -> flo
 
 
 __all__ = [
+    "capture",
+    "up_capture",
+    "down_capture",
+    "up_down_capture",
     "omega_ratio",
     "tail_ratio",
     "stability_of_timeseries",
