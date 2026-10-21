@@ -180,6 +180,10 @@ PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).
 A headless environment can verify HTML generation without claiming that
 browser-dependent PDF export was exercised.
+If rendering fails, the exporter attempts browser shutdown before its bounded
+process cleanup and preserves the rendering error. An incomplete export does
+not publish a partial PDF. A failed or hung browser close still requires verified
+termination of the owned process tree before temporary profiles can be removed.
 
 See the [visualization API](../api/index.md#visualization) and the book's
 [performance reporting notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/16_strategy_simulation/09_performance_reporting.ipynb),

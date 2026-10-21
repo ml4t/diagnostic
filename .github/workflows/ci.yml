@@ -271,6 +271,44 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           python -I scripts/check_documentation_examples.py
+      - name: Run native metric migration workflows from the installed core wheel
+        shell: bash
+        run: |
+          for task in empyrical-native empyrical-benchmark empyrical-definitions empyrical-rolling; do
+            uv run --isolated --no-project \
+              --with "$(find dist -name '*.whl' -print -quit)" \
+              --with "pandas==3.0.5" \
+              python -I examples/legacy_migration_comparison.py --task "$task"
+          done
+      - name: Verify scalar adapters against pinned Empyrical from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "polars==1.36.1" --with "pandas==2.3.3"
+          --with "empyrical-reloaded==0.5.12" --with "pytz==2026.5" --with pytest
+          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          -q --tb=short tests/test_compat/test_empyrical_scalar_metrics.py
+          tests/test_compat/test_empyrical_return_paths.py
+      - name: Verify metric and rolling workflows against Empyrical with pandas 3
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "polars==1.36.1" --with "pandas==3.0.5"
+          --with "empyrical-reloaded==0.7.0" --with pytest
+          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          -q --tb=short tests/test_compat/
+      - name: Verify published Pyfolio risk workflows with its compatible pandas profile
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "polars==1.36.1" --with "pandas==2.3.3"
+          --with "empyrical-reloaded==0.7.0" --with "pyfolio-reloaded==0.10.0" --with pytest
+          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          -q --tb=short tests/test_compat/
+          tests/test_evaluation/test_portfolio_var_definitions.py
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-

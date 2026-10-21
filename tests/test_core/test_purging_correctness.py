@@ -727,16 +727,16 @@ class TestExtendedEdgeCases:
 
 
 class TestPurgingPerformance:
-    """Performance tests for purging operations."""
+    """CPU-cost regression checks, independent of host scheduling."""
 
     def test_large_dataset_performance(self):
-        """Purging should be fast even with large datasets."""
+        """Large purging keeps exact indices within its process CPU budget."""
         import time
 
         n_samples = 100_000
         train_indices = np.arange(n_samples)
 
-        start = time.time()
+        start = time.process_time()
 
         clean_train = apply_purging_and_embargo(
             train_indices=train_indices,
@@ -747,18 +747,14 @@ class TestPurgingPerformance:
             n_samples=n_samples,
         )
 
-        elapsed = time.time() - start
+        elapsed = time.process_time() - start
 
-        # Should complete in well under 1 second
-        assert elapsed < 1.0, f"Purging took {elapsed:.2f}s for {n_samples} samples"
-
-        # Verify correctness
-        expected_removed = 20_000 + 1_000 + 500  # test + purge + embargo
-        expected_train = n_samples - expected_removed
-        assert len(clean_train) == expected_train
+        expected = np.concatenate([np.arange(39_000), np.arange(60_500, n_samples)])
+        np.testing.assert_array_equal(clean_train, expected)
+        assert elapsed < 1.0, f"Purging used {elapsed:.2f}s CPU for {n_samples} samples"
 
     def test_many_fold_scenario(self):
-        """Test performance with many folds."""
+        """Repeated folds stay within their aggregate process CPU budget."""
         import time
 
         n_samples = 10_000
@@ -767,7 +763,7 @@ class TestPurgingPerformance:
         label_horizon = 10
         embargo_size = 5
 
-        start = time.time()
+        start = time.process_time()
 
         for fold in range(n_folds):
             test_start = fold * fold_size
@@ -782,10 +778,9 @@ class TestPurgingPerformance:
                 n_samples=n_samples,
             )
 
-        elapsed = time.time() - start
+        elapsed = time.process_time() - start
 
-        # 100 folds should complete quickly
-        assert elapsed < 5.0, f"100 folds took {elapsed:.2f}s"
+        assert elapsed < 5.0, f"100 folds used {elapsed:.2f}s CPU"
 
 
 if __name__ == "__main__":

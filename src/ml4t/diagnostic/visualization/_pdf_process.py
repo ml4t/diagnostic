@@ -36,6 +36,7 @@ finally:
 """
 _RENDER_TIMEOUT = 90
 _CLOSE_TIMEOUT = 15
+_STATUS_READ_TIMEOUT = 2.0
 _logger = logging.getLogger(__name__)
 
 
@@ -239,6 +240,23 @@ class _OwnedProcesses:
         self.process.wait(timeout=5)
 
 
+def _read_status(path: Path) -> dict[str, Any]:
+    """Read one published record, with bounded Windows sharing-error recovery.
+
+    Publication is already atomic, but a scanner can temporarily deny readers.
+    Persistent denial remains the original PermissionError. Failed attempts do
+    not advance the sequence or reset the renderer's progress deadline.
+    """
+    deadline = time.monotonic() + _STATUS_READ_TIMEOUT
+    while True:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except PermissionError:
+            if sys.platform != "win32" or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.02)
+
+
 def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> None:
     """Return only after all pages render and the owned worker tree is terminal."""
     import plotly.io as pio
@@ -299,7 +317,7 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                 next_path = status_path.with_name(f"{status_path.stem}-{sequence + 1:06d}.json")
                 if not next_path.exists():
                     return
-                status = json.loads(next_path.read_text(encoding="utf-8"))
+                status = _read_status(next_path)
                 sequence += 1
 
         try:

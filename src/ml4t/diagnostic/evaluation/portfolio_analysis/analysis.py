@@ -67,6 +67,7 @@ from .results import (
     PortfolioMetrics,
     RollingMetricsResult,
 )
+from .rolling import _row_windows
 from .transactions import TransactionAnalysisResult, analyze_transactions
 
 if TYPE_CHECKING:
@@ -598,8 +599,6 @@ class PortfolioAnalysis:
         periods_per_year: int,
     ) -> np.ndarray:
         """Compute rolling Sharpe ratio using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -609,7 +608,7 @@ class PortfolioAnalysis:
         daily_rf = (1 + risk_free) ** (1 / periods_per_year) - 1
 
         # Vectorized: create all windows at once
-        windows = sliding_window_view(returns, window)
+        windows = _row_windows(returns, window)
         excess = windows - daily_rf
 
         # Compute mean and std across each window (axis=1)
@@ -631,8 +630,6 @@ class PortfolioAnalysis:
         periods_per_year: int,
     ) -> np.ndarray:
         """Compute rolling annualized volatility using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -640,7 +637,7 @@ class PortfolioAnalysis:
             return result
 
         # Vectorized: create all windows at once
-        windows = sliding_window_view(returns, window)
+        windows = _row_windows(returns, window)
         sd = np.std(windows, axis=1, ddof=1)
         result[window - 1 :] = sd * np.sqrt(periods_per_year)
 
@@ -678,8 +675,6 @@ class PortfolioAnalysis:
         window: int,
     ) -> np.ndarray:
         """Compute rolling beta using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -687,8 +682,8 @@ class PortfolioAnalysis:
             return result
 
         # Vectorized: create all windows at once
-        ret_windows = sliding_window_view(returns, window)
-        bench_windows = sliding_window_view(benchmark, window)
+        ret_windows = _row_windows(returns, window)
+        bench_windows = _row_windows(benchmark, window)
 
         # Compute means
         ret_mean = np.mean(ret_windows, axis=1, keepdims=True)
