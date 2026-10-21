@@ -31,7 +31,6 @@ observed=Path(OBSERVED)
 original_open=kaleido.Kaleido.open
 original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
-original_close=kaleido.Kaleido.close
 def snapshot(self):
     processes=[psutil.Process(self.subprocess.pid)]
     processes+=processes[0].children(recursive=True)
