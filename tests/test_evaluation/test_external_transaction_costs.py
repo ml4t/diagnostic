@@ -248,6 +248,7 @@ def test_supplied_empty_execution_ledger_proves_zero_activity_on_the_entire_cloc
 
 
 def test_real_portfolio_report_renders_prepared_transaction_values_and_keeps_owned_copy(tmp_path):
+    pytest.importorskip("plotly")
     import json
 
     analysis = _account(unknown_cost=True)
@@ -275,6 +276,7 @@ def test_real_portfolio_report_renders_prepared_transaction_values_and_keeps_own
 
 
 def test_foreign_transaction_result_is_rejected_before_any_report_is_published(tmp_path):
+    pytest.importorskip("plotly")
     analysis = _account()
     other = PortfolioAnalysis.from_frames(
         pd.Series([0.2], index=pd.date_range("2025-07-07", periods=1))

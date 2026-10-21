@@ -25,7 +25,7 @@ def _performance():
     return frame
 
 
-def test_actual_zipline320_capture_reaches_holdings_costs_and_existing_report(tmp_path):
+def test_actual_zipline320_capture_reaches_holdings_and_costs_without_a_legacy_engine():
     frame = _performance()
     before = deepcopy(frame)
     analysis = portfolio_analysis_from_zipline(frame, calendar="NYSE")
@@ -46,10 +46,16 @@ def test_actual_zipline320_capture_reaches_holdings_costs_and_existing_report(tm
         [0, 0.0003, 0, 0.12 / 1029.7]
     )
     assert activity.metrics["total_implementation_cost"] is None
+    pd.testing.assert_frame_equal(frame, before)
+
+
+def test_actual_zipline320_capture_reaches_the_existing_portfolio_report(tmp_path):
+    pytest.importorskip("plotly")
+    analysis = portfolio_analysis_from_zipline(_performance(), calendar="NYSE")
+    activity = analysis.compute_transaction_analysis()
     sheet = analysis.create_tear_sheet(transactions=activity)
     assert sheet.holdings is not None and sheet.transactions is not None
     sheet.save_html(tmp_path / "zipline-account.html", include_plotlyjs=True)
-    pd.testing.assert_frame_equal(frame, before)
 
 
 def test_source_calendar_omission_null_and_explicit_override_use_the_shared_contract():
