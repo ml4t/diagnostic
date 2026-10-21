@@ -5,7 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .metrics import ArrayLike, _to_numpy
+from ml4t.diagnostic.metrics._paired_returns import paired_returns_1d
+
+from .metrics import ArrayLike
 
 
 def benchmark_batting_average(
@@ -23,17 +25,7 @@ def benchmark_batting_average(
     """
     if not isinstance(up_includes_zero, bool):
         raise TypeError("up_includes_zero must be a boolean")
-    if isinstance(returns, pd.Series) and isinstance(benchmark_returns, pd.Series):
-        aligned = pd.concat([returns, benchmark_returns], axis=1)
-        values, benchmark = (
-            aligned.iloc[:, index].to_numpy(dtype=float, na_value=np.nan) for index in (0, 1)
-        )
-    else:
-        values, benchmark = (
-            np.asarray(_to_numpy(value), dtype=float) for value in (returns, benchmark_returns)
-        )
-    if values.ndim != 1 or benchmark.ndim != 1 or values.shape != benchmark.shape:
-        raise ValueError("batting average requires equal-length one-dimensional paired returns")
+    values, benchmark, _ = paired_returns_1d(returns, benchmark_returns)
     active = values - benchmark
     paired = np.isfinite(active) & np.isfinite(benchmark)
     valid_active, valid_benchmark = active[paired], benchmark[paired]

@@ -522,6 +522,53 @@ corrected Empyrical 0.7.0 workflow, not zero or a negative loss.
 This source implementation is still undergoing reference, artifact and report
 qualification. It does not yet replace the retained-Empyrical recommendation
 below or describe the published 0.1.9 distribution.
+## Inspect benchmark fragility (unreleased)
+
+`ml4t.diagnostic.metrics.beta_fragility` returns an immutable
+`BetaFragilityResult` with the periodic return gap, usable/excluded counts,
+selected input keys/ordinals, actual strategy/benchmark points and endpoint
+weights. This makes the sample and tie convention inspectable instead of
+returning only a scalar. The familiar `beta_fragility_heuristic` and
+`beta_fragility_heuristic_aligned` calls return the scalar from the same native
+interpolation kernel.
+
+```bash
+uv run python examples/legacy_migration_comparison.py --task empyrical-fragility
+```
+
+The price-produced example has benchmark returns `[-0.02, 0, 0.03]` and strategy
+returns `[-0.0004, 0, -0.0009]`. Endpoint weights at the actual middle benchmark
+coordinate are `[0.6, 0.4]`, giving a gap of `-0.0006`. The middle observation is
+the sorted row at `n//2`, not an averaged coordinate for an even sample. Fewer
+than three usable pairs give an undefined value and explicit counts, without
+inventing another observation. Negative gaps describe concavity of these
+selected observations. They are not annualized, fitted betas, significance tests
+or prediction-accuracy scores. Use the existing [statistical validation
+workflows](statistical-tests.md) for the distinct inference task.
+
+The native result uses finite pairs and preserves input order within benchmark
+ties. A constant benchmark has an explicitly flagged half/half endpoint
+convention; the result is not permutation-invariant within ties. The familiar
+calls select the actual Empyrical 0.7.0 present-pair and pandas quicksort tie
+conventions. A real zero-price recovery can therefore produce an infinite
+familiar result while the native result excludes that nonfinite pair and
+reports its exclusion. This difference is declared, not silently filled.
+
+Despite its name, the tested reference's `_aligned` fragility function still
+concatenates labeled Series by their labels. The adapter preserves that actual
+behavior. Matching arrays remain positional; use one series per strategy rather
+than assuming all functions accept a multi-column matrix.
+The native route also accepts one-dimensional Polars Series and numeric
+sequences. These inputs are positional, must have equal lengths and are
+normalized to float64 without changing the caller's data.
+
+One reference numerical error is corrected rather than copied. With benchmark
+coordinates `[-1e308, 0, 1e308]` and strategy values `[-0.01, 0.02, 0.03]`, the
+independent symmetric interpolation gap is `-0.01`. Published Empyrical 0.7.0
+returns `-0.02` because the finite coordinate range overflows before division.
+The shared Diagnostic kernel rescales only that overflowing finite range; both
+native and familiar routes retain the correct half/half weights. Infinite
+benchmark coordinates are not misclassified as a constant finite design.
 
 ## Native definitions still need explicit choices
 

@@ -776,6 +776,32 @@ def show_empyrical_rolling() -> None:
     print(f"Columnwise strategy migration retains labels: {wide.to_dict()}")
 
 
+def show_empyrical_fragility() -> None:
+    """Expose the actual interpolation sample behind the familiar scalar heuristic."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.metrics import beta_fragility
+
+    dates = pd.bdate_range("2025-01-02", periods=4, tz="UTC")
+    prices = pd.Series([100, 99.96, 99.96, 99.870036], index=dates)
+    market = pd.Series([100, 98, 98, 100.94], index=dates)
+    returns, benchmark = metrics.simple_returns(prices), metrics.simple_returns(market)
+    result = beta_fragility(returns, benchmark.iloc[::-1])
+    np.testing.assert_allclose(result.fragility, -0.0006, atol=1e-15)
+    assert result.n_pairs == 3 and result.selected_keys == tuple(returns.index)
+    np.testing.assert_allclose(result.endpoint_weights, [0.6, 0.4])
+    np.testing.assert_allclose(
+        metrics.beta_fragility_heuristic(returns, benchmark), result.fragility, atol=1e-15
+    )
+    print(f"Fragility (periodic decimal-return gap): {result.fragility}")
+    print(
+        f"Actual selected benchmark points: {result.benchmark_points}; weights: {result.endpoint_weights}"
+    )
+    print(
+        f"Usable pairs: {result.n_pairs}/{result.n_observations}; selected rows: {result.selected_keys}"
+    )
+    print("A three-point heuristic, not an estimated beta, p-value or predictive-accuracy score")
+
+
 def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     """Build a grouped event report from one owned, price-produced signal panel."""
     from ml4t.diagnostic.signal import AlignedEventResult, prepare_signal_panel
@@ -889,6 +915,7 @@ def main() -> None:
             "empyrical-definitions",
             "empyrical-rolling",
             "empyrical-tail",
+            "empyrical-fragility",
             "exposure",
             "activity",
             "holdings",
@@ -934,6 +961,9 @@ def main() -> None:
         return
     if task == "empyrical-tail":
         show_empyrical_tail(arguments.output)
+        return
+    if task == "empyrical-fragility":
+        show_empyrical_fragility()
         return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))

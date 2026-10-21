@@ -274,7 +274,7 @@ jobs:
       - name: Run native metric migration workflows from the installed core wheel
         shell: bash
         run: |
-          for task in empyrical-native empyrical-benchmark empyrical-definitions empyrical-rolling empyrical-tail; do
+          for task in empyrical-native empyrical-benchmark empyrical-definitions empyrical-rolling empyrical-fragility empyrical-tail; do
             uv run --isolated --no-project \
               --with "$(find dist -name '*.whl' -print -quit)" \
               --with "pandas==3.0.5" \
