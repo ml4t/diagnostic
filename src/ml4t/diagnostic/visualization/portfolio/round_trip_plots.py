@@ -308,7 +308,7 @@ def create_round_trip_dashboard(
         if scope == "sector" and sector_mappings is None:
             continue
         sample = attribution.filter(pl.col("scope") == scope)
-        item = figure(f"Round-trip {label} Attribution", "Share of total cash PnL", label)
+        item = figure(f"Round-trip {label} Attribution", "PnL share", label)
         item.add_trace(
             go.Bar(
                 x=sample["pnl_fraction"].to_list(),
