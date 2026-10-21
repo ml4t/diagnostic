@@ -426,6 +426,7 @@ results. The rolling recipe executes this path, and the reference tests check
 each rolling function on price-produced columns with different missingness:
 
 ```python
+import pandas as pd
 from ml4t.diagnostic.compat import empyrical as ep
 
 rolling_sharpe = pd.concat(
