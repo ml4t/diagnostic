@@ -107,7 +107,7 @@ def test_actual_account_fills_reach_all_round_trip_panels_tables_and_beta_sample
     output = tmp_path / "round-trips.html"
     report.save_html(output, include_plotlyjs=True)
     page = _ReportHTML()
-    page.feed(output.read_text())
+    page.feed(output.read_text(encoding="utf-8"))
     assert "Round-trip statistics" in page.text
     assert page.tables == 6
     assert page.headings == [
@@ -423,7 +423,7 @@ def test_real_carried_book_independent_intraday_clock_reaches_existing_report_wi
     output = tmp_path / "independent-intraday.html"
     report.save_html(output, include_plotlyjs=True)
     page = _ReportHTML()
-    page.feed(output.read_text())
+    page.feed(output.read_text(encoding="utf-8"))
     assert "Intraday Holdings Exposure" in page.text
     assert page.plots == len(report.figures)
     exported = report.to_dict()["intraday"]
@@ -481,7 +481,7 @@ def test_large_integer_holdings_labels_do_not_round_through_javascript_numeric_c
     assert report.to_dict()["holdings"]["top_positions"]["absolute"][0]["asset"] == 9007199254740993
     output = tmp_path / "large-id.html"
     report.save_html(output, include_plotlyjs=False)
-    section = output.read_text().split("<h2>Top Absolute Holdings</h2>", 1)[1]
+    section = output.read_text(encoding="utf-8").split("<h2>Top Absolute Holdings</h2>", 1)[1]
     call = section.split("Plotly.newPlot(", 1)[1].lstrip()
     decoder = json.JSONDecoder()
     _, end = decoder.raw_decode(call)

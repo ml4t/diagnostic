@@ -24,9 +24,21 @@ def _holdings_records(frame: pl.DataFrame | None) -> list[dict[str, Any]] | None
     if frame is None:
         return None
     rows = frame.to_dicts()
-    if "date" in frame.columns:
-        for row, date in zip(rows, _exact_dates(frame["date"]), strict=True):
-            row["date"] = date
+    for column, dtype in frame.schema.items():
+        if dtype == pl.Date:
+            values = [
+                value.isoformat() if value is not None else None
+                for value in frame[column].to_list()
+            ]
+        elif isinstance(dtype, pl.Datetime):
+            values = [
+                value.isoformat() if pd.notna(value) else None
+                for value in pd.DatetimeIndex(frame[column].to_pandas())
+            ]
+        else:
+            continue
+        for row, value in zip(rows, values, strict=True):
+            row[column] = value
     return rows
 
 

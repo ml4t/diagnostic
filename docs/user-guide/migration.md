@@ -1847,6 +1847,9 @@ export, so a stale last-known quote is visible rather than claimed current.
 Numeric projections are Float64; `quantity_exact`, `price_exact`,
 `multiplier_exact`, `value_exact`, `cash_exact` and `equity_exact` retain the
 decimal-input rational values, including large integer prices.
+Report exports serialize every temporal field, including secondary quote
+timestamps, as ISO values with nanoseconds intact. Native frames retain their
+original typed clocks. Read saved HTML as UTF-8, as declared by its charset.
 
 Samples are the opening state, after every actual fill, relevant mark-only
 instants and the terminal state if not already sampled. A mark-only quote for
