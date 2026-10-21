@@ -145,3 +145,42 @@ def test_missing_account_cash_cannot_silently_be_treated_as_a_complete_nav_book(
     returns, positions, factors, loadings = account_inputs()
     with pytest.raises(ValueError, match="cash"):
         pf.perf_attrib(returns, positions.drop(columns="cash"), factors, loadings)
+
+
+@pytest.mark.parametrize("reverse_loadings", [False, True])
+def test_numeric_and_text_asset_identifiers_remain_distinct_across_independent_loading_order(
+    reverse_loadings,
+):
+    returns, positions, factors, loadings = account_inputs()
+    positions = positions.rename(columns={"A": 1, "B": "1"})
+    loadings = loadings.rename(index={"A": 1, "B": "1"}, level="ticker")
+    if reverse_loadings:
+        loadings = loadings.iloc[[1, 0, 3, 2, 5, 4]]
+    before = positions.copy(deep=True), loadings.copy(deep=True)
+    exposures, table = pf.perf_attrib(returns, positions, factors, loadings)
+    np.testing.assert_allclose(exposures, [[1.5, 0.25], [1.0, 0.5], [1.5, 0.25]])
+    np.testing.assert_allclose(table["common_returns"], [0.02, -0.015, 0.015])
+    pd.testing.assert_frame_equal(positions, before[0])
+    pd.testing.assert_frame_equal(loadings, before[1])
+
+
+def test_actual_reference_mixed_asset_labels_use_the_same_joint_identity_mapping():
+    reference = pytest.importorskip("pyfolio.perf_attrib")
+    returns, positions, factors, loadings = account_inputs()
+    positions = positions.rename(columns={"A": 1, "B": "1"})
+    loadings = loadings.rename(index={"A": 1, "B": "1"}, level="ticker").iloc[[1, 0, 3, 2, 5, 4]]
+    actual = pf.perf_attrib(returns, positions, factors, loadings)
+    expected = reference.perf_attrib(returns, positions, factors, loadings)
+    for got, wanted in zip(actual, expected, strict=True):
+        pd.testing.assert_frame_equal(got, wanted, rtol=1e-12, atol=1e-15)
+
+
+@pytest.mark.parametrize("invalid", [None, ""])
+def test_internal_identity_transport_does_not_turn_missing_asset_labels_into_valid_codes(invalid):
+    from ml4t.diagnostic.compat import empyrical as ep
+
+    returns, positions, factors, loadings = inputs()
+    positions = positions.rename(index={"A": invalid}, level="ticker")
+    loadings = loadings.rename(index={"A": invalid}, level="ticker")
+    with pytest.raises(ValueError, match="asset IDs.*nonmissing.*nonempty"):
+        ep.perf_attrib(returns, positions, factors, loadings)

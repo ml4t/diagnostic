@@ -11,25 +11,18 @@ from ml4t.diagnostic.evaluation.factor.holdings_attribution import (
 )
 
 
-def _panel(data: pd.Series | pd.DataFrame, *, weights: bool) -> pl.DataFrame:
-    if not isinstance(data.index, pd.MultiIndex) or data.index.nlevels != 2:
-        raise TypeError("holdings and loadings require a two-level date/asset MultiIndex")
+def _panel(data: pd.Series | pd.DataFrame, *, weights: bool, asset_keys: pd.Index) -> pl.DataFrame:
     dates = data.index.get_level_values(0)
     if not isinstance(dates, pd.DatetimeIndex):
         raise TypeError("holdings and loadings require explicit datetime observation labels")
     assets = data.index.get_level_values(1)
-    frame = pd.DataFrame({"timestamp": dates, "asset": assets})
+    frame = pd.DataFrame({"timestamp": dates, "asset": asset_keys.get_indexer(assets)})
     if weights:
         frame["weight"] = data.array
     else:
         for name in data.columns:
             frame[name] = data[name].array
-    result = pl.from_pandas(frame)
-    if not len(result) and result["asset"].dtype == pl.Null:
-        template = pl.from_pandas(pd.Series(data.index.levels[1]))
-        asset = template.head(0) if template.dtype != pl.Null else pl.Series([], dtype=pl.String)
-        result = result.with_columns(asset.rename("asset"))
-    return result
+    return pl.from_pandas(frame)
 
 
 def compute_exposures(positions: pd.Series, factor_loadings: pd.DataFrame) -> pd.DataFrame:
@@ -42,11 +35,19 @@ def compute_exposures(positions: pd.Series, factor_loadings: pd.DataFrame) -> pd
         raise TypeError("positions must be a Series and factor_loadings a DataFrame")
     if not factor_loadings.columns.is_unique:
         raise ValueError("factor names must be unique")
+    indices = (positions.index, factor_loadings.index)
+    if any(not isinstance(index, pd.MultiIndex) or index.nlevels != 2 for index in indices):
+        raise TypeError("holdings and loadings require a two-level date/asset MultiIndex")
+    asset_keys = (
+        indices[0].get_level_values(1).union(indices[1].get_level_values(1), sort=False).unique()
+    )
+    if asset_keys.hasnans or any(isinstance(asset, str) and asset == "" for asset in asset_keys):
+        raise ValueError("asset IDs must be nonmissing and nonempty")
     names = tuple(f"__factor_{index}" for index in range(len(factor_loadings.columns)))
     transported = factor_loadings.copy(deep=True)
     transported.columns = pd.Index(names)
-    weights = _panel(positions.copy(deep=True), weights=True)
-    loadings = _panel(transported, weights=False)
+    weights = _panel(positions.copy(deep=True), weights=True, asset_keys=asset_keys)
+    loadings = _panel(transported, weights=False, asset_keys=asset_keys)
     left, right = positions.index.get_level_values(0), factor_loadings.index.get_level_values(0)
     if left.tz != right.tz:
         raise ValueError("weight and loading dates must use the same timezone")

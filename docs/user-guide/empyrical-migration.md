@@ -518,6 +518,14 @@ preserve the tested reference's observed-label alignment and skip-missing
 sums, with warnings for uncovered loadings or missing weights. They do not
 assert that the information was available before trading.
 
+Asset matching uses one joint pandas identity index before native transport;
+numeric asset `1` and text asset `"1"` remain distinct even when loading rows
+arrive in a different asset order. Missing or empty asset labels are rejected.
+The familiar date-sliced workflow requires chronological outer date groups in
+the loading MultiIndex, as Empyrical/Pyfolio do; within-date asset order need
+not match the holdings rows. Native frame inputs retain their declared asset
+ID types rather than adopting these internal transport codes.
+
 For explicit availability and coverage checks, use
 `evaluation.factor.compute_holdings_attribution` or
 `PortfolioAnalysis.compute_holdings_attribution`. Supply dated returns with
