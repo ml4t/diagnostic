@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_analysis import TradeAnalysis
@@ -239,7 +240,7 @@ def win_probability(
         or not isfinite(confidence)
         or not 0 < confidence < 1
     ):
-        raise ValueError("confidence must be a finite real number strictly between0and1")
+        raise ValueError("confidence must be a finite real number strictly between 0 and 1")
     frame, coverage = selected_trades(
         result, pnl=pnl, missing=missing, include_synthetic=include_synthetic
     )
@@ -263,3 +264,110 @@ def win_probability(
         "upper": float(beta.ppf(1 - tail, alpha, beta_parameter)),
         "sample_state": "observed" if frame.height else "prior_only",
     }
+
+
+def portfolio_contributions(
+    result: RoundTripResult,
+    portfolio_value: pl.DataFrame | pd.DataFrame | pd.Series,
+    *,
+    timestamp_col: str,
+    value_col: str,
+    calendar: str | CalendarUnset | None,
+    alignment: str,
+    include_synthetic: bool,
+) -> pl.DataFrame:
+    from ml4t.diagnostic.utils.validation import (
+        _align_datetime_key_resolution,
+        _validate_observation_keys,
+    )
+
+    from .fifo_inputs import clock
+    from .frame_inputs import _frame, _rename, _temporal
+    from .holdings import _numeric
+    from .transaction_metrics import cash_fraction_expr
+    from .transactions import _clock
+
+    if alignment not in ("declared", "civil_date"):
+        raise ValueError("alignment must be 'declared' or explicit 'civil_date'")
+    if not all(isinstance(name, str) and name.strip() for name in (timestamp_col, value_col)):
+        raise ValueError("timestamp_col and value_col must name nonempty columns")
+    if timestamp_col == value_col:
+        raise ValueError("timestamp_col and value_col must name distinct columns")
+    if isinstance(portfolio_value, pd.Series):
+        if not isinstance(portfolio_value.index, pd.DatetimeIndex):
+            raise ValueError("portfolio_value Series requires a dated index")
+        nav = pl.DataFrame(
+            {
+                "date": pl.from_pandas(portfolio_value.index),
+                "equity": pl.from_pandas(portfolio_value.reset_index(drop=True)),
+            }
+        )
+    else:
+        nav = _rename(_frame(portfolio_value, timestamp_col), value_col, "equity")
+    _temporal(nav)
+    _validate_observation_keys(nav, ["date"], "beginning portfolio NAV")
+    nav = _numeric(nav, "equity", nullable=True)
+    feed = (
+        FeedSpec.from_any(result.metadata["feed_spec"])
+        if "feed_spec" in result.metadata
+        else FeedSpec(timestamp_col="date", entity_col="asset", time_contract_version=2)
+    )
+    selection = calendar
+    if selection is UNSET_CALENDAR and result.metadata.get("calendar_source") == "argument":
+        selection = result.metadata["calendar_argument"]
+    resolved = feed.resolve_calendar(calendar=selection)
+    if alignment == "civil_date" and resolved is not None:
+        raise ValueError(
+            "civil_date is a separate legacy date profile; explicitly set calendar=None"
+        )
+    trips = completed_trades(result, include_synthetic=include_synthetic)
+    if alignment == "civil_date":
+        nav_keys = nav["date"].dt.date()
+        trip_keys = trips["exit_timestamp"].dt.date().alias("date")
+    else:
+        nav_keys = _clock(nav["date"], resolved, feed.timestamp_semantics, timezone=feed.timezone)
+        trip_keys = (
+            _clock(trips["exit_timestamp"], resolved, None, executions=True, timezone=feed.timezone)
+            if trips.height
+            else pl.Series("date", [], dtype=nav_keys.dtype)
+        )
+        if resolved is None:
+            if isinstance(nav_keys.dtype, pl.Datetime):
+                nav_keys = pl.from_pandas(clock(nav_keys, "NAV timestamp", feed.timezone)).rename(
+                    "date"
+                )
+            if isinstance(trip_keys.dtype, pl.Datetime) and isinstance(nav_keys.dtype, pl.Datetime):
+                if trip_keys.dtype.time_zone is not None and nav_keys.dtype.time_zone is not None:
+                    nav_keys = nav_keys.dt.convert_time_zone(trip_keys.dtype.time_zone)
+    nav = nav.select("equity").with_columns(nav_keys.alias("date"))
+    _validate_observation_keys(nav, ["date"], "aligned beginning portfolio NAV")
+    trips = trips.with_columns(trip_keys.alias("date"))
+    trips, nav = _align_datetime_key_resolution(trips, nav, "date")
+    if trips["date"].dtype != nav["date"].dtype:
+        raise ValueError(
+            "NAV and closing-fill keys must match; do not manufacture date labels into event instants"
+        )
+    joined = trips.join(
+        nav.rename({"equity": "portfolio_nav"}), on="date", how="left", maintain_order="left"
+    )
+    contributions = joined.with_columns(
+        cash_fraction_expr(pl.col("gross_pnl"), pl.col("portfolio_nav")).alias(
+            "gross_nav_contribution"
+        ),
+        cash_fraction_expr(pl.col("net_pnl"), pl.col("portfolio_nav")).alias(
+            "net_nav_contribution"
+        ),
+        pl.when(pl.col("portfolio_nav").is_finite() & (pl.col("portfolio_nav") > 0))
+        .then(pl.lit("defined_nav"))
+        .otherwise(pl.lit("unavailable_nav"))
+        .alias("normalization_status"),
+        pl.lit("supplied beginning-period portfolio NAV including cash").alias("nav_basis"),
+        pl.lit(alignment).alias("nav_alignment"),
+        pl.lit(resolved, dtype=pl.String).alias("calendar"),
+    ).rename({"date": "nav_observation"})
+    for name in ("gross_nav_contribution", "net_nav_contribution"):
+        if not contributions[name].drop_nulls().is_finite().all():
+            raise ValueError(
+                "NAV contribution exceeds finite Float64; inspect PnL and supplied NAV"
+            )
+    return contributions

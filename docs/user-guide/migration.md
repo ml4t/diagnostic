@@ -1612,8 +1612,8 @@ Using the integer directly as the reference's symbol also triggers a row-upcast
 TypeError on these inputs. Native IDs stay integers; the reference comparison
 uses the explicit one-to-one display-label mapping, not a changed economic sample.
 
-NAV contribution, intraday reconstruction and full legacy reports remain accepted
-work. The incomplete route is not a substitute for those workflows.
+Intraday reconstruction and full legacy reports remain accepted work. The
+incomplete route is not a substitute for those workflows.
 
 For a non-flat book, pass `initial_state="supplied"`, `opening_lots` and
 `opening_as_of`. The opening table requires stable `asset` IDs and signed remaining
@@ -1667,17 +1667,42 @@ positive PnL on the same closing-fill sample. One winning observation gives
 Beta(2,1), posterior mean 2/3 and equal-tail 95% interval
 `[sqrt(.025), sqrt(.975)]`. Break-even observations are nonwins; an empty known
 sample retains the declared uniform prior. Missing-PnL handling is explicit.
+The Bernoulli model assumes a common win probability; it does not establish
+independence or account for serially dependent trades.
 The existing frequentist `TradeStatistics.win_rate` is unchanged. Synthetic rows
 are excluded from tables/statistics/posteriors unless `include_synthetic=True`
 is explicitly selected; they remain labeled and do not alter actual realization.
+
+`result.portfolio_contributions(portfolio_value)` takes an explicitly supplied
+beginning-period portfolio NAV series, including cash. A frame uses canonical
+`date`/`equity`, or explicit `timestamp_col`/`value_col` aliases. The example's
+NAV1000 gives .22 gross and .194 net portfolio contributions, alongside unchanged
+lot returns 220/1220 and 194/1220. This method neither shifts the supplied NAV nor
+infers it from returns, quantities or holdings. For owned account inputs, the
+existing transaction timeline's `beginning_nav` supplies the corresponding
+already-prepared denominator. Missing/nonpositive NAV leaves the contribution
+undefined; missing dates are not forward-filled, and unrepresentable ratios raise.
+These ratios attribute holding-period PnL and allocated entry fees to the closing
+observation. They are not a reconstruction of contemporaneous daily account
+returns; the supplied net return path remains authoritative.
+
+The default NAV alignment reuses the owned input's calendar/FeedSpec declaration;
+an explicit method `calendar` overrides it. `calendar=None` matches exact row keys,
+without turning date labels into midnight events. Exchange calendars use the
+existing authoritative session mapping, including overnight CME sessions.
+Duplicate NAV observations after session alignment raise instead of multiplying
+trade rows. A separately selected `alignment="civil_date", calendar=None` matches
+the legacy own-timezone civil-date profile. The published Pyfolio0.10.0 comparison
+matches .22 on this common sample; its `returns` here use gross PnL without the
+supplied commissions. Native net contribution .194 remains separately named.
 
 The existing [completed-trade consumer](trade-analysis.md#preserve-execution-units-and-timing)
 now accepts same-instant closures, explicit point multipliers, actual zero/negative
 prices and signed cash-fee rebates. Producer-to-consumer tests pass these real
 FIFO rows through `TradeRecord` and `TradeAnalysis` without altering the execution
 quantity, prices or fees. Undefined price/duration ratios remain undefined;
-nanosecond instants survive metric tables and JSON. Full legacy report wiring,
-NAV contributions and intraday reconstruction remain unfinished.
+nanosecond instants survive metric tables and JSON. Full legacy report wiring
+and intraday reconstruction remain unfinished.
 
 ### Consume a Zipline performance result without a legacy analytics dependency
 

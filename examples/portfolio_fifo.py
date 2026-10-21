@@ -43,6 +43,12 @@ def main() -> None:
     assert posterior["n_observations"] == 1
     assert posterior["mean"] == 2 / 3
     print("One closing fill, not two independent trades; net lot return194/1220, Beta(2,1)")
+    contributions = result.portfolio_contributions(pd.Series([1000.0], index=dates[-1:]))
+    assert contributions["gross_nav_contribution"].to_list() == [0.22]
+    assert contributions["net_nav_contribution"].to_list() == [0.194]
+    print(
+        "Supplied beginning NAV1000: .22gross/.194net portfolio contribution, not220/1220lot return"
+    )
     marked = analysis.compute_round_trips(
         initial_state="flat",
         marks=pd.DataFrame(

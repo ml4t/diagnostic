@@ -313,7 +313,7 @@ class PortfolioAnalysis:
         """
         if self._input_data is None:
             raise ValueError("FIFO requires owned from_frames execution inputs")
-        return reconstruct_round_trips(
+        result = reconstruct_round_trips(
             self._input_data.transactions,
             initial_state=initial_state,
             opening_lots=opening_lots,
@@ -323,6 +323,11 @@ class PortfolioAnalysis:
             synthetic_close=synthetic_close,
             timezone=self._input_data.metadata["feed_spec"].get("timezone"),
         )
+        declarations = self._input_data.metadata
+        for name in ("feed_spec", "calendar", "calendar_source", "calendar_argument"):
+            if name in declarations:
+                result.metadata[name] = declarations[name]
+        return result
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:

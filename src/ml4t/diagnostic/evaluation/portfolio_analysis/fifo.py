@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset
 
 from .fifo_inputs import clock, instant, mark_inventory, opening_inventory, price_dtype
 
@@ -91,6 +92,36 @@ class RoundTripResult:
             missing=missing,
             include_synthetic=include_synthetic,
             confidence=confidence,
+        )
+
+    def portfolio_contributions(
+        self,
+        portfolio_value: pl.DataFrame | pd.DataFrame | pd.Series,
+        *,
+        timestamp_col: str = "date",
+        value_col: str = "equity",
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+        alignment: Literal["declared", "civil_date"] = "declared",
+        include_synthetic: bool = False,
+    ) -> pl.DataFrame:
+        """Divide closing-fill cash PnL by supplied beginning-period portfolio NAV.
+
+        NAV includes cash and is already the requested denominator, not inferred
+        from returns or shifted inside this method. Missing/nonpositive NAV leaves
+        contributions undefined. Calendar precedence reuses the input declaration;
+        explicit None matches exact observation keys. Explicit civil_date is the
+        legacy own-timezone date profile and requires calendars disabled.
+        """
+        from .fifo_summary import portfolio_contributions
+
+        return portfolio_contributions(
+            self,
+            portfolio_value,
+            timestamp_col=timestamp_col,
+            value_col=value_col,
+            calendar=calendar,
+            alignment=alignment,
+            include_synthetic=include_synthetic,
         )
 
 
