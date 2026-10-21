@@ -108,6 +108,36 @@ def test_real_engine_result_reaches_the_same_owned_account_boundary_without_fabr
     assert overnight_result.to_portfolio_state_dataframe().equals(raw_state)
 
 
+def test_actual_complete_bar_capture_retains_original_quantities_marks_and_value_roles():
+    from inspect import signature
+
+    if "holdings_sampling" not in signature(Engine).parameters:
+        pytest.skip("complete capture requires the qualified Backtest source pin, not legacyb22")
+    prices = pl.DataFrame(
+        {
+            "timestamp": [datetime(2025, 7, 7, 14, minute, tzinfo=UTC) for minute in range(3)],
+            "asset": ["A"] * 3,
+            **dict.fromkeys(["open", "high", "low", "close"], [100.0, 100.0, 110.0]),
+            "volume": [10000.0] * 3,
+        }
+    )
+    result = Engine(
+        DataFeed(prices_df=prices),
+        BuyOnce(),
+        BacktestConfig(initial_cash=1000, calendar="NYSE"),
+        holdings_sampling="bar",
+    ).run()
+    actual = result.to_holdings_dataframe().clone()
+    analysis = portfolio_analysis_from_result(result, calendar=None, periods_per_year=252 * 390)
+    owned = analysis.input_data.positions.sort("date")
+    assert owned["quantity"].to_list() == [0, 2, 2]
+    assert owned["mark"].to_list() == [None, 100, 110]
+    assert owned["multiplier"].to_list() == [None, 1, 1]
+    assert owned["value"].to_list() == [0, 200, 220]
+    assert owned["liquidation_value"].to_list() == [None, 200, 220]
+    assert result.to_holdings_dataframe().equals(actual)
+
+
 def test_row_mode_reaches_html_with_resolved_metadata_and_no_hidden_calendar_fallback(
     overnight_result, tmp_path
 ):

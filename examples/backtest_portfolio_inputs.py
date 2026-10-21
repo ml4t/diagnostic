@@ -86,12 +86,13 @@ def main() -> None:
                     indent=2,
                     allow_nan=False,
                 )
-                + "\n"
+                + "\n",
+                encoding="utf-8",
             )
     else:
         if args.capture:
             parser.error("--capture requires --run-engine and the documented producer")
-        captured = json.loads(args.input.read_text())
+        captured = json.loads(args.input.read_text(encoding="utf-8"))
         data = PortfolioInputData.from_json(json.dumps(captured["input_data"]))
         analysis = PortfolioAnalysis.from_frames(
             data.returns,

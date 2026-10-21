@@ -105,7 +105,7 @@ def main() -> None:
     if args.capture is None and args.input is None:
         args.input = Path(__file__).parent / "data/zipline320_account.json"
     if args.input:
-        captured = json.loads(args.input.read_text())
+        captured = json.loads(args.input.read_text(encoding="utf-8"))
         performance = pd.DataFrame(captured["records"])
         performance.index = pd.DatetimeIndex(pd.to_datetime(performance.pop("date")))
     else:
@@ -127,7 +127,9 @@ def main() -> None:
                 for timestamp, row in performance[columns].iterrows()
             ],
         }
-        args.capture.write_text(json.dumps(captured, indent=2, allow_nan=False) + "\n")
+        args.capture.write_text(
+            json.dumps(captured, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+        )
     # The --capture path consumes the actual in-memory result including Asset objects.
     analysis = portfolio_analysis_from_zipline(performance, calendar="NYSE")
     assert analysis.input_data.transactions["quantity"].to_list() == [3, -1]

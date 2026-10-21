@@ -325,7 +325,7 @@ def test_real_portfolio_report_renders_prepared_transaction_values_and_keeps_own
     json.dumps(exported, default=str, allow_nan=False)
     path = tmp_path / "portfolio.html"
     sheet.save_html(path, include_plotlyjs=True)
-    html = path.read_text()
+    html = path.read_text(encoding="utf-8")
     assert "Actual Traded Notional" in html
     assert "subtract only extra bps" in html
     assert "Turnover denominator: beginning_nav" in html
