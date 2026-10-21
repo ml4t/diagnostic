@@ -457,11 +457,20 @@ return series and `var_p`, and returns five fields; the other entries receive
 strategy and benchmark returns and return scalar statistics.
 
 ```python
+registry_dates = pd.bdate_range("2025-01-02", periods=10, tz="UTC")
+registry_returns = pd.Series(
+    [0.01, -0.02, 0.03, -0.04, 0.02, -0.01, -0.03, 0.015, 0.005, -0.025],
+    index=registry_dates,
+)
+registry_benchmark = pd.Series(
+    [0.02, -0.01, 0.025, -0.03, 0.01, -0.02, -0.025, 0.01, 0.005, -0.015],
+    index=registry_dates,
+)
 factor_statistics = {
     function.__name__: (
-        function(returns, var_p=0.01)
+        function(registry_returns, var_p=0.01)
         if function.__name__ == "gpd_risk_estimates"
-        else function(returns, benchmark)
+        else function(registry_returns, registry_benchmark)
     )
     for function in ep.FACTOR_STAT_FUNCS
 }
