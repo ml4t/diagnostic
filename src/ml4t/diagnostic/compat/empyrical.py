@@ -261,6 +261,7 @@ def sharpe_ratio(
         returns,
         lambda column, _: periodic_sharpe_ratio(column, annualization_factor=scale),
         adjusted=adjust_rate(returns, risk_free),
+        additional_inputs=(risk_free,),
         out=out,
         min_length=2,
     )
@@ -279,6 +280,7 @@ def downside_risk(
         returns,
         lambda column, _: periodic_downside_risk(column, annualization_factor=scale),
         adjusted=adjust_rate(returns, required_return),
+        additional_inputs=(required_return,),
         out=out,
         labeled=True,
         min_length=1,
@@ -314,6 +316,7 @@ def sortino_ratio(
         returns,
         calculate,
         adjusted=adjust_rate(returns, required_return),
+        additional_inputs=(required_return, _downside_risk),
         out=out,
         labeled=True,
         min_length=2,

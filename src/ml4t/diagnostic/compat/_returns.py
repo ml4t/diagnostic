@@ -1,6 +1,6 @@
 """Column and output adaptation shared by legacy return-metric signatures."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import numpy as np
 import pandas as pd
@@ -50,8 +50,36 @@ def select_benchmark_sign(
     return returns[mask], factor[mask]
 
 
+def _input_buffers(value: ReturnInput) -> Iterator[np.ndarray]:
+    if isinstance(value, pd.DataFrame):
+        for _, column in value.items():
+            yield from _input_buffers(column)
+    elif isinstance(value, pd.Series):
+        array = value.array
+        if isinstance(
+            array, pd.arrays.FloatingArray | pd.arrays.IntegerArray | pd.arrays.BooleanArray
+        ):
+            # Public to_numpy/view cannot expose both nullable buffers without
+            # copying. Bound this storage inspection to pandas' numeric masked
+            # types and fail closed if their representation changes.
+            data, mask = getattr(array, "_data", None), getattr(array, "_mask", None)
+            if not isinstance(data, np.ndarray) or not isinstance(mask, np.ndarray):
+                raise TypeError("cannot verify pandas masked input storage for out")
+            yield data
+            yield mask
+        elif isinstance(value.dtype, np.dtype):
+            yield value.to_numpy(copy=False)
+        else:
+            raise TypeError(
+                "out requires NumPy or pandas numeric masked storage; "
+                "convert this extension input to an owned NumPy snapshot first"
+            )
+    else:
+        yield value
+
+
 def output_array(
-    returns: ReturnInput, shape: tuple[int, ...], out: np.ndarray | None
+    returns: ReturnInput, shape: tuple[int, ...], out: np.ndarray | None, *other: object
 ) -> np.ndarray:
     if out is None:
         return np.empty(shape, dtype=float)
@@ -59,13 +87,11 @@ def output_array(
         raise ValueError(f"out shape must be {shape}")
     if not np.issubdtype(out.dtype, np.floating):
         raise TypeError("out must have floating dtype")
-    inputs = (
-        (column.to_numpy(copy=False) for _, column in returns.items())
-        if isinstance(returns, pd.DataFrame)
-        else (np.asarray(returns),)
-    )
-    if any(np.shares_memory(out, values) for values in inputs):
-        raise ValueError("out must not overlap input returns")
+    for value in (returns, *other):
+        if isinstance(value, np.ndarray | pd.Series | pd.DataFrame) and any(
+            np.shares_memory(out, buffer) for buffer in _input_buffers(value)
+        ):
+            raise ValueError("out must not overlap input storage")
     if not out.flags.writeable:
         raise ValueError("out must be writable")
     return out
@@ -80,6 +106,7 @@ def reduce_columns(
     min_length: int = 0,
     empty_scalar: bool = False,
     adjusted: ReturnInput | None = None,
+    additional_inputs: tuple[object, ...] = (),
 ) -> MetricOutput:
     original = as_array(returns)
     values = original if adjusted is None else as_array(adjusted)
@@ -88,7 +115,7 @@ def reduce_columns(
     if empty_scalar and len(original) == 0:
         return float("nan")
     shape = original.shape[1:]
-    output = output_array(returns, shape, out)
+    output = output_array(returns, shape, out, *additional_inputs)
     if len(original) < min_length:
         output[...] = np.nan
     elif original.ndim == 1:

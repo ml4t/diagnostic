@@ -272,7 +272,15 @@ is explicitly `1e-30`; native nonconstant-benchmark regression keeps its existin
 default. A supplied `_beta` lets alpha evaluate known residuals without pretending
 that a singular benchmark can estimate a slope. Output-buffer validation also
 checks original benchmark/rate storage before alignment copies can conceal an
-alias. Calculations use float64 and cast once when committing an output buffer.
+alias. Numeric nullable pandas inputs retain separate data and missingness
+buffers; both are protected, along with periodic-rate and supplied-downside
+inputs. Independent output buffers remain supported for these inputs. For other
+extension storage whose physical buffers cannot be verified, a provided `out`
+requires an explicit owned dense snapshot, for example
+`returns.to_numpy(dtype=float, na_value=np.nan, copy=True)`. The adapter raises
+before writing instead of treating a copied numerical view as proof of no alias.
+
+Calculations use float64 and cast once when committing an output buffer.
 This differs from the reference's intermediate float32 arithmetic. For strategy
 prices `[100, 101, 99, 102, 103, 101]` and benchmark prices
 `[100, 100.5, 100, 101, 101.5, 100.8]`, both supplied as float32 pandas Series,

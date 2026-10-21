@@ -73,12 +73,7 @@ def _output(
     out: np.ndarray | None,
     *other: ReturnInput | float | None,
 ) -> np.ndarray:
-    output = output_array(returns, shape, out)
-    if out is not None:
-        for value in (factor, *other):
-            if isinstance(value, np.ndarray | pd.Series | pd.DataFrame):
-                output_array(value, shape, out)
-    return output
+    return output_array(returns, shape, out, factor, *other)
 
 
 def _betas(values: np.ndarray, factor: np.ndarray) -> np.ndarray:
