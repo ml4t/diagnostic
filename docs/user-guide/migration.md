@@ -1515,7 +1515,7 @@ published Zipline 3.2.0 `run_algorithm` execution using pandas 2.3.3, NumPy 2.4.
 and exchange-calendars 4.13.2. It includes an opening buy and partial sale,
 reported cash/NAV, an all-cash initial date and unknown per-fill commission.
 The optional producer example
-[zipline_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/main/examples/zipline_portfolio_inputs.py)
+[zipline_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/49601d0608272452196fd96087f0e070fb92d19d/examples/zipline_portfolio_inputs.py)
 regenerates that local deterministic bundle without market downloads and consumes
 the actual in-memory result, including Zipline Asset objects:
 
@@ -1542,6 +1542,45 @@ reconstructed from a position change. Feed declarations and explicit calendar
 precedence use the same shared contract. This extraction does not implement a
 Zipline broker, data bundle service, Pipeline, capacity model, or full Pyfolio
 tear sheet.
+
+### Consume actual Backtest account capture
+
+The existing `integration.portfolio_analysis_from_result()` now uses the same
+owned input boundary for producer returns, reported account values and actual
+fills. Explicit `calendar=None` retains observations and requires an explicit
+`periods_per_year`. An omitted calendar continues to resolve producer metadata.
+Dated benchmarks align by keys; explicitly positional benchmark arrays retain
+their order and must match in length.
+
+For complete per-asset holdings, the producer must actually enable
+`Engine(..., holdings_sampling="bar")`. With observation returns, the bridge
+consumes those complete bar snapshots, including all-cash observations. It checks
+reported completeness and position counts before filling absent assets with
+zero. It does not reconstruct holdings from trades or target weights. Older
+producers without captured holdings still support returns/account/fill analysis;
+the dependent holdings report remains unavailable. Aggregated-return conversion
+of non-bar or differently sampled holdings remains unqualified.
+
+The tested complete-capture producer is immutable Backtest source
+`da223f904cfa03744152311e3c617c15fdc1ddcd`, not a published 0.1.13 package.
+The executable
+[backtest_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/49601d0608272452196fd96087f0e070fb92d19d/examples/backtest_portfolio_inputs.py)
+runs an actual Engine and checks returns `[0, 0, .02]`, cash `[1000, 800, 800]`,
+marked exposure `[0, 200, 220]`, NAV `[1000, 1000, 1020]` and 200 actual filled
+notional. Ten additional bps costs `.0002` of beginning NAV. The source-qualified
+recipe is:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd' --with plotly python examples/backtest_portfolio_inputs.py --report backtest-account.html
+```
+
+Current published Backtest 0.1.12 requires Specs below 0.2 and cannot satisfy
+current Diagnostic source's Specs 0.2 requirement. The immutable source probe
+does not establish a compatible published-package pair. Legacy frame exports
+that dropped timezone information recover it only from matching actual public
+Fill/account record timestamps, never from a guessed timezone or return date.
+Standalone supplied-account and captured Zipline analysis need no Backtest
+installation.
 
 ### Analyze prepared holdings on observed keys
 
