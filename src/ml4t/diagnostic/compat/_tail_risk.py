@@ -16,6 +16,15 @@ from ml4t.diagnostic.metrics.tail_risk import (
 from ._returns import ReturnInput, as_array
 
 
+def _tail_sample(data: ReturnInput) -> np.ndarray:
+    values = as_array(data)
+    if values.ndim == 2:
+        if values.shape[1] != 1:
+            raise ValueError("GPD helpers require one portfolio column; apply per column")
+        values = values[:, 0]
+    return values
+
+
 def gpd_risk_estimates(returns: ReturnInput, var_p: float = 0.01) -> np.ndarray | pd.Series:
     values = as_array(returns)
     result = estimate_gpd_tail_risk(values, tail_probability=var_p, method="empyrical_raw_tail")
@@ -55,7 +64,7 @@ def gpd_es_calculator(
 
 
 def gpd_loglikelihood_minimizer_aligned(price_data: ReturnInput) -> list[float | bool]:
-    result = _fit(as_array(price_data), reference=True)
+    result = _fit(_tail_sample(price_data), reference=True)
     return list(result) if result is not None else [False, False]
 
 
@@ -70,9 +79,10 @@ def gpd_loglikelihood_factory(
 
 
 def gpd_loglikelihood_scale_and_shape(scale: float, shape: float, price_data: ReturnInput) -> float:
+    values = _tail_sample(price_data)
     if shape < 0:
         return -np.inf
-    return _log_likelihood(scale, shape, as_array(price_data))
+    return _log_likelihood(scale, shape, values)
 
 
 def gpd_loglikelihood_scale_and_shape_factory(
@@ -82,7 +92,7 @@ def gpd_loglikelihood_scale_and_shape_factory(
 
 
 def gpd_loglikelihood_scale_only(scale: float, price_data: ReturnInput) -> float:
-    return _log_likelihood(float(np.asarray(scale).item()), 0.0, as_array(price_data))
+    return _log_likelihood(float(np.asarray(scale).item()), 0.0, _tail_sample(price_data))
 
 
 def gpd_loglikelihood_scale_only_factory(price_data: ReturnInput) -> Callable[[float], float]:

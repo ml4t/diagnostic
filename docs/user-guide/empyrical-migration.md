@@ -499,6 +499,14 @@ methods need not produce equal parameter or risk estimates. The familiar
 five legacy fields; a supplied pandas Series retains the reference's positional
 result labels, not the input dates. Use one portfolio per call.
 
+The likelihood and optimizer helpers also accept a single-column frame or
+array. They reject multiple portfolio columns rather than combine them into one
+tail fit. Apply the same helper independently to each strategy. For example,
+`{name: ep.gpd_loglikelihood_minimizer_aligned(-values[values < 0])
+for name, values in returns.items()}` fits the positive raw losses per strategy;
+it does not estimate a joint portfolio loss distribution. The top-level
+`gpd_risk_estimates` continues to require a one-dimensional return series.
+
 Both methods exclude and count nonfinite observations. Insufficient or
 degenerate tails, a failed fit, or a requested probability outside the fitted
 tail produce undefined risk with a native status. Familiar unsuccessful
