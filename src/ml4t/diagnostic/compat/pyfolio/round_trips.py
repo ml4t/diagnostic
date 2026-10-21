@@ -234,6 +234,12 @@ def extract_round_trips(
     Fractional/negative-price reference defects are corrected, not reproduced.
     """
     result, labels = _native_round_trips(transactions)
+    return _project_round_trips(result, labels, portfolio_value)
+
+
+def _project_round_trips(
+    result: RoundTripResult, labels: pd.Index, portfolio_value: pd.Series | None
+) -> pd.DataFrame:
     include_synthetic = bool(result.metadata.get("legacy_synthetic_rows"))
     order = ["asset", "exit_timestamp", "is_synthetic", "exit_group_id"]
     closed = result.completed_trades(include_synthetic=include_synthetic).sort(order)

@@ -24,6 +24,11 @@ def main() -> None:
         action="store_true",
         help="Print Pyfolio-shaped native-backed round-trip tables",
     )
+    parser.add_argument(
+        "--familiar-report",
+        type=Path,
+        help="Save the familiar round-trip sheet, keeping actual and hypothetical closes separate",
+    )
     args = parser.parse_args()
     dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
     # The supplied synthetic net returns are independent of lot attribution.
@@ -156,6 +161,25 @@ def main() -> None:
     print(
         "Optional familiar closing profile:200actual+80hypothetical gross PnL; original3open units unchanged"
     )
+    if args.familiar_report:
+        sheet = pf.tears.create_round_trip_tear_sheet(
+            pd.Series([-0.02], index=terminal_positions.index),
+            terminal_positions,
+            legacy_input,
+            sector_mappings={7: "Example sector"},
+            estimate_intraday=False,
+            return_fig=True,
+            as_of="2025-07-08T20:00Z",
+            calendar=None,
+        )
+        assert sheet.round_trips.executions.height == 3
+        assert sheet.round_trips.open_lots["quantity"].to_list() == [3.0]
+        assert sheet.round_trip_statistics.observations["gross_pnl"].to_list() == [200.0, 80.0]
+        assert sheet.metrics is None
+        sheet.save_html(args.familiar_report, include_plotlyjs=True)
+        print(
+            f"Saved {args.familiar_report}: 200actual/80hypothetical; small sample retained, zero-prior uncertainty undefined"
+        )
     if args.report:
         from ml4t.diagnostic.visualization.portfolio import create_round_trip_dashboard
 

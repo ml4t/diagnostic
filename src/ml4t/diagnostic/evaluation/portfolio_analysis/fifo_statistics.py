@@ -274,18 +274,53 @@ def profit_attribution(
     sector_mappings: Mapping[Any, str] | None,
     include_synthetic: bool,
 ) -> pl.DataFrame:
-    from .fifo import _cash
     from .fifo_summary import selected_trades
 
+    frame, _ = selected_trades(
+        result, pnl=pnl, missing="raise", include_synthetic=include_synthetic
+    )
+    return summarize_profit_attribution(
+        frame,
+        pnl_col=pnl + "_pnl",
+        pnl_exact_col=pnl + "_pnl_exact",
+        sector_mappings=sector_mappings,
+    )
+
+
+def summarize_profit_attribution(
+    frame: pl.DataFrame,
+    *,
+    pnl_col: str,
+    pnl_exact_col: str | None = None,
+    sector_mappings: Mapping[Any, str] | None = None,
+    missing: Literal["raise", "exclude"] = "raise",
+) -> pl.DataFrame:
+    """Attribute supplied cash observations without inventing lots or NAV.
+
+    Native callers supply exact closing-cash components. External completed
+    tables use their actual numeric cash scalars. Excluded missing cash still
+    leaves its asset's zero known sum, matching a pandas group-sum projection.
+    """
+    from .fifo import _cash
+
+    if missing not in {"raise", "exclude"}:
+        raise ValueError("missing must be raise or exclude")
+    if frame["asset"].null_count():
+        raise ValueError("cash attribution requires known asset IDs")
     if sector_mappings is not None:
         if not isinstance(sector_mappings, Mapping):
             raise TypeError("sector_mappings must map asset IDs to sector strings")
         if any(not isinstance(value, str) or not value for value in sector_mappings.values()):
             raise ValueError("sector mappings must contain nonempty sector strings")
-    frame, _ = selected_trades(
-        result, pnl=pnl, missing="raise", include_synthetic=include_synthetic
-    )
-    cash = [Fraction(value) for value in frame[pnl + "_pnl_exact"].to_list()]
+    values = frame[pnl_col].cast(pl.Float64).fill_nan(None)
+    if not values.drop_nulls().is_finite().all():
+        raise ValueError("cash attribution requires finite PnL or explicit missing values")
+    if missing == "raise" and values.null_count():
+        raise ValueError("cash attribution requires known selected PnL")
+    cash = [
+        Fraction(str(value)) if value is not None else Fraction(0)
+        for value in (frame[pnl_exact_col] if pnl_exact_col else values).to_list()
+    ]
     total = sum(cash, Fraction(0))
     groups: dict[tuple[str, Any], list[Fraction]] = {}
     for asset, value in zip(frame["asset"].to_list(), cash, strict=True):

@@ -23,6 +23,11 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import (
 from ml4t.diagnostic.visualization.core import create_base_figure
 
 from . import txn
+from .round_trip_plotting import (
+    plot_prob_profit_trade,
+    plot_round_trip_lifetimes,
+    show_profit_attribution,
+)
 
 
 def _figure(title: str, units: str, ax: Any, kwargs: dict[str, Any]) -> go.Figure:
@@ -283,6 +288,9 @@ def plot_slippage_sensitivity(
 
 
 __all__ = [
+    "plot_round_trip_lifetimes",
+    "plot_prob_profit_trade",
+    "show_profit_attribution",
     "plot_turnover",
     "plot_daily_turnover_hist",
     "plot_daily_volume",

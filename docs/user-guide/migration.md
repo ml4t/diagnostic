@@ -1769,9 +1769,8 @@ Optional `include_synthetic=True` includes only synthetic segments already
 requested from known-at marks in reconstruction, with separate histogram traces,
 dashed lifelines and an explicit sample count. Original fills, actual realized
 PnL and remaining open lots do not change. Observed and explicit cash-price
-intraday routes are described below. The familiar full tear-sheet facade and its
-implicit closing/intraday options remain unfinished; these native panels do not
-yet qualify those original workflows.
+intraday routes and the bounded familiar round-trip sheet are described below.
+The complete multi-report portfolio facade remains separate accepted work.
 
 ### Analyze observed intraday snapshots on their own clock
 
@@ -1961,8 +1960,85 @@ missing position values as zero; its `attrs["diagnostic"]` discloses methods, fi
 candidate clocks and membership. Native unknown holdings are still rejected.
 All marked values, executions and cash must use one supplied cash currency;
 this method does not provide FX conversion, external-flow accounting or margin
-reconstruction. The familiar full tear-sheet facade and standalone plotting
-options remain unfinished; these named helpers are not a full-replacement claim.
+reconstruction. The round-trip adapter below composes these named helpers;
+other portfolio reports remain separate work, not a full-replacement claim.
+
+### Use the familiar complete round-trip sheet
+
+Unreleased after 0.1.9, `ml4t.diagnostic.compat.pyfolio.tears.create_round_trip_tear_sheet`
+accepts daily returns, complete wide marked positions/cash, actual transactions,
+`sector_mappings`, `estimate_intraday` and `return_fig`. Install the visualization
+extra. Run `uv run --extra viz python examples/portfolio_fifo.py --familiar-report round-trips.html`
+for the supplied account -> native FIFO -> tables/panels -> offline HTML workflow.
+The example retains three actual open units while separately showing an optional
+hypothetical close. It does not import Pyfolio or require a producer installation.
+
+For a flat-at-EOD strategy, change the import rather than rebuilding its inputs:
+
+```python
+import pandas as pd
+
+from ml4t.diagnostic.compat import pyfolio as pf
+
+sheet_dates = pd.DatetimeIndex(["2025-07-07"], tz="UTC")
+sheet_returns = pd.Series([0.004], index=sheet_dates)
+sheet_positions = pd.DataFrame({"A": [0.0], "cash": [1004.0]}, index=sheet_dates)
+sheet_transactions = pd.DataFrame(
+    {"symbol": ["A", "A"], "amount": [2.0, -2.0], "price": [100.0, 102.0]},
+    index=pd.to_datetime(["2025-07-07T14:00Z", "2025-07-07T15:00Z"]),
+)
+sheet = pf.tears.create_round_trip_tear_sheet(
+    sheet_returns, sheet_positions, sheet_transactions,
+    sector_mappings={"A": "Supplied sector"}, estimate_intraday=False, return_fig=True,
+)
+assert sheet.round_trip_statistics.observations["gross_pnl"].to_list() == [4.0]
+sheet.save_html("round-trips.html", include_plotlyjs=True)
+```
+
+`return_fig=True` now returns a native `PortfolioTearSheet`, not a Matplotlib
+figure. Its `figures`, `round_trip_statistics`, `round_trips`, `to_dict()` and
+`save_html()` expose results and sample coverage. The default displays the report
+and returns `None`. This execution-only sheet has `metrics=None`: supplied returns
+are used for the explicitly selected daily denominator, not replaced with a dummy
+series to manufacture a performance summary. Native reports can likewise call
+`create_round_trip_dashboard(None, prepared_round_trips, ...)` without returns.
+
+The familiar profile uses gross cash-price PnL, an explicitly flat opening and
+consecutive-VWAP grouping. Point multipliers, net fees, supplied opening inventory
+and known-at marks belong in the native route. Synthetic terminal closes use the
+original supplied ending book, never the estimated peak book, and remain separate
+from actual fills/realization. `as_of`, `feed_spec` and `calendar` preserve the
+existing closing-helper time contract; naive execution clocks require a declared
+timezone for exchange closes. No midnight-plus-one-second close is invented.
+
+`estimate_intraday="infer"` retains the original classifier; `True` forces the
+retrospective daily estimate and `False`/`None` retains supplied positions. The
+selected daily position-plus-cash sum divided by `1 + supplied return` is the
+explicit legacy beginning-NAV profile. An estimated denominator is labeled as
+such, never reported NAV. Unknown denominators do not remove known cash PnL.
+Sector attribution deliberately uses the original whole-row complete-case mask;
+its excluded rows are disclosed. Native label-only attribution stays distinct.
+Tied peak candidates remain separate exposure observations. Their equal daily
+denominator is used once per actual closing trade, not joined repeatedly to
+multiply the trade count. The candidate clocks and collapse count remain in
+metadata; disagreement between candidate denominators raises explicitly.
+
+All five tables and lifetime, probability, holding-time, PnL, return and asset/sector
+panels use native calculations. The familiar probability is the explicit
+zero-prior `Beta(wins, nonwins)` rather than native `Beta(1,1)` updating. Empty or
+one-sided zero-prior samples have no proper posterior and show an unavailable
+note; the reference's NaN-density/axis failure is not reproduced. Fewer than five
+trades remain visible with a warning. Familiar duration histograms use whole days
+and returns display percent of the named NAV denominator; raw durations remain
+nanoseconds and raw returns remain fractions. Native fractional elapsed-day,
+fraction-return and uniform-prior defaults are unchanged.
+
+The familiar `plotting.plot_round_trip_lifetimes(trades, disp_amount=16, lsize=18, ax=None)`,
+`plotting.plot_prob_profit_trade(trades, ax=None)` and `plotting.show_profit_attribution(trades)`
+also consume completed tables without inventing execution prices. Figures are
+Plotly; an optional `ax` is a Plotly figure, not Matplotlib axes. Sampling uses a
+local `RandomState(1)` and never resets global NumPy state. Exact clocks remain on
+hover/export. This covers the bounded round-trip route, not all Pyfolio reports.
 
 ### Supply opening inventory and known-at FIFO marks
 
@@ -2052,8 +2128,8 @@ now accepts same-instant closures, explicit point multipliers, actual zero/negat
 prices and signed cash-fee rebates. Producer-to-consumer tests pass these real
 FIFO rows through `TradeRecord` and `TradeAnalysis` without altering the execution
 quantity, prices or fees. Undefined price/duration ratios remain undefined;
-nanosecond instants survive metric tables and JSON. Full legacy report wiring
-and intraday reconstruction remain unfinished.
+nanosecond instants survive metric tables and JSON. Full multi-report portfolio
+composition remains separate from the round-trip and intraday routes above.
 
 ### Consume a Zipline performance result without a legacy analytics dependency
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from html import escape
+from math import isfinite
+from numbers import Integral, Real
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -97,7 +99,10 @@ def _round_trip_tables_html(result: RoundTripStatisticsResult) -> str:
             categories = frame[key].unique(maintain_order=True).to_list()
             labels = {"all": "All trades", "short": "Short trades", "long": "Long trades"}
             columns = ["Metric"] + [
-                str(value) if key == "asset" else labels[value] for value in categories
+                str(result.metadata.get("asset_labels", {}).get(value, value))
+                if key == "asset"
+                else labels[value]
+                for value in categories
             ]
             values = {(row["metric"], row[key]): row["value"] for row in records}
             displayed = [
@@ -106,7 +111,15 @@ def _round_trip_tables_html(result: RoundTripStatisticsResult) -> str:
             ]
         else:
             columns = frame.columns
-            displayed = [list(row.values()) for row in records]
+            displayed = [
+                [
+                    result.metadata.get("asset_labels", {}).get(value, value)
+                    if column == "asset"
+                    else value
+                    for column, value in row.items()
+                ]
+                for row in records
+            ]
         headers = "".join(f'<th scope="col">{escape(col)}</th>' for col in columns)
         body = "".join(
             "<tr>"
@@ -126,8 +139,141 @@ def _round_trip_tables_html(result: RoundTripStatisticsResult) -> str:
     return "".join(sections)
 
 
+def _draw_lifetimes(
+    figure: go.Figure,
+    observations: pl.DataFrame,
+    *,
+    disp_amount: int | None = None,
+    lsize: float = 6,
+    asset_labels: Mapping[Any, str] | None = None,
+) -> None:
+    if disp_amount is not None and (
+        isinstance(disp_amount, bool) or not isinstance(disp_amount, Integral) or disp_amount < 0
+    ):
+        raise ValueError("disp_amount must be a nonnegative integer or None for all assets")
+    if isinstance(lsize, bool) or not isinstance(lsize, Real) or not isfinite(lsize) or lsize <= 0:
+        raise ValueError("lsize must be a finite positive line width")
+    assets = observations["asset"].drop_nulls().unique(maintain_order=True).to_list()
+    if disp_amount is not None:
+        # Match the reference's sample without modifying the process-wide RNG.
+        indices = np.random.RandomState(1).choice(
+            len(assets), size=min(disp_amount, len(assets)), replace=False
+        )
+        assets = [assets[index] for index in indices]
+    asset_rows = {asset: index for index, asset in enumerate(assets)}
+    dated = observations.filter(
+        pl.col("asset").is_in(assets)
+        & pl.col("entry_timestamp").is_not_null()
+        & pl.col("exit_timestamp").is_not_null()
+    ).to_pandas()
+    for _, row in dated.iterrows():
+        side = row["direction"]
+        exact = [row["entry_timestamp"].isoformat(), row["exit_timestamp"].isoformat()]
+        figure.add_trace(
+            go.Scatter(
+                x=exact,
+                y=[asset_rows[row["asset"]]] * 2,
+                name=("Synthetic " if row["is_synthetic"] else "Actual ") + side,
+                mode="lines+markers",
+                showlegend=False,
+                line={
+                    "color": COLORS["blue"] if side == "long" else COLORS["amber"],
+                    "width": lsize,
+                    "dash": "dash" if row["is_synthetic"] else "solid",
+                },
+                customdata=exact,
+                hovertemplate="%{customdata}<extra>%{fullData.name}</extra>",
+            )
+        )
+    figure.update_xaxes(type="date", nticks=3)
+    figure.update_yaxes(
+        tickmode="array",
+        tickvals=list(asset_rows.values()),
+        ticktext=[str(asset_labels.get(a, a) if asset_labels else a) for a in assets],
+    )
+    metadata = dict(figure.layout.meta or {})
+    figure.update_layout(
+        height=max(360, figure.layout.height or 360, 120 + len(assets) * 28),
+        meta={
+            **metadata,
+            "selected_assets": assets,
+            "sampling": "all assets"
+            if disp_amount is None
+            else "local RandomState(1) without replacement",
+            "description": metadata.get("description", "")
+            + " Blue: long; amber: short; dashed: synthetic. "
+            + (
+                "All assets retained; no random sample. "
+                if disp_amount is None
+                else f"Display sample: {len(assets)} assets, local RandomState(1); cash/statistics are not sampled. "
+            )
+            + "Lifetime axes display milliseconds; exact nanosecond instants stay on hover/export. "
+            + f"{len(dated)} known sampled lifelines; missing times do not remove cash observations.",
+        },
+    )
+    if not len(dated):
+        figure.update_xaxes(visible=False)
+        figure.update_yaxes(visible=False)
+        figure.add_annotation(
+            text="Unavailable for this sample.<br>No known sampled lifetimes.",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font_size=13,
+        )
+
+
+def _draw_probability(
+    figure: go.Figure,
+    posterior: Mapping[str, Any],
+    *,
+    points: int = 501,
+    legacy_limits: bool = False,
+) -> None:
+    defined = posterior["lower"] is not None
+    if defined:
+        x = np.linspace(0, 1, points)
+        a, b = posterior["posterior_alpha"], posterior["posterior_beta"]
+        figure.add_trace(go.Scatter(x=x, y=beta.pdf(x, a, b), name=f"Beta({a:g}, {b:g})"))
+        for bound in ("lower", "upper"):
+            figure.add_vline(x=posterior[bound], line_dash="dot")
+        figure.update_xaxes(
+            range=beta.ppf([0.001, 0.999], a, b).tolist() if legacy_limits else [0, 1], nticks=3
+        )
+        figure.update_yaxes(rangemode="tozero")
+    else:
+        figure.add_annotation(
+            text="Undefined zero-prior posterior.<br>Both wins and nonwins are required.",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font_size=13,
+        )
+        figure.update_xaxes(visible=False)
+        figure.update_yaxes(visible=False)
+    metadata = dict(figure.layout.meta or {})
+    figure.update_layout(
+        meta={
+            **metadata,
+            "posterior": dict(posterior),
+            "description": metadata.get("description", "")
+            + f" Prior: Beta({posterior['prior_alpha']:g}, {posterior['prior_beta']:g}); equal-tail95% interval. "
+            + "Break-even is nonwinning. Missing cash is excluded and counted. "
+            + (
+                "The zero-prior method is undefined for empty or one-sided samples; no NaN density is plotted."
+                if posterior["prior_method"] == "legacy_zero_prior"
+                else "Empty samples display the Beta(1,1) prior, not evidence of performance."
+            ),
+        }
+    )
+
+
 def create_round_trip_dashboard(
-    analysis: PortfolioAnalysis,
+    analysis: PortfolioAnalysis | None,
     round_trips: RoundTripResult,
     *,
     pnl: Literal["gross", "net"] = "net",
@@ -141,24 +287,39 @@ def create_round_trip_dashboard(
     theme: str | None = None,
     height_per_row: int = 360,
     width: int | None = None,
+    statistics_method: Literal["native", "legacy_pyfolio"] = "native",
+    probability_method: Literal["uniform_prior", "legacy_zero_prior"] = "uniform_prior",
+    lifetime_sample: int | None = None,
+    lifetime_linewidth: float = 6,
+    asset_labels: Mapping[Any, str] | None = None,
+    holding_duration_method: Literal["elapsed_days", "legacy_whole_days"] = "elapsed_days",
+    return_display: Literal["fraction", "percent"] = "fraction",
 ) -> PortfolioTearSheet:
     """Add prepared FIFO tables and full round-trip panels to a portfolio report.
 
     Supplied net account returns remain independent of closing-trade attribution.
     Native FIFO/grouping, gross/net costs, lot/NAV denominators and optional
     hypothetical closes are explicit in the result and report. No positions,
-    marks, NAV or terminal fills are inferred. All assets are displayed without
-    random sampling. Exact ns instants remain in hover/export; the browser's date
+    marks, NAV or terminal fills are inferred. Default displays retain all assets;
+    explicit lifetime_sample uses a local deterministic display-only sample.
+    Exact ns instants remain in hover/export; the browser's date
     axis has millisecond display precision. Fewer than five observations remain
     visible with their count and Beta(1,1) prior, rather than being suppressed.
     Optional intraday contains complete prepared snapshots on their independent
     clock; they are not resampled onto return or end-of-day observations.
+    analysis=None builds an execution-only report with no fabricated performance
+    summary. Legacy statistics/probability/whole-day/percent display methods are
+    explicit selections; native defaults remain unchanged.
     """
     from .dashboard import create_portfolio_dashboard
 
     if not isinstance(round_trips, RoundTripResult):
         raise TypeError("round_trips must be a prepared RoundTripResult")
-    supplied = analysis.input_data
+    if holding_duration_method not in {"elapsed_days", "legacy_whole_days"}:
+        raise ValueError("holding_duration_method must be elapsed_days or legacy_whole_days")
+    if return_display not in {"fraction", "percent"}:
+        raise ValueError("return_display must be fraction or percent")
+    supplied = analysis.input_data if analysis is not None else None
     if supplied is not None and (
         supplied.transactions is None or not supplied.transactions.equals(round_trips.executions)
     ):
@@ -172,20 +333,40 @@ def create_round_trip_dashboard(
         include_synthetic=include_synthetic,
         calendar=calendar,
         alignment=alignment,
+        method=statistics_method,
     )
     attribution = result.profit_attribution(
         pnl=pnl, sector_mappings=sector_mappings, include_synthetic=include_synthetic
     )
-    posterior = result.win_probability(pnl=pnl, include_synthetic=include_synthetic)
-    report = create_portfolio_dashboard(
-        analysis,
-        theme=theme,
-        include_positions=False,
-        include_transactions=False,
-        intraday=intraday,
-        height_per_row=height_per_row,
-        width=width,
+    posterior = result.win_probability(
+        pnl=pnl, include_synthetic=include_synthetic, method=probability_method
     )
+    if analysis is None:
+        from .dashboard import PortfolioTearSheet
+
+        if intraday is not None:
+            raise ValueError("supply an analysis for additional intraday exposure panels")
+        report = PortfolioTearSheet(
+            metrics=None,
+            availability={
+                "portfolio_returns": {
+                    "status": "not_requested",
+                    "reason": "Execution-only report: no performance summary or fabricated return series.",
+                }
+            },
+        )
+    else:
+        report = create_portfolio_dashboard(
+            analysis,
+            theme=theme,
+            include_positions=False,
+            include_transactions=False,
+            intraday=intraday,
+            height_per_row=height_per_row,
+            width=width,
+        )
+    if asset_labels is not None:
+        statistics.metadata["asset_labels"] = dict(asset_labels)
     report.round_trips = result
     report.round_trip_statistics = statistics
     report.round_trip_attribution = attribution
@@ -233,75 +414,36 @@ def create_round_trip_dashboard(
             + " Lifetime axes use browser millisecond date precision; exact nanosecond instants remain on hover and in exports.",
         }
     )
-    assets = observations["asset"].unique(maintain_order=True).to_list()
-    asset_rows = {asset: index for index, asset in enumerate(assets)}
-    dated = observations.filter(pl.col("entry_timestamp").is_not_null()).to_pandas()
-    for _, row in dated.iterrows():
-        side = row["direction"]
-        exact = [row["entry_timestamp"].isoformat(), row["exit_timestamp"].isoformat()]
-        lifetimes.add_trace(
-            go.Scatter(
-                x=exact,
-                y=[asset_rows[row["asset"]]] * 2,
-                name=("Synthetic " if row["is_synthetic"] else "Actual ") + side,
-                mode="lines+markers",
-                showlegend=False,
-                line={
-                    "color": COLORS["blue"] if side == "long" else COLORS["amber"],
-                    "width": 6,
-                    "dash": "dash" if row["is_synthetic"] else "solid",
-                },
-                customdata=exact,
-                hovertemplate="%{customdata}<extra>%{fullData.name}</extra>",
-            )
-        )
-    lifetimes.update_xaxes(type="date", nticks=3)
-    lifetimes.update_yaxes(
-        tickmode="array", tickvals=list(asset_rows.values()), ticktext=[str(a) for a in assets]
-    )
-    lifetimes.update_layout(height=max(360, height_per_row, 120 + len(assets) * 28))
-    lifetimes.update_layout(
-        meta={
-            "analysis": "prepared_round_trips",
-            "description": description
-            + f" Unknown entry time omits {total - len(dated)} lifelines, not their cash observations. "
-            "Blue: long; amber: short; dashed: synthetic. All assets retained; no random sample.",
-        }
+    dated = observations.filter(pl.col("entry_timestamp").is_not_null())
+    _draw_lifetimes(
+        lifetimes,
+        observations,
+        disp_amount=lifetime_sample,
+        lsize=lifetime_linewidth,
+        asset_labels=asset_labels,
     )
     probability = figure(
         "Round-trip Win Probability",
         "P(positive cash PnL)",
         "Posterior density",
     )
-    x = np.linspace(0, 1, 501)
-    probability.add_trace(
-        go.Scatter(
-            x=x,
-            y=beta.pdf(x, posterior["posterior_alpha"], posterior["posterior_beta"]),
-            name=f"Beta({posterior['posterior_alpha']:g}, {posterior['posterior_beta']:g})",
-        )
-    )
-    for bound in ("lower", "upper"):
-        probability.add_vline(x=posterior[bound], line_dash="dot")
-    probability.update_xaxes(range=[0, 1], nticks=3)
-    probability.update_yaxes(rangemode="tozero")
-    probability.update_layout(
-        meta={
-            "analysis": "prepared_round_trips",
-            "posterior": posterior,
-            "description": description
-            + " Explicit Beta(1,1) prior, equal-tail95% interval; break-even is nonwinning. "
-            "Empty samples display the prior, not evidence of performance.",
-        }
-    )
+    _draw_probability(probability, posterior)
     for name, column, units, scale in (
-        ("Round-trip Holding Duration", "duration", "Elapsed days (fractional)", 1 / 86400e9),
+        (
+            "Round-trip Holding Duration",
+            "duration",
+            "Holding days (whole)"
+            if holding_duration_method == "legacy_whole_days"
+            else "Elapsed days (fractional)",
+            1 / 86400e9,
+        ),
         ("Round-trip Cash PnL", pnl + "_pnl", "Cash PnL (account currency)", 1),
         (
             "Round-trip Returns",
             statistics.metadata["return_col"],
-            "Lot return" if return_basis == "lot" else "NAV contribution",
-            1,
+            ("Lot return" if return_basis == "lot" else "NAV contribution")
+            + (" (%)" if return_display == "percent" else " (fraction)"),
+            100 if return_display == "percent" else 1,
         ),
     ):
         item = figure(name, units, "Closing observations")
@@ -312,11 +454,24 @@ def create_round_trip_dashboard(
             if len(sample):
                 item.add_trace(
                     go.Histogram(
-                        x=[value * scale for value in sample.to_list()],
+                        x=[
+                            np.floor(value * scale)
+                            if column == "duration"
+                            and holding_duration_method == "legacy_whole_days"
+                            else value * scale
+                            for value in sample.to_list()
+                        ],
                         name="Synthetic" if synthetic else "Actual",
                     )
                 )
         item.update_layout(barmode="overlay")
+        item.update_layout(
+            meta={
+                **item.layout.meta,
+                "holding_duration_method": holding_duration_method,
+                "return_display": return_display,
+            }
+        )
     for scope, label in (("asset", "Asset"), ("sector", "Sector")):
         if scope == "sector" and sector_mappings is None:
             continue
@@ -325,7 +480,14 @@ def create_round_trip_dashboard(
         item.add_trace(
             go.Bar(
                 x=sample["pnl_fraction"].to_list(),
-                y=[str(value) for value in sample[scope].to_list()],
+                y=[
+                    str(
+                        asset_labels.get(value, value)
+                        if scope == "asset" and asset_labels
+                        else value
+                    )
+                    for value in sample[scope].to_list()
+                ],
                 orientation="h",
                 customdata=sample["pnl"].to_list(),
                 name=f"{pnl.title()} cash share",
@@ -342,7 +504,7 @@ def create_round_trip_dashboard(
             }
         )
     for item in figures.values():
-        if not any(
+        if not item.layout.annotations and not any(
             trace.x is not None and any(value is not None for value in trace.x)
             for trace in item.data
         ):

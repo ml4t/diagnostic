@@ -110,12 +110,15 @@ class RoundTripResult:
         missing: str = "raise",
         include_synthetic: bool = False,
         confidence: float = 0.95,
+        method: Literal["uniform_prior", "legacy_zero_prior"] = "uniform_prior",
     ) -> dict[str, Any]:
-        """Beta(1,1) posterior over strictly positive closing-fill PnL.
+        """Default Beta(1,1) posterior over strictly positive closing-fill PnL.
 
         Break-even observations are nonwins. Empty known samples retain the
         declared prior. Synthetic observations are excluded unless requested.
         Existing native frequentist win_rate is unchanged.
+        Explicit legacy_zero_prior uses Beta(wins, nonwins); empty/one-sided
+        samples have an unavailable improper posterior, not a fabricated density.
         """
         from .fifo_summary import win_probability
 
@@ -125,6 +128,7 @@ class RoundTripResult:
             missing=missing,
             include_synthetic=include_synthetic,
             confidence=confidence,
+            method=method,
         )
 
     def portfolio_contributions(

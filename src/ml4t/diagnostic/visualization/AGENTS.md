@@ -12,6 +12,7 @@ Visualization primitives and report assembly for signals, features, portfolio an
 | `feature_plots.py`, `interaction_plots.py` | Feature importance and interaction charts |
 | `signal/` and `portfolio/` | Signal and portfolio plotting packages |
 | `portfolio.create_round_trip_dashboard` | Prepared FIFO statistics, lifetimes, Beta(1,1), distributions and asset/sector attribution through the existing `PortfolioTearSheet` renderer |
+| `compat.pyfolio.tears.create_round_trip_tear_sheet` | Familiar gross daily round-trip orchestration and completed-table plots reuse native kernels/renderer; explicit legacy definitions, estimated-denominator provenance and separately flagged terminal closes |
 | Portfolio `intraday=` preparation | Explicit complete intraday snapshots keep their own clock in the same renderer; no return/EOD resampling or continuous-time-peak inference |
 | Explicit `estimated_intraday` results | Daily transaction-notional projections have separately labeled estimated panels; daily labels and unknown/inferred capital are not observed account facts |
 | `report_generation.py` | Combined HTML and PDF export helpers |

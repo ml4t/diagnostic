@@ -63,7 +63,7 @@ class PortfolioTearSheet:
         availability: Component statuses and reasons for unavailable/disabled analysis
     """
 
-    metrics: PortfolioMetrics
+    metrics: PortfolioMetrics | None
     figures: dict[str, go.Figure] = field(default_factory=dict)
     html_content: str | None = None
     _analysis: PortfolioAnalysis | None = None
@@ -112,7 +112,8 @@ class PortfolioTearSheet:
         try:
             from IPython.display import HTML, display
 
-            display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
+            if self.metrics is not None:
+                display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
             if self.availability:
                 display(HTML(self._availability_html()))
             if self.round_trip_statistics is not None:
@@ -123,7 +124,8 @@ class PortfolioTearSheet:
                 _display_figure(fig).show()
         except ImportError:
             # Terminal fallback: print metrics, show each figure
-            print(self.metrics.summary())
+            if self.metrics is not None:
+                print(self.metrics.summary())
             if self.round_trip_statistics is not None:
                 for name, table in self.round_trip_statistics.tables.items():
                     print(name, table, sep="\n")
@@ -218,7 +220,8 @@ class PortfolioTearSheet:
 """)
 
         # Add metrics summary
-        html_parts.append(f"""
+        if self.metrics is not None:
+            html_parts.append(f"""
     <div class="metrics-summary">
         <h2>Performance Summary</h2>
         <pre>{escape(self.metrics.summary())}</pre>
@@ -311,7 +314,7 @@ class PortfolioTearSheet:
             }
 
         return {
-            "metrics": self.metrics.to_dict(),
+            "metrics": self.metrics.to_dict() if self.metrics is not None else None,
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
             "holdings": holdings_dict(self.holdings),
             "intraday": holdings_dict(self.intraday),

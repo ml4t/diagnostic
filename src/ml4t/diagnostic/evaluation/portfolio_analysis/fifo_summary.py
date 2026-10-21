@@ -260,7 +260,29 @@ def win_probability(
     missing: str,
     include_synthetic: bool,
     confidence: float,
+    method: Literal["uniform_prior", "legacy_zero_prior"] = "uniform_prior",
 ) -> dict[str, Any]:
+    frame, coverage = selected_trades(
+        result, pnl=pnl, missing=missing, include_synthetic=include_synthetic
+    )
+    return {
+        **coverage,
+        **summarize_win_probability(frame[pnl + "_pnl"], confidence=confidence, method=method),
+    }
+
+
+def summarize_win_probability(
+    cash: pl.Series,
+    *,
+    confidence: float = 0.95,
+    method: Literal["uniform_prior", "legacy_zero_prior"] = "uniform_prior",
+) -> dict[str, Any]:
+    """Summarize a supplied cash sample without inventing execution records.
+
+    Uniform Beta(1,1) is the native default. The explicit legacy zero-prior
+    profile is undefined without both wins and nonwins, not a proper posterior.
+    Missing cash is excluded and counted; infinite cash is rejected.
+    """
     from scipy.stats import beta
 
     if (
@@ -270,28 +292,35 @@ def win_probability(
         or not 0 < confidence < 1
     ):
         raise ValueError("confidence must be a finite real number strictly between 0 and 1")
-    frame, coverage = selected_trades(
-        result, pnl=pnl, missing=missing, include_synthetic=include_synthetic
-    )
-    winners = frame.filter(pl.col(pnl + "_pnl") > 0).height
-    alpha, beta_parameter = 1 + winners, 1 + frame.height - winners
+    if method not in {"uniform_prior", "legacy_zero_prior"}:
+        raise ValueError("method must be uniform_prior or legacy_zero_prior")
+    sample = cash.cast(pl.Float64, strict=True).fill_nan(None).drop_nulls()
+    if not sample.is_finite().all():
+        raise ValueError("cash PnL must be finite or explicitly missing")
+    winners = int((sample > 0).sum())
+    prior = 1 if method == "uniform_prior" else 0
+    alpha, beta_parameter = prior + winners, prior + len(sample) - winners
+    defined = alpha > 0 and beta_parameter > 0
     tail = (1 - confidence) / 2
     return {
-        **coverage,
         "method": "Beta-binomial probability of strictly positive PnL",
-        "prior_alpha": 1.0,
-        "prior_beta": 1.0,
+        "prior_method": method,
+        "prior_alpha": float(prior),
+        "prior_beta": float(prior),
         "posterior_alpha": float(alpha),
         "posterior_beta": float(beta_parameter),
-        "n_observations": frame.height,
+        "n_observations": len(sample),
+        "n_missing_cash": len(cash) - len(sample),
         "n_winners": winners,
-        "n_nonwinners": frame.height - winners,
-        "n_even": frame.filter(pl.col(pnl + "_pnl") == 0).height,
-        "mean": alpha / (alpha + beta_parameter),
+        "n_nonwinners": len(sample) - winners,
+        "n_even": (sample == 0).sum(),
+        "mean": alpha / (alpha + beta_parameter) if defined else None,
         "confidence": float(confidence),
-        "lower": float(beta.ppf(tail, alpha, beta_parameter)),
-        "upper": float(beta.ppf(1 - tail, alpha, beta_parameter)),
-        "sample_state": "observed" if frame.height else "prior_only",
+        "lower": float(beta.ppf(tail, alpha, beta_parameter)) if defined else None,
+        "upper": float(beta.ppf(1 - tail, alpha, beta_parameter)) if defined else None,
+        "sample_state": ("observed" if len(sample) else "prior_only")
+        if defined
+        else "undefined_legacy_posterior",
     }
 
 
