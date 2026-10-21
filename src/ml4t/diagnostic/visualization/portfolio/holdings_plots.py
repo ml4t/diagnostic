@@ -48,7 +48,7 @@ def _holdings_figures(
     n_defined = result.coverage["n_normalized_observations"]
     normalized = n_defined > 0
     nav_name = (
-        "reconstructed cash-price NAV"
+        "cash-price NAV"
         if result.metadata.get("method") == "explicit_cash_price_reconstruction"
         else "reported NAV"
     )
@@ -180,7 +180,7 @@ def _holdings_figures(
         timeline["max_long_weight"].null_count() < timeline.height
         or timeline["min_short_weight"].null_count() < timeline.height
     ):
-        weights = figure("Signed Position Weights", "fraction of reported NAV")
+        weights = figure("Signed Position Weights", units)
         for name, column in [
             ("Maximum long", "max_long_weight"),
             ("Median long", "median_long_weight"),
