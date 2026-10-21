@@ -9,8 +9,15 @@ def test_importing_transaction_plot_adapters_does_not_load_optional_plotly():
         [
             sys.executable,
             "-c",
-            "import sys; from ml4t.diagnostic.compat.pyfolio import plotting; "
-            "assert 'plotly' not in sys.modules; assert callable(plotting.plot_turnover)",
+            "import importlib.abc, sys\n"
+            "class WithoutVisualization(importlib.abc.MetaPathFinder):\n"
+            "    def find_spec(self, fullname, path=None, target=None):\n"
+            "        if fullname == 'plotly' or fullname.startswith('plotly.'):\n"
+            "            raise ModuleNotFoundError(\"No module named 'plotly'\", name='plotly')\n"
+            "sys.meta_path.insert(0, WithoutVisualization())\n"
+            "from ml4t.diagnostic.compat.pyfolio import plotting\n"
+            "assert 'plotly' not in sys.modules\n"
+            "assert callable(plotting.plot_turnover)\n",
         ],
         capture_output=True,
         text=True,
