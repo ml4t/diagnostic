@@ -366,8 +366,9 @@ def test_profile_from_run_artifacts_resolves_predictions_and_weights(tmp_path):
     assert profile.signals_df["signal_value"].to_list() == [0.2]
     assert profile.strategy_metadata["mapping_name"] == "equal_weight_top_k"
     assert profile.ml["metrics"]["translation_ready"] is True
-    assert profile.occupancy["metrics"]["time_in_market"] > 0
-    assert profile.activity["metrics"]["num_rebalance_events"] > 0
+    assert profile.occupancy["metrics"]["time_in_market"] is None
+    assert profile.activity["metrics"]["num_rebalance_events"] == 0
+    assert profile.portfolio_state_df.is_empty() and profile.fills_df.is_empty()
 
 
 def test_profile_from_run_artifacts_respects_feed_column_contract(tmp_path):

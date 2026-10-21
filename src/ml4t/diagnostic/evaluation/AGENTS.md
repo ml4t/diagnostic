@@ -11,6 +11,7 @@ This package holds the main research and validation workflows.
 - `PortfolioAnalysis.compute_holdings_attribution` for supplied beginning-period NAV
   weights/loadings; explicit intervals and known-at validation, not regression-derived betas
 - `portfolio_analysis.benchmark_batting_average` for finite paired benchmark-relative wins/counts and an explicit neutral-market convention; not factor-monotonicity or a strategy's positive-return fraction
+- `PortfolioAnalysis.from_frames` for owned supplied-account inputs, without reconstructing returns or fills
 - `TradeAnalysis` and `TradeShapAnalyzer` for trade-level diagnostics
 - `FactorAnalysis` for factor exposure and attribution
 - `Evaluator` for the broader evaluation framework

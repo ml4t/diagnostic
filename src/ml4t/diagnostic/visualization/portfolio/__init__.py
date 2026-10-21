@@ -4,7 +4,7 @@ Plotly-based interactive visualizations for portfolio analysis.
 Replacement for pyfolio's matplotlib-based plots.
 """
 
-from .dashboard import create_portfolio_dashboard
+from .dashboard import PortfolioTearSheet, create_portfolio_dashboard
 from .drawdown_plots import (
     plot_drawdown_periods,
     plot_drawdown_underwater,
@@ -38,4 +38,5 @@ __all__ = [
     "plot_drawdown_periods",
     # Dashboard
     "create_portfolio_dashboard",
+    "PortfolioTearSheet",
 ]

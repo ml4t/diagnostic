@@ -102,7 +102,7 @@ def _same_dates(actual: pl.Series, expected: pl.Series, name: str) -> None:
 
 
 def _numeric(frame: pl.DataFrame, column: str, *, nullable: bool = False) -> pl.DataFrame:
-    if frame[column].dtype == pl.Null and nullable:
+    if nullable and frame[column].null_count() == frame.height:
         return frame.with_columns(pl.col(column).cast(pl.Float64))
     if not frame[column].dtype.is_numeric():
         raise TypeError(f"{column} must contain real numeric values")

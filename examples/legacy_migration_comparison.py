@@ -381,6 +381,10 @@ def show_backtest_exposure() -> None:
         assert len(result.fills) == 1
         assert result.fills[0].quantity == 10 and result.fills[0].price == 100
         assert result.fills[0].timestamp == prices["timestamp"][1]
+        observed = analyze_backtest_result(result, calendar=None, periods_per_year=252)
+        assert observed.resolved_calendar is None
+        assert observed.daily_returns.equals(result.to_returns_series().alias("daily_return"))
+        assert observed.periods_per_year == 252
         occupancy = analyze_backtest_result(result).occupancy
         last = occupancy["timeline"].row(-1, named=True)
         assert last["cash"] == 2000
@@ -484,12 +488,17 @@ def show_prepared_holdings() -> None:
     )
     canonical["asset"] = canonical["asset"].map({"A": 1, "B": 2})
     for shape, snapshot, short_id in [("wide", positions, "B"), ("integer-ID long", canonical, 2)]:
-        analysis = PortfolioAnalysis(returns, positions=snapshot)
+        analysis = PortfolioAnalysis.from_frames(
+            returns,
+            positions=snapshot,
+            valuations=valuations,
+            complete_snapshots=True,
+            calendar=None,
+            periods_per_year=252,
+        )
         long_id = "A" if shape == "wide" else 1
         mapping = {long_id: "Technology", short_id: "Finance"}
-        holdings = analysis.compute_holdings_analysis(
-            valuations, complete_snapshots=True, sector_mapping=mapping
-        )
+        holdings = analysis.compute_holdings_analysis(sector_mapping=mapping)
         assert holdings.sectors is not None
         final = holdings.timeline.row(-1, named=True)
         np.testing.assert_allclose(
@@ -554,7 +563,14 @@ def show_prepared_holdings_report(output: Path) -> None:
     from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
 
     returns, positions, valuations = _prepared_holdings_inputs()
-    analysis = PortfolioAnalysis(returns, positions=positions)
+    analysis = PortfolioAnalysis.from_frames(
+        returns,
+        positions=positions,
+        valuations=valuations,
+        complete_snapshots=True,
+        calendar=None,
+        periods_per_year=252,
+    )
     holdings = analysis.compute_holdings_analysis(
         valuations, complete_snapshots=True, sector_mapping={"A": "Technology"}
     )
@@ -834,6 +850,58 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
 
 
+def show_supplied_transactions(output: Path | None = None) -> None:
+    """Actual overnight fills, explicit turnover and extra costs, without a broker."""
+    import polars as pl
+
+    dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.01, -0.02, 0.03], index=dates),
+        positions=pd.DataFrame({"A": [200.0, 400.0, 600.0]}, index=dates),
+        valuations=pd.DataFrame(
+            {
+                "date": pd.DatetimeIndex(["2025-07-03T00:00Z", *dates]),
+                "equity": [1000.0, 1100.0, 1200.0, 1300.0],
+            }
+        ),
+        transactions=pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2025-07-06T23:30Z", "2025-07-07T00:30Z"]),
+                "asset": ["A", "A"],
+                "quantity": [0.5, -0.5],
+                "price": [2.0, 2.0],
+                "multiplier": [100.0, 100.0],
+                "commission": [0.1, 0.1],
+                "slippage": [0.0, 0.0],
+            }
+        ),
+        complete_snapshots=True,
+        feed_spec={
+            "timestamp_col": "date",
+            "entity_col": "asset",
+            "calendar": "CME_Equity",
+            "time_contract_version": 2,
+            "timestamp_semantics": "session_label",
+        },
+        transaction_timestamp_col="timestamp",
+        periods_per_year=252,
+    )
+    activity = analysis.compute_transaction_analysis(incremental_bps=[0, 10])
+    np.testing.assert_allclose(activity.timeline["turnover"], [0.2, 0, 0])
+    np.testing.assert_allclose(
+        activity.scenarios.filter(pl.col("incremental_bps") == 10)["net_return"],
+        [0.0098, -0.02, 0.03],
+    )
+    print(activity.executions.select("timestamp", "session", "filled_notional"))
+    print(activity.timeline)
+    print(activity.scenarios)
+    print("200 traded / 1000 beginning NAV = .2 gross turnover; 10 extra bps = .0002 return")
+    print("Supplied net returns already include observed fees; only extra cost is subtracted")
+    if output is not None:
+        analysis.create_tear_sheet(transactions=activity).save_html(output, include_plotlyjs=True)
+        print(f"Actual transaction HTML: {output}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -854,20 +922,22 @@ def main() -> None:
             "holdings-report",
             "events",
             "event-returns",
+            "transactions",
+            "transactions-report",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report, events or event-returns",
+        help="HTML path for --task holdings-report, transactions-report, events or event-returns",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "events", "event-returns"):
+    if task in ("holdings-report", "transactions-report", "events", "event-returns"):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -888,6 +958,13 @@ def main() -> None:
         return
     if task == "empyrical-rolling":
         show_empyrical_rolling()
+        return
+    if task in ("transactions", "transactions-report"):
+        show_supplied_transactions(
+            arguments.output or Path("transactions-report.html")
+            if task == "transactions-report"
+            else None
+        )
         return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))

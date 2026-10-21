@@ -15,11 +15,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
     calmar_ratio,
     max_drawdown,
 )
+from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import (
+    filled_notional_expr as _filled_notional_expr,
+)
 from ml4t.diagnostic.metrics.risk_adjusted import sharpe_ratio, sortino_ratio
-
-
-def _filled_notional_expr() -> pl.Expr:
-    return pl.col("quantity").abs() * pl.col("price") * pl.col("multiplier")
 
 
 def _implementation_cost_expr() -> pl.Expr:
@@ -55,6 +54,34 @@ def _rebalance_key_expr() -> pl.Expr:
         .then(pl.col("rebalance_id"))
         .otherwise(pl.col("timestamp").dt.strftime("%Y-%m-%dT%H:%M:%S%.f"))
         .alias("rebalance_key")
+    )
+
+
+def prepare_activity_fills(
+    fills: pl.DataFrame,
+    *,
+    trades: pl.DataFrame | None = None,
+    unknown_costs: bool = False,
+) -> pl.DataFrame:
+    """Enrich actual fills once; strict callers retain unreported costs as null.
+
+    Historical Backtest surfaces explicitly retain their zero-missing-cost
+    convention. Supplied-account consumers instead require both commission and
+    per-unit price slippage to determine observed implementation cost.
+    """
+    fills = _fill_cash_units(fills, trades)
+    if "rebalance_id" not in fills.columns:
+        fills = fills.with_columns(pl.lit(None, dtype=pl.String).alias("rebalance_id"))
+    cost = (
+        pl.col("commission")
+        + pl.col("quantity").cast(pl.Float64).abs() * pl.col("slippage") * pl.col("multiplier")
+        if unknown_costs
+        else _implementation_cost_expr()
+    )
+    return fills.with_columns(
+        _filled_notional_expr().alias("filled_notional"),
+        cost.alias("implementation_cost"),
+        _rebalance_key_expr(),
     )
 
 
@@ -342,17 +369,7 @@ def compute_activity_metrics(
             },
         }
 
-    fills = (
-        _fill_cash_units(fills_df, trades_df)
-        .sort("timestamp")
-        .with_columns(
-            [
-                _filled_notional_expr().alias("filled_notional"),
-                _implementation_cost_expr().alias("implementation_cost"),
-                _rebalance_key_expr(),
-            ]
-        )
-    )
+    fills = prepare_activity_fills(fills_df, trades=trades_df).sort("timestamp")
 
     rebalance_summary = (
         fills.group_by("rebalance_key")

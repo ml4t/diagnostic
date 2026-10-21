@@ -19,19 +19,23 @@ Example:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from dataclasses import replace
 from inspect import signature
 from numbers import Integral, Real
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
 
 import numpy as np
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 from scipy import stats
 
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
+from .frame_inputs import PortfolioInputData, normalize_portfolio_frames
 from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
 from .holdings_sectors import SectorMapping, analyze_sector_exposures
 from .inputs import (
@@ -66,6 +70,7 @@ from .results import (
     RollingMetricsResult,
 )
 from .rolling import _row_windows
+from .transactions import TransactionAnalysisResult, analyze_transactions
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -168,6 +173,7 @@ class PortfolioAnalysis:
         self._benchmark = owned_benchmark
         self._dates = owned_dates
         self._initial_timestamp = initial_valuation_time(initial_timestamp, owned_dates)
+        self._input_data: PortfolioInputData | None = None
         self._positions = position_snapshot(positions) if positions is not None else None
         self._transactions = self._to_polars_df(transactions) if transactions is not None else None
 
@@ -178,6 +184,116 @@ class PortfolioAnalysis:
         self._metrics_cache: PortfolioMetrics | None = None
         self._rolling_cache: dict[tuple, RollingMetricsResult] = {}
         self._drawdown_cache: dict[tuple[int, float], DrawdownResult] = {}
+
+    @classmethod
+    def from_frames(
+        cls,
+        returns: DataFrameLike | pd.Series,
+        *,
+        benchmark: DataFrameLike | pd.Series | None = None,
+        positions: DataFrameLike | None = None,
+        valuations: DataFrameLike | None = None,
+        transactions: DataFrameLike | None = None,
+        complete_snapshots: bool = False,
+        snapshot_kind: Literal["observed", "end_of_day", "intraday"] = "observed",
+        positions_format: Literal["auto", "long", "wide"] = "auto",
+        feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+        timestamp_col: str | None = None,
+        entity_col: str | None = None,
+        return_col: str = "return",
+        benchmark_col: str = "return",
+        transaction_timestamp_col: str | None = None,
+        transaction_multiplier: float = 1.0,
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+        periods_per_year: int = 252,
+        risk_free: float = 0.0,
+        initial_timestamp: date | datetime | None = None,
+    ) -> PortfolioAnalysis:
+        """Normalize dated supplied account frames without a producer dependency.
+
+        Returns are authoritative net simple returns, not inferred from NAV.
+        Pandas Series dates and benchmark labels are retained/aligned by key.
+        Positions are signed cash values, long or wide; the wide cash column is
+        reported cash, never an asset or inferred NAV. Missing optional records
+        stay absent and incomplete holdings are not filled. Commission/slippage
+        absence means unknown. Quantity is signed; an optional buy/sell side is
+        reconciled before accounting. Multiplier defaults to one cash-price unit
+        per quantity unit; futures must supply their actual multiplier.
+
+        Calendar declarations are preserved, not used to resample input returns
+        or infer schedule completeness. Explicit None disables schedules. Use
+        transaction_timestamp_col when fills and snapshots have different keys.
+        Existing constructor annualization/risk-free defaults remain unchanged.
+        """
+        periods_per_year = positive_integer(periods_per_year, "periods_per_year")
+        risk_free = annual_risk_free(risk_free)
+        inputs = normalize_portfolio_frames(
+            returns,
+            benchmark=benchmark,
+            positions=positions,
+            valuations=valuations,
+            transactions=transactions,
+            feed_spec=feed_spec,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+            return_col=return_col,
+            benchmark_col=benchmark_col,
+            transaction_timestamp_col=transaction_timestamp_col,
+            transaction_multiplier=transaction_multiplier,
+            calendar=calendar,
+            complete_snapshots=complete_snapshots,
+            snapshot_kind=snapshot_kind,
+            positions_format=positions_format,
+        )
+        observed, relative = inputs.returns, inputs.benchmark
+        instance = cls(
+            returns=observed["return"],
+            dates=observed["date"],
+            benchmark=(
+                relative.to_pandas().set_index("date")["return"]
+                if "date" in relative.columns
+                else relative["return"]
+            )
+            if relative is not None
+            else None,
+            positions=inputs.positions,
+            transactions=inputs.transactions,
+            risk_free=risk_free,
+            periods_per_year=periods_per_year,
+            initial_timestamp=initial_timestamp,
+        )
+        metadata = inputs.metadata
+        metadata.update(periods_per_year=periods_per_year, risk_free_annual=risk_free)
+        instance._input_data = replace(inputs, _metadata=json.dumps(metadata, allow_nan=False))
+        return instance
+
+    @property
+    def input_data(self) -> PortfolioInputData | None:
+        """Return immutable supplied-frame provenance, or None for the array constructor."""
+        return self._input_data
+
+    def compute_transaction_analysis(
+        self,
+        *,
+        turnover_denom: str = "beginning_nav",
+        turnover_method: str = "gross",
+        incremental_bps: Sequence[float] = (0.0, 10.0),
+    ) -> TransactionAnalysisResult:
+        """Analyze actual supplied fills, explicit turnover and extra cash-bps costs.
+
+        Requires from_frames inputs. Named calendars use the declared FeedSpec
+        timestamp semantics and aggregate to exchange sessions; calendar=None
+        matches exact observation keys without calendar resampling. Missing NAV
+        retains raw notional/cost dollars but cannot define a nonzero cost return.
+        """
+        if self._input_data is None:
+            raise ValueError("transaction analysis requires owned from_frames inputs")
+        return analyze_transactions(
+            self._input_data,
+            turnover_denom=turnover_denom,
+            turnover_method=turnover_method,
+            incremental_bps=incremental_bps,
+        )
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:
@@ -233,10 +349,10 @@ class PortfolioAnalysis:
 
     def compute_holdings_analysis(
         self,
-        valuations: DataFrameLike,
+        valuations: DataFrameLike | None = None,
         *,
-        complete_snapshots: bool,
-        snapshot_kind: Literal["observed", "end_of_day", "intraday"] = "observed",
+        complete_snapshots: bool | None = None,
+        snapshot_kind: Literal["observed", "end_of_day", "intraday"] | None = None,
         sector_mapping: SectorMapping | None = None,
     ) -> HoldingsAnalysisResult:
         """Analyze complete holdings on exact supplied return observation keys.
@@ -261,6 +377,22 @@ class PortfolioAnalysis:
         self.require_dates()
         if self._positions is None:
             raise ValueError("positions are required for holdings analysis")
+        metadata = self._input_data.metadata if self._input_data is not None else {}
+        if complete_snapshots is None:
+            complete_snapshots = metadata.get("complete_snapshots", False)
+        if snapshot_kind is None:
+            snapshot_kind = metadata.get("snapshot_kind", "observed")
+        if valuations is None:
+            valuations = self._input_data.valuations if self._input_data is not None else None
+            if valuations is not None:
+                from ml4t.diagnostic.utils.validation import _align_datetime_key_resolution
+
+                valuations, keys = _align_datetime_key_resolution(
+                    valuations, pl.DataFrame({"date": self._dates}), "date"
+                )
+                valuations = valuations.join(keys, on="date", how="semi").sort("date")
+            else:
+                valuations = pl.DataFrame({"date": self._dates})
         result = analyze_holdings(
             self._positions,
             valuations,
@@ -893,6 +1025,8 @@ class PortfolioAnalysis:
         self,
         theme: str | None = None,
         cost_info: dict[str, str] | None = None,
+        *,
+        transactions: TransactionAnalysisResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -904,6 +1038,9 @@ class PortfolioAnalysis:
             Plot theme ("default", "dark", "print", "presentation")
         cost_info : dict[str, str] | None
             Deprecated legacy parameter. Retained for backward compatibility.
+        transactions : TransactionAnalysisResult, optional
+            Explicitly prepared actual-fill turnover and incremental cost scenarios.
+            Computed results are rendered without selecting financial methods again.
 
         Returns
         -------
@@ -913,7 +1050,16 @@ class PortfolioAnalysis:
         from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
 
         _ = cost_info
-        return create_portfolio_dashboard(self, theme=theme)
+        holdings = None
+        if (
+            self._input_data is not None
+            and self._input_data.positions is not None
+            and self._input_data.metadata["complete_snapshots"]
+        ):
+            holdings = self.compute_holdings_analysis()
+        return create_portfolio_dashboard(
+            self, theme=theme, holdings=holdings, transactions=transactions
+        )
 
 
 __all__ = ["PortfolioAnalysis"]

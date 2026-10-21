@@ -18,6 +18,7 @@ from __future__ import annotations
 # Main analysis class
 from ml4t.diagnostic.evaluation.portfolio_analysis.analysis import PortfolioAnalysis
 from ml4t.diagnostic.evaluation.portfolio_analysis.benchmark import benchmark_batting_average
+from ml4t.diagnostic.evaluation.portfolio_analysis.frame_inputs import PortfolioInputData
 from ml4t.diagnostic.evaluation.portfolio_analysis.holdings import HoldingsAnalysisResult
 
 # Core metric functions
@@ -51,12 +52,15 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
     PortfolioMetrics,
     RollingMetricsResult,
 )
+from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import TransactionAnalysisResult
 
 __all__ = [
     "benchmark_batting_average",
     # Main class
     "PortfolioAnalysis",
     "HoldingsAnalysisResult",
+    "PortfolioInputData",
+    "TransactionAnalysisResult",
     # Result classes
     "PortfolioMetrics",
     "RollingMetricsResult",

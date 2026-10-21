@@ -1321,6 +1321,391 @@ Single-series uncertainty retains its finite-value filter; neither route validat
 a calendar grid or records excluded dates in its result. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
 intervals; matching point estimates does not establish interval equivalence.
 
+### Normalize a supplied account without a backtest engine
+
+Unreleased after 0.1.9, `PortfolioAnalysis.from_frames()` accepts dated returns,
+an optional dated benchmark, signed marked holdings, reported cash/NAV and
+actual transaction records. It uses the existing portfolio metrics and holdings
+analysis. Ordinary supplied-account analysis needs no Pyfolio, Zipline,
+Backtest, Engineer or Data installation.
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+account_dates = pd.date_range("2025-07-07", periods=2, tz="UTC")
+account_returns = pd.Series([.01, -.02], index=account_dates)
+account_positions = pd.DataFrame(
+    {"A": [600., 500.], "B": [-100., -50.], "cash": [510., 539.8]},
+    index=account_dates,
+)
+account_valuations = pd.DataFrame({"date": account_dates, "equity": [1010., 989.8]})
+account_transactions = pd.DataFrame({
+    "timestamp": account_dates, "asset": ["A", "B"],
+    "quantity": [.5, -.25], "price": [100., 200.],
+    "commission": [None, .25],
+})
+account_analysis = PortfolioAnalysis.from_frames(
+    account_returns, positions=account_positions, valuations=account_valuations,
+    transactions=account_transactions, complete_snapshots=True,
+    calendar=None, periods_per_year=252,
+)
+np.testing.assert_allclose(account_analysis.returns, [.01, -.02])
+account_holdings = account_analysis.compute_holdings_analysis()
+np.testing.assert_allclose(account_holdings.timeline["gross_exposure"], [700., 550.])
+np.testing.assert_allclose(account_holdings.timeline["cash"], [510., 539.8])
+assert account_analysis.input_data.transactions["commission"].null_count() == 1
+print("Supplied account preserves net returns and unknown fees")
+```
+
+Returns are authoritative net simple returns. NAV changes can include unknown
+flows and never replace them. Wide `cash` is reported cash; NAV is not inferred
+from cash plus signed holdings or futures notional. Missing NAV leaves raw
+exposure available and dependent ratios unknown. `complete_snapshots=True`
+declares absent assets zero within each supplied date, not across missing dates.
+Incomplete holdings remain incomplete: no forward fill or inferred liquidation.
+The existing array constructor remains available with its original defaults.
+
+`input_data` owns Arrow/JSON snapshots of normalized returns, the full benchmark,
+positions, valuations and transactions. Frame/metadata accessors return independent
+values. Exact nanosecond keys and string/integer asset IDs are retained. Numeric
+pandas wide IDs are not stringified. Use `positions_format="wide"` for ambiguous
+wide asset names such as `asset` and `value`; long inputs can represent an actual
+asset named `cash` separately from account cash. Cash-only wide dates remain
+explicit snapshots without a fabricated cash asset.
+
+Supply `feed_spec`, `timestamp_col` and `entity_col` for declared physical names;
+`return_col` selects a table's return values. Calendar argument precedence and
+explicit None follow the shared contract, but normalization itself does not
+resample returns or establish schedule completeness. Fills can use a separate
+`transaction_timestamp_col`. `quantity` is signed; a supplied buy/sell side is
+reconciled and contradictory signs rejected. Integer quantities and prices are
+retained before accounting, including values beyond Float64's exact integer
+range. `multiplier` must be finite/positive; absent multipliers use the documented
+one cash-price unit per quantity unit convention. Futures inputs must supply
+their actual multiplier. Unknown commission/slippage remain unknown, not zero.
+No execution is reconstructed from portfolio weights.
+
+The existing `--task holdings` and `--task holdings-report` migration examples now
+use this boundary. With `viz`, `account_analysis.create_tear_sheet()` also prepares
+the declared complete holdings for the existing portfolio dashboard. Source input
+normalization is not qualification of all Zipline, round-trip,
+attribution or full legacy report workflows; those remain accepted implementation
+and integration work.
+
+### Analyze actual transactions and incremental costs
+
+Unreleased after 0.1.9, supplied accounts can prepare actual execution activity
+through `compute_transaction_analysis()`. This recipe uses two real-format
+execution records and explicitly synthetic net returns/NAV. Neither NAV changes
+nor target weights determine the returns or fills.
+
+```python
+import pandas as pd
+import polars as pl
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+cost_dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+cost_analysis = PortfolioAnalysis.from_frames(
+    pd.Series([.01, -.02, .03], index=cost_dates),
+    positions=pd.DataFrame({"A": [200., 400., 600.]}, index=cost_dates),
+    valuations=pd.DataFrame({
+        "date": pd.DatetimeIndex(["2025-07-03T00:00Z", *cost_dates]),
+        "equity": [1000., 1100., 1200., 1300.],
+    }),
+    transactions=pd.DataFrame({
+        "timestamp": pd.to_datetime(["2025-07-06T23:30Z", "2025-07-07T00:30Z"]),
+        "asset": ["A", "A"], "quantity": [.5, -.5], "price": [2., 2.],
+        "multiplier": [100., 100.], "commission": [.1, .1], "slippage": [0., 0.],
+    }),
+    complete_snapshots=True, transaction_timestamp_col="timestamp",
+    feed_spec={
+        "timestamp_col": "date", "entity_col": "asset", "calendar": "CME_Equity",
+        "time_contract_version": 2, "timestamp_semantics": "session_label",
+    },
+    periods_per_year=252,
+)
+cost_result = cost_analysis.compute_transaction_analysis(incremental_bps=[0, 10])
+assert cost_result.timeline["turnover"].to_list() == [.2, 0, 0]
+extra_cost = cost_result.scenarios.filter(pl.col("incremental_bps") == 10)
+assert extra_cost["incremental_cost_return"][0] == .0002
+assert extra_cost["net_return"][0] == .0098
+print("200 actual notional / 1000 beginning NAV; extra 10bps costs .0002 return")
+```
+
+The native turnover default is gross traded cash notional divided by beginning
+reported NAV. `turnover_method="one_way"` explicitly halves that ratio. Choose
+`turnover_denom="average_gross_book"` for the mean of adjacent complete closing
+gross exposures. The first gross-book denominator is unknown without a previous
+snapshot; it is not silently half the first exposure. Full-clock and active-fill
+means/counts are both returned. These choices differ from Pyfolio's default
+average-gross-book turnover and its first-observation convention. No single
+turnover definition is implied by the name alone.
+
+Notional is `abs(quantity * price * multiplier)`, including negative execution
+prices. Commission is cash; slippage is a per-unit price difference multiplied
+by absolute quantity and multiplier. Unknown commission or slippage leaves
+observed total cost unknown. A zero-fill ledger proves zero activity, whereas
+an absent ledger cannot. Missing or nonpositive NAV leaves raw dollars available
+and active cost-return scenarios undefined. A known zero extra cost leaves net
+returns unchanged even without NAV. Already-observed fees are never subtracted
+from supplied net returns again. Extra-bps scenarios always use beginning NAV,
+even when turnover uses gross book or the one-way convention.
+
+With a named calendar, declared `session_label` return/NAV keys stay labels;
+timezone-aware event instants use actual exchange intervals, including overnight
+sessions and scheduled breaks. The Sunday and Monday fills above share the
+July 7 CME session. Event-time returns compound within a session; original
+observations and exact execution timestamps remain in the results. Off-session
+fills or fills without a matching return session raise instead of disappearing.
+Declared `bar_close` observations at touching 24-hour boundaries belong to the
+completed session. Actual executions at that instant belong to the newly open
+session. A declared feed timezone localizes naive event instants; without a
+timezone declaration, event inputs must already be timezone-aware.
+With `calendar=None`, no exchange grouping runs: fills must match exact return
+observation keys, not a guessed civil date. No intraday NAV is reconstructed.
+
+For an interactive report, use `cost_analysis.create_tear_sheet(transactions=cost_result)`.
+The existing report renders prepared notional, absolute execution units, turnover,
+all-clock versus active turnover distributions, execution timing, known costs and
+extra-cost scenarios without selecting methods again. Absolute units use the
+supplied instrument units, not an assumption that every instrument is a share.
+`cost_result.execution_timing(bin_minutes=5, timezone="America/New_York")`
+returns counts, absolute units, actual notional and notional fractions for the
+whole civil day. The optional timezone changes display only; overnight fills are
+not discarded. Native default timing retains the source instant timezone, or a
+declared feed timezone for naive inputs. Date labels and undeclared naive instants
+leave timing unavailable without removing raw activity or other report panels.
+Pyfolio's time histogram instead defaults to New York and retains only
+09:30 through 16:00, so that filtered distribution differs for overnight fills.
+Returns-only/holdings reports remain
+independently usable. From the source checkout, run
+`uv run python examples/legacy_migration_comparison.py --task transactions`, or
+`uv run python examples/legacy_migration_comparison.py --task transactions-report --output transactions-report.html`
+with the visualization dependencies installed. These checks cover the named
+supplied-input workflow, not Zipline extraction, lots, capacity or complete Pyfolio
+report parity.
+
+### Keep familiar Pyfolio transaction calculations
+
+Unreleased after 0.1.9, replace `from pyfolio import txn` with
+`from ml4t.diagnostic.compat.pyfolio import txn` for `map_transaction`,
+`make_transaction_frame`, `get_txn_vol`, `get_turnover` and
+`adjust_returns_for_slippage`. These pandas-facing adapters use the same native
+execution-value, gross-exposure and cost calculations; Pyfolio is not a runtime
+dependency. Use the native owned-account workflow above for exchange-session
+semantics, contract multipliers and reported beginning NAV.
+
+The adapter intentionally retains the legacy daily definitions: grouping by
+civil date in the input timezone, signed execution price for cash volume,
+absolute units for share volume, gross two-sided turnover, default `AGB` with
+the first previous book seeded at zero, and `portfolio_value` as the closing
+sum of signed positions plus cash. Slippage bps adjusts PnL using that closing
+value, not native beginning NAV. Existing net returns retain observed fees
+once. Metric-specific missingness and IEEE division by zero remain explicit
+legacy behavior; this is not the native positive-NAV normalization contract.
+
+The runnable `examples/pyfolio_transaction_adapters.py` supplies three daily
+observations, two cash-volume totals of 200 and two unit-volume totals of 2.
+Independent expected AGB turnover is `[2, 0, .4]`; 10bps extra slippage changes
+net returns `[.01, -.02, .03]` to `[.0098, -.02, .0298]`. Run without Pyfolio:
+
+```bash
+uv run python examples/pyfolio_transaction_adapters.py
+```
+
+The same sample and both denominator options are compared with published
+Pyfolio 0.10.0 using pandas 2.3.3; the reference package requires pandas below 3.
+From this source checkout, the optional reference command is:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --with pyfolio-reloaded==0.10.0 --with pandas==2.3.3 python examples/pyfolio_transaction_adapters.py --compare
+```
+
+Two deliberate corrections are not output-parity claims: nested transaction
+conversion preserves the actual timezone and nanoseconds rather than losing
+them through a datetime ndarray, and widened integer accumulation avoids
+signed-64-bit absolute-value overflow. An actually empty nested ledger returns
+an empty table instead of the reference's missing-column error. The reference
+tests cover intermediate amounts, prices, date keys, missingness and labels,
+not just aggregate correlation.
+
+With the `viz` extra, `from ml4t.diagnostic.compat.pyfolio import plotting`
+also provides `plot_turnover`, `plot_daily_volume`,
+`plot_daily_turnover_hist`, `plot_txn_time_hist`, `plot_slippage_sweep` and
+`plot_slippage_sensitivity`. They return native Plotly figures with
+`show()`, `write_html()` and `to_dict()`, not Matplotlib axes. Remove `ax=`
+when migrating; Matplotlib axis reuse/style callbacks and legend placement are
+not preserved. Histogram bin presentation may differ, but the underlying
+turnover sample is retained, with any excluded nonfinite values counted.
+
+Daily turnover retains civil-month and all-time mean overlays. Daily volume
+uses the mean over actual activity dates, not the native full return clock.
+Legacy timing defaults to five-minute New York buckets and includes only
+09:30 through the entire 16:00 minute. It normalizes selected actual notional,
+counts excluded fills and leaves an empty selection undefined. Native complete-day
+timing above remains the route for overnight strategies.
+
+Slippage sweep defaults remain `(3, 8, 10, 12, 15, 20, 50)` cash bps. Wealth
+starts at 1 and compounds the exact adjusted return path, with legacy missing
+returns contributing no change. Sensitivity evaluates the original 1 through 99 bps
+sample using native CAGR, not arithmetic mean return. Its legacy daily scale
+is 252; pass `periods_per_year=` for a different declared return cadence.
+Three observations with `periods_per_year=3` use one exact window product;
+`periods_per_year=6` squares that product. This is not rolling-return
+annualization or an assumption about exchange sessions.
+
+Run the six-plot, self-contained HTML recipe without Pyfolio:
+
+```bash
+uv run python examples/pyfolio_transaction_adapters.py --report transaction-adapters.html
+```
+
+The optional `--compare` flag also checks the published reference helpers on the
+same inputs. Reference tests additionally inspect real Matplotlib plot payloads
+under matched turnover, bps and timing-bin choices. These observed-input
+transaction routes do not yet qualify the complete `create_txn_tear_sheet`
+intraday-estimation options, round trips or capacity. Those remain accepted work.
+
+### Consume a Zipline performance result without a legacy analytics dependency
+
+The familiar extraction call is also available as
+`ml4t.diagnostic.compat.pyfolio.utils.extract_rets_pos_txn_from_zipline(performance)`.
+It projects the same normalized native inputs into a pandas `(returns, positions,
+transactions)` tuple. Actual Asset objects need no Zipline import in the consumer;
+portable dictionaries retain stable integer SID labels. Raw integer SIDs use
+the legacy cash-price-per-unit convention, or explicitly supplied
+`asset_metadata={sid: {"multiplier": ...}}` for point-price contracts.
+Closing cash comes from the producer, not an inferred exposure residual.
+If a partial export omits a cash observation, it remains unknown, not zero.
+This deliberately corrects the reference extractor's blanket zero fill; the
+normalizer already supplies zero only for assets absent from a complete book.
+
+Daily tuple return/position labels follow the legacy civil-date/naive-UTC
+convention. Original event timestamps remain timezone/ns precise in the
+transaction ledger. Unlike the reference extractor, it does not mutate the
+source index or drop a complete all-cash date before the first position. The
+captured first-day cash1000 is therefore retained, not replaced with a missing
+book. Unknown commissions remain unknown. Native `portfolio_analysis_from_zipline`
+below preserves the original observation clock instead of this explicit daily
+compatibility projection. Both routes are exercised by
+`examples/zipline_portfolio_inputs.py` on portable captures and actual engine output.
+
+Unreleased after 0.1.9, `integration.zipline.portfolio_analysis_from_zipline()`
+extracts `run_algorithm` results into the same `PortfolioAnalysis.from_frames`
+boundary. It imports neither Zipline nor Pyfolio. The result's reported returns,
+`portfolio_value` and `ending_cash` remain authoritative. Nested positions are
+complete snapshots; empty lists prove an all-cash date, while missing lists are
+invalid rather than silently empty. Missing optional columns disable their
+dependent analyses without blocking returns-only analysis.
+
+```python
+import pandas as pd
+from ml4t.diagnostic.integration.zipline import portfolio_analysis_from_zipline
+
+zipline_dates = pd.to_datetime(["2025-07-07T20:00Z", "2025-07-08T20:00Z"])
+zipline_example = pd.DataFrame({
+    "returns": [0., -.0003], "portfolio_value": [1000., 999.7],
+    "ending_cash": [1000., 699.7],
+    "positions": [[], [{
+        "sid": {"sid": 7, "symbol": "A", "multiplier": 1.},
+        "amount": 3, "last_sale_price": 100.,
+    }]],
+    "transactions": [[], [{
+        "sid": {"sid": 7, "symbol": "A", "multiplier": 1.},
+        "amount": 3, "price": 100., "dt": zipline_dates[1],
+        "order_id": "observed-order", "commission": None,
+    }]],
+}, index=zipline_dates)
+zipline_analysis = portfolio_analysis_from_zipline(zipline_example, calendar="NYSE")
+zipline_holdings = zipline_analysis.compute_holdings_analysis()
+assert zipline_holdings.timeline["gross_exposure"].to_list() == [0., 300.]
+assert zipline_holdings.timeline["cash"].to_list() == [1000., 699.7]
+assert zipline_analysis.input_data.transactions["asset"].to_list() == [7]
+assert zipline_analysis.input_data.transactions["commission"][0] is None
+print("Zipline input preserves sid, reported cash/NAV and unknown fill costs")
+```
+
+The two-row snippet illustrates the format. The repository fixture
+`tests/test_integration/data/zipline320_account.json` is captured from an actual
+published Zipline 3.2.0 `run_algorithm` execution using pandas 2.3.3, NumPy 2.4.6
+and exchange-calendars 4.13.2. It includes an opening buy and partial sale,
+reported cash/NAV, an all-cash initial date and unknown per-fill commission.
+The optional producer example
+[zipline_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/6ac080f97917e5a149f881edd32553d74a86c575/examples/zipline_portfolio_inputs.py)
+regenerates that local deterministic bundle without market downloads and consumes
+the actual in-memory result, including Zipline Asset objects:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --with zipline-reloaded==3.2.0 --with pandas==2.3.3 --with plotly python examples/zipline_portfolio_inputs.py --capture zipline-account.json --report zipline-account.html
+```
+
+For the ordinary consumer path, run
+`uv run --no-dev python examples/zipline_portfolio_inputs.py --input tests/test_integration/data/zipline320_account.json`.
+No execution package is needed to consume the capture. The four-date result has
+420 of actual traded notional; unknown fill commission is not replaced by zero
+or inferred from aggregate account charges. The returns already include the
+observed commissions once. The same prepared transaction results can be passed
+to the existing portfolio report as in the preceding workflow.
+
+Stable integer `sid` identifies each instrument, even if display symbols change
+or are reused. Asset objects supply their declared `price_multiplier`; portable
+asset dictionaries carry `sid`, `symbol` and `multiplier`. Bare integer IDs need
+an explicit `asset_metadata` mapping, such as `{7: {"symbol": "A", "multiplier": 1}}`.
+Marked notional is amount times last sale price times multiplier. That value
+does not replace the producer's cash or NAV for futures or leveraged accounts.
+Actual execution `dt`, order ID and signed amount are retained; no fill is
+reconstructed from a position change. Feed declarations and explicit calendar
+precedence use the same shared contract. This extraction does not implement a
+Zipline broker, data bundle service, Pipeline, capacity model, or full Pyfolio
+tear sheet.
+
+### Consume actual Backtest account capture
+
+The existing `integration.portfolio_analysis_from_result()` now uses the same
+owned input boundary for producer returns, reported account values and actual
+fills. Explicit `calendar=None` retains observations and requires an explicit
+`periods_per_year`. An omitted calendar continues to resolve producer metadata.
+Dated benchmarks align by keys; explicitly positional benchmark arrays retain
+their order and must match in length.
+
+For complete per-asset holdings, the producer must actually enable
+`Engine(..., holdings_sampling="bar")`. With observation returns, the bridge
+consumes those complete bar snapshots, including all-cash observations. It checks
+reported completeness and position counts before filling absent assets with
+zero. It does not reconstruct holdings from trades or target weights. Older
+producers without captured holdings still support returns/account/fill analysis;
+the dependent holdings report remains unavailable. Aggregated-return conversion
+of non-bar or differently sampled holdings remains unqualified.
+
+The tested complete-capture producer is immutable Backtest source
+`da223f904cfa03744152311e3c617c15fdc1ddcd`, not a published 0.1.13 package.
+The executable
+[backtest_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/6ac080f97917e5a149f881edd32553d74a86c575/examples/backtest_portfolio_inputs.py)
+runs an actual Engine and checks returns `[0, 0, .02]`, cash `[1000, 800, 800]`,
+marked exposure `[0, 200, 220]`, NAV `[1000, 1000, 1020]` and 200 actual filled
+notional. Ten additional bps costs `.0002` of beginning NAV. The source-qualified
+recipe is:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd' --with plotly python examples/backtest_portfolio_inputs.py --run-engine --report backtest-account.html
+```
+
+Current published Backtest 0.1.12 requires Specs below 0.2 and cannot satisfy
+current Diagnostic source's Specs 0.2 requirement. The immutable source probe
+does not establish a compatible published-package pair. Legacy frame exports
+that dropped timezone information recover it only from matching actual public
+Fill/account record timestamps, never from a guessed timezone or return date.
+Standalone supplied-account and captured Zipline analysis need no Backtest
+installation.
+Both producer scripts consume bundled actual captures when run without arguments,
+so ordinary examples need no execution engine. `--capture` explicitly regenerates
+Zipline input; Backtest regeneration requires `--run-engine`. The Backtest minute
+example declares 252*390 periods per year, rather than using an hourly scale.
+Original position quantities, marks and multipliers remain in owned inputs;
+reported liquidation value and notional exposure are kept distinct.
+
 ### Analyze prepared holdings on observed keys
 
 In unreleased source after 0.1.9, use the existing `PortfolioAnalysis` workflow
@@ -1549,8 +1934,17 @@ The existing migration example runs a real short order through the Backtest
 engine, verifies the actual fill, and checks marks of 150, 200 and 250 after
 shorting 10 shares at 100 from initial equity 1000:
 
+Current Diagnostic source requires Specs 0.2.0 or newer, while published
+Backtest 0.1.12 requires Specs below 0.2. These versions cannot be installed
+together. The following source examples pin the compatible immutable Backtest
+revision qualified as `0.1.13.dev32+gc6feb2408`, with Specs 0.2.0. This is an
+unpublished producer qualification, not a claim that PyPI Backtest 0.1.13 is
+available. A compatible published producer remains necessary for a new
+published-package workflow. The supplied-frame examples above do not require it.
+
 ```bash
-uv run --with ml4t-backtest==0.1.12 --with plotly \
+uv run --isolated --no-dev --python 3.12 --with plotly \
+  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
   python examples/legacy_migration_comparison.py --task exposure
 ```
 
@@ -1597,7 +1991,8 @@ summary uses another convention. The producer's metrics are not mutated.
 Run the existing migration example with actual next-bar short and cover fills:
 
 ```bash
-uv run --with ml4t-backtest==0.1.12 --with plotly \
+uv run --isolated --no-dev --python 3.12 --with plotly \
+  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
   python examples/legacy_migration_comparison.py --task activity
 ```
 
