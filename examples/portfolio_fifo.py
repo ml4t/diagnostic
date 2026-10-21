@@ -19,6 +19,11 @@ def main() -> None:
     parser.add_argument(
         "--report", type=Path, help="Save a native round-trip HTML report (Plotly required)"
     )
+    parser.add_argument(
+        "--print-tables",
+        action="store_true",
+        help="Print Pyfolio-shaped native-backed round-trip tables",
+    )
     args = parser.parse_args()
     dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
     # The supplied synthetic net returns are independent of lot attribution.
@@ -132,6 +137,13 @@ def main() -> None:
     assert familiar_tables["pnl"].loc["Total profit", "All trades"] == 200.0
     assert familiar_tables["returns"].loc["Avg returns all round_trips", "All trades"] == 0.2
     print("Familiar round-trip extraction: gross PnL200, lot return200/1240, NAV contribution.2")
+    custom = pf.round_trips.agg_all_long_short(familiar, "pnl", {"sum": "sum"})
+    assert custom.loc["sum", "All trades"] == 200.0
+    sectors = pf.round_trips.apply_sector_mappings_to_round_trips(familiar, {7: "Example sector"})
+    assert sectors["pnl"].sum() == 200.0
+    assert sectors.attrs["diagnostic_sector_projection"]["n_output_rows"] == 1
+    if args.print_tables:
+        pf.round_trips.print_round_trip_stats(familiar)
     if args.report:
         from ml4t.diagnostic.visualization.portfolio import create_round_trip_dashboard
 

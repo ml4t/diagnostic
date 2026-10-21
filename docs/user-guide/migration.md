@@ -1692,8 +1692,29 @@ all-row profitable fraction and all-loss profit factor of zero. Native
 each pandas table's `attrs["diagnostic"]`; native metadata and coverage are
 separate fields on the returned result. The example compares all five tables.
 
-Only these named extraction/grouping/statistics calls are implemented here;
-this is not yet the complete legacy round-trip module or tear sheet.
+For caller-defined scalar reductions, use
+`pf.round_trips.agg_all_long_short(trades, "pnl", [("sum", "sum"), ("mean", "mean")])`.
+Named aggregation pairs, function lists and name-to-reduction mappings retain
+their metric-specific samples. Unknown NAV does not remove known cash PnL.
+Published Pyfolio 0.10.0 accepts named pairs, but its dictionary route raises
+`SpecificationError` on pandas 2.3.3; the adapter supports that dictionary input
+without copying the reference error.
+
+`pf.round_trips.apply_sector_mappings_to_round_trips(trades, mapping)` preserves
+the original whole-row complete-case behavior. A known cash PnL row with missing
+NAV return is therefore excluded. This is not the native label-only attribution
+method: use `result.profit_attribution(sector_mappings=mapping)` to retain known
+cash without the legacy complete-case mask. The facade's
+`attrs["diagnostic_sector_projection"]` reports input/output counts and excluded
+source indices. Missing sector keys become `"No Sector Mapping"` as in Pyfolio.
+
+Run `uv run python examples/portfolio_fifo.py --print-tables` to print all five
+native-backed familiar tables. The callable
+`pf.round_trips.print_round_trip_stats(trades, hide_pos=True)` omits the symbol
+table. It writes plain text, not IPython display objects; cash is labeled supplied
+account currency rather than assumed USD. Return tables display NAV-relative
+percent, while `gen_round_trip_stats` keeps decimal fractions. These named calls
+do not yet complete the legacy closing helper, plotting options or full tear sheet.
 
 To save a native round-trip report, run
 `uv run python examples/portfolio_fifo.py --report round-trips.html` with Plotly
@@ -1723,9 +1744,10 @@ Native reports do not infer terminal fills from end-of-day position labels.
 Optional `include_synthetic=True` includes only synthetic segments already
 requested from known-at marks in reconstruction, with separate histogram traces,
 dashed lifelines and an explicit sample count. Original fills, actual realized
-PnL and remaining open lots do not change. Intraday reconstruction, the familiar
-full tear-sheet facade and its implicit closing/intraday options remain accepted
-work; these native panels do not yet qualify those original workflows.
+PnL and remaining open lots do not change. Observed and explicit cash-price
+intraday routes are described below. The familiar full tear-sheet facade and its
+implicit closing/intraday options remain unfinished; these native panels do not
+yet qualify those original workflows.
 
 ### Analyze observed intraday snapshots on their own clock
 

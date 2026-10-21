@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from fractions import Fraction
+from typing import Any
 
 import pandas as pd
 import polars as pl
@@ -24,6 +26,107 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_statistics import (
 from ml4t.diagnostic.evaluation.portfolio_analysis.frame_inputs import normalize_executions
 
 from .txn import _dated
+
+
+def _helper_frame(round_trips: pd.DataFrame, required: set[str]) -> pd.DataFrame:
+    if not isinstance(round_trips, pd.DataFrame):
+        raise TypeError("round_trips must be a pandas DataFrame")
+    if round_trips.columns.has_duplicates:
+        raise ValueError("round-trip columns must be distinct")
+    if missing := required.difference(round_trips.columns):
+        raise ValueError(f"round trips require columns: {sorted(missing)}")
+    return round_trips.copy(deep=True)
+
+
+def agg_all_long_short(
+    round_trips: pd.DataFrame, col: str, stats_dict: Mapping[str, Any] | Sequence[Any]
+) -> pd.DataFrame:
+    """Group supplied observations with caller-provided pandas scalar reductions.
+
+    All trades includes unknown directions; long/short tables exclude unknown
+    directions. Each callback receives its own supplied metric sample, without
+    dropping rows because an unrelated NAV/holding-period observation is missing.
+    The standard financial tables use gen_round_trip_stats and native kernels.
+    """
+    frame = _helper_frame(round_trips, {col, "long"})
+    if (
+        not isinstance(stats_dict, Mapping | Sequence)
+        or isinstance(stats_dict, str | bytes)
+        or not stats_dict
+    ):
+        raise ValueError("stats_dict must be a nonempty mapping or sequence of scalar reductions")
+    specification = list(stats_dict.items()) if isinstance(stats_dict, Mapping) else stats_dict
+    if not frame["long"].dropna().isin([True, False]).all():
+        raise ValueError("long must contain true/false or unknown direction")
+    samples = {"All trades": frame[col]} if len(frame) else {}
+    for direction, label in ((False, "Short trades"), (True, "Long trades")):
+        selected = frame.loc[frame["long"] == direction, col]
+        if len(selected):
+            samples[label] = selected
+    if not samples:
+        empty = frame[col].groupby(lambda _: 0).agg(specification)
+        return pd.DataFrame(index=empty.columns)
+    return pd.DataFrame(
+        {
+            label: sample.copy(deep=True).groupby(lambda _: 0).agg(specification).iloc[0]
+            for label, sample in samples.items()
+        }
+    )
+
+
+def apply_sector_mappings_to_round_trips(
+    round_trips: pd.DataFrame, sector_mappings: Mapping[Any, Any] | pd.Series
+) -> pd.DataFrame:
+    """Apply the explicit legacy label projection and whole-row complete-case mask.
+
+    As in Pyfolio, an unknown unrelated field can remove known cash PnL here.
+    Original native profit_attribution instead keeps known cash and only maps
+    labels. The returned attrs disclose this method and excluded source rows.
+    """
+    frame = _helper_frame(round_trips, {"symbol"})
+    if not isinstance(sector_mappings, Mapping | pd.Series):
+        raise TypeError("sector_mappings must be a mapping or pandas Series")
+    frame["symbol"] = frame["symbol"].map(
+        lambda asset: sector_mappings.get(asset, "No Sector Mapping")
+    )
+    known = frame.notna().all(axis=1)
+    projected = frame.loc[known].copy(deep=True)
+    projected.attrs["diagnostic_sector_projection"] = {
+        "method": "legacy_pyfolio_complete_case",
+        "n_input_rows": len(frame),
+        "n_output_rows": len(projected),
+        "excluded_source_index": frame.index[~known].to_list(),
+        "difference": "native profit_attribution maps labels without whole-row dropping",
+    }
+    return projected
+
+
+def print_round_trip_stats(round_trips: pd.DataFrame, hide_pos: bool = False) -> None:
+    """Print native-backed five-table statistics, optionally excluding asset tables.
+
+    This facade writes plain tables rather than IPython display objects. Cash is
+    named account currency, never assumed USD. Return tables display percent of
+    supplied NAV, while gen_round_trip_stats retains unscaled decimal fractions.
+    """
+    stats = gen_round_trip_stats(round_trips)
+    print("PnL: supplied account currency. Return tables: percent of supplied NAV.")
+    for key, heading in (
+        ("summary", "Summary stats"),
+        ("pnl", "PnL stats"),
+        ("duration", "Duration stats"),
+        ("returns", "Return stats"),
+        ("symbols", "Symbol stats"),
+    ):
+        if key == "symbols" and hide_pos:
+            continue
+        table = stats[key] * 100 if key in ("returns", "symbols") else stats[key]
+        formatter = (
+            (lambda value: f"{value:.2f}%")
+            if key in ("returns", "symbols")
+            else (lambda value: f"{value:.2f}")
+        )
+        print(heading)
+        print(table.to_string(float_format=formatter, na_rep="Unavailable"))
 
 
 def _inputs(transactions: pd.DataFrame) -> tuple[pl.DataFrame, pd.Index]:
