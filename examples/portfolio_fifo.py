@@ -80,6 +80,21 @@ def main() -> None:
     assert carried.metrics["realized_net_pnl"] == 194.0
     assert carried.metadata["excluded_before_opening"] == 1
     print("Supplied complete opening inventory excludes its prior fill from replay")
+    intraday_fills = analysis.input_data.transactions.to_pandas()
+    intraday_fills["timestamp"] = pd.to_datetime(
+        ["2025-07-07T12:00Z", "2025-07-07T13:00Z", "2025-07-08T12:00Z"]
+    )
+    grouping_case = PortfolioAnalysis.from_frames(
+        analysis.input_data.returns, transactions=intraday_fills, calendar=None
+    )
+    actual = grouping_case.compute_round_trips(initial_state="flat")
+    grouped = grouping_case.compute_round_trips(initial_state="flat", matching="consecutive_vwap")
+    assert actual.metrics["realized_gross_pnl"] == 220.0
+    assert grouped.metrics["realized_gross_pnl"] == 200.0
+    assert grouped.metrics["realized_net_pnl"] == 172.0
+    assert grouped.completed_trades().height == 1
+    assert grouped.matching_groups["n_source_executions"].to_list() == [2, 1]
+    print("Explicit8hconsecutive grouping gives200/172realized, not actual FIFO220/194")
 
 
 if __name__ == "__main__":

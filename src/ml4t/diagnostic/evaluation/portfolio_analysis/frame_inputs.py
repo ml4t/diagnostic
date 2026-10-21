@@ -154,6 +154,69 @@ def _execution_numeric(frame: pl.DataFrame, column: str) -> None:
         raise ValueError(f"transaction {column} must be finite and nonmissing")
 
 
+def normalize_executions(
+    transactions: pl.DataFrame | pd.DataFrame,
+    *,
+    timestamp_col: str = "timestamp",
+    entity_col: str = "asset",
+    transaction_multiplier: float = 1.0,
+) -> pl.DataFrame:
+    """Own actual executions independently of any return series or NAV observations."""
+    if (
+        isinstance(transaction_multiplier, bool)
+        or not isinstance(transaction_multiplier, Real)
+        or not np.isfinite(transaction_multiplier)
+        or transaction_multiplier <= 0
+    ):
+        raise ValueError("transaction_multiplier must be finite and positive")
+    executions = _rename(_frame(transactions, timestamp_col, "timestamp"), entity_col, "asset")
+    _validate_observation_keys(executions, ["timestamp", "asset"], "transactions", unique=False)
+    if executions["asset"].dtype != pl.String and not executions["asset"].dtype.is_integer():
+        raise TypeError("transaction asset IDs must be stable strings or integers")
+    if executions["asset"].dtype == pl.String and (executions["asset"] == "").any():
+        raise ValueError("transaction asset IDs must be nonempty")
+    if not isinstance(executions["timestamp"].dtype, pl.Datetime):
+        raise TypeError(
+            "transaction timestamps must be Datetime values, not manufactured date instants"
+        )
+    for column in ("quantity", "price"):
+        _execution_numeric(executions, column)
+    if "side" in executions.columns:
+        side = executions["side"].cast(pl.String).str.to_lowercase()
+        if (
+            not side.is_in(["buy", "sell"]).all()
+            or ((side == "buy") & (executions["quantity"] < 0)).any()
+        ):
+            raise ValueError("transaction side must be buy/sell and agree with signed quantity")
+        quantity = pl.col("quantity")
+        if executions["quantity"].dtype.is_unsigned_integer():
+            quantity = quantity.cast(pl.Int128)
+            negative_quantity = pl.lit(0, dtype=pl.Int128) - quantity
+        else:
+            negative_quantity = -quantity
+        executions = executions.with_columns(
+            pl.when(side == "sell")
+            .then(pl.when(quantity > 0).then(negative_quantity).otherwise(quantity))
+            .otherwise(quantity)
+            .alias("quantity")
+        )
+    if "multiplier" not in executions.columns:
+        executions = executions.with_columns(
+            pl.lit(float(transaction_multiplier)).alias("multiplier")
+        )
+    _execution_numeric(executions, "multiplier")
+    if (executions["multiplier"] <= 0).any():
+        raise ValueError("transaction multipliers must be strictly positive")
+    for column in ("commission", "slippage"):
+        if column not in executions.columns:
+            executions = executions.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
+        executions = _numeric(executions, column, nullable=True)
+    if "record_id" not in executions.columns:
+        executions = executions.with_row_index("record_id")
+    _validate_observation_keys(executions, ["record_id"], "transaction record IDs")
+    return executions
+
+
 def _observations(
     value: Any, timestamp_col: str, value_col: str, *, benchmark: bool = False
 ) -> pl.DataFrame:
@@ -379,50 +442,12 @@ def normalize_portfolio_frames(
         tx_timestamp = transaction_timestamp_col or (
             feed.timestamp_col if feed_spec is not None else "timestamp"
         )
-        executions = _frame(transactions, tx_timestamp, "timestamp")
-        executions = _rename(executions, entity, "asset")
-        _validate_observation_keys(executions, ["timestamp", "asset"], "transactions", unique=False)
-        if executions["asset"].dtype != pl.String and not executions["asset"].dtype.is_integer():
-            raise TypeError("transaction asset IDs must be stable strings or integers")
-        if executions["asset"].dtype == pl.String and (executions["asset"] == "").any():
-            raise ValueError("transaction asset IDs must be nonempty")
-        if not isinstance(executions["timestamp"].dtype, pl.Datetime):
-            raise TypeError(
-                "transaction timestamps must be Datetime values, not manufactured date instants"
-            )
-        for column in ("quantity", "price"):
-            _execution_numeric(executions, column)
-        if "side" in executions.columns:
-            side = executions["side"].cast(pl.String).str.to_lowercase()
-            if (
-                not side.is_in(["buy", "sell"]).all()
-                or ((side == "buy") & (executions["quantity"] < 0)).any()
-            ):
-                raise ValueError("transaction side must be buy/sell and agree with signed quantity")
-            executions = executions.with_columns(
-                pl.when(side == "sell")
-                .then(
-                    pl.when(pl.col("quantity") > 0)
-                    .then(-pl.col("quantity"))
-                    .otherwise(pl.col("quantity"))
-                )
-                .otherwise(pl.col("quantity"))
-                .alias("quantity")
-            )
-        if "multiplier" not in executions.columns:
-            executions = executions.with_columns(
-                pl.lit(float(transaction_multiplier)).alias("multiplier")
-            )
-        _execution_numeric(executions, "multiplier")
-        if (executions["multiplier"] <= 0).any():
-            raise ValueError("transaction multipliers must be strictly positive")
-        for column in ("commission", "slippage"):
-            if column not in executions.columns:
-                executions = executions.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
-            executions = _numeric(executions, column, nullable=True)
-        if "record_id" not in executions.columns:
-            executions = executions.with_row_index("record_id")
-        _validate_observation_keys(executions, ["record_id"], "transaction record IDs")
+        executions = normalize_executions(
+            transactions,
+            timestamp_col=tx_timestamp,
+            entity_col=entity,
+            transaction_multiplier=transaction_multiplier,
+        )
     if complete_snapshots and holdings is not None:
         selected_account = account if account is not None else observations.select("date")
         selected_account, keys = _align_datetime_key_resolution(

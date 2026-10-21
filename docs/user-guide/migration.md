@@ -1612,6 +1612,32 @@ Using the integer directly as the reference's symbol also triggers a row-upcast
 TypeError on these inputs. Native IDs stay integers; the reference comparison
 uses the explicit one-to-one display-label mapping, not a changed economic sample.
 
+The named native option `matching="consecutive_vwap"` applies that grouping
+convention before the same FIFO matcher; `actual_fifo` remains the default.
+`max_gap` defaults to an elapsed eight hours between adjacent same-direction
+fills, with exactly eight hours included. It is not a total group-age limit or
+a calendar-day boundary. For buys10@100 and5@110 one hour apart, then sell12@120
+the next day, grouping realizes200gross/172net and leaves3 at grouped cost310/3
+with4 entry fees. Actual FIFO realizes220/194 and leaves3@110 with6 entry fees.
+Both give280gross/248net total marked PnL at a final price130. These are different
+valid realized-cost conventions, not a tolerance adjustment.
+
+`matching_groups` retains exact quantities/prices, original member record IDs,
+first timestamps and last-member `available_at`. Group IDs are separate from
+actual execution IDs; a multi-fill group has no invented single execution ID.
+The original `executions` remain unchanged. Completed tables/statistics count
+closing groups under this explicit profile, rather than collapsing null source
+IDs or counting matched entry segments. Fractional matching uses rational units
+and corrects the reference's integer truncation in either profile.
+
+Consecutive grouping is retrospective. Extending history can change the last
+group until its sign/gap boundary is known. Its representative first timestamp
+does not make the eventual VWAP available at that earlier instant. Entry/exit
+availability remains in segment/completed tables; an explicit `as_of` filters
+raw future fills before grouping. Do not use grouped prices as a causal fill or
+intraday state stream. Unknown fees and zero-quantity cash events retain their
+native missingness/separate accounting rather than becoming zero costs.
+
 Intraday reconstruction and full legacy reports remain accepted work. The
 incomplete route is not a substitute for those workflows.
 

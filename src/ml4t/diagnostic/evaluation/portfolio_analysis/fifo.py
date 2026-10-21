@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from datetime import timedelta
 from fractions import Fraction
 from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
@@ -39,9 +40,10 @@ class RoundTripResult:
     opening_lots: pl.DataFrame | None = None
     marks: pl.DataFrame | None = None
     synthetic_segments: pl.DataFrame | None = None
+    matching_groups: pl.DataFrame | None = None
 
     def completed_trades(self, *, include_synthetic: bool = False) -> pl.DataFrame:
-        """Aggregate matched segments into one actual closing-fill observation.
+        """Aggregate segments into one closing fill or explicitly selected analytical group.
 
         Lot return divides summed PnL by summed absolute entry notional, not the
         average of segment returns or portfolio NAV. Optional hypothetical rows
@@ -176,10 +178,16 @@ def reconstruct_round_trips(
     as_of: Any = None,
     synthetic_close: bool = False,
     timezone: str | None = None,
+    matching: Literal["actual_fifo", "consecutive_vwap"] = "actual_fifo",
+    max_gap: str | timedelta | None = None,
 ) -> RoundTripResult:
     """Match actual fills from a declared complete opening book, with optional marks."""
     if initial_state not in ("flat", "supplied"):
         raise ValueError("initial_state='flat' or 'supplied' must declare a complete opening book")
+    if matching not in ("actual_fifo", "consecutive_vwap"):
+        raise ValueError("matching must be 'actual_fifo' or explicit 'consecutive_vwap'")
+    if matching == "actual_fifo" and max_gap is not None:
+        raise ValueError("max_gap applies only to matching='consecutive_vwap'")
     if not isinstance(synthetic_close, bool):
         raise TypeError("synthetic_close must be a boolean")
     if initial_state == "flat" and (opening_lots is not None or opening_as_of is not None):
@@ -233,6 +241,16 @@ def reconstruct_round_trips(
         (index for index in range(fills.height) if index not in excluded),
         key=lambda index: (clocks[index].value, index),
     )
+    source_fills = fills
+    processed_executions = len(order)
+    groups = None
+    if matching == "consecutive_vwap":
+        from .fifo_groups import group_executions
+
+        groups = group_executions(fills, clocks, order, max_gap)
+        fills = groups
+        clocks = pd.DatetimeIndex(groups["timestamp"].to_pandas())
+        order = list(range(groups.height))
     raw = fills.to_dicts()
     books: dict[Any, deque[_Lot]] = defaultdict(deque)
     multipliers: dict[Any, Fraction] = {}
@@ -277,16 +295,21 @@ def reconstruct_round_trips(
     unallocated_fees = []
     for index in order:
         record = raw[index]
-        quantity = Fraction(str(record["quantity"]))
-        fee = None if record["commission"] is None else Fraction(str(record["commission"]))
+        quantity = Fraction(
+            record["quantity_exact"] if groups is not None else str(record["quantity"])
+        )
+        fee_value = record["commission_exact"] if groups is not None else record["commission"]
+        fee = None if fee_value is None else Fraction(str(fee_value))
         if quantity == 0:
             unallocated_fees.append(fee)
             continue
         direction = 1 if quantity > 0 else -1
         total = abs(quantity)
         units = total
-        price = Fraction(str(record["price"]))
-        multiplier = Fraction(str(record["multiplier"]))
+        price = Fraction(record["price_exact"] if groups is not None else str(record["price"]))
+        multiplier = Fraction(
+            record["multiplier_exact"] if groups is not None else str(record["multiplier"])
+        )
         if multipliers.setdefault(record["asset"], multiplier) != multiplier:
             raise ValueError("an asset's execution multiplier cannot change across matched lots")
         book = books[record["asset"]]
@@ -423,12 +446,13 @@ def reconstruct_round_trips(
         },
         {
             "matching": "FIFO actual ordered executions, not consecutive-fill VWAP aggregation",
+            "matching_method": matching,
             "opening_state": "explicit " + initial_state,
             "opening_as_of": start.isoformat() if start is not None else None,
             "as_of": cutoff.isoformat() if cutoff is not None else None,
             "excluded_before_opening": len(before),
             "excluded_future_executions": len(future),
-            "processed_executions": len(order),
+            "processed_executions": processed_executions,
             "n_opening_lots": owned_opening.height if owned_opening is not None else 0,
             "opening_lot_order": "supplied FIFO row order; unknown entry times remain unknown",
             "same_instant_order": "source row order",
@@ -454,6 +478,11 @@ def reconstruct_round_trips(
             realized,
             realized_net,
         )
+    if groups is not None:
+        from .fifo_groups import restore_sources
+
+        restore_sources(result, groups, source_fills)
+        result.metadata["max_gap"] = str(pd.Timedelta(max_gap if max_gap is not None else "8h"))
     return result
 
 

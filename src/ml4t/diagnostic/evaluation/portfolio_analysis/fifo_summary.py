@@ -25,17 +25,20 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
         raise TypeError("include_synthetic must be a boolean")
 
     groups = defaultdict(list)
+    grouped = result.matching_groups is not None
     sources = [(result.segments, False)]
     if include_synthetic:
         if result.synthetic_segments is None:
             raise ValueError("synthetic segments were not requested during reconstruction")
         sources.append((result.synthetic_segments, True))
     for frame, synthetic in sources:
-        rows = frame.with_columns(
-            pl.col("entry_timestamp", "exit_timestamp").cast(pl.Int64)
-        ).to_dicts()
+        temporal = ["entry_timestamp", "exit_timestamp"]
+        if grouped:
+            temporal += ["entry_available_at", "exit_available_at"]
+        rows = frame.with_columns(pl.col(temporal).cast(pl.Int64)).to_dicts()
         for row in rows:
-            groups[(row["asset"], row["exit_record_id"], row["direction"], synthetic)].append(row)
+            closing_id = row["exit_group_id"] if grouped else row["exit_record_id"]
+            groups[(row["asset"], closing_id, row["direction"], synthetic)].append(row)
     records = []
     for (asset, exit_id, direction, synthetic), rows in groups.items():
         quantities = [Fraction(row["quantity_exact"]) for row in rows]
@@ -72,7 +75,7 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
         exit_timestamp = rows[0]["exit_timestamp"]
         record = {
             "asset": asset,
-            "exit_record_id": exit_id,
+            "exit_record_id": rows[0]["exit_record_id"],
             "direction": direction,
             "entry_timestamp": first_entry,
             "exit_timestamp": exit_timestamp,
@@ -88,6 +91,14 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
             "is_synthetic": synthetic,
             **cash,
         }
+        if grouped:
+            record["exit_group_id"] = exit_id
+            record["entry_available_at"] = (
+                max(row["entry_available_at"] for row in rows)
+                if all(row["entry_available_at"] is not None for row in rows)
+                else None
+            )
+            record["exit_available_at"] = rows[0]["exit_available_at"]
         for name in ("gross", "net"):
             # Sum exact cash first; never average the entry/exit-pair returns.
             pnl = (
@@ -130,6 +141,9 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
             pl.Float64,
         ),
     }
+    if grouped:
+        schema["exit_group_id"] = result.segments["exit_group_id"].dtype
+        schema.update(entry_available_at=pl.Int64, exit_available_at=pl.Int64)
     # Synthetic quotes can have a different lossless input dtype from actual exits.
     if include_synthetic and result.synthetic_segments is not None:
         from .fifo_inputs import price_dtype
@@ -143,7 +157,8 @@ def completed_trades(result: RoundTripResult, *, include_synthetic: bool) -> pl.
     return _frame(
         records,
         schema,
-        ["entry_timestamp", "exit_timestamp"],
+        ["entry_timestamp", "exit_timestamp"]
+        + (["entry_available_at", "exit_available_at"] if grouped else []),
         result.segments["exit_timestamp"].dtype.time_zone,
     )
 
@@ -163,13 +178,16 @@ def selected_trades(
             f"{excluded} closing-fill observations have unknown {pnl} PnL; use explicit missing='exclude' or a known PnL view"
         )
     return frame.filter(pl.col(column).is_not_null()), {
-        "observation": "one closing fill per asset/direction, not one matched entry lot",
+        "observation": "one closing analytical consecutive group per asset/direction"
+        if result.matching_groups is not None
+        else "one closing fill per asset/direction, not one matched entry lot",
         "pnl": pnl,
         "missing": missing,
         "n_total_observations": frame.height,
         "n_excluded_unknown_pnl": excluded,
         "include_synthetic": include_synthetic,
         "return_denominator": "summed absolute matched entry notional, not portfolio NAV",
+        "timestamp_convention": result.metadata.get("group_time", "actual closing event instants"),
     }
 
 
@@ -214,6 +232,7 @@ def to_trade_analysis(
                 metadata={
                     "asset": row["asset"],
                     "exit_record_id": row["exit_record_id"],
+                    "exit_group_id": row.get("exit_group_id"),
                     "n_segments": row["n_segments"],
                     "is_synthetic": row["is_synthetic"],
                     "entry_price": "analytical quantity-weighted entry projection; original executions remain in FIFO result",

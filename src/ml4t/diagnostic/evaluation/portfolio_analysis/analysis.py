@@ -71,7 +71,7 @@ from .results import (
 from .transactions import TransactionAnalysisResult, analyze_transactions
 
 if TYPE_CHECKING:
-    from datetime import date, datetime
+    from datetime import date, datetime, timedelta
 
     import pandas as pd
 
@@ -300,6 +300,8 @@ class PortfolioAnalysis:
         marks: DataFrameLike | None = None,
         as_of: date | datetime | str | None = None,
         synthetic_close: bool = False,
+        matching: Literal["actual_fifo", "consecutive_vwap"] = "actual_fifo",
+        max_gap: str | timedelta | None = None,
     ) -> RoundTripResult:
         """Match actual fractional FIFO lots from an explicitly complete opening book.
 
@@ -310,6 +312,11 @@ class PortfolioAnalysis:
         future executions. Only quotes known at/before as_of are used, with age.
         Optional synthetic closes are separate hypothetical segments, not actual
         realizations or changes to open inventory. Supplied returns stay unchanged.
+        The default actual_fifo uses original fills. Explicit consecutive_vwap
+        groups same-direction adjacent fills within max_gap (default8h) before
+        the same matcher. Group prices are retrospective analytical projections,
+        known only at the last member; original executions and membership remain
+        available. This profile is not an intraday execution-state reconstruction.
         """
         if self._input_data is None:
             raise ValueError("FIFO requires owned from_frames execution inputs")
@@ -322,6 +329,8 @@ class PortfolioAnalysis:
             as_of=as_of,
             synthetic_close=synthetic_close,
             timezone=self._input_data.metadata["feed_spec"].get("timezone"),
+            matching=matching,
+            max_gap=max_gap,
         )
         declarations = self._input_data.metadata
         for name in ("feed_spec", "calendar", "calendar_source", "calendar_argument"):
