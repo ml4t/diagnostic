@@ -1798,6 +1798,9 @@ quote cannot value earlier inventory. Fill prices are not silently substituted
 for marks. Same-instant marks are declared known before fills; finer quote/fill
 sequence is not inferred. Quote timestamps and nanosecond ages remain in the
 export, so a stale last-known quote is visible rather than claimed current.
+Numeric projections are Float64; `quantity_exact`, `price_exact`,
+`multiplier_exact`, `value_exact`, `cash_exact` and `equity_exact` retain the
+decimal-input rational values, including large integer prices.
 
 Samples are the opening state, after every actual fill, relevant mark-only
 instants and the terminal state if not already sampled. A mark-only quote for

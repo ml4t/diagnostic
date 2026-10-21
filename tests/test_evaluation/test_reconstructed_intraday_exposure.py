@@ -266,6 +266,8 @@ def test_large_integer_prices_and_asset_ids_keep_exact_cancellation_and_no_fake_
     assert result.timeline["equity"].to_list() == [1000.0, 1000.0, 1001.0]
     assert result.timeline["cash_exact"][-1] == "1001"
     assert result.positions["asset"].to_list() == [asset]
+    assert result.positions["price_exact"].to_list() == [str(price)]
+    assert result.positions["value_exact"].to_list() == [str(price)]
     assert result.positions.schema["asset"].is_integer()
 
 
