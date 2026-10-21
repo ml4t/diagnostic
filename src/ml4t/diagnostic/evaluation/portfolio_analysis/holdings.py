@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from numbers import Integral
 from typing import Any, Literal
 
@@ -23,6 +23,8 @@ class HoldingsAnalysisResult:
     Optional sectors contains asset-sector aggregates; null labels retain unknown
     classifications. Account cash stays in timeline, outside the sector namespace.
     A None sector table means not requested; a requested all-cash table is empty.
+    Optional metadata retains method/calendar provenance for independent-clock
+    consumers without implying return observations or continuous-time coverage.
     """
 
     positions: pl.DataFrame
@@ -31,6 +33,7 @@ class HoldingsAnalysisResult:
     coverage: dict[str, Any]
     snapshot_kind: str
     sectors: pl.DataFrame | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def top_positions(
         self, top: int = 10, *, side: Literal["long", "short", "absolute"] = "absolute"

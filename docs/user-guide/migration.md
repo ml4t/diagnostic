@@ -1727,6 +1727,52 @@ PnL and remaining open lots do not change. Intraday reconstruction, the familiar
 full tear-sheet facade and its implicit closing/intraday options remain accepted
 work; these native panels do not yet qualify those original workflows.
 
+### Analyze observed intraday snapshots on their own clock
+
+Unreleased after 0.1.9,
+`ml4t.diagnostic.evaluation.portfolio_analysis.analyze_intraday_exposure`
+accepts complete observed marked holdings and optional reported valuations
+without a return series. It reuses the existing holdings/occupancy calculations.
+Call it with `complete_snapshots=True`; use actual Datetime instants and signed
+marked cash values, with cash and NAV in the same currency. It does not infer
+quantities, prices, expected bars or missing positions. Missing NAV stays unknown
+even when cash plus holdings could be summed. Explicit completeness declares
+absent assets zero within each supplied snapshot, not missing snapshots zero.
+
+The result exposes native `positions`, `timeline`, `metrics`, `coverage` and
+`metadata`. Maxima describe the supplied snapshots, not continuous-time peaks;
+averages/time-in-market count observations rather than elapsed time. `FeedSpec`
+and explicit column mappings use the same account boundary. Version 2 preserves
+an explicitly declared metadata calendar of `None`. Calendar precedence
+is explicit argument, declared metadata, then NYSE; explicit `calendar=None`
+disables schedules. Session validation does not replace original instants or
+compress overnight observations. Date/session labels cannot stand in for
+intraday instants. An explicitly right-labeled closing-bar declaration rejects
+an opening-account anchor; a snapshot is not automatically a completed bar.
+
+Run `uv run python examples/portfolio_intraday.py` for the complete observed
+workflow. The shared account starts with A = 400, B = -300, cash = 900 and NAV = 1,000.
+Two same-instant one-unit buys at 100 with 0.5 cash commission each produce
+A = 600, B = -300, cash = 699 and NAV = 999. Gross exposure is 700/900/900 over
+three supplied observations; the reported peak fraction is 900/999. The example verifies that omitting
+NAV retains raw exposure and leaves normalized ratios unavailable.
+
+With Plotly installed, add `--report intraday.html`. Pass the prepared result as
+`intraday=observed` to `analysis.create_tear_sheet`, `create_portfolio_dashboard`
+or `create_round_trip_dashboard`. The existing renderer keeps its independent
+intraday clock alongside the daily return clock without resampling. The example
+uses observation-order axes for intraday time series; exact instants stay on
+hover and in the export, without implying equal elapsed spacing. It
+uses one separately supplied daily net return of -0.001, three observed snapshots,
+the two actual fills and complete carried quantities. No completed trades or
+terminal fills are invented. Intraday panels, availability, provenance and owned
+export remain separate from return/EOD holdings panels. End-of-day or Date-label
+results cannot be relabeled as intraday report peaks. Opt-in reconstruction from
+opening state, actual fills and known-at marks, and the legacy intraday heuristic
+remain unfinished accepted work, not features implied by this observed route.
+
+### Supply opening inventory and known-at FIFO marks
+
 For a non-flat book, pass `initial_state="supplied"`, `opening_lots` and
 `opening_as_of`. The opening table requires stable `asset` IDs and signed remaining
 `quantity`. Optional `lot_id`, `entry_timestamp`, `entry_price`, `multiplier` and

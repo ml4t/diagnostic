@@ -24,6 +24,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_statistics import (
 )
 from ml4t.diagnostic.evaluation.portfolio_analysis.frame_inputs import PortfolioInputData
 from ml4t.diagnostic.evaluation.portfolio_analysis.holdings import HoldingsAnalysisResult
+from ml4t.diagnostic.evaluation.portfolio_analysis.intraday import analyze_intraday_exposure
 
 # Core metric functions
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
@@ -57,6 +58,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
 from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import TransactionAnalysisResult
 
 __all__ = [
+    "analyze_intraday_exposure",
     # Main class
     "PortfolioAnalysis",
     "HoldingsAnalysisResult",

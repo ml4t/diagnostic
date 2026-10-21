@@ -20,6 +20,7 @@ from ml4t.diagnostic.visualization.core import create_base_figure, validate_them
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        HoldingsAnalysisResult,
         PortfolioAnalysis,
         RoundTripStatisticsResult,
     )
@@ -133,6 +134,7 @@ def create_round_trip_dashboard(
     return_basis: Literal["lot", "nav"] = "lot",
     portfolio_value: pl.DataFrame | pd.DataFrame | pd.Series | None = None,
     sector_mappings: Mapping[Any, str] | None = None,
+    intraday: HoldingsAnalysisResult | None = None,
     include_synthetic: bool = False,
     calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     alignment: Literal["declared", "civil_date"] = "declared",
@@ -149,6 +151,8 @@ def create_round_trip_dashboard(
     random sampling. Exact ns instants remain in hover/export; the browser's date
     axis has millisecond display precision. Fewer than five observations remain
     visible with their count and Beta(1,1) prior, rather than being suppressed.
+    Optional intraday contains complete prepared snapshots on their independent
+    clock; they are not resampled onto return or end-of-day observations.
     """
     from .dashboard import create_portfolio_dashboard
 
@@ -178,6 +182,7 @@ def create_round_trip_dashboard(
         theme=theme,
         include_positions=False,
         include_transactions=False,
+        intraday=intraday,
         height_per_row=height_per_row,
         width=width,
     )
@@ -272,6 +277,7 @@ def create_round_trip_dashboard(
     for bound in ("lower", "upper"):
         probability.add_vline(x=posterior[bound], line_dash="dot")
     probability.update_xaxes(range=[0, 1], nticks=3)
+    probability.update_yaxes(rangemode="tozero")
     probability.update_layout(
         meta={
             "analysis": "prepared_round_trips",
@@ -328,6 +334,23 @@ def create_round_trip_dashboard(
                 "undefined at zero total. No NAV normalization or complete-case row dropping.",
             }
         )
+    for item in figures.values():
+        if not any(
+            trace.x is not None and any(value is not None for value in trace.x)
+            for trace in item.data
+        ):
+            item.update_xaxes(visible=False)
+            item.update_yaxes(visible=False)
+            item.update_layout(showlegend=False)
+            item.add_annotation(
+                text="Unavailable for this sample.<br>See input and sample coverage.",
+                x=0.5,
+                y=0.5,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font_size=13,
+            )
     report.figures.update(figures)
     report.availability["round_trips"] = {
         "status": "available" if total else "empty",

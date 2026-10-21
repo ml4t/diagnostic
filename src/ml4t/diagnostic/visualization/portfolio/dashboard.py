@@ -34,6 +34,19 @@ if TYPE_CHECKING:
     )
 
 
+def _display_figure(original: go.Figure) -> go.Figure:
+    """Project categorical display labels without changing typed native payloads."""
+    rendered = go.Figure(original)
+    if (rendered.layout.meta or {}).get("analysis") in {
+        "prepared_holdings",
+        "prepared_intraday",
+    } and rendered.layout.yaxis.type == "category":
+        for trace in rendered.data:
+            if trace.y is not None:
+                trace.y = [None if value is None else str(value) for value in trace.y]
+    return rendered
+
+
 @dataclass
 class PortfolioTearSheet:
     """Portfolio figures, owned prepared holdings and availability.
@@ -59,6 +72,7 @@ class PortfolioTearSheet:
     round_trips: RoundTripResult | None = None
     round_trip_statistics: RoundTripStatisticsResult | None = None
     round_trip_attribution: pl.DataFrame | None = None
+    intraday: HoldingsAnalysisResult | None = None
 
     def _availability_html(self) -> str:
         if not self.availability:
@@ -105,7 +119,7 @@ class PortfolioTearSheet:
 
                 display(HTML(_round_trip_tables_html(self.round_trip_statistics)))
             for fig in self.figures.values():
-                fig.show()
+                _display_figure(fig).show()
         except ImportError:
             # Terminal fallback: print metrics, show each figure
             print(self.metrics.summary())
@@ -118,7 +132,7 @@ class PortfolioTearSheet:
             print()
             for name, fig in self.figures.items():
                 print(f"\n  {name}")
-                fig.show()
+                _display_figure(fig).show()
 
     def save_html(
         self,
@@ -219,7 +233,7 @@ class PortfolioTearSheet:
         # Add each figure
         for name, fig in self.figures.items():
             description = (fig.layout.meta or {}).get("description", "")
-            fig = go.Figure(fig).update_layout(title=None)
+            fig = _display_figure(fig).update_layout(title=None)
             fig_html = fig.to_html(
                 include_plotlyjs=include_plotlyjs
                 if name == list(self.figures.keys())[0]
@@ -257,6 +271,9 @@ class PortfolioTearSheet:
     def get_figures(self) -> dict[str, go.Figure]:
         """Get dictionary of all figures.
 
+        Raw figure payloads retain native ID types. Report show/save_html applies
+        lossless categorical display labels to a copy before browser rendering.
+
         Returns
         -------
         dict[str, go.Figure]
@@ -275,26 +292,28 @@ class PortfolioTearSheet:
         from .holdings_plots import _holdings_records
         from .round_trip_plots import _round_trip_export
 
-        holdings = (
-            None
-            if self.holdings is None
-            else {
-                "positions": _holdings_records(self.holdings.positions),
-                "timeline": _holdings_records(self.holdings.timeline),
-                "sectors": _holdings_records(self.holdings.sectors),
-                "metrics": deepcopy(self.holdings.metrics),
-                "coverage": deepcopy(self.holdings.coverage),
-                "snapshot_kind": self.holdings.snapshot_kind,
+        def holdings_dict(prepared: HoldingsAnalysisResult | None) -> dict[str, Any] | None:
+            if prepared is None:
+                return None
+            return {
+                "positions": _holdings_records(prepared.positions),
+                "timeline": _holdings_records(prepared.timeline),
+                "sectors": _holdings_records(prepared.sectors),
+                "metrics": deepcopy(prepared.metrics),
+                "coverage": deepcopy(prepared.coverage),
+                "snapshot_kind": prepared.snapshot_kind,
+                "metadata": deepcopy(prepared.metadata),
                 "top_positions": {
-                    side: self.holdings.top_positions(side=side).to_dicts()
+                    side: prepared.top_positions(side=side).to_dicts()
                     for side in ["long", "short", "absolute"]
                 },
             }
-        )
+
         return {
             "metrics": self.metrics.to_dict(),
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
-            "holdings": holdings,
+            "holdings": holdings_dict(self.holdings),
+            "intraday": holdings_dict(self.intraday),
             "availability": deepcopy(self.availability),
             "round_trips": _round_trip_export(self),
             "transactions": None
@@ -328,6 +347,7 @@ def create_portfolio_dashboard(
     *,
     holdings: HoldingsAnalysisResult | None = None,
     transactions: TransactionAnalysisResult | None = None,
+    intraday: HoldingsAnalysisResult | None = None,
 ) -> PortfolioTearSheet:
     """Create a return dashboard with optional prepared holdings.
 
@@ -363,6 +383,10 @@ def create_portfolio_dashboard(
         Requested but absent results have an explicit availability reason.
     transactions : TransactionAnalysisResult, optional
         Prepared actual execution activity and incremental-cost scenarios.
+    intraday : HoldingsAnalysisResult, optional
+        Explicit complete intraday snapshots on their own observation clock.
+        They are not resampled or joined onto return/EOD observations. Reported
+        maxima describe this supplied sample, not continuous-time peak exposure.
 
     Returns
     -------
@@ -391,6 +415,25 @@ def create_portfolio_dashboard(
     }
     prepared = None
     prepared_transactions = None
+    prepared_intraday = None
+    if intraday is not None:
+        from ml4t.diagnostic.evaluation.portfolio_analysis import HoldingsAnalysisResult
+
+        if not isinstance(intraday, HoldingsAnalysisResult):
+            raise TypeError("intraday must be a prepared HoldingsAnalysisResult")
+        if intraday.snapshot_kind != "intraday" or not isinstance(
+            intraday.timeline["date"].dtype, pl.Datetime
+        ):
+            raise ValueError(
+                "intraday requires declared complete intraday snapshots with actual Datetime instants, not EOD/date labels"
+            )
+        prepared_intraday = deepcopy(intraday)
+        availability["intraday"] = {
+            "status": "available" if intraday.timeline.height else "empty",
+            "reason": "Independent supplied intraday clock; no return/EOD resampling. Maximum "
+            "over supplied observations, not a continuous-time maximum. Means/time-in-market "
+            "describe observations, not elapsed-time weighting.",
+        }
     if include_transactions and transactions is not None:
         from ml4t.diagnostic.evaluation.portfolio_analysis import TransactionAnalysisResult
 
@@ -554,6 +597,26 @@ def create_portfolio_dashboard(
         )
         figures.update(transaction_figures)
         availability.update(transaction_availability)
+    if prepared_intraday is not None and prepared_intraday.timeline.height:
+        from .holdings_plots import _holdings_figures
+
+        intraday_figures, intraday_availability = _holdings_figures(
+            prepared_intraday, theme, height_per_row, width, sample_axis=True
+        )
+        for name, fig in intraday_figures.items():
+            meta = dict(fig.layout.meta or {})
+            meta.update(
+                analysis="prepared_intraday",
+                description="Independent supplied intraday snapshots; no EOD/return-grid compression. "
+                "Maxima describe the observed sample, not continuous-time peaks. "
+                "Time-series axes show observation order, not elapsed spacing; exact instants remain on hover/export. "
+                + meta.get("description", ""),
+            )
+            fig.update_layout(meta=meta)
+            figures["Intraday " + name] = fig
+        availability.update(
+            {"intraday_" + name: value for name, value in intraday_availability.items()}
+        )
     for name, fig in figures.items():
         fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
         fig.update_xaxes(tickfont_size=14, title_font_size=14)
@@ -581,6 +644,7 @@ def create_portfolio_dashboard(
         holdings=prepared,
         availability=availability,
         transactions=prepared_transactions,
+        intraday=prepared_intraday,
     )
 
 

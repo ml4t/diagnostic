@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.portfolio_analysis import analyze_intraday_exposure
 from ml4t.diagnostic.visualization.portfolio import create_round_trip_dashboard
 
 
@@ -368,3 +369,122 @@ def test_exact_ns_instants_and_large_integer_asset_ids_survive_lifelines_and_own
         pd.Timedelta(exported["statistics"]["observations"][0]["duration"]).value
         == pd.Timedelta("1D").value
     )
+
+
+def _carried_intraday_account():
+    clock = pd.to_datetime(["2025-07-07T13:30Z", "2025-07-07T14:00Z", "2025-07-07T20:00Z"])
+    observed = analyze_intraday_exposure(
+        pd.DataFrame(
+            {"A": [400.0, 600.0, 600.0], "B": [-300.0] * 3, "cash": [900.0, 699.0, 699.0]},
+            index=clock,
+        ),
+        pd.DataFrame({"equity": [1000.0, 999.0, 999.0]}, index=clock),
+        complete_snapshots=True,
+        calendar=None,
+    )
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([-0.001], index=clock[-1:].normalize()),
+        calendar=None,
+        transactions=pd.DataFrame(
+            {
+                "timestamp": [clock[1]] * 2,
+                "asset": ["A"] * 2,
+                "quantity": [1.0] * 2,
+                "price": [100.0] * 2,
+                "commission": [0.5] * 2,
+            }
+        ),
+    )
+    trips = analysis.compute_round_trips(
+        initial_state="supplied",
+        opening_as_of=clock[0],
+        opening_lots=pd.DataFrame({"asset": ["A", "B"], "quantity": [4.0, -3.0]}),
+    )
+    return analysis, trips, observed
+
+
+def test_real_carried_book_independent_intraday_clock_reaches_existing_report_without_compression(
+    tmp_path,
+):
+    analysis, trips, observed = _carried_intraday_account()
+    report = create_round_trip_dashboard(analysis, trips, intraday=observed)
+    assert len(analysis.returns) == 1
+    assert report.intraday.timeline.height == 3
+    assert report.intraday.timeline["gross_exposure"].to_list() == [700.0, 900.0, 900.0]
+    assert report.intraday.timeline["cash"].to_list() == [900.0, 699.0, 699.0]
+    assert "Intraday Holdings Exposure" in report.figures
+    assert (
+        report.figures["Intraday Holdings Exposure"].layout.meta["analysis"] == "prepared_intraday"
+    )
+    assert report.availability["intraday"]["status"] == "available"
+    assert report.round_trips.completed_trades().is_empty()
+    assert report.round_trips.executions.height == 2
+    assert report.round_trips.open_lots["quantity"].sum() == 9
+    output = tmp_path / "independent-intraday.html"
+    report.save_html(output, include_plotlyjs=True)
+    page = _ReportHTML()
+    page.feed(output.read_text())
+    assert "Intraday Holdings Exposure" in page.text
+    assert page.plots == len(report.figures)
+    exported = report.to_dict()["intraday"]
+    assert exported["metadata"]["method"] == "observed_complete_snapshots"
+    assert len(exported["timeline"]) == 3
+    observed.timeline.replace_column(
+        observed.timeline.columns.index("cash"), pl.Series("cash", [0.0] * 3)
+    )
+    observed.metadata["calendar"] = "CME_Equity"
+    assert report.intraday.timeline["cash"].to_list() == [900.0, 699.0, 699.0]
+    assert report.to_dict()["intraday"]["metadata"]["calendar"] is None
+    native = analysis.create_tear_sheet(intraday=report.intraday)
+    assert "Intraday Holdings Exposure" in native.figures
+
+
+def test_end_of_day_or_date_label_pipeline_outputs_cannot_be_rebranded_as_intraday_report_peaks():
+    from datetime import date
+
+    from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
+
+    labels = pl.Series("date", [date(2025, 7, 7)], dtype=pl.Date)
+    account = PortfolioAnalysis.from_frames(
+        pl.DataFrame({"date": labels, "return": [-0.001]}),
+        positions=pl.DataFrame({"date": labels, "A": [600.0], "B": [-300.0], "cash": [699.0]}),
+        valuations=pl.DataFrame({"date": labels, "equity": [999.0]}),
+        complete_snapshots=True,
+        snapshot_kind="end_of_day",
+        calendar=None,
+    )
+    eod = account.compute_holdings_analysis()
+    with pytest.raises(ValueError, match="intraday.*instants"):
+        create_portfolio_dashboard(account, intraday=eod)
+    mislabeled = account.compute_holdings_analysis(snapshot_kind="intraday")
+    assert mislabeled.timeline["date"].dtype == pl.Date
+    with pytest.raises(ValueError, match="Datetime instants"):
+        create_portfolio_dashboard(account, intraday=mislabeled)
+
+
+def test_large_integer_holdings_labels_do_not_round_through_javascript_numeric_categories(tmp_path):
+    dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.0, 0.01, 10 / 1010], index=dates),
+        calendar=None,
+        complete_snapshots=True,
+        positions=pl.DataFrame(
+            {"date": dates, "asset": [9007199254740993] * 3, "value": [100.0, 110.0, 120.0]}
+        ),
+        valuations=pd.DataFrame(
+            {"equity": [1000.0, 1010.0, 1020.0], "cash": [900.0] * 3}, index=dates
+        ),
+    )
+    report = analysis.create_tear_sheet()
+    assert report.holdings.positions["asset"].to_list() == [9007199254740993] * 3
+    assert list(report.figures["Top Absolute Holdings"].data[0].y) == [9007199254740993]
+    assert report.to_dict()["holdings"]["top_positions"]["absolute"][0]["asset"] == 9007199254740993
+    output = tmp_path / "large-id.html"
+    report.save_html(output, include_plotlyjs=False)
+    section = output.read_text().split("<h2>Top Absolute Holdings</h2>", 1)[1]
+    call = section.split("Plotly.newPlot(", 1)[1].lstrip()
+    decoder = json.JSONDecoder()
+    _, end = decoder.raw_decode(call)
+    payload, _ = decoder.raw_decode(call[end:].lstrip().removeprefix(",").lstrip())
+    assert payload[0]["y"] == ["9007199254740993"]
+    assert list(report.figures["Top Absolute Holdings"].data[0].y) == [9007199254740993]

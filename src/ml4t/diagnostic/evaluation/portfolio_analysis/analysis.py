@@ -1025,6 +1025,7 @@ class PortfolioAnalysis:
         cost_info: dict[str, str] | None = None,
         *,
         transactions: TransactionAnalysisResult | None = None,
+        intraday: HoldingsAnalysisResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -1039,6 +1040,8 @@ class PortfolioAnalysis:
         transactions : TransactionAnalysisResult, optional
             Explicitly prepared actual-fill turnover and incremental cost scenarios.
             Computed results are rendered without selecting financial methods again.
+        intraday : HoldingsAnalysisResult, optional
+            Prepared complete intraday snapshots on their own independent clock.
 
         Returns
         -------
@@ -1056,7 +1059,7 @@ class PortfolioAnalysis:
         ):
             holdings = self.compute_holdings_analysis()
         return create_portfolio_dashboard(
-            self, theme=theme, holdings=holdings, transactions=transactions
+            self, theme=theme, holdings=holdings, transactions=transactions, intraday=intraday
         )
 
 

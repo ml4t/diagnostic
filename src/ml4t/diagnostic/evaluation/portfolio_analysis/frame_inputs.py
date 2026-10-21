@@ -358,6 +358,48 @@ def _merge_cash(valuations: pl.DataFrame | None, cash: pl.DataFrame | None) -> p
     )
 
 
+def _frame_declarations(
+    feed_spec: FeedSpec | Mapping[str, Any] | None,
+    timestamp_col: str | None,
+    entity_col: str | None,
+) -> tuple[FeedSpec, str, str]:
+    feed = (
+        FeedSpec.from_any(feed_spec)
+        if feed_spec is not None
+        else FeedSpec(timestamp_col="date", entity_col="asset", time_contract_version=2)
+    )
+    timestamp = timestamp_col if timestamp_col is not None else feed.timestamp_col
+    entity = entity_col if entity_col is not None else feed.entity_col or "asset"
+    if not isinstance(entity, str) and isinstance(entity, Sequence) and len(entity) == 1:
+        entity = entity[0]
+    if (
+        not isinstance(timestamp, str)
+        or not isinstance(entity, str)
+        or not timestamp
+        or not entity
+        or timestamp == entity
+    ):
+        raise ValueError(
+            "portfolio snapshots require distinct timestamp and single-entity column names"
+        )
+    return feed, timestamp, entity
+
+
+def _valuation_snapshot(
+    valuations: pl.DataFrame | pd.DataFrame | None, timestamp: str
+) -> pl.DataFrame | None:
+    if valuations is None:
+        return None
+    account = _frame(valuations, timestamp)
+    _temporal(account)
+    _validate_observation_keys(account, ["date"], "valuations")
+    for column in ("equity", "cash"):
+        if column not in account.columns:
+            account = account.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
+        account = _numeric(account, column, nullable=True)
+    return account
+
+
 def normalize_portfolio_frames(
     returns: Any,
     *,
@@ -391,25 +433,7 @@ def normalize_portfolio_frames(
         or transaction_multiplier <= 0
     ):
         raise ValueError("transaction_multiplier must be finite and positive")
-    feed = (
-        FeedSpec.from_any(feed_spec)
-        if feed_spec is not None
-        else FeedSpec(timestamp_col="date", entity_col="asset", time_contract_version=2)
-    )
-    timestamp = timestamp_col if timestamp_col is not None else feed.timestamp_col
-    entity = entity_col if entity_col is not None else feed.entity_col or "asset"
-    if not isinstance(entity, str) and isinstance(entity, Sequence) and len(entity) == 1:
-        entity = entity[0]
-    if (
-        not isinstance(timestamp, str)
-        or not isinstance(entity, str)
-        or not timestamp
-        or not entity
-        or timestamp == entity
-    ):
-        raise ValueError(
-            "portfolio snapshots require distinct timestamp and single-entity column names"
-        )
+    feed, timestamp, entity = _frame_declarations(feed_spec, timestamp_col, entity_col)
     for name, column in (("return_col", return_col), ("benchmark_col", benchmark_col)):
         if not isinstance(column, str) or not column.strip():
             raise ValueError(f"{name} must name a nonempty column")
@@ -428,14 +452,7 @@ def normalize_portfolio_frames(
         if positions is not None
         else (None, None)
     )
-    account = _frame(valuations, timestamp) if valuations is not None else None
-    if account is not None:
-        _temporal(account)
-        _validate_observation_keys(account, ["date"], "valuations")
-        for column in ("equity", "cash"):
-            if column not in account.columns:
-                account = account.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
-            account = _numeric(account, column, nullable=True)
+    account = _valuation_snapshot(valuations, timestamp)
     account = _merge_cash(account, cash)
     executions = None
     if transactions is not None:

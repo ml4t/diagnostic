@@ -31,7 +31,12 @@ def _holdings_records(frame: pl.DataFrame | None) -> list[dict[str, Any]] | None
 
 
 def _holdings_figures(
-    result: HoldingsAnalysisResult, theme: str, height: int, width: int | None
+    result: HoldingsAnalysisResult,
+    theme: str,
+    height: int,
+    width: int | None,
+    *,
+    sample_axis: bool = False,
 ) -> tuple[dict[str, go.Figure], dict[str, dict[str, Any]]]:
     timeline = result.timeline
     dates = _exact_dates(timeline["date"])
@@ -58,7 +63,7 @@ def _holdings_figures(
         }
     }
 
-    def figure(title: str, unit: str) -> go.Figure:
+    def figure(title: str, unit: str, *, temporal: bool = True) -> go.Figure:
         fig = create_base_figure(
             title=title,
             yaxis_title=unit,
@@ -66,6 +71,16 @@ def _holdings_figures(
             height=max(height, 320),
             width=width,
         )
+        if sample_axis and temporal:
+            selected = sorted({0, len(dates) // 2, len(dates) - 1})
+            fig.update_xaxes(
+                type="category",
+                tickmode="array",
+                tickvals=[dates[index] for index in selected],
+                ticktext=[f"Obs {index + 1}" for index in selected],
+                tickangle=0,
+                title_text="Observation",
+            )
         fig.update_layout(
             colorway=get_theme_config(theme)["colorway"],
             showlegend=True,
@@ -186,13 +201,18 @@ def _holdings_figures(
         }
         if top.is_empty():
             continue
-        fig = figure(f"Top {side.title()} Holdings", "account currency")
+        fig = figure(f"Top {side.title()} Holdings", "account currency", temporal=False)
         fig.add_trace(
-            go.Bar(x=top["value"].to_list(), y=top["asset"].to_list(), orientation="h", name=side)
+            go.Bar(
+                x=top["value"].to_list(),
+                y=top["asset"].to_list(),
+                orientation="h",
+                name=side,
+            )
         )
         fig.update_layout(
             showlegend=False,
-            xaxis_title="Sample-extreme value<br>(account currency)",
+            xaxis_title="Sample extreme<br>(account currency)",
             yaxis_title="Asset ID",
         )
         fig.update_yaxes(type="category", autorange="reversed")
