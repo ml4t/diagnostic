@@ -144,6 +144,18 @@ def main() -> None:
     assert sectors.attrs["diagnostic_sector_projection"]["n_output_rows"] == 1
     if args.print_tables:
         pf.round_trips.print_round_trip_stats(familiar)
+    terminal_positions = pd.DataFrame(
+        {7: [390.0], "cash": [610.0]}, index=pd.DatetimeIndex(["2025-07-08T00:00Z"])
+    )
+    hypothetical = pf.round_trips.add_closing_transactions(
+        terminal_positions, legacy_input, as_of="2025-07-08T20:00Z", calendar=None
+    )
+    with_closes = pf.round_trips.extract_round_trips(hypothetical, portfolio_value=beginning_nav)
+    assert with_closes["is_synthetic"].to_list() == [False, True]
+    assert with_closes["pnl"].to_list() == [200.0, 80.0]
+    print(
+        "Optional familiar closing profile:200actual+80hypothetical gross PnL; original3open units unchanged"
+    )
     if args.report:
         from ml4t.diagnostic.visualization.portfolio import create_round_trip_dashboard
 

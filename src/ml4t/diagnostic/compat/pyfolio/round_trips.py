@@ -9,6 +9,7 @@ from typing import Any
 
 import pandas as pd
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo import (
     RoundTripResult,
@@ -151,9 +152,40 @@ def _inputs(transactions: pd.DataFrame) -> tuple[pl.DataFrame, pd.Index]:
 
 
 def _native_round_trips(transactions: pd.DataFrame) -> tuple[RoundTripResult, pd.Index]:
+    if isinstance(transactions, pd.DataFrame) and "is_synthetic" in transactions:
+        flags = transactions["is_synthetic"]
+        if not pd.api.types.is_bool_dtype(flags) or flags.isna().any():
+            raise ValueError("is_synthetic must contain explicit nonmissing booleans")
+        if flags.any():
+            from .closing import native_with_hypothetical_closes
+
+            return native_with_hypothetical_closes(transactions)
     observed, labels = _inputs(transactions)
     result = reconstruct_round_trips(observed, initial_state="flat", matching="consecutive_vwap")
     return result, labels
+
+
+def add_closing_transactions(
+    positions: pd.DataFrame,
+    transactions: pd.DataFrame,
+    *,
+    as_of: Any = None,
+    feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+) -> pd.DataFrame:
+    """Append explicitly hypothetical gross cash-price closes, not actual fills.
+
+    The legacy flat-opening profile derives prices from complete ending marked
+    values and actual net units. Daily labels resolve to the declared session
+    close (argument > feed > NYSE), not midnight plus one second. Explicit None
+    disables calendars and requires an actual valuation instant if the label
+    would precede fills. Supplied-opening inventory uses the native API instead.
+    """
+    from .closing import closing_transactions
+
+    return closing_transactions(
+        positions, transactions, as_of=as_of, feed_spec=feed_spec, calendar=calendar
+    )
 
 
 def _groupby_consecutive(
@@ -202,7 +234,9 @@ def extract_round_trips(
     Fractional/negative-price reference defects are corrected, not reproduced.
     """
     result, labels = _native_round_trips(transactions)
-    closed = result.completed_trades().sort(["asset", "exit_timestamp", "exit_group_id"])
+    include_synthetic = bool(result.metadata.get("legacy_synthetic_rows"))
+    order = ["asset", "exit_timestamp", "is_synthetic", "exit_group_id"]
+    closed = result.completed_trades(include_synthetic=include_synthetic).sort(order)
     frame = (
         closed.select("gross_pnl", "entry_timestamp", "exit_timestamp", "gross_lot_return")
         .to_pandas()
@@ -223,9 +257,16 @@ def extract_round_trips(
     frame = frame[["pnl", "open_dt", "close_dt", "long", "rt_returns", "symbol", "duration"]]
     if portfolio_value is not None:
         nav = result.portfolio_contributions(
-            portfolio_value, calendar=None, alignment="civil_date", nav_method="legacy_ieee"
-        ).sort(["asset", "exit_timestamp", "exit_group_id"])
+            portfolio_value,
+            calendar=None,
+            alignment="civil_date",
+            nav_method="legacy_ieee",
+            include_synthetic=include_synthetic,
+        ).sort(order)
         frame["returns"] = nav["gross_nav_contribution"].to_numpy()
+    if include_synthetic:
+        frame["is_synthetic"] = closed["is_synthetic"].to_list()
+        frame.attrs["diagnostic_closing"] = dict(result.metadata["legacy_closing_profile"])
     return frame
 
 
@@ -367,4 +408,11 @@ def gen_round_trip_stats(round_trips: pd.DataFrame) -> dict[str, pd.DataFrame]:
     return results
 
 
-__all__ = ["extract_round_trips", "gen_round_trip_stats"]
+__all__ = [
+    "add_closing_transactions",
+    "agg_all_long_short",
+    "apply_sector_mappings_to_round_trips",
+    "extract_round_trips",
+    "gen_round_trip_stats",
+    "print_round_trip_stats",
+]

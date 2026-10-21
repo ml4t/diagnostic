@@ -1714,7 +1714,31 @@ native-backed familiar tables. The callable
 table. It writes plain text, not IPython display objects; cash is labeled supplied
 account currency rather than assumed USD. Return tables display NAV-relative
 percent, while `gen_round_trip_stats` keeps decimal fractions. These named calls
-do not yet complete the legacy closing helper, plotting options or full tear sheet.
+do not yet complete the standalone plotting options or full tear sheet.
+
+`pf.round_trips.add_closing_transactions(positions, transactions)` supplies the
+familiar optional closing projection for a declared-flat opening book and a
+complete actual ledger. Prices are implied from ending marked cash values divided
+by exact remaining units, not claimed observed quotes. Unlike the published
+midnight-plus-one-second rule, daily labels resolve to the declared session close,
+including early closes. Calendar precedence is explicit argument, `FeedSpec`, then
+NYSE. Explicit `calendar=None` disables that inference; pass an actual
+`as_of=` if the last label would precede fills. Naive execution instants require
+a declared timezone for calendar inference; only that explicit declaration
+localizes their copied projection, leaving the source untouched.
+
+The returned rows have an `is_synthetic` flag and authoritative `amount_exact`
+for hypothetical quantities. Passing them to `extract_round_trips` keeps closing
+cash/duration marked synthetic and retains actual FIFO executions, actual
+realization and open lots separately. Gross statistics include only hypothetical
+rows that the caller explicitly added; native defaults still exclude them.
+Zero-valued marked assets with known nonzero quantity are closed at zero rather
+than erased. Missing marks, an inconsistent opening/ending book, double closing
+or a close preceding real fills raise instead of inventing state. Use native
+supplied-opening inventory and known-at marks for carried books, net costs or
+point-price multipliers. The default recipe verifies 200 actual plus 80
+hypothetical gross cash PnL under its explicitly selected VWAP profile, with the
+three actual open units unchanged.
 
 To save a native round-trip report, run
 `uv run python examples/portfolio_fifo.py --report round-trips.html` with Plotly
