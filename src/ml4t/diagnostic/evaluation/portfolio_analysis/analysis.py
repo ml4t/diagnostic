@@ -35,6 +35,7 @@ from scipy import stats
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
+from .fifo import RoundTripResult, reconstruct_round_trips
 from .frame_inputs import PortfolioInputData, normalize_portfolio_frames
 from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
 from .holdings_sectors import SectorMapping, analyze_sector_exposures
@@ -289,6 +290,18 @@ class PortfolioAnalysis:
             turnover_method=turnover_method,
             incremental_bps=incremental_bps,
         )
+
+    def compute_round_trips(self, *, initial_state: str | None = None) -> RoundTripResult:
+        """Match actual fractional FIFO lots after an explicit flat-book declaration.
+
+        Returns matched segments and unmarked remaining lots. Missing commissions
+        leave net PnL unknown; supplied net returns are never modified. Non-flat
+        opening lots, valuation marks and full legacy reports remain separate
+        reconstruction inputs, not inferred from end-of-day holdings here.
+        """
+        if self._input_data is None:
+            raise ValueError("FIFO requires owned from_frames execution inputs")
+        return reconstruct_round_trips(self._input_data.transactions, initial_state=initial_state)
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:

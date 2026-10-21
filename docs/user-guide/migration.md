@@ -1568,6 +1568,55 @@ under matched turnover, bps and timing-bin choices. These observed-input
 transaction routes do not yet qualify the complete `create_txn_tear_sheet`
 intraday-estimation options, round trips or capacity. Those remain accepted work.
 
+### Match actual fractional FIFO lots from an explicitly flat book
+
+Unreleased after 0.1.9, `analysis.compute_round_trips(initial_state="flat")`
+matches actual owned executions in timestamp order, preserving source order at
+the same instant. The opening flat declaration is required; a first sale could
+otherwise be either a new short or an unknown prior long's closing sale. This
+first native route does not yet accept non-flat opening lots or reconstruct
+intraday marks. Do not use it with an unknown opening book.
+
+Run `uv run python examples/portfolio_fifo.py`. The independent example buys
+10 at 100, buys 5 at 110, then sells 12 at 120. It realizes 220 gross and leaves 3
+at 110. Entry cash commissions 10 and 10 plus the sell commission 12 allocate 26
+to matched segments, giving 194 net; 6 of entry commission remain with the open
+lot. No execution is inferred from holdings, and supplied net returns are not
+rewritten from this attribution. Price slippage is already included in actual
+execution prices, not subtracted again from lot PnL.
+
+`segments` retains each matched entry/exit pair, source record identities and
+nanosecond timestamps. `open_lots` retains actual unmatched units and entry fees,
+without marks, guessed liquidation prices or synthetic terminal closes.
+Matching uses exact rational units from decimal input representations, not an
+integer share expansion or an arbitrary residual tolerance. Calculated quantity
+and cash columns use Float64; source integer prices and record IDs remain exact.
+`quantity_exact` preserves rational units that
+Float64 cannot exactly represent. Original executions remain available unchanged.
+Unknown commissions leave net PnL unknown while preserving gross PnL. Zero entry
+notional leaves percentage lot return undefined, not zero. Zero-quantity cash
+fees are reported separately as unallocated events, not turned into trades.
+
+On identical integer fills separated by more than eight hours, using the legacy
+display symbol `A` for native stable asset ID `7`, published
+Pyfolio 0.10.0 reports one closing transaction with 220 PnL; native reports two
+matched lot segments totaling 220. Its closing-transaction return 220/1220 is
+not the mean of the two segment returns. Pyfolio additionally merges consecutive
+same-direction fills within eight hours into VWAP groups; that is a different
+analytic convention from this exact-execution FIFO route. Its integer share
+expansion also truncates the fractional .1/.2/-.3 fixture and raises instead of
+reporting the independently calculable 4 profit. Native fractional matching
+retains that profit and leaves no phantom open lot; this is an explicit
+reference-defect reconciliation, not a full round-trip-report parity claim.
+Using the integer directly as the reference's symbol also triggers a row-upcast
+TypeError on these inputs. Native IDs stay integers; the reference comparison
+uses the explicit one-to-one display-label mapping, not a changed economic sample.
+
+Opening-lot input, known-at marks, optional labeled synthetic closes, NAV
+contribution, completed-trade aggregation, existing trade-statistics integration,
+Beta-prior uncertainty, intraday reconstruction and full legacy reports remain
+accepted work. The incomplete route is not a substitute for those workflows.
+
 ### Consume a Zipline performance result without a legacy analytics dependency
 
 The familiar extraction call is also available as
