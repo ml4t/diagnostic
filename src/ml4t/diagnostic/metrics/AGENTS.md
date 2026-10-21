@@ -14,6 +14,8 @@ Feature-level and signal-level metric functions used by diagnostics, selection, 
 - `monotonicity.py` and `risk_adjusted.py` - ranking and portfolio-style metrics
 - `calibration.py` - Brier score and decomposition, log loss, reliability table with
   Wilson or cluster-bootstrap intervals, ECE/MCE, calibration slope
+- `fragility.py` - three-point benchmark fragility, paired counts and selected observations;
+  shared one-dimensional return alignment lives in `_paired_returns.py`
 
 ## Common Entry Points
 
@@ -26,3 +28,4 @@ Feature-level and signal-level metric functions used by diagnostics, selection, 
 - `compute_h_statistic`
 - `analyze_feature_outcome`
 - `reliability_table`, `brier_decomposition`, `calibration_slope`
+- `beta_fragility`, `BetaFragilityResult`

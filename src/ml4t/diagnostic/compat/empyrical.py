@@ -27,6 +27,10 @@ from ml4t.diagnostic.compat._benchmark import (
     up_alpha_beta,
 )
 from ml4t.diagnostic.compat._capture import capture, down_capture, up_capture, up_down_capture
+from ml4t.diagnostic.compat._fragility import (
+    beta_fragility_heuristic,
+    beta_fragility_heuristic_aligned,
+)
 from ml4t.diagnostic.compat._holdings_attribution import compute_exposures, perf_attrib
 from ml4t.diagnostic.compat._returns import (
     MetricOutput,
@@ -389,6 +393,8 @@ SIMPLE_STAT_FUNCS = [
 __all__ = [
     "compute_exposures",
     "perf_attrib",
+    "beta_fragility_heuristic",
+    "beta_fragility_heuristic_aligned",
     "SIMPLE_STAT_FUNCS",
     "down",
     "roll",
