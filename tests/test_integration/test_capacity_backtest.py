@@ -11,7 +11,7 @@ from ml4t.specs import FeedSpec
 from ml4t.diagnostic.integration import portfolio_analysis_from_result
 
 
-def test_actual_bar_account_capacity_preserves_cash_quantities_and_prior_market_rows():
+def test_actual_bar_account_capacity_preserves_cash_quantities_and_prior_market_rows(tmp_path):
     backtest = pytest.importorskip("ml4t.backtest")
     if "holdings_sampling" not in inspect.signature(backtest.Engine).parameters:
         pytest.skip("Installed Backtest lacks separately qualified opt-in holdings capture")
@@ -82,3 +82,9 @@ def test_actual_bar_account_capacity_preserves_cash_quantities_and_prior_market_
         result.scenarios["extra_impact_return"], [0, 8e-10, 0, 8.16e-7 / 1002, 0]
     )
     assert owned.to_json() == before
+    report = analysis.create_tear_sheet(capacity=result)
+    output = tmp_path / "captured-capacity.html"
+    report.save_html(output, include_plotlyjs=True)
+    html = output.read_text(encoding="utf-8")
+    assert "Capacity assumptions and coverage" in html and "0.00202" in html
+    assert report.capacity is result
