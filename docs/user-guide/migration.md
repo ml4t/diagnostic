@@ -3074,14 +3074,15 @@ reasons as HTML. Install IPython and nbformat in the notebook kernel and use a
 Plotly-compatible frontend. `report.show(compact=True)` remains the four-panel
 returns overview; it does not display the prepared holdings panels.
 
-These observed prepared-holdings panels do not establish the complete Pyfolio positions
-tear sheet or all portfolio reports. The separately tested unreleased
+These native prepared-holdings panels use positive-NAV definitions. The familiar
+position manifest below instead selects the legacy signed-NAV profile. Neither
+route establishes all portfolio reports. The separately tested unreleased
 [supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine),
 [actual transaction analysis](#analyze-actual-transactions-and-incremental-costs) and
 [capacity workflow](#supplied-market-capacity-and-impact-scenarios-unreleased) have their own
-methods and coverage below or above. Full positions-sheet composition, intraday reconstruction,
-round trips, unqualified risk/report options and complete Alphalens/Pyfolio composition remain
-accepted work.
+methods and coverage below or above. Complete simple/full account composition,
+unqualified risk/report options and original Alphalens/Pyfolio notebook/provider
+journeys remain accepted work.
 
 #### Keep familiar position projections without changing native account defaults
 
@@ -3140,6 +3141,80 @@ reference. Absent or NaN marked cells use the familiar zero-filled projection;
 do not apply it to incomplete holdings. Missing cash instead remains unknown,
 not the reference's invented zero balance. This projection is not account
 replay or inferred portfolio NAV.
+
+#### Run a complete familiar positions report
+
+This unreleased route composes the original exposure, top allocations,
+maximum/median concentration, holdings counts, long/short counts and gross
+leverage panels. Requested sector paths and top long/short/absolute tables use
+the same native kernels as the numerical adapters. It requires dated returns
+and a wide marked-value frame with separate `cash`; no broker or Reloaded
+runtime is required. Example snapshots below are explicitly constructed inputs,
+not observed fills or a reconstructed account:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.compat import pyfolio as pf
+
+position_report_prices = pd.Series(
+    [100.0, 101.0, 99.0, 103.0],
+    index=pd.bdate_range("2025-02-03", periods=4, tz="UTC"),
+)
+position_report_returns = position_report_prices.pct_change(fill_method=None).iloc[1:]
+example_nav = 10000 * position_report_prices.iloc[1:] / position_report_prices.iloc[0]
+position_report_values = pd.DataFrame(
+    {"Core": .6 * example_nav, "Hedge": -.2 * example_nav, "cash": .6 * example_nav}
+)
+position_report = pf.create_position_tear_sheet(
+    position_report_returns,
+    position_report_values,
+    sector_mappings={"Core": "Core", "Hedge": "Hedge"},
+    estimate_intraday=False,
+    return_fig=True,
+)
+np.testing.assert_allclose(position_report.figures["Gross leverage"].data[0].y, .8)
+assert len(position_report.figures) == 10
+position_report.save_html("positions-report.html", include_plotlyjs=True)
+print("Complete familiar positions manifest: shared kernels, owned identities and explicit estimates")
+```
+
+Run the existing whole-return example with its companion position report:
+
+```bash
+uv run --extra viz python examples/pyfolio_returns_report.py \
+  --positions-output positions-report.html --output returns-report.html
+uv run --extra viz --with pyfolio-reloaded==0.10.0 \
+  --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 \
+  python examples/pyfolio_returns_report.py --compare \
+  --positions-output positions-reference.html --output returns-reference.html
+```
+
+`show_and_plot_top_pos=0` selects top paths, `1` selects top tables and `2`
+selects both. `hide_positions=True` forces plot-only output and anonymizes asset
+and sector labels before building any figure. Original IDs do not remain in
+HTML, data exports or Plotly notebook MIME. Caller inputs remain unchanged.
+
+The default `estimate_intraday="infer"` preserves the existing Pyfolio heuristic
+when actual transactions are supplied. `True` forces the explicit daily
+transaction-notional estimate; `False` or `None` keeps supplied positions. The
+report labels estimates `estimated_intraday`, preserves tied candidate rows
+with separate observation identities, and does not call them observed marked
+holdings or continuous-time peaks.
+
+Legacy normalization stays panel-specific. Exposure plotting omits missing cash
+from the closing row sum, unlike `pos.get_long_short_pos`, which leaves those
+ratios unknown. Undefined fractions remain gaps, not zero risk. Sector plots
+exclude unmapped assets with a warning and normalize mapped sectors plus cash;
+use native prepared holdings for unknown-sector retention and full-NAV weights.
+
+`return_fig=True` returns the existing `PortfolioTearSheet`, not a Matplotlib
+figure. Use `.save_html()`, `.show()` or `.to_dict()`; Matplotlib axes, artist
+mutation and plotting-style kwargs do not migrate. Notebook display requires
+a Plotly-compatible frontend. Exact keys remain in hover/export; horizontal
+spacing follows categorical observation order, not elapsed exchange sessions.
+This positions workflow does not yet qualify full/simple account composition
+or all original portfolio notebooks.
 
 ### Retain raw exposure when equity cannot normalize it
 

@@ -51,7 +51,7 @@ def _table_figure(table: pd.DataFrame, title: str, description: str) -> go.Figur
             columnwidth=[200, *[150] * len(table.columns)],
             header={
                 "values": [
-                    "Metric",
+                    cell(table.index.name) if table.index.name is not None else "Metric",
                     *[
                         "<br>".join(cell(part) for part in column)
                         if isinstance(column, tuple)

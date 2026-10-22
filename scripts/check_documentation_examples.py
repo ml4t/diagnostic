@@ -37,6 +37,7 @@ PAGES = {
         "Familiar return panels: full-clock wealth and training-only live forecasts",
         "Complete familiar returns manifest: existing native renderer and explicit availability",
         "Familiar positions: original assets, signed NAV and per-metric missingness",
+        "Complete familiar positions manifest: shared kernels, owned identities and explicit estimates",
         "200 actual notional / 1000 beginning NAV; extra 10bps costs .0002 return",
         "Zipline input preserves sid, reported cash/NAV and unknown fill costs",
         "Stress/live/cones: 4 selected, 8 training, 4 live; steps count observations",

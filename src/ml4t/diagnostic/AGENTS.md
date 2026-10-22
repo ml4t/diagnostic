@@ -40,6 +40,9 @@
 - `compat.pyfolio.create_returns_tear_sheet` composes the familiar complete returns manifest
   with the existing `PortfolioTearSheet` renderer, explicit availability and native kernels.
   The plotting adapters return Plotly figures; Matplotlib artist mutation is not preserved.
+- `compat.pyfolio.create_position_tear_sheet` composes the complete familiar holdings manifest,
+  top-table/sector options and explicit intraday estimates in that renderer. Hidden identities
+  are anonymized before constructing figures or notebook/export payloads.
 - Correlation-adjusted DSR now lives in `evaluation.stats` via
   `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.
 - For book and case-study workflows, set `periods_per_year` from the return
