@@ -564,6 +564,52 @@ round trip corrects Alphalens 0.5.0's mixed-sign component string. Floored day
 components are a separate utility; automatic turnover selects only positive
 exact-day labels, never a zero lag inferred from `30m` or `1ns`.
 
+### Keep familiar IC and quantile-statistics calls
+
+Unreleased after 0.1.9, the analytical adapters reuse the native IC, equal-date
+quantile statistics and propagated-error kernels. Continue from `adapter_clean`
+above with a changed import:
+
+```python
+# Previously: from alphalens import performance
+from ml4t.diagnostic.compat.alphalens import performance
+
+adapter_ic = performance.factor_information_coefficient(adapter_clean)
+adapter_mean_ic = performance.mean_information_coefficient(adapter_clean)
+adapter_means, adapter_errors = performance.mean_return_by_quantile(
+    adapter_clean, by_date=True, demeaned=False,
+)
+adapter_spread, adapter_spread_error = performance.compute_mean_returns_spread(
+    adapter_means, 2, 1, adapter_errors,
+)
+assert np.allclose(adapter_ic["1D"], 1)
+assert np.allclose(adapter_spread["1D"], 0.05)
+assert adapter_spread_error["1D"].isna().all()
+print("Alphalens statistical adapters: IC and explicit spread exposure checked")
+```
+
+IC and its mean/deviation are dimensionless. Quantile means and spreads are
+decimal returns; their errors are not fabricated for singleton samples.
+Corrected `reference_version="0.5.0"` returns a unit-gross spread, one half of
+the upper-minus-lower return and propagated error. Explicit `"0.4.6"` retains
+the historical raw gross-two difference. Native `compute_quantile_spread`
+keeps its existing raw-difference default. No input is re-bucketed or mutated.
+
+IC preserves legacy per-column NaN propagation. Quantile means instead retain
+each supplied outcome's own available sample and give defined date means equal
+weight. Raw `compute_forward_returns` plus `quantize_factor` tables may retain
+incomplete forward tails; those are not silently cleaned across horizons.
+For native statistics on already supplied buckets without a score column, use
+`compute_quantile_statistics(..., factor_col=None)`; its default still selects
+finite score/outcome pairs. Group adjustment and group output remain independent.
+
+To inspect sample counts and uncertainty alongside these familiar pandas tables,
+use the existing [native quantile statistics](#inspect-daily-and-equal-date-quantile-statistics).
+For dependence-aware IC inference, use the separately selected
+[HAC validation](#complete-information-analysis-report); the adapter's ordinary
+IC mean is not a HAC estimate. Other numerical adapters and complete sheet
+composition remain in progress, not a full-replacement claim.
+
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.

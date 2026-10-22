@@ -115,7 +115,7 @@ def compute_quantile_statistics(
     by_group: bool = False,
     demeaned: bool = True,
     group_adjust: bool = False,
-    factor_col: str = "factor",
+    factor_col: str | None = "factor",
     date_col: str = "date",
     asset_col: str = "asset",
     quantile_col: str = "quantile",
@@ -134,6 +134,10 @@ def compute_quantile_statistics(
     even when a combination has no defined dates. Horizon order follows the
     explicit return_columns, not alphabetical labels.
 
+    With factor_col=None, already supplied buckets select the observations;
+    no score column is required or used to remove known outcomes. Each outcome
+    retains its own finite sample. The default still requires finite score pairs.
+
     Group adjustment takes precedence over date demeaning. This uses the same
     paired outcome transform as grouped IC. Factors, buckets and callers are
     unchanged; group-relative buckets do not imply adjusted returns.
@@ -148,7 +152,9 @@ def compute_quantile_statistics(
         Retain date and/or group dimensions. Defaults aggregate daily means.
     demeaned, group_adjust : bool
         Subtract date or date/group paired return means. Defaults demean dates.
-    factor_col, date_col, asset_col, quantile_col, group_col : str
+    factor_col : str or None
+        Score column used for finite-pair eligibility, or None for supplied buckets.
+    date_col, asset_col, quantile_col, group_col : str
         Explicit physical input names. Buckets must be positive integer labels;
         they need not be contiguous or present on every date.
 
@@ -168,6 +174,12 @@ def compute_quantile_statistics(
     ]:
         if not isinstance(value, bool | np.bool_):
             raise ValueError(f"{name} must be boolean")
+    if factor_col is None:
+        data = _signal_frame(data)
+        factor_col = "__quantile_eligibility"
+        while factor_col in data.columns:
+            factor_col += "_"
+        data = data.with_columns(pl.lit(1.0).alias(factor_col))
     values, columns = _signal_inputs(
         data,
         return_columns,
@@ -260,6 +272,21 @@ def compute_quantile_statistics(
     )
 
 
+def _quantile_mean_spread(
+    upper_mean: np.ndarray,
+    lower_mean: np.ndarray,
+    upper_error: np.ndarray | None = None,
+    lower_error: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    difference = np.asarray(upper_mean, dtype=float) - np.asarray(lower_mean, dtype=float)
+    error = (
+        np.hypot(upper_error, lower_error)
+        if upper_error is not None and lower_error is not None
+        else np.full(difference.shape, np.nan)
+    )
+    return difference, error
+
+
 def compute_quantile_spread(
     statistics: pl.DataFrame | pd.DataFrame,
     *,
@@ -332,23 +359,22 @@ def compute_quantile_spread(
         for side, bucket in [("upper", upper), ("lower", lower)]
     ]
     result = legs[0].join(legs[1], on=keys, how="full", coalesce=True)
-    error = (
-        np.hypot(
-            result["upper_standard_error"].cast(pl.Float64).to_numpy(),
-            result["lower_standard_error"].cast(pl.Float64).to_numpy(),
-        )
+    spread, error = _quantile_mean_spread(
+        result["upper_mean"].cast(pl.Float64).to_numpy(),
+        result["lower_mean"].cast(pl.Float64).to_numpy(),
+        result["upper_standard_error"].cast(pl.Float64).to_numpy()
         if include_standard_error
-        else np.full(result.height, np.nan)
+        else None,
+        result["lower_standard_error"].cast(pl.Float64).to_numpy()
+        if include_standard_error
+        else None,
     )
     order = (
         values.select("return_column").unique(maintain_order=True).with_row_index("__horizon_order")
     )
     return (
         result.with_columns(
-            (pl.col("upper_mean") - pl.col("lower_mean"))
-            .cast(pl.Float64)
-            .fill_nan(None)
-            .alias("spread"),
+            pl.Series("spread", spread).fill_nan(None),
             pl.Series("standard_error", error).fill_nan(None),
             pl.lit(upper).alias("upper_quantile"),
             pl.lit(lower).alias("lower_quantile"),

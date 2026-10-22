@@ -34,6 +34,7 @@ PAGES = {
         "Event-returns report: global view and per-quantile sample deviations",
         "Information report samples:",
         "Alphalens information adapter preserves the prepared sample and group options",
+        "Alphalens statistical adapters: IC and explicit spread exposure checked",
         "Turnover report: 6 panels; defined rank dates 11/10/7",
         "Signal event study: owned factor statistics, bins and dated return samples",
         "Supplied account preserves net returns and unknown fees",
