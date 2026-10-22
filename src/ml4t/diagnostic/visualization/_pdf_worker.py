@@ -28,6 +28,7 @@ async def _render(request_path: Path, status_path: Path) -> None:
         temporary.replace(destination)
 
     renderer = kaleido.Kaleido(n=1, timeout=90, **request["defaults"])
+    render_error = None
     try:
         await renderer.open()
         status("rendering", browser_pid=renderer.subprocess.pid)
@@ -36,14 +37,27 @@ async def _render(request_path: Path, status_path: Path) -> None:
             completed += 1
             status("rendering", browser_pid=renderer.subprocess.pid)
     except Exception as error:
-        status("render_failed", error=f"{type(error).__name__}: {error}")
-        raise
-    status("closing", browser_pid=renderer.subprocess.pid)
+        render_error = error
+    details = (
+        {"error": f"{type(render_error).__name__}: {render_error}"}
+        if render_error is not None
+        else {}
+    )
+    browser = getattr(renderer, "subprocess", None)
+    status("closing", browser_pid=getattr(browser, "pid", None), **details)
+    close_error = None
     try:
         await renderer.close()
     except Exception as error:
+        close_error = error
+    if render_error is not None:
+        if close_error is not None:
+            details["close_error"] = f"{type(close_error).__name__}: {close_error}"
+        status("render_failed", **details)
+        raise render_error
+    if close_error is not None:
         # The parent still owns the OS process tree and must verify its termination.
-        status("close_failed", error=f"{type(error).__name__}: {error}")
+        status("close_failed", error=f"{type(close_error).__name__}: {close_error}")
     else:
         status("closed")
 

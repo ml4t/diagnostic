@@ -2,16 +2,15 @@
 
 The financial arguments retain Pyfolio conventions. Returned Plotly figures
 support show/write_html/to_dict; existing Matplotlib axes cannot be reused.
-Install Diagnostic's viz extra only when importing this rendering module.
+Install Diagnostic's viz extra when calling a rendering function.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import polars as pl
 
 from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_integer
@@ -20,7 +19,6 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import (
     execution_timing_frame,
     filled_notional_expr,
 )
-from ml4t.diagnostic.visualization.core import create_base_figure
 
 from . import txn
 from .round_trip_plotting import (
@@ -29,8 +27,13 @@ from .round_trip_plotting import (
     show_profit_attribution,
 )
 
+if TYPE_CHECKING:
+    import plotly.graph_objects as go
+
 
 def _figure(title: str, units: str, ax: Any, kwargs: dict[str, Any]) -> go.Figure:
+    from ml4t.diagnostic.visualization.core import create_base_figure
+
     if ax is not None:
         raise TypeError(
             "The adapter returns Plotly figures; remove Matplotlib ax and use show/write_html"
@@ -97,9 +100,7 @@ def plot_turnover(
     values = txn.get_turnover(positions, transactions, turnover_denom)
     monthly = values.resample(pd.offsets.MonthEnd()).mean()
     for name, series in (("Daily", values), ("Monthly mean", monthly)):
-        figure.add_trace(
-            go.Scatter(x=series.index, y=series.to_list(), name=name, mode="lines", **kwargs)
-        )
+        figure.add_scatter(x=series.index, y=series.to_list(), name=name, mode="lines", **kwargs)
     figure.add_hline(y=values.mean(), line_dash="dash")
     figure.update_xaxes(range=[returns.index[0], returns.index[-1]])
     _date_ticks(figure, returns.index)
@@ -128,7 +129,7 @@ def plot_daily_turnover_hist(
     figure = _figure("Distribution of Daily Turnover", "observations", ax, kwargs)
     values = txn.get_turnover(positions, transactions, turnover_denom)
     finite = np.isfinite(values)
-    figure.add_trace(go.Histogram(x=values[finite].to_list(), name="Turnover", **kwargs))
+    figure.add_histogram(x=values[finite].to_list(), name="Turnover", **kwargs)
     figure.update_xaxes(title_text="turnover fraction")
     figure.update_layout(
         meta={"denominator": turnover_denom, "excluded_nonfinite": int((~finite).sum())}
@@ -149,8 +150,8 @@ def plot_daily_volume(
     txn._dated(returns, "returns")
     figure = _figure("Daily Trading Volume", "absolute execution units", ax, kwargs)
     values = txn.get_txn_vol(transactions)["txn_shares"]
-    figure.add_trace(
-        go.Scatter(x=values.index, y=values.to_list(), name="Units", mode="lines+markers", **kwargs)
+    figure.add_scatter(
+        x=values.index, y=values.to_list(), name="Units", mode="lines+markers", **kwargs
     )
     if not values.empty:
         figure.add_hline(y=float(values.mean()), line_dash="dash")
@@ -194,13 +195,11 @@ def plot_txn_time_hist(
     timing = execution_timing_frame(
         fills, bin_minutes=bin_minutes, timezone=tz, start_minute=570, end_minute=961
     )
-    figure.add_trace(
-        go.Bar(
-            x=timing["time"].to_list(),
-            y=timing["notional_fraction"].to_list(),
-            name="Selected notional",
-            **kwargs,
-        )
+    figure.add_bar(
+        x=timing["time"].to_list(),
+        y=timing["notional_fraction"].to_list(),
+        name="Selected notional",
+        **kwargs,
     )
     figure.update_xaxes(
         title_text=f"civil time ({tz})", tickmode="array", tickvals=["09:30", "12:00", "16:00"]
@@ -234,14 +233,12 @@ def plot_slippage_sweep(
         raise ValueError("slippage_params must contain at least one scenario")
     for bps in slippage_params:
         adjusted = txn.adjust_returns_for_slippage(returns, positions, transactions, bps)
-        figure.add_trace(
-            go.Scatter(
-                x=adjusted.index,
-                y=_safe_cumprod(1 + adjusted.to_numpy()),
-                mode="lines",
-                name=f"{bps:g} bps",
-                **kwargs,
-            )
+        figure.add_scatter(
+            x=adjusted.index,
+            y=_safe_cumprod(1 + adjusted.to_numpy()),
+            mode="lines",
+            name=f"{bps:g} bps",
+            **kwargs,
         )
     figure.update_layout(
         meta={
@@ -274,8 +271,8 @@ def plot_slippage_sensitivity(
         )
         for bps in range(1, 100)
     ]
-    figure.add_trace(
-        go.Scatter(x=list(range(1, 100)), y=values, mode="lines", name="Annual return", **kwargs)
+    figure.add_scatter(
+        x=list(range(1, 100)), y=values, mode="lines", name="Annual return", **kwargs
     )
     figure.update_xaxes(title_text="additional cash bps")
     figure.update_layout(

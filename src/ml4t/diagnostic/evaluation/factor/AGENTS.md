@@ -8,6 +8,8 @@ Returns-based factor analysis with static OLS, rolling exposures, attribution, a
 - `static_model.py` - `compute_factor_model`
 - `rolling_model.py` - `compute_rolling_exposures`
 - `attribution.py` - return and maximal attribution
+- `holdings_attribution.py` - supplied beginning-period NAV weights/loadings,
+  known-at validation and additive wealth-linked contributions, separate from estimated betas
 - `risk.py` - variance and contribution-to-risk attribution
 - `analysis.py` - `FactorAnalysis` orchestrator
 - `validation.py` - model-quality checks
@@ -20,6 +22,7 @@ Returns-based factor analysis with static OLS, rolling exposures, attribution, a
 - `compute_factor_model`
 - `compute_rolling_exposures`
 - `compute_return_attribution`
+- `compute_holdings_attribution`, `HoldingsAttributionResult`
 - `compute_risk_attribution`
 
 ## Related Docs

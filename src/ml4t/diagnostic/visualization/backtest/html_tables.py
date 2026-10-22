@@ -23,7 +23,142 @@ from .executive_summary import (
 if TYPE_CHECKING:
     import polars as pl
 
+    from ml4t.diagnostic.evaluation.factor.holdings_attribution import HoldingsAttributionResult
     from ml4t.diagnostic.evaluation.portfolio_analysis.results import DrawdownPeriod
+    from ml4t.diagnostic.metrics.tail_risk import GPDTailRiskResult
+
+
+def _gpd_tail_fit(metrics: dict[str, Any] | None) -> GPDTailRiskResult | None:
+    from ml4t.diagnostic.metrics.tail_risk import GPDTailRiskResult
+
+    fit = metrics.get("gpd_tail_risk") if metrics is not None else None
+    if fit is not None and not isinstance(fit, GPDTailRiskResult):
+        raise TypeError("gpd_tail_risk must be a GPDTailRiskResult from estimate_gpd_tail_risk")
+    return fit
+
+
+def create_gpd_tail_summary_html(fit: GPDTailRiskResult) -> str:
+    """Display the supplied model's own sample, units and undefined/infinite risk."""
+
+    def loss(value: float) -> str:
+        if np.isnan(value):
+            return "Unavailable"
+        if np.isposinf(value):
+            return "Positive infinity"
+        if np.isneginf(value):
+            return "Negative infinity"
+        return f"{value:.2%}"
+
+    rows = [
+        (
+            "Method",
+            {
+                "peaks_over_threshold": "Peaks over threshold",
+                "empyrical_raw_tail": "Empyrical raw tail",
+            }.get(fit.method, fit.method),
+        ),
+        ("Fit status", fit.status),
+        ("Finite / supplied observations", f"{fit.n_finite} / {fit.n_observations}"),
+        ("Excluded observations", str(fit.n_excluded)),
+        ("Positive losses", str(fit.n_losses)),
+        (
+            "Exceedances / probability denominator",
+            f"{fit.n_exceedances} / {fit.probability_denominator}",
+        ),
+        ("Tail probability", f"{fit.tail_probability:.2%}"),
+        ("Threshold (positive periodic loss)", loss(fit.threshold)),
+        ("Scale (periodic loss)", loss(fit.scale)),
+        ("Shape (dimensionless)", f"{fit.shape:.4f}" if np.isfinite(fit.shape) else "Unavailable"),
+        ("Shape lower bound", f"{fit.shape_lower_bound:g}"),
+        ("At shape lower bound", "Yes" if fit.shape_at_lower_bound else "No"),
+        ("VaR (positive periodic loss)", loss(fit.value_at_risk)),
+        ("ES (positive periodic loss)", loss(fit.expected_shortfall)),
+    ]
+    body = "".join(
+        f'<tr><th scope="row">{html_mod.escape(label)}</th><td>{html_mod.escape(value)}</td></tr>'
+        for label, value in rows
+    )
+    return (
+        '<section class="gpd-tail-fit">'
+        "<p>Supplied GPD tail fit. Positive periodic loss units; not annualized.</p>"
+        '<div class="metrics-table-wrap"><table class="metrics-table">'
+        "<caption>Fitted generalized-Pareto tail risk</caption>"
+        '<thead><tr><th scope="col">Fitted tail quantity</th><th scope="col">Value</th></tr></thead>'
+        f"<tbody>{body}</tbody></table></div>"
+        '<p class="gpd-tail-fit-note">This report does not refit the supplied model. '
+        "Use a fit computed from the same returns. A boundary fit is not evidence of "
+        "model precision. Unavailable values are not zero risk; infinite ES denotes "
+        "divergence of the fitted model mean.</p></section>"
+    )
+
+
+def _supplied_holdings_attribution(
+    metrics: dict[str, Any] | None,
+    returns: Any = None,
+) -> HoldingsAttributionResult | None:
+    from ml4t.diagnostic.evaluation.factor.holdings_attribution import HoldingsAttributionResult
+
+    result = metrics.get("holdings_attribution") if metrics is not None else None
+    if result is not None and not isinstance(result, HoldingsAttributionResult):
+        raise TypeError("holdings_attribution must be a HoldingsAttributionResult")
+    if result is not None and returns is not None:
+        values = np.asarray(returns.to_numpy() if hasattr(returns, "to_numpy") else returns)
+        actual = result.contributions["total_returns"].to_numpy()
+        if values.shape != actual.shape or not np.array_equal(values, actual, equal_nan=True):
+            raise ValueError(
+                "holdings attribution must match the same returns displayed in the report"
+            )
+    return result
+
+
+def create_holdings_attribution_summary_html(result: HoldingsAttributionResult) -> str:
+    """Display the actual supplied sample, linking definition and uncovered gross weight."""
+    label = "Wealth-linked" if result.cumulative_method == "wealth_linked" else "Arithmetic"
+    last = result.cumulative.row(-1, named=True)
+    rows = [
+        ("Method", f"{label} contributions; not estimated regression"),
+        ("Timing", result.timing),
+        ("Return observations", str(result.contributions.height)),
+        ("Factors", str(len(result.factor_names))),
+        ("Common contribution", f"{last['common_returns']:.4%}"),
+        ("Specific contribution", f"{last['specific_returns']:.4%}"),
+        ("Total return", f"{last['total_returns']:.4%}"),
+        (
+            "Cash",
+            "Attributed separately"
+            if result.cash_attributed
+            else "Not separately supplied; included in specific",
+        ),
+    ]
+    body = "".join(
+        f'<tr><th scope="row">{html_mod.escape(name)}</th><td>{html_mod.escape(value)}</td></tr>'
+        for name, value in rows
+    )
+    coverage_rows = []
+    dates = result.coverage["timestamp"].cast(str).to_list()
+    for index, row in enumerate(result.coverage.iter_rows(named=True)):
+        values = [
+            dates[index],
+            str(row["factor"]),
+            f"{row['gross_weight']:.4f}",
+            f"{row['uncovered_gross_weight']:.4f}",
+        ]
+        coverage_rows.append(
+            "<tr>" + "".join(f"<td>{html_mod.escape(value)}</td>" for value in values) + "</tr>"
+        )
+    return (
+        '<section class="holdings-attribution-summary"><p>Supplied holdings and loadings, '
+        "not estimated regression exposures. Return contributions are not annualized.</p>"
+        '<div class="metrics-table-wrap"><table class="metrics-table"><caption>Attribution method and sample</caption>'
+        f"<tbody>{body}</tbody></table></div>"
+        '<div class="metrics-table-wrap"><table class="metrics-table"><caption>Per-factor loading coverage</caption>'
+        "<thead><tr><th>Interval end</th><th>Factor</th><th>Gross NAV weight</th><th>Uncovered gross weight</th></tr></thead>"
+        f"<tbody>{''.join(coverage_rows)}</tbody></table></div>"
+        "<p>Specific returns are unexplained by the supplied factors, not evidence of skill. "
+        "Full-sample mean exposure defines tilt; that descriptive decomposition is not a forecast. "
+        "Uncovered loadings are unavailable information, not proved zero exposure. "
+        "Scroll the coverage table horizontally on narrow screens.</p></section>"
+    )
 
 
 def create_credibility_box_html(

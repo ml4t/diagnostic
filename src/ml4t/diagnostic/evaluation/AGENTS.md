@@ -16,6 +16,9 @@ This package holds the main research and validation workflows.
 - `RoundTripResult.completed_trades`, `.to_trade_analysis` and `.win_probability` for closing-fill samples, existing trade summaries and explicit Beta(1,1) uncertainty with gross/net/missingness coverage
 - `RoundTripResult.statistics_tables` for cash/count/duration/return/asset tables, explicit lot/NAV denominators and per-metric coverage; completed-cash summaries reuse `TradeStatistics.from_frame` without invented execution prices
 - `RoundTripResult.profit_attribution` for signed cash-PnL shares by original asset and optional supplied sector, without inferred NAV or complete-case row dropping
+- `PortfolioAnalysis.compute_holdings_attribution` for supplied beginning-period NAV
+  weights/loadings; explicit intervals and known-at validation, not regression-derived betas
+- `portfolio_analysis.benchmark_batting_average` for finite paired benchmark-relative wins/counts and an explicit neutral-market convention; not factor-monotonicity or a strategy's positive-return fraction
 - `TradeAnalysis` and `TradeShapAnalyzer` for trade-level diagnostics
 - `FactorAnalysis` for factor exposure and attribution
 - `Evaluator` for the broader evaluation framework

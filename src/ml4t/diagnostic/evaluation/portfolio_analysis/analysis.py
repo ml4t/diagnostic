@@ -41,6 +41,8 @@ from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapsho
 from .holdings_sectors import SectorMapping, analyze_sector_exposures
 from .inputs import (
     annual_risk_free,
+    date_index,
+    date_snapshot,
     initial_valuation_time,
     normalize_observations,
     positive_integer,
@@ -68,12 +70,15 @@ from .results import (
     PortfolioMetrics,
     RollingMetricsResult,
 )
+from .rolling import _row_windows
 from .transactions import TransactionAnalysisResult, analyze_transactions
 
 if TYPE_CHECKING:
     from datetime import date, datetime, timedelta
 
     import pandas as pd
+
+    from ..factor.holdings_attribution import HoldingsAttributionResult
 
 # Type aliases - use Union for Python 3.9 compatibility
 ArrayLike = Union[np.ndarray, pl.Series, "pd.Series", "list[float]"]
@@ -662,8 +667,6 @@ class PortfolioAnalysis:
         periods_per_year: int,
     ) -> np.ndarray:
         """Compute rolling Sharpe ratio using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -673,7 +676,7 @@ class PortfolioAnalysis:
         daily_rf = (1 + risk_free) ** (1 / periods_per_year) - 1
 
         # Vectorized: create all windows at once
-        windows = sliding_window_view(returns, window)
+        windows = _row_windows(returns, window)
         excess = windows - daily_rf
 
         # Compute mean and std across each window (axis=1)
@@ -695,8 +698,6 @@ class PortfolioAnalysis:
         periods_per_year: int,
     ) -> np.ndarray:
         """Compute rolling annualized volatility using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -704,7 +705,7 @@ class PortfolioAnalysis:
             return result
 
         # Vectorized: create all windows at once
-        windows = sliding_window_view(returns, window)
+        windows = _row_windows(returns, window)
         sd = np.std(windows, axis=1, ddof=1)
         result[window - 1 :] = sd * np.sqrt(periods_per_year)
 
@@ -742,8 +743,6 @@ class PortfolioAnalysis:
         window: int,
     ) -> np.ndarray:
         """Compute rolling beta using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -751,8 +750,8 @@ class PortfolioAnalysis:
             return result
 
         # Vectorized: create all windows at once
-        ret_windows = sliding_window_view(returns, window)
-        bench_windows = sliding_window_view(benchmark, window)
+        ret_windows = _row_windows(returns, window)
+        bench_windows = _row_windows(benchmark, window)
 
         # Compute means
         ret_mean = np.mean(ret_windows, axis=1, keepdims=True)
@@ -909,6 +908,57 @@ class PortfolioAnalysis:
             periods.append(period)
 
         return periods
+
+    def compute_holdings_attribution(
+        self,
+        weights: DataFrameLike,
+        factor_returns: DataFrameLike,
+        factor_loadings: DataFrameLike,
+        *,
+        period_starts: pl.Series | pd.DatetimeIndex | None = None,
+        factor_names: Sequence[str] | None = None,
+        complete_snapshots: bool = False,
+        cash_contributions: DataFrameLike | None = None,
+        observed_snapshot_dates: pl.Series | pd.DatetimeIndex | None = None,
+        cumulative_method: Literal["wealth_linked", "arithmetic"] = "wealth_linked",
+        timestamp_col: str = "timestamp",
+        entity_col: str = "asset",
+    ) -> HoldingsAttributionResult:
+        """Analyze supplied beginning-period weights/loadings without fitting betas.
+
+        Explicit interval starts take precedence. Otherwise an observed initial
+        valuation time and preceding return timestamps define interval starts.
+        The first interval is never guessed from a calendar or row frequency.
+        End-period holdings are not automatically reinterpreted as beginning
+        weights. Inputs and existing portfolio caches remain unchanged on error.
+        """
+        import pandas as pd
+
+        from ..factor.holdings_attribution import compute_holdings_attribution
+
+        self.require_dates()
+        if period_starts is None:
+            if self._initial_timestamp is None:
+                raise ValueError("period_starts or initial_timestamp is required for attribution")
+            period_starts = pd.DatetimeIndex([self._initial_timestamp]).append(
+                date_index(self._dates)[:-1]
+            )
+        starts = date_snapshot(period_starts, len(self._returns), "period_starts")
+        return compute_holdings_attribution(
+            pl.DataFrame(
+                {"timestamp": self._dates, "period_start": starts, "return": self._returns}
+            ),
+            weights,
+            factor_returns,
+            factor_loadings,
+            factor_names=factor_names,
+            complete_snapshots=complete_snapshots,
+            cash_contributions=cash_contributions,
+            observed_snapshot_dates=observed_snapshot_dates,
+            cumulative_method=cumulative_method,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+        )
 
     def compute_returns_distribution(self) -> DistributionResult:
         """Compute returns distribution analysis.

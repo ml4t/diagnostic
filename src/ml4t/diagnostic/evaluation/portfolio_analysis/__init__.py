@@ -17,6 +17,7 @@ from __future__ import annotations
 
 # Main analysis class
 from ml4t.diagnostic.evaluation.portfolio_analysis.analysis import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.portfolio_analysis.benchmark import benchmark_batting_average
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo import RoundTripResult
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_statistics import (
     RoundTripStatisticsResult,
@@ -41,8 +42,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
     calmar_ratio,
     compute_portfolio_turnover,
     conditional_var,
+    gaussian_value_at_risk,
     information_ratio,
     max_drawdown,
+    normal_cash_value_at_risk,
     omega_ratio,
     stability_of_timeseries,
     tail_ratio,
@@ -63,6 +66,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import Transacti
 __all__ = [
     "analyze_intraday_exposure",
     "estimate_intraday_positions",
+    "benchmark_batting_average",
     # Main class
     "PortfolioAnalysis",
     "HoldingsAnalysisResult",
@@ -85,6 +89,8 @@ __all__ = [
     "annual_return",
     "annual_volatility",
     "value_at_risk",
+    "gaussian_value_at_risk",
+    "normal_cash_value_at_risk",
     "conditional_var",
     "stability_of_timeseries",
     "alpha_beta",

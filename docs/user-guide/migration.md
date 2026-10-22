@@ -2135,7 +2135,6 @@ FIFO rows through `TradeRecord` and `TradeAnalysis` without altering the executi
 quantity, prices or fees. Undefined price/duration ratios remain undefined;
 nanosecond instants survive metric tables and JSON. Full multi-report portfolio
 composition remains separate from the round-trip and intraday routes above.
-
 ### Consume a Zipline performance result without a legacy analytics dependency
 
 The familiar extraction call is also available as

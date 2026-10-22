@@ -336,24 +336,39 @@ def periodic_sortino_ratio(
         return np.nan
 
     excess_returns = ret_clean - periodic_risk_free_rate - target_return
+    return _sortino_from_excess(excess_returns, annualization_factor)
 
-    downside_returns = np.minimum(excess_returns, 0.0)
 
-    if not np.any(downside_returns < 0):
-        mean_excess = np.mean(excess_returns)
-        if mean_excess > 0:
-            return np.inf
-        if mean_excess < 0:
-            return -np.inf
-        return np.nan
+def periodic_downside_risk(
+    returns: Union[pl.Series, pd.Series, "NDArray[Any]"],
+    *,
+    target_return: float = 0.0,
+    annualization_factor: float | None = None,
+) -> float:
+    """RMS negative periodic excess returns over all defined observations."""
+    clean = _clean_returns(returns) - target_return
+    clean = clean[~np.isnan(clean)]
+    if len(clean) == 0:
+        return float("nan")
+    deviation = np.sqrt(np.mean(np.minimum(clean, 0.0) ** 2))
+    if annualization_factor is not None:
+        deviation *= np.sqrt(annualization_factor)
+    return float(deviation)
 
-    # Calculate Sortino ratio
-    mean_excess = np.mean(excess_returns)
-    downside_std = np.sqrt(np.mean(downside_returns**2))
 
-    sortino = mean_excess / downside_std
+def _sortino_from_excess(
+    excess_returns: "NDArray[Any]",
+    annualization_factor: float | None = None,
+    downside_deviation: float | None = None,
+) -> float:
+    if len(excess_returns) == 0:
+        return float("nan")
+    deviation = (
+        periodic_downside_risk(excess_returns) if downside_deviation is None else downside_deviation
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sortino = np.divide(np.mean(excess_returns), deviation)
 
-    # Apply annualization if specified
     if annualization_factor is not None:
         sortino *= np.sqrt(annualization_factor)
 
