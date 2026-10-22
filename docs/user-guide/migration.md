@@ -3734,22 +3734,23 @@ producers without captured holdings still support returns/account/fill analysis;
 the dependent holdings report remains unavailable. Aggregated-return conversion
 of non-bar or differently sampled holdings remains unqualified.
 
-The tested complete-capture producer is immutable Backtest source
-`da223f904cfa03744152311e3c617c15fdc1ddcd`, not a published 0.1.13 package.
+The complete-capture route works with published Backtest 0.2.0 and Specs 0.2.0.
+The earlier capture was qualified against immutable Backtest source
+`da223f904cfa03744152311e3c617c15fdc1ddcd`; its retained provenance is unchanged.
 The executable
 [backtest_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/6ac080f97917e5a149f881edd32553d74a86c575/examples/backtest_portfolio_inputs.py)
 runs an actual Engine and checks returns `[0, 0, .02]`, cash `[1000, 800, 800]`,
 marked exposure `[0, 200, 220]`, NAV `[1000, 1000, 1020]` and 200 actual filled
 notional. Ten additional bps costs `.0002` of beginning NAV. The source-qualified
-recipe is:
+recipe using the published producer is:
 
 ```bash
-uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd' --with plotly python examples/backtest_portfolio_inputs.py --run-engine --report backtest-account.html
+uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest==0.2.0' --with plotly python examples/backtest_portfolio_inputs.py --run-engine --report backtest-account.html
 ```
 
-Current published Backtest 0.1.12 requires Specs below 0.2 and cannot satisfy
-current Diagnostic source's Specs 0.2 requirement. The immutable source probe
-does not establish a compatible published-package pair. Legacy frame exports
+Backtest 0.2.0 satisfies Diagnostic's Specs 0.2 requirement; older Backtest
+0.1.12 requires Specs below 0.2 and cannot be combined with this Diagnostic
+source. Legacy frame exports
 that dropped timezone information recover it only from matching actual public
 Fill/account record timestamps, never from a guessed timezone or return date.
 Standalone supplied-account and captured Zipline analysis need no Backtest
@@ -3758,6 +3759,19 @@ Both producer scripts consume bundled actual captures when run without arguments
 so ordinary examples need no execution engine. `--capture` explicitly regenerates
 Zipline input; Backtest regeneration requires `--run-engine`. The Backtest minute
 example declares 252*390 periods per year, rather than using an hourly scale.
+
+The bridge retains the producer's known initial capital as `initial_nav` for
+the first transaction denominator, including a same-bar opening fill. Supplied
+account users can pass that value to `PortfolioAnalysis.from_frames` explicitly.
+It does not invent an initial timestamp or fill later missing NAV observations.
+Net supplied returns already include actual fees; a zero-extra-cost scenario
+leaves them unchanged. Additional bps are separate hypothetical execution costs.
+
+Actual Backtest external capital records survive in the owned input metadata and
+the report's `external_capital_flows` availability/export entry. The HTML states
+their count and net account-currency amount. Reported NAV includes deposits and
+withdrawals; cumulative investment returns use the producer's flow-adjusted
+return series. They are not recomputed as a ratio of ending to initial NAV.
 Original position quantities, marks and multipliers remain in owned inputs;
 reported liquidation value and notional exposure are kept distinct.
 

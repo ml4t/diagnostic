@@ -373,6 +373,7 @@ def portfolio_analysis_from_result(
         transaction_timestamp_col="timestamp",
         calendar=resolved_calendar,
         periods_per_year=periods_per_year,
+        initial_nav=getattr(result, "initial_capital", None),
     )
     inputs = analysis.input_data
     assert inputs is not None
@@ -388,6 +389,9 @@ def portfolio_analysis_from_result(
         "account_method": getattr(result, "account_method", None),
         "returns_include_commissions": getattr(result, "returns_include_commissions", None),
     }
+    capital_export = getattr(result, "to_capital_flows_dataframe", None)
+    if callable(capital_export):
+        metadata["source"]["capital_flows"] = json.loads(capital_export().write_json())
     analysis._input_data = replace(inputs, _metadata=json.dumps(metadata, allow_nan=False))
     return analysis
 

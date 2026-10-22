@@ -126,6 +126,39 @@ jobs:
           name: original-pyfolio-notebook-replays
           path: artifacts/notebooks/
 
+  producer-reports:
+    name: Installed producer reports
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.10.9"
+      - run: uv python install 3.12
+      - run: uv build --out-dir artifacts/producers
+      - name: Install browser for actual rendered report assertions
+        run: uv run --isolated --no-project --python 3.12 --with playwright python -m playwright install --with-deps chromium
+      - name: Run published Engineer and Backtest through the installed report package
+        shell: bash
+        run: |
+          uv run --isolated --no-project --python 3.12 \
+            --with "$(find artifacts/producers -name '*.whl' -print -quit)[viz]" \
+            --with ml4t-backtest==0.2.0 --with ml4t-engineer==0.2.0 \
+            --with pytest --with playwright \
+            python -I -c "from importlib.metadata import version; import pytest; assert version('ml4t-backtest')=='0.2.0' and version('ml4t-engineer')=='0.2.0'; raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--junitxml=artifacts/producers/results.xml', '--basetemp=artifacts/producers/reports', 'tests/test_integration/test_producer_report_journeys.py']))"
+      - name: Require every actual producer journey
+        run: uv run --no-project --python 3.12 python -c "import xml.etree.ElementTree as E; cases=list(E.parse('artifacts/producers/results.xml').iter('testcase')); assert len(cases)==5 and not any(c.find('skipped') is not None for c in cases)"
+      - name: Retain actual reports and installed artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installed-producer-reports
+          path: artifacts/producers/
+          if-no-files-found: error
+
   security:
     uses: ./.github/workflows/security.yml
 
@@ -286,6 +319,7 @@ jobs:
       - property-tests
       - benchmarks
       - pyfolio-notebooks
+      - producer-reports
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

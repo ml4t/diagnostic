@@ -206,6 +206,18 @@ def analyze_transactions(
             pl.col("equity").shift(1).alias("beginning_nav")
         )
         timeline = timeline.join(nav.select("date", "beginning_nav"), on="date", how="left")
+    initial_nav = meta.get("initial_nav")
+    if initial_nav is not None and timeline.height:
+        first_date = timeline["date"].min()
+        known = timeline.filter(pl.col("date") == first_date)["beginning_nav"][0]
+        if known is not None and known != initial_nav:
+            raise ValueError("initial_nav conflicts with the reported initial valuation")
+        timeline = timeline.with_columns(
+            pl.when((pl.col("date") == first_date) & pl.col("beginning_nav").is_null())
+            .then(pl.lit(initial_nav))
+            .otherwise(pl.col("beginning_nav"))
+            .alias("beginning_nav")
+        )
     if turnover_denom == "average_gross_book":
         positions = inputs.positions
         if positions is None or not meta["complete_snapshots"]:

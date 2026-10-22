@@ -213,6 +213,7 @@ class PortfolioAnalysis:
         periods_per_year: int = 252,
         risk_free: float = 0.0,
         initial_timestamp: date | datetime | None = None,
+        initial_nav: float | None = None,
     ) -> PortfolioAnalysis:
         """Normalize dated supplied account frames without a producer dependency.
 
@@ -229,6 +230,9 @@ class PortfolioAnalysis:
         or infer schedule completeness. Explicit None disables schedules. Use
         transaction_timestamp_col when fills and snapshots have different keys.
         Existing constructor annualization/risk-free defaults remain unchanged.
+        initial_nav supplies only the known capital before the first return for
+        transaction normalization; it does not create a timestamp or fill later
+        missing valuations. An explicit initial valuation must agree with it.
         """
         periods_per_year = positive_integer(periods_per_year, "periods_per_year")
         risk_free = annual_risk_free(risk_free)
@@ -249,6 +253,7 @@ class PortfolioAnalysis:
             complete_snapshots=complete_snapshots,
             snapshot_kind=snapshot_kind,
             positions_format=positions_format,
+            initial_nav=initial_nav,
         )
         observed, relative = inputs.returns, inputs.benchmark
         instance = cls(

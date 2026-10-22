@@ -418,10 +418,18 @@ def normalize_portfolio_frames(
     complete_snapshots: bool,
     snapshot_kind: Literal["observed", "end_of_day", "intraday"],
     positions_format: str,
+    initial_nav: float | None = None,
 ) -> PortfolioInputData:
     """Normalize declared roles once without provider or broker dependencies."""
     if not isinstance(complete_snapshots, bool):
         raise ValueError("complete_snapshots must be boolean")
+    if initial_nav is not None and (
+        isinstance(initial_nav, bool)
+        or not isinstance(initial_nav, Real)
+        or not np.isfinite(initial_nav)
+        or initial_nav < 0
+    ):
+        raise ValueError("initial_nav must be finite and nonnegative")
     if snapshot_kind not in ("observed", "end_of_day", "intraday"):
         raise ValueError("snapshot_kind must be observed, end_of_day or intraday")
     if positions_format not in ("auto", "long", "wide"):
@@ -512,6 +520,8 @@ def normalize_portfolio_frames(
     }
     if calendar is not UNSET_CALENDAR:
         metadata["calendar_argument"] = calendar
+    if initial_nav is not None:
+        metadata["initial_nav"] = float(initial_nav)
     tables = (observations, relative, holdings, account, executions)
     return PortfolioInputData(
         tuple(value.write_ipc(None).getvalue() if value is not None else None for value in tables),
