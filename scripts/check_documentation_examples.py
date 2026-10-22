@@ -36,6 +36,7 @@ PAGES = {
         "Alphalens information adapter preserves the prepared sample and group options",
         "Alphalens statistical adapters: IC and explicit spread exposure checked",
         "Familiar turnover and event sheets retain native samples and supplied levels",
+        "Owned signal returns preserve explicit scales and unavailable per-date errors",
         "Turnover report: 6 panels; defined rank dates 11/10/7",
         "Signal event study: owned factor statistics, bins and dated return samples",
         "Supplied account preserves net returns and unknown fees",

@@ -10,6 +10,7 @@ This module provides interactive Plotly visualizations for quantile analysis:
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 from numbers import Real
 from typing import TYPE_CHECKING, Any
 
@@ -54,7 +55,7 @@ def plot_quantile_returns_bar(
     period : str | None
         Period to plot (e.g., "1D", "5D"). If None, uses first period.
     show_error_bars : bool, default True
-        Show standard error bars
+        Show defined standard errors. Missing errors have no cap; known zeros remain defined.
     show_spread : bool, default True
         Show top-bottom spread annotation
     theme : str | None
@@ -95,14 +96,25 @@ def plot_quantile_returns_bar(
     colors = _get_quantile_colors(n_quantiles, theme_config)
 
     # Create figure
+    period_lines = [escape(period[index : index + 24]) for index in range(0, len(period), 24)]
     fig = create_base_figure(
-        title=f"Mean Returns by Quantile ({period})",
+        title="Mean Returns by Quantile<br>(" + "<br>".join(period_lines) + ")",
         xaxis_title="Quantile",
         yaxis_title="Mean Forward Return",
         width=width or theme_config["defaults"]["bar_height"],
         height=height or theme_config["defaults"]["bar_height"],
         theme=theme,
     )
+    label_size = max(14, fig.layout.font.size or 14)
+    fig.update_layout(font_size=label_size)
+    fig.update_layout(
+        margin_t=max(
+            fig.layout.margin.t or 0,
+            (len(period_lines) + 1) * (fig.layout.title.font.size or 16) * 1.3 + 24,
+        )
+    )
+    fig.update_xaxes(tickfont_size=label_size, title_font_size=label_size)
+    fig.update_yaxes(tickfont_size=label_size, title_font_size=label_size)
 
     # Prepare data
     x_labels = quantile_labels
@@ -113,8 +125,9 @@ def plot_quantile_returns_bar(
     y_stderr = []
     for q, std in zip(quantile_labels, y_std, strict=False):
         count = counts.get(q, 1)
-        finite_std = std if np.isfinite(std) else 0.0
-        y_stderr.append(finite_std / np.sqrt(count) if count > 0 else 0)
+        y_stderr.append(std / np.sqrt(count) if count > 0 and np.isfinite(std) else None)
+    defined = [index for index, error in enumerate(y_stderr) if error is not None]
+    mixed = 0 < len(defined) < len(y_stderr)
 
     # Bar chart
     fig.add_trace(
@@ -125,14 +138,50 @@ def plot_quantile_returns_bar(
             error_y={
                 "type": "data",
                 "array": y_stderr,
-                "visible": show_error_bars,
+                "visible": bool(defined) and not mixed,
                 "color": "gray",
             }
             if show_error_bars
             else None,
-            hovertemplate=("Quantile: %{x}<br>Mean Return: %{y:.4f}<br><extra></extra>"),
+            customdata=[
+                [counts[q], format_finite(error, ".4%")]
+                for q, error in zip(quantile_labels, y_stderr, strict=True)
+            ],
+            hovertemplate=(
+                "Quantile: %{x}<br>Mean Return: %{y:.4f}<br>"
+                "Observations: %{customdata[0]}<br>SE: %{customdata[1]}<extra></extra>"
+            ),
             name="Mean Return",
+            legendgroup="quantile_means",
         )
+    )
+    if show_error_bars and mixed:
+        # Plotly draws a zero-length cap even for null bar errors. Draw only defined SEs.
+        fig.add_trace(
+            go.Scatter(
+                x=[x_labels[index] for index in defined],
+                y=[y_values[index] for index in defined],
+                mode="markers",
+                marker={"size": 0, "opacity": 0},
+                error_y={
+                    "type": "data",
+                    "array": [y_stderr[index] for index in defined],
+                    "visible": True,
+                    "color": "gray",
+                },
+                name="Defined standard errors",
+                legendgroup="quantile_means",
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+    fig.update_layout(
+        meta={
+            "uncertainty": "sample_standard_error",
+            "return_column": period,
+            "defined_error_count": len(defined),
+            "missing_error_count": len(y_stderr) - len(defined),
+        }
     )
 
     # Zero line
@@ -160,16 +209,18 @@ def plot_quantile_returns_bar(
             text=spread_text,
             xref="paper",
             yref="paper",
-            x=0.98,
-            y=0.98,
+            x=0,
+            y=-0.25,
             showarrow=False,
             bgcolor="rgba(255,255,255,0.8)" if theme != "dark" else "rgba(50,50,50,0.8)",
             bordercolor="gray",
             borderwidth=1,
             align="left",
-            xanchor="right",
+            xanchor="left",
             yanchor="top",
+            font={"size": 14},
         )
+        fig.update_layout(margin_b=max(180, fig.layout.margin.b or 0))
 
     # Format y-axis as percentage
     fig.update_yaxes(tickformat=".2%")

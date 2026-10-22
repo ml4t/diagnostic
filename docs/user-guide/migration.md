@@ -1534,6 +1534,52 @@ forward outcomes is a mathematical horizon-return path, not self-financing
 daily holdings. Capital, expiration accounting, cumulative quantile report
 panels and full Alphalens/Pyfolio report workflows remain separate accepted work.
 
+### Retain the complete return-analysis sample before rendering
+
+Unreleased source after 0.1.9 composes the existing analytical kernels into one
+owned return-analysis result. Continue from `adapter_clean` above:
+
+```python
+from ml4t.diagnostic.signal import PreparedSignalPanel, SignalReturnsResult, analyze_signal_returns
+
+return_panel = PreparedSignalPanel.from_prepared(
+    adapter_clean, return_columns=["1D", "2D"], calendar=None,
+)
+return_analysis = analyze_signal_returns(
+    return_panel,
+    annualization_factors={"1D": 252, "2D": 126},
+    rate_conversion_factors={"1D": 1, "2D": 0.5},
+)
+return_copy = SignalReturnsResult.from_json(return_analysis.to_json())
+assert return_copy.get_table("prepared_data").height == len(adapter_clean)
+assert return_copy.metadata["annualization_factors"] == {"1D": 252, "2D": 126}
+assert return_analysis.get_table("quantile_observations")["standard_error"].is_null().all()
+print("Owned signal returns preserve explicit scales and unavailable per-date errors")
+```
+
+The example has one asset per date/bucket, so per-date sample errors are
+unavailable, not zero. Across-date means and errors remain separate statistics.
+Annual alpha compounds the fitted intercept with the caller's explicit factor;
+beta is dimensionless. A constant benchmark leaves the fit unavailable. Display
+means use the first supplied horizon, while descriptive errors scale by the
+square root of its declared conversion power. Raw statistics and counts remain
+inspectable; this conversion does not establish confidence coverage.
+
+`table_names` and `get_table` expose the prepared input, actual weights and
+returns, regression observations/statistics, global/group quantile statistics,
+dated observations, the requested output grid, propagated spreads and factor/
+quantile wealth paths. Every read and JSON restoration owns independent typed
+data. No price, provider or backtest installation is needed for supplied panels.
+
+Native spreads default to the raw +1/-1 mean difference. Select
+`spread_exposure="unit_gross"` to scale both spread and propagated error by one
+half. `date_grid` must retain every observed input date; additional requested
+cells have unknown returns, zero observed counts and `row_present=False` in
+`quantile_output_grid`. Wealth follows the existing explicit NaN-as-flat product
+without relabeling missing returns as observed zeros. These horizon-return paths
+are not self-financing accounts. Complete return/summary/full-sheet rendering
+and original notebook qualification remain separate work in this source change.
+
 ### Align observed-clock event paths
 
 This how-to replaces the aligned-value workflow of Alphalens 0.4.6

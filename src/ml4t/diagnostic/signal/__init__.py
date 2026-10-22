@@ -65,6 +65,7 @@ from ml4t.diagnostic.signal.quantile import (
 )
 from ml4t.diagnostic.signal.result import SignalResult
 from ml4t.diagnostic.signal.returns import demean_signal_returns
+from ml4t.diagnostic.signal.returns_report import SignalReturnsResult, analyze_signal_returns
 from ml4t.diagnostic.signal.signal_ic import (
     compute_ic_summary,
     compute_signal_ic,
@@ -85,6 +86,8 @@ __all__ = [
     "SignalResult",
     "SignalInformationResult",
     "analyze_signal_information",
+    "SignalReturnsResult",
+    "analyze_signal_returns",
     "AlignedEventResult",
     "EventReturnsResult",
     "analyze_event_returns",

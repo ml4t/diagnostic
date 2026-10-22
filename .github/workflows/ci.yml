@@ -447,6 +447,7 @@ jobs:
           tests/test_signal/test_signal_turnover_browser.py
           tests/test_signal/test_signal_event_study.py
           tests/test_signal/test_signal_event_study_notebook.py
+          tests/test_signal/test_signal_returns_report.py
           tests/test_signal/test_signal_outcome_ingestion.py
           tests/test_signal/test_signal_price_preparation.py
       - name: Run aligned event migration from installed wheel

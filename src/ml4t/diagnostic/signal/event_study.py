@@ -15,7 +15,7 @@ import pandas as pd
 import polars as pl
 
 from ml4t.diagnostic.signal.events import EventReturnsResult, analyze_event_returns
-from ml4t.diagnostic.signal.quantile import _sample_return_statistics
+from ml4t.diagnostic.signal.quantile import _display_returns, _sample_return_statistics
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.signal.panel import PreparedSignalPanel
@@ -105,33 +105,6 @@ class SignalEventStudyResult:
             json.dumps(data["metadata"], allow_nan=False),
             None if paths is None else EventReturnsResult.from_json(paths),
         )
-
-
-def _display_returns(frame: pl.DataFrame, ratios: dict[str, float]) -> pl.DataFrame:
-    displayed = []
-    for row in frame.select("return_column", "mean").iter_rows(named=True):
-        value, ratio = row["mean"], ratios[row["return_column"]]
-        if value is None or ratio == 1:
-            converted = value
-        else:
-            with np.errstate(invalid="ignore", over="ignore"):
-                converted = (
-                    float(np.expm1(np.log1p(value) * ratio))
-                    if value > -1
-                    else float(np.power(1 + value, ratio) - 1)
-                )
-        displayed.append(converted if converted is not None and np.isfinite(converted) else None)
-    return frame.with_columns(
-        pl.Series("display_mean", displayed, dtype=pl.Float64),
-        pl.col("return_column").replace_strict(ratios).alias("conversion_ratio"),
-    ).with_columns(
-        pl.when(pl.col("mean").is_null())
-        .then(pl.lit("missing_mean"))
-        .when(pl.col("display_mean").is_null())
-        .then(pl.lit("undefined_rate"))
-        .otherwise(pl.lit("defined"))
-        .alias("display_status")
-    )
 
 
 def analyze_signal_event_study(

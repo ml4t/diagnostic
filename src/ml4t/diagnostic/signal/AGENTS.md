@@ -15,6 +15,7 @@ Factor-style signal analysis with a clean public surface.
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
 - `portfolio.py` - shared factor-weight normalization and supplied-return contributions
 - `factor_regression.py` - same-universe dated OLS, explicit compound alpha and owned samples
+- `returns_report.py` - owned return-analysis orchestration over shared weights, regressions, quantile statistics and wealth products; raw/display units and requested empty cells remain separate
 - `events.py` - observed-clock event paths, explicit level/wealth units and date/group samples
 - `event_study.py` - composed factor statistics, elapsed event bins and raw/rate dated samples
 - `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
