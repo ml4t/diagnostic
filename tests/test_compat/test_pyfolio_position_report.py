@@ -58,7 +58,7 @@ def test_price_and_supplied_positions_produce_the_complete_original_manifest_wit
     assert report.figures["Long and short holdings"].data[0].y == (1, 0, 1, 1, 1)
     assert report.figures["Long and short holdings"].data[1].y == (1, 0, 0, 1, 1)
     report.save_html(tmp_path / "positions.html", include_plotlyjs=True)
-    assert "PRIVATE_ASSET_A" in (tmp_path / "positions.html").read_text()
+    assert "PRIVATE_ASSET_A" in (tmp_path / "positions.html").read_text(encoding="utf-8")
     pd.testing.assert_frame_equal(positions, before)
     pd.testing.assert_series_equal(returns, returns_before)
 
@@ -92,7 +92,10 @@ def test_hidden_positions_are_absent_from_html_export_and_actual_notebook_payloa
     )
     target = tmp_path / "private.html"
     report.save_html(target, include_plotlyjs=True)
-    payloads = [target.read_text(), json.dumps(report.to_dict(), cls=PlotlyJSONEncoder)]
+    payloads = [
+        target.read_text(encoding="utf-8"),
+        json.dumps(report.to_dict(), cls=PlotlyJSONEncoder),
+    ]
     import plotly.io as pio
 
     previous = pio.renderers.default
