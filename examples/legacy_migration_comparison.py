@@ -904,6 +904,7 @@ def _signal_information_inputs() -> tuple[pd.Series, pd.DataFrame, pd.Series]:
 def show_signal_information_reports(output: Path) -> None:
     import polars as pl
 
+    from ml4t.diagnostic.compat.alphalens import tears
     from ml4t.diagnostic.metrics.ic_inference import compute_ic_hac_stats
     from ml4t.diagnostic.signal import (
         SignalInformationResult,
@@ -914,6 +915,11 @@ def show_signal_information_reports(output: Path) -> None:
 
     factor, forward, groups = _signal_information_inputs()
     panel = prepare_signal_panel(factor, forward, groups=groups, quantiles=3, max_loss=0)
+    familiar = (
+        panel.data.to_pandas()
+        .set_index(["date", "asset"])
+        .rename(columns={"quantile": "factor_quantile"})
+    )
     for adjusted in [False, True]:
         for grouped in [False, True]:
             result = analyze_signal_information(panel, group_adjust=adjusted, by_group=grouped)
@@ -930,6 +936,21 @@ def show_signal_information_reports(output: Path) -> None:
             print(
                 f"Information report: adjusted={adjusted}, grouped={grouped}, prepared rows=224, dates=32; {target}"
             )
+            adapted_target = target.with_name(f"{target.stem}-familiar{target.suffix}")
+            figures = tears.create_information_tear_sheet(
+                familiar,
+                group_neutral=adjusted,
+                by_group=grouped,
+                output_file=adapted_target,
+                return_fig=True,
+            )
+            assert len(figures) == (7 if grouped else 8)
+            expected_ic = restored.get_table("ic_by_date").filter(pl.col("return_column") == "1D")
+            np.testing.assert_allclose(figures[0].data[0].y, expected_ic["ic"].to_numpy())
+            assert adapted_target.read_text(encoding="utf-8").count(
+                'class="plot-container"'
+            ) == len(figures)
+            print(f"Familiar information adapter: same global IC/sample; {adapted_target}")
     observed = (
         result.get_table("ic_by_date").filter(pl.col("return_column") == "5D")["ic"].to_numpy()
     )

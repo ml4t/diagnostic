@@ -706,7 +706,8 @@ Civil-month grouping and supplied horizon labels establish no session calendar,
 expected-bar grid or annualization.
 
 The offline recipe runs all four adjustment/grouping combinations and exports
-four HTML/typed-JSON pairs without requiring Alphalens, Backtest or Engineer:
+four native HTML/typed-JSON pairs plus four familiar HTML reports without requiring
+Alphalens, Backtest or Engineer:
 
 ```bash
 uv run --extra viz python examples/legacy_migration_comparison.py --task information --output signal-information.html
@@ -717,6 +718,13 @@ groups and supplied one-/five-observation returns. The `1D`/`5D` labels are supp
 selectors, not validated elapsed-day or exchange-session declarations. Comparisons
 use Alphalens Reloaded 0.4.6, pandas 2.3.3, Polars 1.36.1 and Plotly 6.1.2, checking
 keys, buckets, groups, ICs, table values, rolling samples and actual plotted Q-Q data.
+The familiar adapter additionally executes the actual whole information sheet
+from Alphalens 0.5.0/pandas 3.0.6 and frozen 0.4.6/pandas 2.3.3, using shared
+price-produced six-asset samples and all four group-flag combinations. Original
+Matplotlib rendering is executed before comparing its IC observations, native
+histogram inputs and group/civil-month means. The minimum-renderer profile uses
+Plotly 6.1.2; the current profile uses Plotly 7.1.0. Neither reference is a native
+runtime dependency, and these tests do not qualify the other six sheets.
 
 The same retained IC observations can also feed Diagnostic's
 [HAC-adjusted inference](statistical-tests.md#hac-adjusted-ic). The recipe executes

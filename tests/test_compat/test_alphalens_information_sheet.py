@@ -1,6 +1,7 @@
 """The familiar information sheet must retain the prepared price-produced sample."""
 
 from fractions import Fraction
+from importlib.metadata import version
 
 import numpy as np
 import pandas as pd
@@ -123,3 +124,80 @@ def test_familiar_information_sheet_keeps_a_missing_declared_date_unknown_not_ob
     assert all(pd.isna(value) for value in rolling.y), (
         "The missing IC invalidates every22-date window"
     )
+
+
+@pytest.mark.parametrize("group_neutral", [False, True])
+@pytest.mark.parametrize("by_group", [False, True])
+def test_actual_reference_information_sheet_and_native_adapter_plot_the_same_price_samples(
+    group_neutral, by_group, monkeypatch
+):
+    reference = pytest.importorskip("alphalens.tears")
+    performance = pytest.importorskip("alphalens.performance")
+    reference_utils = pytest.importorskip("alphalens.utils")
+    profile = version("alphalens-reloaded")
+    if profile not in ("0.5.0", "0.4.6"):
+        pytest.skip("the corrected and frozen reference distributions are pinned separately")
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    from ml4t.diagnostic.compat.alphalens import tears
+
+    panel = _price_panel(preparer=reference_utils.get_clean_factor_and_forward_returns)
+    expected = performance.factor_information_coefficient(panel, group_adjust=group_neutral)
+    plotted_lines = []
+    original_show = plt.show
+
+    def observe_actual_render(*args, **kwargs):
+        for number in plt.get_fignums():
+            figure = plt.figure(number)
+            figure.canvas.draw()
+            plotted_lines.extend(
+                np.array(line.get_ydata(), copy=True) for axis in figure.axes for line in axis.lines
+            )
+        return original_show(*args, **kwargs)
+
+    monkeypatch.setattr(plt, "show", observe_actual_render)
+    try:
+        reference.create_information_tear_sheet(
+            panel, group_neutral=group_neutral, by_group=by_group, set_context=False
+        )
+    finally:
+        plt.close("all")
+    assert plotted_lines, "The actual whole reference sheet must render, not just its IC helper"
+    figures = tears.create_information_tear_sheet(
+        panel,
+        group_neutral=group_neutral,
+        by_group=by_group,
+        return_fig=True,
+        reference_version=profile,
+    )
+    for index, column in enumerate(expected.columns):
+        values = expected[column].to_numpy()
+        np.testing.assert_allclose(figures[3 * index].data[0].y, values, atol=1e-14, rtol=0)
+        np.testing.assert_allclose(
+            np.sort(figures[3 * index + 1].data[0].x),
+            np.sort(values[np.isfinite(values)]),
+            atol=1e-14,
+            rtol=0,
+        )
+        assert any(
+            line.shape == values.shape
+            and np.allclose(line, values, atol=1e-14, rtol=0, equal_nan=True)
+            for line in plotted_lines
+        ), "The original Matplotlib sheet must actually plot the compared IC observations"
+    means = performance.mean_information_coefficient(
+        panel,
+        group_adjust=group_neutral,
+        by_group=by_group,
+        **({} if by_group else {"by_time": pd.offsets.MonthEnd()}),
+    )
+    if by_group:
+        for trace in figures[-1].data:
+            np.testing.assert_allclose(trace.y, means.loc[list(trace.x), trace.name], atol=1e-14)
+    else:
+        for index, column in enumerate(expected.columns):
+            assert float(figures[-len(expected.columns) + index].data[0].z[0][0]) == pytest.approx(
+                means[column].iloc[0], abs=1e-14
+            )

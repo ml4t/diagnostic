@@ -424,6 +424,7 @@ jobs:
           --with "alphalens-reloaded==0.4.6" --with playwright
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q -n auto --timeout 120 tests/test_signal/
+          tests/test_compat/test_alphalens_information_sheet.py
       - name: Run Alphalens preparation adapters from installed wheel
         shell: bash
         run: >-
@@ -436,6 +437,7 @@ jobs:
           -q tests/test_compat/test_alphalens_preparation.py
           tests/test_compat/test_alphalens_time_alignment.py
           tests/test_compat/test_alphalens_bucketing.py
+          tests/test_compat/test_alphalens_information_sheet.py
           tests/test_signal/test_signal_outcome_ingestion.py
           tests/test_signal/test_signal_price_preparation.py
       - name: Run aligned event migration from installed wheel
