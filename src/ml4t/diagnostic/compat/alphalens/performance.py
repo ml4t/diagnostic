@@ -380,6 +380,10 @@ def average_cumulative_return_by_quantile(
     if not all(isinstance(flag, bool | np.bool_) for flag in (demeaned, group_adjust, by_group)):
         raise TypeError("event analysis options must be boolean")
     events, values, _ = _event_inputs(factor_data, returns, statistics=True)
+    if not demeaned and not group_adjust:
+        events = events.drop_duplicates(
+            ["date", "asset", "factor_quantile", *(["group"] if by_group else [])]
+        )
     result = analyze_signal_events(
         events,
         values,

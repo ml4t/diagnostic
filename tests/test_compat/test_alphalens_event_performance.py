@@ -110,7 +110,7 @@ def test_actual_reference_common_paths_preserve_membership_missingness_and_clipp
 
 
 @pytest.mark.parametrize("demeaned,group_adjust,by_group", list(product([False, True], repeat=3)))
-@pytest.mark.parametrize("sample", ["complete", "missing", "clipped"])
+@pytest.mark.parametrize("sample", ["complete", "missing", "clipped", "duplicate"])
 def test_actual_reference_average_paths_keep_quantile_group_date_sample_order(
     demeaned, group_adjust, by_group, sample
 ):
@@ -119,6 +119,8 @@ def test_actual_reference_average_paths_keep_quantile_group_date_sample_order(
     events, values = _inputs()
     if sample == "missing":
         values.iloc[1, 0] = np.nan
+    if sample == "duplicate":
+        events = pd.concat([events, events.iloc[[2]]])
     options = {
         "periods_before": 5 if sample == "clipped" else 1,
         "periods_after": 6 if sample == "clipped" else 1,

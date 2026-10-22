@@ -112,12 +112,13 @@ def _factor_statistics(data: pl.DataFrame, factor_col: str) -> pl.DataFrame:
     rows = []
     for part in data.partition_by("quantile", maintain_order=True):
         values = part[factor_col].to_numpy()
+        values = values[~np.isnan(values)]
         mean, std, count, _ = _sample_return_statistics(values)
         rows.append(
             {
                 "quantile": part["quantile"][0],
-                "min": float(np.min(values)),
-                "max": float(np.max(values)),
+                "min": float(np.min(values)) if count else None,
+                "max": float(np.max(values)) if count else None,
                 "mean": mean,
                 "std": std if count > 1 else None,
                 "count": count,
@@ -138,6 +139,36 @@ def _factor_statistics(data: pl.DataFrame, factor_col: str) -> pl.DataFrame:
         .with_columns((pl.col("count") / pl.col("count").sum() * 100).alias("count_percent"))
         .sort("quantile")
     )
+
+
+def _elapsed_event_bins(
+    values: pd.Series, num_bars: int
+) -> tuple[pd.Series, pd.DatetimeIndex, pd.Timedelta]:
+    """Bin supplied event observations, sharing membership with report rendering."""
+    if isinstance(num_bars, bool) or not isinstance(num_bars, Integral) or num_bars < 1:
+        raise ValueError("num_bars must be a positive integer")
+    dates = pd.DatetimeIndex(values.index).as_unit("ns")
+    if dates.empty or dates.hasnans:
+        raise ValueError("event dates must be nonempty and nonmissing")
+    events = pd.DataFrame(
+        {"event_row": np.arange(len(dates)), "factor": values.to_numpy()}, index=dates
+    )
+    span = dates.max() - dates.min()
+    width = span / int(num_bars)
+    if span == pd.Timedelta(0):
+        counts = pd.Series([values.count()], index=pd.DatetimeIndex([dates[0]]))
+        labels = pd.DatetimeIndex([dates[0]] * len(dates))
+    else:
+        if width <= pd.Timedelta(0):
+            raise ValueError("num_bars exceeds the timestamp resolution of the event span")
+        grouped = events.groupby(pd.Grouper(freq=width))
+        counts = grouped["factor"].count()
+        bin_labels: list[pd.Timestamp | None] = [None] * len(events)
+        for label, part in grouped:
+            for position in part["event_row"]:
+                bin_labels[position] = label
+        labels = pd.DatetimeIndex(bin_labels)
+    return counts, labels.as_unit("ns"), width
 
 
 def analyze_signal_event_study(
@@ -200,28 +231,10 @@ def analyze_signal_event_study(
     observations = _display_returns(panel.quantile_statistics(by_date=True, demeaned=False), ratios)
     factors = _factor_statistics(data, panel.factor_col)
     dates = pd.DatetimeIndex(data[panel.date_col].to_pandas()).as_unit("ns")
-    events = pd.DataFrame(
-        {"event_row": np.arange(len(dates)), "factor": data[panel.factor_col].to_numpy()},
-        index=dates,
+    counts, bin_labels, width = _elapsed_event_bins(
+        pd.Series(data[panel.factor_col].to_numpy(), index=dates), num_bars
     )
-    span = dates.max() - dates.min()
-    width = span / int(num_bars)
-    bin_labels: list[pd.Timestamp | None]
-    if span == pd.Timedelta(0):
-        counts = pd.Series([len(events)], index=pd.DatetimeIndex([dates[0]]))
-        bin_labels = [dates[0]] * len(events)
-    else:
-        if width <= pd.Timedelta(0):
-            raise ValueError("num_bars exceeds the timestamp resolution of the event span")
-        grouped = events.groupby(pd.Grouper(freq=width))
-        counts = grouped["factor"].count()
-        bin_labels = [None] * len(events)
-        for label, part in grouped:
-            for position in part["event_row"]:
-                bin_labels[position] = label
-    bin_starts = pl.from_pandas(
-        pd.Series(pd.DatetimeIndex(bin_labels).as_unit("ns"), name="bin_start")
-    )
+    bin_starts = pl.from_pandas(pd.Series(bin_labels, name="bin_start"))
     membership = data.select(
         pl.col(panel.date_col).alias("date"), pl.col(panel.asset_col).alias("asset"), "quantile"
     ).with_columns(bin_starts)

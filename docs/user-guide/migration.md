@@ -682,8 +682,46 @@ than the reference's automatic bin selection; the empirical missing-value mask
 is retained. Q-Q, rolling IC and month heatmaps reuse the existing native charts.
 The original `by_time="M"` call translates to an explicit month-end offset on
 pandas 3; it preserves the observation's civil month, not an exchange calendar.
-Other direct table/event plotting helpers and the original four notebook journeys
-still require qualification before a full Alphalens migration claim.
+The four direct table functions use the same native report statistics:
+
+```python
+adapter_factor_table = familiar_plots.plot_quantile_statistics_table(
+    adapter_clean, return_df=True,
+)
+adapter_information_table = familiar_plots.plot_information_table(adapter_ic, return_df=True)
+adapter_return_table = familiar_plots.plot_returns_table(
+    adapter_regression,
+    performance.mean_return_by_quantile(adapter_clean, demeaned=False)[0],
+    adapter_spread,
+    return_df=True,
+)
+adapter_turnover_table, adapter_rank_table = familiar_plots.plot_turnover_table(
+    {1: adapter_rank}, {1: pd.concat([adapter_membership], axis=1)}, return_df=True,
+)
+assert adapter_factor_table["count"].sum() == len(adapter_clean)
+assert adapter_information_table.shape == (2, 7)
+assert adapter_return_table.loc["beta", "1D"] == adapter_regression.loc["beta", "1D"]
+assert adapter_turnover_table.iloc[0, 0] == 0
+print("Familiar tables: original labels, actual counts and unmodified regression units")
+```
+
+`return_df=True` returns pandas tables; the default returns escaped HTML strings,
+or two strings for turnover. Display them with `IPython.display.HTML` in a notebook
+or include them in a report. These functions do not reproduce terminal printouts
+or Matplotlib artists. Alpha and beta retain their supplied units; only the supplied
+quantile means and spread convert to bps. The return-table `reference_version`
+labels the caller's existing spread convention without rescaling it. Native IC
+summaries omit missing dates separately per column. Unlike frozen 0.4.6, a missing
+IC does not invalidate the remaining dates' inference. Constant and empty samples
+keep unavailable inference rather than reporting infinite significance.
+
+Direct cumulative, spread and persistence figures retain exact sub-millisecond
+timestamps with labelled observation-order axes and exact timestamps on hover.
+Distinct nanosecond keys are not passed through JavaScript's date conversion.
+Group titles wrap, horizons/quantiles remain visible in legends, and supplied
+mean/std event figures keep unknown deviations separate from known zero deviations.
+These checks do not yet qualify the fourth original Alphalens/Pyfolio notebook or
+all reference options as a full Alphalens migration.
 
 ### Run preserved original Alphalens notebooks
 
@@ -1996,6 +2034,11 @@ average = familiar_events.average_cumulative_return_by_quantile(
 assert aligned.shape == (3, 3)
 assert average.loc[(1, "mean")].tolist() == [55.0, 55.0, 55.0]
 assert average.loc[(1, "std")].tolist() == [0.0, 0.0, 0.0]
+event_plot = familiar_plots.plot_quantile_average_cumulative_return(average, std_bar=True)
+assert len(event_plot.data) == 2
+event_plot.write_html("familiar_event_paths.html", include_plotlyjs=True)
+event_bins = familiar_plots.plot_events_distribution(event_input, num_bars=4)
+assert sum(event_bins.data[0].y) == len(event_input)
 print("Familiar event paths: observed clocks, date means and supplied levels retained")
 ```
 
@@ -2019,6 +2062,15 @@ analysis deliberately retains individual event multiplicity as described below.
 Missing assets, invalid clocks and a sample with no event on the value clock
 raise rather than inventing paths. These adapters do not perform calendar-grid
 validation or convert supplied levels into event-zero abnormal returns.
+`plot_quantile_average_cumulative_return` consumes the returned mean/std table
+directly. Use `by_quantile=True` for separate figures and select one group before
+plotting a grouped table. Ordinates follow the reference's bps convention, even
+when the caller supplied levels. Error bars show the supplied sample deviation,
+not SE, confidence coverage or an inferred number of paths. Event distributions
+reuse elapsed-time bins, count nonmissing supplied event values and retain empty
+bins. Numbered bin labels keep phone-sized reports readable; exact starts remain
+on hover. A one-instant sample has one bin instead of an invalid zero-frequency
+grouping. Windows too fine for the supplied timestamp resolution raise explicitly.
 
 For a price-produced panel with dynamic groups and buckets, run the existing
 migration example with an explicit task:

@@ -8,10 +8,12 @@ No factor sample, asset count or uncertainty is inferred from a summary table.
 from __future__ import annotations
 
 from html import escape
+from textwrap import wrap
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from ml4t.diagnostic.metrics.ic_inference import compute_ic_summary_stats
 
@@ -21,6 +23,12 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.results.signal_results import SignalICResult
 
 __all__ = [
+    "plot_returns_table",
+    "plot_turnover_table",
+    "plot_information_table",
+    "plot_quantile_statistics_table",
+    "plot_quantile_average_cumulative_return",
+    "plot_events_distribution",
     "plot_ic_ts",
     "plot_ic_hist",
     "plot_ic_qq",
@@ -36,6 +44,229 @@ __all__ = [
 ]
 
 
+def _table_output(frame: pd.DataFrame, return_df: bool) -> pd.DataFrame | str:
+    if not isinstance(return_df, bool | np.bool_):
+        raise TypeError("return_df must be boolean")
+    return frame if return_df else frame.to_html(escape=True)
+
+
+def _available_mean(values: pd.Series) -> float:
+    from ml4t.diagnostic.signal.quantile import _sample_return_statistics
+
+    return _sample_return_statistics(values.dropna().to_numpy(dtype=float))[0]
+
+
+def plot_returns_table(
+    alpha_beta: pd.DataFrame,
+    mean_ret_quantile: pd.DataFrame,
+    mean_ret_spread_quantile: pd.Series | pd.DataFrame,
+    return_df: bool = False,
+    *,
+    reference_version: str = "0.5.0",
+) -> pd.DataFrame | str:
+    """Render supplied regression/return statistics without changing their exposure.
+
+    Alpha and beta keep their original units. Only supplied quantile means and
+    spreads convert to bps. The profile labels the already-computed spread; it
+    does not rescale it. Defaults return HTML, not a Matplotlib table or printout.
+    """
+    from ml4t.diagnostic.compat.alphalens.utils import _profile
+
+    profile = _profile(reference_version)
+    frame = alpha_beta.copy(deep=True)
+    frame.loc["Mean Period Wise Return Top Quantile (bps)"] = mean_ret_quantile.iloc[-1] * 10000
+    frame.loc["Mean Period Wise Return Bottom Quantile (bps)"] = mean_ret_quantile.iloc[0] * 10000
+    label = "bps, 100% gross" if profile == "0.5.0" else "bps"
+    mean = (
+        mean_ret_spread_quantile.apply(_available_mean)
+        if isinstance(mean_ret_spread_quantile, pd.DataFrame)
+        else _available_mean(mean_ret_spread_quantile)
+    )
+    frame.loc[f"Mean Period Wise Spread ({label})"] = mean * 10000
+    return _table_output(frame, return_df)
+
+
+def plot_turnover_table(
+    autocorrelation_data: dict,
+    quantile_turnover: dict,
+    return_df: bool = False,
+) -> tuple[pd.DataFrame | str, pd.DataFrame | str]:
+    """Render finite dated membership/rank means; missing lags stay unavailable."""
+    turnover = pd.DataFrame()
+    for period in sorted(quantile_turnover):
+        for quantile, values in quantile_turnover[period].items():
+            turnover.loc[f"Quantile {quantile} Mean Turnover ", f"{period}D"] = _available_mean(
+                values
+            )
+    rank = pd.DataFrame()
+    for period, values in autocorrelation_data.items():
+        rank.loc["Mean Factor Rank Autocorrelation", f"{period}D"] = _available_mean(values)
+    return _table_output(turnover, return_df), _table_output(rank, return_df)
+
+
+def plot_information_table(
+    ic_data: pd.Series | pd.DataFrame, return_df: bool = False
+) -> pd.DataFrame | str:
+    """Reuse native IC report statistics, omitting each column's missing dates.
+
+    Constant/empty samples retain unavailable inference. Unlike the frozen
+    reference, one missing IC does not invalidate all of its column's inference.
+    """
+    from ml4t.diagnostic.signal.information import _information_statistics
+
+    frame = ic_data.to_frame() if isinstance(ic_data, pd.Series) else ic_data
+    fields = {
+        "IC Mean": "mean_ic",
+        "IC Std.": "std_ic",
+        "Risk-Adjusted IC": "risk_adjusted_ic",
+        "t-stat(IC)": "t_stat",
+        "p-value(IC)": "p_value",
+        "IC Skew": "skew",
+        "IC Kurtosis": "kurtosis",
+    }
+    if frame.empty:
+        table = pd.DataFrame(index=frame.columns, columns=list(fields), dtype=float)
+    else:
+        long = pl.concat(
+            pl.from_pandas(
+                pd.DataFrame(
+                    {
+                        "return_column": str(index),
+                        "ic": frame[column].to_numpy(dtype=float, na_value=np.nan),
+                    }
+                )
+            )
+            for index, column in enumerate(frame)
+        )
+        summary = _information_statistics(long).to_pandas()
+        table = pd.DataFrame(
+            {label: summary[key].to_numpy() for label, key in fields.items()}, index=frame.columns
+        )
+    return _table_output(table, return_df)
+
+
+def plot_quantile_statistics_table(
+    factor_data: pd.DataFrame, return_df: bool = False
+) -> pd.DataFrame | str:
+    """Use shared scored-bucket statistics; counts refer to actual supplied scores."""
+    from ml4t.diagnostic.signal.event_study import _factor_statistics
+
+    data = factor_data[["factor", "factor_quantile"]].dropna(subset="factor_quantile")
+    native = pl.from_pandas(
+        data.rename(columns={"factor_quantile": "quantile"}).reset_index(drop=True)
+    )
+    summary = _factor_statistics(native, "factor").to_pandas().set_index("quantile")
+    summary.index.name = "factor_quantile"
+    summary = summary.rename(columns={"count_percent": "count %"})
+    summary["count"] = summary["count"].astype("int64")
+    return _table_output(summary, return_df)
+
+
+def plot_quantile_average_cumulative_return(
+    avg_cumulative_returns: pd.DataFrame,
+    by_quantile: bool = False,
+    std_bar: bool = False,
+    title: str | None = None,
+    ax: Any = None,
+) -> go.Figure | list[go.Figure]:
+    """Render supplied mean/std paths in bps without inventing events or counts."""
+    import plotly.graph_objects as go
+
+    _axes(ax)
+    if not all(isinstance(flag, bool | np.bool_) for flag in (by_quantile, std_bar)):
+        raise TypeError("by_quantile and std_bar must be boolean")
+    if avg_cumulative_returns.index.nlevels != 2:
+        raise ValueError("select one group before plotting quantile mean/std paths")
+    buckets = (
+        avg_cumulative_returns.index.get_level_values("factor_quantile").unique().sort_values()
+    )
+    figures = []
+    for selected in ([bucket] for bucket in buckets) if by_quantile else [buckets]:
+        figure = _figure(
+            title
+            or (
+                f"Quantile {selected[0]}: average path" if by_quantile else "Average quantile paths"
+            ),
+            "Mean return (bps)",
+        )
+        for position, bucket in enumerate(selected):
+            color = figure.layout.colorway[position % len(figure.layout.colorway)]
+            mean = avg_cumulative_returns.loc[(bucket, "mean")] * 10000
+            figure.add_trace(
+                go.Scatter(
+                    x=list(mean.index),
+                    y=mean.tolist(),
+                    name=escape(f"Quantile {bucket}"),
+                    mode="lines+markers",
+                    line_color=color,
+                    marker_color=color,
+                    legendgroup=str(bucket),
+                    connectgaps=False,
+                    meta={"role": "mean"},
+                )
+            )
+            if std_bar:
+                std = avg_cumulative_returns.loc[(bucket, "std")] * 10000
+                defined = mean.notna() & std.notna()
+                if (std.dropna() < 0).any():
+                    raise ValueError("sample deviations must be nonnegative")
+                figure.add_trace(
+                    go.Scatter(
+                        x=list(mean.index[defined]),
+                        y=mean[defined].tolist(),
+                        name="Sample std",
+                        mode="markers",
+                        marker_opacity=0,
+                        showlegend=False,
+                        error_y={
+                            "type": "data",
+                            "array": std[defined].tolist(),
+                            "visible": True,
+                            "color": color,
+                        },
+                        legendgroup=str(bucket),
+                        meta={"role": "sample_std"},
+                    )
+                )
+        figure.add_vline(x=0, line_dash="dot")
+        figure.update_layout(
+            meta={
+                "units": "bps",
+                "counts": "unavailable",
+                "uncertainty": "supplied sample std, not SE or CI",
+            }
+        )
+        figure.update_xaxes(title="Observation offset")
+        figures.append(figure)
+    return figures if by_quantile else figures[0]
+
+
+def plot_events_distribution(events: pd.Series, num_bars: int = 50, ax: Any = None) -> go.Figure:
+    """Reuse elapsed event bins, including empty bins and exact timestamp labels."""
+    import plotly.graph_objects as go
+
+    from ml4t.diagnostic.signal.event_study import _elapsed_event_bins
+
+    _axes(ax)
+    if not isinstance(events, pd.Series):
+        raise TypeError("events must be a pandas Series with a date index level")
+    dates = pd.DatetimeIndex(events.index.get_level_values("date"))
+    counts, _, width = _elapsed_event_bins(pd.Series(events.to_numpy(), index=dates), num_bars)
+    figure = _figure("Distribution of events", "Number of events")
+    figure.add_trace(go.Bar(x=_dates(counts.index), y=counts.tolist(), name="Events"))
+    _ordinal_time_axis(figure, counts.index, title="Elapsed bin (start on hover)")
+    figure.update_yaxes(dtick=1)
+    figure.update_layout(
+        meta={
+            **dict(figure.layout.meta or {}),
+            "bin_width_ns": int(width.value),
+            "units": "supplied nonmissing event count",
+            "calendar_validation": "not performed",
+        }
+    )
+    return figure
+
+
 def _axes(ax: Any) -> None:
     if ax is not None:
         raise TypeError(
@@ -45,15 +276,58 @@ def _axes(ax: Any) -> None:
 
 def _finish(figure: go.Figure) -> go.Figure:
     figure.update_layout(width=None, autosize=True, height=500, font_size=14, title_font_size=16)
+    figure.update_xaxes(title_font_size=14, tickfont_size=14)
+    figure.update_yaxes(title_font_size=14, tickfont_size=14)
     for annotation in figure.layout.annotations:
         annotation.font.size = 13
     return figure
 
 
 def _figure(title: str, ylabel: str) -> go.Figure:
-    from ml4t.diagnostic.visualization.core import create_base_figure
+    from ml4t.diagnostic.visualization.core import create_base_figure, get_theme_config
 
-    return _finish(create_base_figure(title=escape(title), yaxis_title=ylabel))
+    figure = _finish(create_base_figure(title=_title(title), yaxis_title=ylabel))
+    figure.update_layout(
+        showlegend=True,
+        colorway=get_theme_config()["colorway"],
+        legend={"orientation": "h", "y": -0.25, "x": 0, "font_size": 14},
+        margin={"l": 65, "r": 20, "t": 65, "b": 120},
+    )
+    return figure
+
+
+def _title(value: str) -> str:
+    return "<br>".join(escape(line) for line in wrap(value, width=30, break_on_hyphens=False))
+
+
+def _ordinal_time_axis(figure: go.Figure, index: pd.Index, *, title: str) -> None:
+    dates = _dates(index)
+    positions = np.unique(np.linspace(0, len(dates) - 1, min(3, len(dates))).astype(int))
+    figure.update_xaxes(
+        type="category",
+        categoryorder="array",
+        categoryarray=dates,
+        tickmode="array",
+        tickvals=[dates[position] for position in positions],
+        ticktext=[str(position + 1) for position in positions],
+        title_text=title,
+        tickangle=0,
+        automargin=True,
+    )
+    figure.update_traces(
+        hovertemplate="Timestamp %{x}<br>Value %{y}<extra>%{fullData.name}</extra>"
+    )
+    figure.update_layout(
+        meta={
+            **dict(figure.layout.meta or {}),
+            "time_axis": "labelled observation order; exact timestamp on hover",
+        }
+    )
+
+
+def _precise_time_axis(figure: go.Figure, index: pd.Index) -> None:
+    if isinstance(index, pd.DatetimeIndex) and (index.as_unit("ns").asi8 % 1_000_000 != 0).any():
+        _ordinal_time_axis(figure, index, title="Observation (time on hover)")
 
 
 def _dates(index: pd.Index) -> list:
@@ -179,7 +453,11 @@ def plot_quantile_returns_bar(
         for group, sample in mean_ret_by_q.groupby(level="group", observed=True):
             figure = plot_quantile_returns_bar(sample.droplevel("group"))
             _limits(figure, mean_ret_by_q, ylim_percentiles)
-            figure.update_layout(title=escape(f"Mean quantile returns: {group}"))
+            figure.update_layout(
+                title_text=_title(f"Mean quantile returns: {group}"),
+                title_font_size=16,
+                margin_t=85,
+            )
             figures.append(figure)
         return figures
     figure = _figure("Mean return by factor quantile", "Mean return (bps)")
@@ -290,6 +568,7 @@ def plot_mean_quantile_returns_spread_time_series(
             "inference": "descriptive SE, not confidence interval",
         }
     )
+    _precise_time_axis(figure, values.index)
     return figure
 
 
@@ -319,6 +598,7 @@ def plot_cumulative_returns(
             "accounting": "supplied observation-order product",
         }
     )
+    _precise_time_axis(figure, wealth.index)
     return figure
 
 
@@ -354,6 +634,7 @@ def plot_cumulative_returns_by_quantile(
             "scale": "linear presentation; no synthetic holdings",
         }
     )
+    _precise_time_axis(figure, wealth.index)
     return figure
 
 
@@ -376,6 +657,7 @@ def plot_top_bottom_quantile_turnover(
                 mode="lines",
             )
         )
+    _precise_time_axis(figure, quantile_turnover.index)
     return figure
 
 
@@ -400,4 +682,5 @@ def plot_factor_rank_auto_correlation(
     mean = factor_autocorrelation.mean()
     if np.isfinite(mean):
         figure.add_hline(y=mean)
+    _precise_time_axis(figure, factor_autocorrelation.index)
     return figure

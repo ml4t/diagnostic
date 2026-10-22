@@ -125,41 +125,8 @@ def _aggregate_ic(data: pl.DataFrame, keys: list[str]) -> pl.DataFrame:
     )
 
 
-def analyze_signal_information(
-    panel: PreparedSignalPanel,
-    *,
-    group_adjust: bool = False,
-    by_group: bool = False,
-    method: str = "spearman",
-    min_obs: int = 2,
-    date_grid: pl.DataFrame | pd.DataFrame | None = None,
-) -> SignalInformationResult:
-    """Compose global and optional group ICs, naive inference and civil-month means.
-
-    Group adjustment demeans outcomes before correlations. Report grouping adds
-    group ICs without replacing the global sample. Counts and undefined outcomes
-    come from the existing IC kernel. Supplied horizon labels do not declare time
-    units, calendars or annualization. Monthly grouping uses supplied civil dates.
-    An explicit date_grid retains requested absent dates with unknown global IC;
-    by-group means still use actual scored group dates. No grid is inferred.
-    """
-    from ml4t.diagnostic.signal.panel import PreparedSignalPanel
-
-    if not isinstance(panel, PreparedSignalPanel):
-        raise TypeError("panel must be an owned PreparedSignalPanel")
-    if not isinstance(by_group, bool):
-        raise ValueError("by_group must be boolean")
-    data = panel.data
-    if data.is_empty():
-        raise ValueError("information analysis requires at least one prepared observation")
-    ic = panel.ic_by_date(
-        group_adjust=group_adjust, method=method, min_obs=min_obs, date_grid=date_grid
-    )
-    groups = (
-        panel.ic_by_date(group_adjust=group_adjust, by_group=True, method=method, min_obs=min_obs)
-        if by_group
-        else pl.DataFrame(schema={**ic.schema, "group": pl.String})
-    )
+def _information_statistics(ic: pl.DataFrame) -> pl.DataFrame:
+    """Reduce real per-horizon IC observations for owned reports and adapters."""
     rows = []
     for part in ic.partition_by("return_column", maintain_order=True):
         clean = part["ic"].drop_nulls().to_numpy()
@@ -203,7 +170,45 @@ def analyze_signal_information(
         "skew",
         "kurtosis",
     ]
-    summary_table = pl.DataFrame(rows, schema_overrides=dict.fromkeys(float_columns, pl.Float64))
+    return pl.DataFrame(rows, schema_overrides=dict.fromkeys(float_columns, pl.Float64))
+
+
+def analyze_signal_information(
+    panel: PreparedSignalPanel,
+    *,
+    group_adjust: bool = False,
+    by_group: bool = False,
+    method: str = "spearman",
+    min_obs: int = 2,
+    date_grid: pl.DataFrame | pd.DataFrame | None = None,
+) -> SignalInformationResult:
+    """Compose global and optional group ICs, naive inference and civil-month means.
+
+    Group adjustment demeans outcomes before correlations. Report grouping adds
+    group ICs without replacing the global sample. Counts and undefined outcomes
+    come from the existing IC kernel. Supplied horizon labels do not declare time
+    units, calendars or annualization. Monthly grouping uses supplied civil dates.
+    An explicit date_grid retains requested absent dates with unknown global IC;
+    by-group means still use actual scored group dates. No grid is inferred.
+    """
+    from ml4t.diagnostic.signal.panel import PreparedSignalPanel
+
+    if not isinstance(panel, PreparedSignalPanel):
+        raise TypeError("panel must be an owned PreparedSignalPanel")
+    if not isinstance(by_group, bool):
+        raise ValueError("by_group must be boolean")
+    data = panel.data
+    if data.is_empty():
+        raise ValueError("information analysis requires at least one prepared observation")
+    ic = panel.ic_by_date(
+        group_adjust=group_adjust, method=method, min_obs=min_obs, date_grid=date_grid
+    )
+    groups = (
+        panel.ic_by_date(group_adjust=group_adjust, by_group=True, method=method, min_obs=min_obs)
+        if by_group
+        else pl.DataFrame(schema={**ic.schema, "group": pl.String})
+    )
+    summary_table = _information_statistics(ic)
     monthly = _aggregate_ic(
         ic.with_columns(
             pl.col("date").dt.year().alias("year"), pl.col("date").dt.month().alias("month")
