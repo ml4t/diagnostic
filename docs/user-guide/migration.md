@@ -632,6 +632,27 @@ copying frozen zero-return or zero-beta behavior. Use the
 [owned native regression](#inspect-factor-alpha-and-beta-on-the-same-universe)
 to inspect paired observations, finite counts, rank and unavailability reasons.
 
+The overview notebook's direct persistence calls also use the native membership
+and full-date rank kernels:
+
+```python
+adapter_membership = performance.quantile_turnover(adapter_clean["factor_quantile"], 1)
+adapter_rank = performance.factor_rank_autocorrelation(adapter_clean, period=1)
+assert np.allclose(adapter_membership.iloc[1:], 0)
+assert np.allclose(adapter_rank.iloc[1:], 1)
+print("Familiar persistence: actual bucket membership and full-date ranks")
+```
+
+With a declared index frequency, shifts count positions on that grid. Without
+one, the corrected profile uses observed bucket dates for turnover and observed
+factor dates for rank correlation. The explicit frozen `reference_version="0.4.6"`
+profile inserts its historical daily grid. Missing comparisons remain unknown.
+Zero and negative legacy shifts retain self and future comparisons; they do not
+establish causal features. Native public persistence still requires positive lags.
+Pandas frequency metadata and all-unavailable object dtype follow the legacy
+sparse/full-grid alignment; native typed counts and statuses remain available
+through the separately named panel methods.
+
 IC preserves legacy per-column NaN propagation. Quantile means instead retain
 each supplied outcome's own available sample and give defined date means equal
 weight. Raw `compute_forward_returns` plus `quantize_factor` tables may retain

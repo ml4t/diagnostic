@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping, Sequence
+from numbers import Integral
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,7 @@ from ml4t.diagnostic.signal.positions import (
 )
 from ml4t.diagnostic.signal.quantile import _quantile_mean_spread, compute_quantile_statistics
 from ml4t.diagnostic.signal.signal_ic import compute_signal_ic
+from ml4t.diagnostic.signal.turnover import _quantile_turnover, _rank_autocorrelation
 from ml4t.diagnostic.utils.legacy_time import add_custom_calendar_timedelta
 
 __all__ = [
@@ -40,6 +42,8 @@ __all__ = [
     "factor_weights",
     "factor_returns",
     "factor_alpha_beta",
+    "quantile_turnover",
+    "factor_rank_autocorrelation",
     "cumulative_returns",
     "positions",
     "factor_cumulative_returns",
@@ -179,6 +183,79 @@ def factor_alpha_beta(
         index=["Ann. alpha", "beta"],
         dtype=float,
     )
+
+
+def _persistence_grid(series: pd.Series, profile: str) -> pd.DatetimeIndex | None:
+    dates = series.index.get_level_values("date")
+    frequency = series.index.levels[0].freq
+    if frequency is None and profile == "0.4.6":
+        frequency = pd.offsets.Day()
+    return (
+        pd.date_range(dates.min(), dates.max(), freq=frequency, name="date")
+        if frequency is not None and len(dates)
+        else None
+    )
+
+
+def _legacy_lag(period: int) -> int:
+    if isinstance(period, bool | np.bool_) or not isinstance(period, Integral):
+        raise TypeError("period must be an integer observation lag")
+    return int(period)
+
+
+def quantile_turnover(
+    quantile_factor: pd.Series,
+    quantile: int,
+    period: int = 1,
+    *,
+    reference_version: str = "0.5.0",
+) -> pd.Series:
+    """Adapt the shared membership kernel on the reference's bucket-specific clock.
+
+    With no declared frequency, corrected references shift observed bucket dates;
+    the frozen profile inserts its historical daily grid. Zero/negative shifts
+    retain the original self/future comparisons; native public lags stay positive.
+    """
+    profile, lag = _profile(reference_version), _legacy_lag(period)
+    keys = _Keys(quantile_factor)
+    selected = keys.original[keys.original == quantile]
+    if selected.empty:
+        return pd.Series([], index=selected.index.levels[0][:0], name=quantile, dtype=float)
+    data = pl.from_pandas(keys.encode(selected.rename("quantile").to_frame()).reset_index())
+    grid = _persistence_grid(selected, profile)
+    output = _quantile_turnover(
+        data,
+        lags=[lag],
+        quantiles=[quantile],
+        date_grid=None if grid is None else grid.to_frame(index=False),
+    ).to_pandas()
+    index = grid if grid is not None else pd.DatetimeIndex(output["date"], name="date")
+    values = output["turnover"].to_numpy()
+    defined = ~np.isnan(values)
+    # Preserve pandas' sparse/full-grid alignment metadata, without redoing membership.
+    sparse = pd.Series(
+        values[defined], index=index[defined], dtype=object if not defined.any() else float
+    )
+    return (sparse / pd.Series(1.0, index=index)).rename(quantile)
+
+
+def factor_rank_autocorrelation(
+    factor_data: pd.DataFrame,
+    period: int = 1,
+    *,
+    reference_version: str = "0.5.0",
+) -> pd.Series:
+    """Adapt full-date average ranks and paired-asset correlation without new analytics."""
+    profile, lag = _profile(reference_version), _legacy_lag(period)
+    keys, data = _native(factor_data)
+    grid = _persistence_grid(keys.original, profile)
+    output = _rank_autocorrelation(
+        data,
+        lags=[lag],
+        date_grid=None if grid is None else grid.to_frame(index=False),
+    ).to_pandas()
+    index = grid if grid is not None else pd.DatetimeIndex(output["date"], name="date")
+    return pd.Series(output["autocorrelation"].to_numpy(), index=index, name=period)
 
 
 def cumulative_returns(returns: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:

@@ -36,6 +36,7 @@ PAGES = {
         "Alphalens information adapter preserves the prepared sample and group options",
         "Alphalens statistical adapters: IC and explicit spread exposure checked",
         "Familiar factor regression: same-universe beta and compounded annual alpha",
+        "Familiar persistence: actual bucket membership and full-date ranks",
         "Familiar turnover and event sheets retain native samples and supplied levels",
         "Owned signal returns preserve explicit scales and unavailable per-date errors",
         "Owned signal returns report: raw wealth, dated distributions and descriptive errors",
