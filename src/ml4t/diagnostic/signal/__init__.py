@@ -56,6 +56,11 @@ from ml4t.diagnostic.signal.portfolio import (
     compute_factor_returns,
     compute_factor_weights,
 )
+from ml4t.diagnostic.signal.portfolio_inputs import (
+    SyntheticPortfolioInputs,
+    build_factor_portfolio_inputs,
+)
+from ml4t.diagnostic.signal.positions import SyntheticPositionsResult, compute_factor_positions
 from ml4t.diagnostic.signal.quantile import (
     compute_quantile_returns,
     compute_quantile_spread,
@@ -101,6 +106,10 @@ __all__ = [
     "PreparedSignalPanel",
     "MaxLossExceededError",
     "compute_factor_weights",
+    "compute_factor_positions",
+    "SyntheticPositionsResult",
+    "SyntheticPortfolioInputs",
+    "build_factor_portfolio_inputs",
     "compute_factor_returns",
     "compute_factor_cumulative_returns",
     "compute_factor_alpha_beta",

@@ -424,6 +424,7 @@ jobs:
           --with "alphalens-reloaded==0.4.6" --with "empyrical-reloaded==0.7.0" --with playwright
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q -n auto --timeout 120 tests/test_signal/
+          tests/test_compat/test_alphalens_portfolio.py
           tests/test_compat/test_alphalens_information_sheet.py
           tests/test_compat/test_alphalens_statistics.py
           tests/test_compat/test_alphalens_event_turnover_sheets.py
@@ -450,6 +451,9 @@ jobs:
           tests/test_signal/test_signal_event_study.py
           tests/test_signal/test_signal_event_study_notebook.py
           tests/test_signal/test_signal_returns_report.py
+          tests/test_signal/test_signal_composed_report.py
+          tests/test_compat/test_alphalens_portfolio.py
+          tests/test_signal/test_signal_portfolio_interchange.py
           tests/test_signal/test_signal_outcome_ingestion.py
           tests/test_signal/test_signal_price_preparation.py
       - name: Run aligned event migration from installed wheel

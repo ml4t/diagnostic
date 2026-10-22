@@ -28,6 +28,8 @@ from ml4t.diagnostic.utils.validation import (
 if TYPE_CHECKING:
     from ml4t.diagnostic.signal.events import AlignedEventResult, EventReturnsResult
     from ml4t.diagnostic.signal.factor_regression import FactorAlphaBetaResult
+    from ml4t.diagnostic.signal.portfolio_inputs import SyntheticPortfolioInputs
+    from ml4t.diagnostic.signal.positions import SyntheticPositionsResult
     from ml4t.diagnostic.signal.result import SignalResult
 
 
@@ -380,6 +382,108 @@ class PreparedSignalPanel:
             factor_col=self.factor_col,
             date_col=self.date_col,
             asset_col=self.asset_col,
+        )
+
+    def positions(
+        self,
+        *,
+        return_column: str,
+        expiries: pl.DataFrame | pd.DataFrame | None = None,
+        expiry_col: str = "requested_exit_time",
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+        quantiles: Sequence[int] | None = None,
+        groups: Sequence[str] | None = None,
+    ) -> SyntheticPositionsResult:
+        """Construct mathematical holdings from explicit selected outcome endpoints.
+
+        Requested endpoints are not actual executions. Wide supplied returns
+        without endpoint keys require an explicit expiries table. Calendar and
+        FeedSpec declarations are retained, never used to invent holding times.
+        """
+        from ml4t.diagnostic.signal.positions import compute_factor_positions
+
+        if return_column not in self.metadata["return_columns"]:
+            raise ValueError("return_column must select this panel's supplied return columns")
+        if expiries is None:
+            expiries = self.outcome_data
+            if expiries is None or expiry_col not in expiries.columns:
+                raise ValueError("positions require explicit expiries or outcome expiry keys")
+            expiries = expiries.filter(
+                pl.col(self.metadata["outcomes"]["horizon_col"]) == return_column
+            )
+        contract = self.metadata
+        result = compute_factor_positions(
+            self.data,
+            expiries=expiries,
+            expiry_col=expiry_col,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            quantiles=quantiles,
+            groups=groups,
+            factor_col=self.factor_col,
+            date_col=self.date_col,
+            asset_col=self.asset_col,
+            feed_spec=contract["feed_spec"],
+            **(
+                {"calendar": contract["calendar_argument"]}
+                if "calendar_argument" in contract
+                else {}
+            ),
+        )
+
+        metadata = result.metadata
+        names = ["timestamp_col", "entity_col", "feed_spec", "calendar", "calendar_source"]
+        if "calendar_argument" in contract:
+            names.append("calendar_argument")
+        metadata["input_contract"] = {key: contract[key] for key in names}
+        metadata["return_column"] = return_column
+        return replace(result, _metadata=json.dumps(metadata, allow_nan=False))
+
+    def to_portfolio_inputs(
+        self,
+        *,
+        return_column: str,
+        expiries: pl.DataFrame | pd.DataFrame | None = None,
+        expiry_col: str = "requested_exit_time",
+        demeaned: bool = True,
+        group_adjust: bool = False,
+        equal_weight: bool = False,
+        quantiles: Sequence[int] | None = None,
+        groups: Sequence[str] | None = None,
+        benchmark_column: str | None = "1D",
+        capital: float | None = None,
+        position_method: Literal["end_of_day", "legacy_event_sum"] = "end_of_day",
+        first_return: Literal["from_initial_wealth", "zero"] = "from_initial_wealth",
+    ) -> SyntheticPortfolioInputs:
+        """Compose synthetic holdings and daily supplied-outcome portfolio inputs.
+
+        Defaults retain end-of-day active holdings and the first wealth change
+        from initial wealth1. Legacy interchange is explicit: position_method
+        legacy_event_sum and first_return zero. No account execution is inferred.
+        """
+        from ml4t.diagnostic.signal.portfolio_inputs import build_factor_portfolio_inputs
+
+        positions = self.positions(
+            return_column=return_column,
+            expiries=expiries,
+            expiry_col=expiry_col,
+            demeaned=demeaned,
+            group_adjust=group_adjust,
+            equal_weight=equal_weight,
+            quantiles=quantiles,
+            groups=groups,
+        )
+        return build_factor_portfolio_inputs(
+            self.data,
+            positions=positions,
+            return_column=return_column,
+            benchmark_column=benchmark_column,
+            capital=capital,
+            position_method=position_method,
+            first_return=first_return,
         )
 
     def rank_autocorrelation(

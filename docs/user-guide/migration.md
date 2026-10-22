@@ -1531,8 +1531,120 @@ explicit `date_grid` reproduces a requested reference clock, including null
 holes, and labels `compounding_clock="explicit_grid"` instead of `"observed"`.
 Neither behavior validates sessions or bars. Compounding overlapping
 forward outcomes is a mathematical horizon-return path, not self-financing
-daily holdings. Capital, expiration accounting, cumulative quantile report
-panels and full Alphalens/Pyfolio report workflows remain separate accepted work.
+daily holdings. Explicit synthetic expiration accounting is available below;
+cumulative quantile report panels and complete Alphalens/Pyfolio report coverage
+remain separate accepted work.
+
+### Turn explicit expiries into synthetic portfolio inputs
+
+Unreleased after 0.1.9, `panel.positions()` consumes supplied endpoint keys and
+uses the existing factor-weight kernel. Group and bucket selections occur before
+sizing. Its owned `allocations`, `positions` and `timeline` retain each allocation
+ID, exact entry/expiry key, active count and exposure status. At each unique union
+event, every due allocation expires and coincident new entries are added before
+net-gross normalization. No active allocation, zero signal and offsetting active
+allocations are different states. Date labels remain dates; nanosecond instants
+are not rounded to Python microseconds.
+
+The native price and long-outcome routes already retain endpoints. Choose a
+supplied return column and, by default, `requested_exit_time`; a requested key is
+not evidence of an execution. Wide returns require an explicit expiry table:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.signal import prepare_signal_panel
+from ml4t.diagnostic.compat.alphalens import performance as al_performance
+
+portfolio_dates = pd.DatetimeIndex([
+    "2025-07-04T10:00Z", "2025-07-04T14:00Z", "2025-07-07T10:00Z",
+])
+portfolio_index = pd.MultiIndex.from_product(
+    [portfolio_dates, ["A", "B"]], names=["date", "asset"],
+)
+portfolio_factor = pd.Series([1., 3.] * 3, index=portfolio_index, name="factor")
+portfolio_forward = pd.DataFrame(
+    {"2D": [.1, .1, .2, .2, .05, .05]}, index=portfolio_index,
+)
+portfolio_panel = prepare_signal_panel(
+    portfolio_factor, portfolio_forward, quantiles=2, calendar=None,
+)
+portfolio_expiries = portfolio_factor.reset_index()[["date", "asset"]]
+portfolio_expiries["requested_exit_time"] = portfolio_expiries["date"] + pd.Timedelta("2D")
+portfolio_native = portfolio_panel.to_portfolio_inputs(
+    return_column="2D", expiries=portfolio_expiries, demeaned=False,
+)
+np.testing.assert_allclose(portfolio_native.returns["return"], [.32, 0., 0., .05])
+portfolio_analysis = portfolio_native.analyze(periods_per_year=365)
+assert portfolio_analysis.compute_summary_stats().total_return > 0
+
+# Keep the legacy call while migrating imports, without installing Alphalens.
+portfolio_legacy_table = portfolio_panel.data.to_pandas().rename(
+    columns={"quantile": "factor_quantile"},
+).set_index(["date", "asset"])
+legacy_returns, legacy_positions, legacy_benchmark = al_performance.create_pyfolio_input(
+    portfolio_legacy_table, "2D", long_short=False, calendar=None,
+)
+np.testing.assert_allclose(legacy_returns, [0., 0., 0., .05])
+assert legacy_benchmark is None  # No supplied1Dbenchmark column.
+```
+
+For reports with the `viz` extra, call
+`portfolio_analysis.create_tear_sheet().save_html("synthetic-portfolio.html")`.
+This uses the existing portfolio report and caller-selected annualization scale,
+not another metric engine. Returns here are civil-day observations, including
+zero weekend changes; the two-day holding duration does not set annualization.
+Run the complete price-to-preparation-to-holdings example with
+`uv run python examples/signal_panel_cleaning.py`, optionally `--plots` or
+`--plots --engineer-outcomes` with the declared optional dependencies. The latter
+consumes actual native Engineer outcomes; ordinary use requires no producer package.
+
+The native daily defaults retain the final active holdings each day and the
+first wealth change from initial wealth one. Legacy interchange instead uses
+`position_method="legacy_event_sum"` and `first_return="zero"`. It daily-sums
+event weights and renormalizes: an empty Saturday bin becomes all cash, even
+when an allocation is active, and a partial-day Sunday allocation may remain
+invested in that day's event sum after its final expiry. These are Alphalens's
+mathematical conventions, not executed self-financing holdings. Cash is
+`1 - net asset weight`; `capital=` scales holdings by the observed wealth path.
+Marks beyond the last return date remain unknown with capital, not zero dollars.
+The benchmark uses the original full universe before strategy selections,
+with positive equal-sign weights after taking absolute factors; zero factors
+receive zero weight. Its independent full-universe date range is retained even
+when a strategy selection starts later. `observations` retains the original
+pre-resampling outcomes, finite counts and wealth. No transactions, fees or
+slippage are fabricated.
+
+The adapters also provide `factor_weights`, `factor_returns` (including
+`by_asset=True`), `cumulative_returns`, `positions`, `factor_positions` and
+`factor_cumulative_returns`. Corrected Alphalens 0.5.0 comparisons exercise actual
+weights, contributions, events, daily returns, cash, benchmark and capital,
+including all long-short/group-neutral/equal-weight combinations and selections.
+The separate frozen 0.4.6 fixture exposes duplicate coincident expiry keys and
+single-pop removal; neither defect is reproduced, even with
+`reference_version="0.4.6"`. A test mutating the actual native expiry producer
+to remove only one due allocation fails the independent active-set oracle.
+
+Native endpoints are never manufactured from a selector such as `custom` or
+`2D`. The legacy `positions(weights, period, freq=...)` adapter alone translates
+an explicit duration using its named pandas offset convention. Canonical
+`calendar=None`, including declared feed metadata, disables these offsets and
+uses elapsed duration; supplying `freq` simultaneously is rejected. Other calendar
+declarations remain provenance, not a claim of exchange-schedule validation.
+Pandas 2.3 versus 3 civil/elapsed Day differences described above still apply.
+Observed offset multiples such as `3B` remain material in the legacy convention:
+two declared offset days mean two such offsets, not an inferred two-session hold.
+The corrected reference itself rejects an inferred hourly/nanosecond offset in
+its daily-offset helper. That default error remains explicit; use `calendar=None`
+for the adapter's working elapsed-duration workflow, or supply actual endpoints
+through the native route. The tested reference `positions(..., freq=Day())`
+subday path remains available. No authoritative trading grid is inferred.
+The returned `SyntheticPortfolioInputs` owns Arrow/JSON tables and exports fresh
+Pyfolio-shaped tuples. Native asset IDs never collide with separate cash fields;
+the legacy wide export rejects an actual asset named `cash`, which that format reserves.
+
+This qualifies the synthetic allocation/interchange route, not every legacy
+report, account normalization, round-trip, attribution or capacity workflow.
 
 ### Retain the complete return-analysis sample before rendering
 

@@ -39,6 +39,34 @@ def _weight_flags(**options: bool) -> None:
             raise ValueError(f"{name} must be boolean")
 
 
+def _select_factor_sample(
+    values: pl.DataFrame,
+    quantiles: Sequence[int] | None,
+    groups: Sequence[str] | None,
+    quantile_col: str,
+    group_col: str,
+) -> pl.DataFrame:
+    from ml4t.diagnostic.signal._prepared import positive_count
+
+    for name, selection, column in [
+        ("quantiles", quantiles, quantile_col),
+        ("groups", groups, group_col),
+    ]:
+        if selection is not None:
+            if isinstance(selection, str | bytes):
+                raise ValueError(f"{name} must be a sequence, not a string")
+            try:
+                selected = list(selection)
+            except TypeError as exc:
+                raise ValueError(f"{name} must be a sequence") from exc
+            if name == "quantiles":
+                selected = [positive_count(value, "quantile") for value in selected]
+            if column not in values.columns:
+                raise ValueError(f"{name} selection requires column {column!r}")
+            values = values.filter(pl.col(column).is_in(selected))
+    return values
+
+
 def compute_factor_weights(
     data: pl.DataFrame | pd.DataFrame,
     *,
@@ -300,27 +328,10 @@ def compute_factor_cumulative_returns(
         representation, missing-return policy and observed compounding clock.
     """
     from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import _safe_cumprod
-    from ml4t.diagnostic.signal._prepared import positive_count
 
     if not isinstance(return_column, str) or not return_column:
         raise ValueError("return_column must name one supplied return column")
-    values = _signal_frame(data)
-    for name, selection, column in [
-        ("quantiles", quantiles, quantile_col),
-        ("groups", groups, group_col),
-    ]:
-        if selection is not None:
-            if isinstance(selection, str | bytes):
-                raise ValueError(f"{name} must be a sequence, not a string")
-            try:
-                selected = list(selection)
-            except TypeError as exc:
-                raise ValueError(f"{name} must be a sequence") from exc
-            if name == "quantiles":
-                selected = [positive_count(value, "quantile") for value in selected]
-            if column not in values.columns:
-                raise ValueError(f"{name} selection requires column {column!r}")
-            values = values.filter(pl.col(column).is_in(selected))
+    values = _select_factor_sample(_signal_frame(data), quantiles, groups, quantile_col, group_col)
     returns = compute_factor_returns(
         values,
         return_columns=[return_column],
