@@ -414,6 +414,7 @@ jobs:
             tests/test_compat/test_pyfolio_cone_plotting.py \
             tests/test_compat/test_pyfolio_stress_sheet.py \
             tests/test_compat/test_pyfolio_performance.py \
+            tests/test_compat/test_pyfolio_positions.py \
             tests/test_compat/test_pyfolio_return_plotting.py \
             tests/test_compat/test_pyfolio_returns_report.py \
             tests/test_visualization/test_pyfolio_returns_browser.py \

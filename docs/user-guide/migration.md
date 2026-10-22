@@ -3083,6 +3083,64 @@ methods and coverage below or above. Full positions-sheet composition, intraday 
 round trips, unqualified risk/report options and complete Alphalens/Pyfolio composition remain
 accepted work.
 
+#### Keep familiar position projections without changing native account defaults
+
+Unreleased after 0.1.9, `compat.pyfolio.pos` provides `get_percent_alloc`,
+`get_top_long_short_abs`, `get_max_median_position_concentration`,
+`get_long_short_pos`, `get_sector_exposures` and `extract_pos`. These adapters
+reuse the native holdings extrema, concentration, exposure and marked-value
+calculations. They retain pandas labels and original asset IDs, including
+input-column tie order for top positions. This is the numerical input layer
+for familiar reports, not qualification of the complete positions tear sheet.
+
+```python
+import pandas as pd
+from ml4t.diagnostic.compat import pyfolio as pf
+
+position_dates = pd.date_range("2025-02-03", periods=2, tz="UTC")
+position_values = pd.DataFrame(
+    {203: [100.0, -20.0], 101: [-40.0, 10.0], "cash": [140.0, -40.0]},
+    index=position_dates,
+)
+allocation = pf.pos.get_percent_alloc(position_values)
+long_short = pf.pos.get_long_short_pos(position_values)
+assert allocation.loc[position_dates[0], 203] == 0.5
+assert long_short.loc[position_dates[0], "short"] == -0.2
+assert allocation.loc[position_dates[1], 203] == 0.4
+assert long_short.loc[position_dates[1], "long"] == -0.2
+top_long, top_short, top_absolute = pf.pos.get_top_long_short_abs(position_values)
+assert top_absolute.index[0] == 203
+print("Familiar positions: original assets, signed NAV and per-metric missingness")
+```
+
+The negative-NAV row deliberately shows the familiar sign reversal. Native
+holdings results still require positive finite NAV for normalized fractions;
+their raw marked exposures remain available independently. Missing positions
+are omitted from a row sum, not globally replaced with zero: allocation keeps
+each missing cell, while `get_long_short_pos` leaves all ratios missing when
+account cash is missing. Concentration selects signs of the normalized
+allocation, which can differ from the marked-position sign at negative NAV.
+Empty concentration tables retain the reference's empty RangeIndex.
+
+Sector projections warn and exclude unmapped assets, matching the familiar
+workflow. They reject a sector literally named `cash`: Pyfolio 0.10.0 overwrites
+that sector with account cash, so 60 of holdings plus 40 of cash becomes only
+40. Use the [native sector result](#render-prepared-holdings-in-the-portfolio-dashboard)
+to retain both namespaces and unknown classifications.
+
+`extract_pos` consumes actual `sid`, `amount` and `last_sale_price` records and
+supplied cash, without inventing returns. Declared asset-object multipliers
+are honored without installing Zipline. Repeated date/asset records retain the
+reference's pivot-mean convention, not additive fills. The supplied cash clock
+must cover every position date; complete all-cash dates remain in the result
+with zero asset values. This corrects the reference's left join, which drops
+cash-only dates. Inputs remain unchanged, including the cash Series name and
+frequency metadata; the projected index has no inferred frequency, as in the
+reference. Absent or NaN marked cells use the familiar zero-filled projection;
+do not apply it to incomplete holdings. Missing cash instead remains unknown,
+not the reference's invented zero balance. This projection is not account
+replay or inferred portfolio NAV.
+
 ### Retain raw exposure when equity cannot normalize it
 
 For an actual `ml4t-backtest` result, use

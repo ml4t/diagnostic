@@ -3,7 +3,7 @@
 from importlib import import_module
 from typing import Any
 
-from . import capacity, perf_attrib, round_trips, tears, timeseries, txn, utils
+from . import capacity, perf_attrib, pos, round_trips, tears, timeseries, txn, utils
 
 
 def __getattr__(name: str) -> Any:
@@ -21,6 +21,7 @@ __all__ = [
     "capacity",
     "perf_attrib",
     "plotting",
+    "pos",
     "round_trips",
     "tears",
     "timeseries",

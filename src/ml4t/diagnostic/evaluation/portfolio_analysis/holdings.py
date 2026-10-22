@@ -45,24 +45,36 @@ class HoldingsAnalysisResult:
         zero-only assets. No NAV normalization or time weighting is applied.
         Ties sort by stable asset ID. Zero top returns a typed empty table.
         """
-        if isinstance(top, bool) or not isinstance(top, Integral):
-            raise TypeError("top must be a nonnegative integer")
-        if top < 0:
-            raise ValueError("top must be a nonnegative integer")
-        if side not in ("long", "short", "absolute"):
-            raise ValueError("side must be long, short or absolute")
-        values = pl.col("value")
-        extreme = {
-            "long": values.max(),
-            "short": values.min(),
-            "absolute": values.abs().max(),
-        }[side]
-        result = self.positions.group_by("asset").agg(extreme.alias("value"))
-        if side != "absolute":
-            result = result.filter(pl.col("value") > 0 if side == "long" else pl.col("value") < 0)
-        return result.sort(["value", "asset"], descending=[side != "short", False]).head(
-            min(int(top), result.height)
-        )
+        return _top_position_extrema(self.positions, top, side=side)
+
+
+def _top_position_extrema(
+    positions: pl.DataFrame, top: int, *, side: Literal["long", "short", "absolute"]
+) -> pl.DataFrame:
+    if isinstance(top, bool) or not isinstance(top, Integral):
+        raise TypeError("top must be a nonnegative integer")
+    if top < 0:
+        raise ValueError("top must be a nonnegative integer")
+    if side not in ("long", "short", "absolute"):
+        raise ValueError("side must be long, short or absolute")
+    values = pl.col("value")
+    extreme = {"long": values.max(), "short": values.min(), "absolute": values.abs().max()}[side]
+    result = positions.group_by("asset").agg(extreme.alias("value"))
+    if side != "absolute":
+        result = result.filter(pl.col("value") > 0 if side == "long" else pl.col("value") < 0)
+    return result.sort(
+        ["value", "asset"], descending=[side != "short", False], nulls_last=True
+    ).head(min(int(top), result.height))
+
+
+def _weight_concentration_aggregations(*, sign_column: str = "value") -> list[pl.Expr]:
+    values, weights = pl.col(sign_column), pl.col("nav_weight")
+    return [
+        weights.filter(values > 0).max().alias("max_long_weight"),
+        weights.filter(values > 0).median().alias("median_long_weight"),
+        weights.filter(values < 0).median().alias("median_short_weight"),
+        weights.filter(values < 0).min().alias("min_short_weight"),
+    ]
 
 
 def _exposure_aggregations(*, count_column: str = "value") -> list[pl.Expr]:
@@ -263,10 +275,7 @@ def analyze_holdings(
         .then(pl.col("gross_share").pow(2).sum())
         .otherwise(None)
         .alias("gross_hhi"),
-        pl.col("nav_weight").filter(values > 0).max().alias("max_long_weight"),
-        pl.col("nav_weight").filter(values > 0).median().alias("median_long_weight"),
-        pl.col("nav_weight").filter(values < 0).median().alias("median_short_weight"),
-        pl.col("nav_weight").filter(values < 0).min().alias("min_short_weight"),
+        *_weight_concentration_aggregations(),
     )
     timeline = timeline.join(concentration, on=keys, how="left", maintain_order="left")
     return HoldingsAnalysisResult(

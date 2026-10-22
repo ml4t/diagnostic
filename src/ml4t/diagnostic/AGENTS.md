@@ -21,6 +21,7 @@
 | [evaluation/](evaluation/AGENTS.md) | Core analysis workflows and statistical validation |
 | `compat.pyfolio.txn`, `compat.pyfolio.utils`, `compat.pyfolio.round_trips`, `compat.pyfolio.plotting` | Thin pandas transaction/Zipline-tuple, round-trip extraction and five-table statistics adapters, plus optional Plotly transaction charts over native calculations/inputs; no legacy runtime dependency |
 | `compat.pyfolio.perf_attrib` | Supplied dollar/fractional holdings attribution and component statistics over shared native kernels; uncovered assets retain the full account NAV denominator |
+| `compat.pyfolio.pos` | Familiar position allocation, extrema, concentration, sector and marked-record projections over native holdings kernels; signed-NAV legacy definitions do not relax native validation |
 | `compat.pyfolio.capacity`, `compat.pyfolio.tears.create_capacity_tear_sheet` | Familiar fixed-capital liquidation, actual participation and hypothetical impact/report workflow; explicit intraday estimates reuse native kernels, not observed account facts |
 | [selection/](selection/AGENTS.md) | Systematic feature selection pipeline |
 | [integration/](integration/AGENTS.md) | `ml4t-backtest`, `ml4t-data`, and `ml4t-engineer` bridges |
