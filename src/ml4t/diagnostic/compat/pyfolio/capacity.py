@@ -9,6 +9,8 @@ reference, a missing active market bar cannot silently become zero impact.
 
 from __future__ import annotations
 
+from numbers import Real
+
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
@@ -26,10 +28,15 @@ from .txn import _books, _dated
 
 
 def _numeric(frame: pd.DataFrame, name: str) -> pd.DataFrame:
-    if any(
-        not is_numeric_dtype(dtype) or pd.api.types.is_bool_dtype(dtype) for dtype in frame.dtypes
-    ):
-        raise TypeError(f"{name} must contain numeric values")
+    for column, dtype in frame.dtypes.items():
+        if pd.api.types.is_bool_dtype(dtype) or (
+            not is_numeric_dtype(dtype)
+            and not all(
+                isinstance(value, Real) and not isinstance(value, bool)
+                for value in frame[column].dropna()
+            )
+        ):
+            raise TypeError(f"{name} must contain numeric values")
     result = frame.astype(float)
     if np.isinf(result.to_numpy()).any():
         raise ValueError(f"{name} must be finite or missing")
@@ -83,7 +90,14 @@ def daily_txns_with_bar_data(transactions: pd.DataFrame, market_data: pd.DataFra
     if values.isna().any().any() or transactions["symbol"].isna().any():
         raise ValueError("actual transaction quantities and stable symbols must be nonmissing")
     source = transactions[["symbol"]].copy(deep=True)
-    source["amount"] = values["amount"].abs()
+    integral = pd.api.types.is_integer_dtype(transactions["amount"].dtype)
+    source["amount"] = (
+        pd.Series(
+            [abs(int(value)) for value in transactions["amount"]], index=source.index, dtype=object
+        )
+        if integral
+        else values["amount"].abs()
+    )
     source["date"] = source.index.normalize()
     daily = (
         source.groupby(["date", "symbol"], sort=False, observed=True)["amount"]
@@ -92,6 +106,8 @@ def daily_txns_with_bar_data(transactions: pd.DataFrame, market_data: pd.DataFra
         .set_index("date")
         .sort_index(kind="stable")
     )
+    if integral:
+        daily["amount"] = pd.Series(daily["amount"].tolist(), index=daily.index)
     keys = pd.MultiIndex.from_arrays([daily.index, daily["symbol"]])
     for name, frame in (("price", price), ("volume", volume)):
         flattened = pd.Series(
@@ -103,6 +119,8 @@ def daily_txns_with_bar_data(transactions: pd.DataFrame, market_data: pd.DataFra
         absent = pd.date_range(daily.index.min(), daily.index.max(), freq="D").difference(
             daily.index.unique()
         )
+        if len(absent) and integral and daily["amount"].max() > 2**53:
+            daily["amount"] = daily["amount"].astype(object)
         daily = (
             pd.concat(
                 [

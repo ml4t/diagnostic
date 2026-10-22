@@ -384,3 +384,33 @@ def test_declared_timezone_can_reconcile_naive_position_keys_without_guessing():
     )
     with pytest.raises(TypeError, match="temporal types"):
         _analyze(positions, market)
+
+
+def test_owned_microprice_token_fill_does_not_round_its_reported_integer_units():
+    from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
+
+    times = pd.date_range("2025-01-13", periods=2, tz="UTC")
+    quantity = 2**53 + 1
+    positions = pd.DataFrame(
+        {"TOKEN": [0.0, quantity * 1e-12], "cash": [10000.0, 10000.0 - quantity * 1e-12]},
+        index=times,
+    )
+    fills = pd.DataFrame(
+        {"asset": ["TOKEN"], "quantity": [quantity], "price": [1e-12]}, index=times[1:]
+    )
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.0, 0.0], index=times),
+        positions=positions,
+        transactions=fills,
+        complete_snapshots=True,
+        calendar=None,
+    )
+    market = pl.from_pandas(
+        pd.DataFrame(
+            {"date": times, "asset": ["TOKEN"] * 2, "price": [1e-12] * 2, "volume": [1e17] * 2}
+        )
+    )
+    result = analysis.compute_capacity(
+        market, currency="USD", price_basis="raw", volume_basis="raw", lookback=1
+    )
+    assert result.participation["absolute_units"].to_list() == [quantity]

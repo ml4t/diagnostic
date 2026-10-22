@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 
 from ml4t.diagnostic.metrics import sharpe_ratio
 from ml4t.diagnostic.visualization.core import create_base_figure
@@ -40,6 +41,13 @@ def _capacity_tables(result: CapacityAnalysisResult) -> str:
                     "participation",
                 )
                 if name in frame.columns
+            ]
+        )
+        frame = frame.with_columns(
+            [
+                pl.col(name).cast(pl.String)
+                for name, dtype in frame.schema.items()
+                if dtype == pl.Int128
             ]
         )
         tables.append(

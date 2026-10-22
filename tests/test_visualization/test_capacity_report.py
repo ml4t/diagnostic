@@ -24,7 +24,7 @@ def _analysis():
         pl.lit("A").alias("asset"), pl.lit(10.0).alias("price"), pl.lit(10000.0).alias("volume")
     )
     fills = pl.DataFrame(
-        {"timestamp": [dates[1]], "asset": ["A"], "quantity": [100.0], "price": [10.0]}
+        {"timestamp": [dates[1]], "asset": ["A"], "quantity": [100], "price": [10.0]}
     )
     analysis = PortfolioAnalysis.from_frames(
         returns,

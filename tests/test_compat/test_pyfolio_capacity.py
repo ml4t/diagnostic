@@ -59,6 +59,16 @@ def test_fixed_capital_legacy_liquidation_and_trimmed_window_are_explicit():
     )
 
 
+def test_familiar_daily_ledger_retains_exact_large_integer_execution_units():
+    _, _, _, market = _inputs()
+    quantity = 2**53 + 1
+    transactions = pd.DataFrame(
+        {"symbol": ["A"], "amount": [quantity], "price": [10.0]},
+        index=market.xs("price", level=1).index[1:2],
+    )
+    assert capacity.daily_txns_with_bar_data(transactions, market)["amount"].tolist() == [quantity]
+
+
 def test_known_zero_volume_exposure_is_unbounded_not_missing_or_free():
     _, positions, _, market = _inputs()
     market.loc[market.index.get_level_values(1) == "volume", :] = 0.0

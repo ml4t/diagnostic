@@ -24,9 +24,10 @@ from ml4t.diagnostic.utils.validation import (
     _validate_observation_keys,
 )
 
-from .frame_inputs import _frame, _rename, _temporal
+from .frame_inputs import _execution_numeric, _frame, _rename, _temporal
 from .holdings import _numeric
 from .inputs import positive_integer
+from .transaction_metrics import absolute_quantity_expr
 from .transactions import _clock
 
 _TABLES = (
@@ -435,7 +436,7 @@ def analyze_capacity(
                 "actual transaction timestamps must be Datetime instants, not Date labels"
             )
         _validate_observation_keys(fills, ["date", "asset"], "transactions", unique=False)
-        fills = _numeric(fills, "quantity")
+        _execution_numeric(fills, "quantity")
         if fills["asset"].dtype != marked["asset"].dtype:
             raise TypeError("transaction asset IDs must match positions")
         fills = clock(fills, executions=True)
@@ -453,7 +454,7 @@ def analyze_capacity(
             ).height:
                 raise ValueError("transaction and market multipliers must be positive and agree")
         activity = fills.group_by("clock", "asset").agg(
-            pl.col("quantity").abs().sum().alias("absolute_units")
+            absolute_quantity_expr(fills["quantity"].dtype).sum().alias("absolute_units")
         )
         activity = activity.join(
             market.select("clock", "asset", "price", "volume", "multiplier"),
@@ -461,7 +462,10 @@ def analyze_capacity(
             how="left",
         ).rename({"clock": "date"})
         with np.errstate(divide="ignore", invalid="ignore"):
-            ratios = activity["absolute_units"].to_numpy() / activity["volume"].to_numpy()
+            ratios = (
+                activity["absolute_units"].cast(pl.Float64).to_numpy()
+                / activity["volume"].to_numpy()
+            )
         activity = activity.with_columns(pl.Series("participation", ratios, nan_to_null=True)).sort(
             ["date", "asset"]
         )
@@ -492,7 +496,7 @@ def analyze_capacity(
             if not np.isfinite(scenario_nav).all() or np.any(scenario_nav <= 0):
                 raise ValueError("scaled scenario NAV must remain positive and representable")
             costs = _volume_share_cost(
-                activity["absolute_units"].to_numpy(),
+                activity["absolute_units"].cast(pl.Float64).to_numpy(),
                 activity["price"].to_numpy(),
                 activity["volume"].to_numpy(),
                 activity["multiplier"].to_numpy(),
