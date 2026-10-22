@@ -15,6 +15,7 @@ from pandas.tseries.offsets import BusinessDay
 from ml4t.diagnostic.compat.alphalens.utils import _Keys, _profile, get_forward_returns_columns
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import _safe_cumprod
 from ml4t.diagnostic.signal._prepared import signal_input_contract
+from ml4t.diagnostic.signal.factor_regression import compute_factor_alpha_beta
 from ml4t.diagnostic.signal.portfolio import (
     _select_factor_sample,
     compute_factor_cumulative_returns,
@@ -38,6 +39,7 @@ __all__ = [
     "compute_mean_returns_spread",
     "factor_weights",
     "factor_returns",
+    "factor_alpha_beta",
     "cumulative_returns",
     "positions",
     "factor_cumulative_returns",
@@ -111,6 +113,72 @@ def factor_returns(
         if freq is not None:
             result = result.asfreq(freq)
     return result
+
+
+def factor_alpha_beta(
+    factor_data: pd.DataFrame,
+    returns: pd.DataFrame | pd.Series | None = None,
+    demeaned: bool = True,
+    group_adjust: bool = False,
+    equal_weight: bool = False,
+    *,
+    reference_version: str = "0.5.0",
+    annualization_factors: Mapping[str, float] | None = None,
+) -> pd.DataFrame:
+    """Adapt the native same-universe regression to familiar alpha/beta rows.
+
+    Legacy duration labels default to 252 days per year. Explicit scales override
+    that convention; native regression defaults are unchanged. Supplied returns
+    bypass weight construction. A Series selects the first forward-return column
+    without mutating its name. All-missing or unidentified fits stay unavailable,
+    rather than copying the frozen reference's zero-return/zero-beta defects.
+    Neither reference actually returns the t-statistic mentioned in its docstring.
+    """
+    _profile(reference_version)
+    if not isinstance(factor_data, pd.DataFrame):
+        raise TypeError("factor_data must be a pandas DataFrame")
+    available = list(get_forward_returns_columns(factor_data.columns))
+    if not available:
+        raise ValueError("factor_data requires forward-return columns")
+    if isinstance(returns, pd.Series):
+        columns = available[:1]
+        returns = returns.copy(deep=True).rename(columns[0])
+    elif isinstance(returns, pd.DataFrame):
+        columns = list(returns.columns)
+        if not columns or any(column not in available for column in columns):
+            raise ValueError("supplied returns must select forward-return columns from factor_data")
+    elif returns is None:
+        columns = available
+    else:
+        raise TypeError("returns must be a pandas Series or DataFrame")
+    keys = _Keys(factor_data["factor"] if returns is None else factor_data[columns[0]])
+    data = pl.from_pandas(keys.encode(factor_data).reset_index())
+    scales = annualization_factors
+    if scales is None:
+        durations = {column: pd.Timedelta(column).value for column in columns}
+        if any(value <= 0 for value in durations.values()):
+            raise ValueError("forward-return horizons must be positive durations")
+        scales = {
+            column: pd.Timedelta("252D").value / duration for column, duration in durations.items()
+        }
+    result = compute_factor_alpha_beta(
+        data,
+        return_columns=columns,
+        annualization_factors=scales,
+        returns=returns,
+        demeaned=demeaned,
+        group_adjust=group_adjust,
+        equal_weight=equal_weight,
+        factor_col="factor" if returns is None else None,
+    ).statistics
+    return pd.DataFrame(
+        {
+            row["return_column"]: [row["annual_alpha"], row["beta"]]
+            for row in result.iter_rows(named=True)
+        },
+        index=["Ann. alpha", "beta"],
+        dtype=float,
+    )
 
 
 def cumulative_returns(returns: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:

@@ -453,6 +453,7 @@ jobs:
           tests/test_compat/test_alphalens_event_turnover_sheets.py
           tests/test_compat/test_alphalens_returns_sheet.py
           tests/test_compat/test_alphalens_composed_sheets.py
+          tests/test_compat/test_alphalens_factor_regression.py
       - name: Run corrected Alphalens preparation and report workflows from installed wheel
         shell: bash
         run: >-
@@ -471,6 +472,7 @@ jobs:
           tests/test_compat/test_alphalens_event_turnover_sheets.py
           tests/test_compat/test_alphalens_returns_sheet.py
           tests/test_compat/test_alphalens_composed_sheets.py
+          tests/test_compat/test_alphalens_factor_regression.py
           tests/test_signal/test_signal_turnover_report.py
           tests/test_signal/test_signal_turnover_notebook.py
           tests/test_signal/test_signal_turnover_browser.py

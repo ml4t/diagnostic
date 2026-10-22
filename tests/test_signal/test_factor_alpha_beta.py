@@ -61,6 +61,17 @@ def test_price_derived_factor_regression_compounds_intercept_not_generic_linear_
     np.testing.assert_allclose(observations["residual"], 0, atol=1e-14)
 
 
+def test_supplied_regression_does_not_require_or_validate_an_unused_factor_score():
+    frame, dates, universe = _price_panel()
+    supplied = pd.Series(0.001 + 0.6 * universe, index=dates)
+    result = _analyze(frame.drop("factor"), returns=supplied, factor_col=None)
+    assert result.statistics["beta"][0] == pytest.approx(0.6, abs=1e-12)
+    assert result.observations["n_universe"].to_list() == [2] * 8
+    assert result.observations["paired"].to_list() == [True] * 8
+    with pytest.raises(ValueError, match="factor_col is required"):
+        _analyze(frame.drop("factor"), factor_col=None)
+
+
 @pytest.mark.parametrize("representation", ["series", "pandas", "polars"])
 def test_supplied_returns_join_dates_instead_of_truncating_or_mutating_the_caller(representation):
     frame, dates, universe = _price_panel()

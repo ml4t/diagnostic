@@ -596,6 +596,42 @@ the upper-minus-lower return and propagated error. Explicit `"0.4.6"` retains
 the historical raw gross-two difference. Native `compute_quantile_spread`
 keeps its existing raw-difference default. No input is re-bucketed or mutated.
 
+The same namespace exposes `factor_alpha_beta`, using the native same-universe
+regression and compounded intercept. The following supplied outcomes define an
+independently known beta of 0.6 and a per-observation intercept of 0.001:
+
+```python
+regression_dates = pd.bdate_range("2025-02-03", periods=3, tz="UTC")
+regression_index = pd.MultiIndex.from_product(
+    [regression_dates, ["A", "B"]], names=["date", "asset"],
+)
+universe_returns = np.array([-0.03, 0.01, 0.04])
+regression_data = pd.DataFrame({
+    "factor": np.tile([1.0, 0.0], 3),
+    "1D": np.column_stack([
+        0.001 + 0.6 * universe_returns,
+        -0.001 + 1.4 * universe_returns,
+    ]).ravel(),
+}, index=regression_index)
+adapter_regression = performance.factor_alpha_beta(regression_data, demeaned=False)
+assert np.isclose(adapter_regression.loc["beta", "1D"], 0.6)
+assert np.isclose(
+    adapter_regression.loc["Ann. alpha", "1D"], np.expm1(np.log1p(0.001) * 252),
+)
+print("Familiar factor regression: same-universe beta and compounded annual alpha")
+```
+
+Legacy duration labels default to a 252-day year, so `5D` uses 50.4, not 252.
+Explicit `annualization_factors={...}` selects other horizon scales. Supplied
+`returns=` bypasses factor weighting and may omit the unused factor column;
+dates align by key, and a Series selects the first forward-return column without
+renaming the caller's Series. The returned pandas rows are `Ann. alpha` and
+`beta`. Neither reference actually supplies its docstring's claimed t-statistic.
+All-missing outcomes and constant benchmarks remain unidentified rather than
+copying frozen zero-return or zero-beta behavior. Use the
+[owned native regression](#inspect-factor-alpha-and-beta-on-the-same-universe)
+to inspect paired observations, finite counts, rank and unavailability reasons.
+
 IC preserves legacy per-column NaN propagation. Quantile means instead retain
 each supplied outcome's own available sample and give defined date means equal
 weight. Raw `compute_forward_returns` plus `quantize_factor` tables may retain
@@ -711,7 +747,7 @@ returns Plotly figures, not Matplotlib figures or axes. `output_file` saves the
 complete report atomically. `set_context` accepts the legacy boolean without
 changing global Matplotlib/seaborn state; use `theme` for native presentation.
 The same namespace also exposes turnover, event-returns and event-study sheets.
-Returns, summary and full-sheet composition remain separate unfinished work;
+Returns, summary and full-sheet composition use the shared owned results below;
 these adapters do not establish all-seven-sheet replacement.
 
 Continue from the price-produced `adapter_clean` and `adapter_prices` above:
