@@ -35,6 +35,7 @@ from scipy import stats
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
+from .fifo import RoundTripResult, reconstruct_round_trips
 from .frame_inputs import PortfolioInputData, normalize_portfolio_frames
 from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
 from .holdings_sectors import SectorMapping, analyze_sector_exposures
@@ -73,7 +74,7 @@ from .rolling import _row_windows
 from .transactions import TransactionAnalysisResult, analyze_transactions
 
 if TYPE_CHECKING:
-    from datetime import date, datetime
+    from datetime import date, datetime, timedelta
 
     import pandas as pd
 
@@ -294,6 +295,69 @@ class PortfolioAnalysis:
             turnover_method=turnover_method,
             incremental_bps=incremental_bps,
         )
+
+    def compute_intraday_estimate(
+        self,
+        *,
+        method: Literal["legacy_peak_notional"],
+        capital_method: Literal["defined_only", "legacy_zero_fill"] = "defined_only",
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    ) -> HoldingsAnalysisResult:
+        """Explicit daily transaction-notional estimate, not observed intraday holdings."""
+        from .intraday_estimate import _estimate_from_inputs
+
+        if self._input_data is None:
+            raise ValueError("intraday estimate requires owned from_frames account inputs")
+        return _estimate_from_inputs(
+            self._input_data, method=method, calendar=calendar, capital_method=capital_method
+        )
+
+    def compute_round_trips(
+        self,
+        *,
+        initial_state: Literal["flat", "supplied"] | None = None,
+        opening_lots: DataFrameLike | None = None,
+        opening_as_of: date | datetime | str | None = None,
+        marks: DataFrameLike | None = None,
+        as_of: date | datetime | str | None = None,
+        synthetic_close: bool = False,
+        matching: Literal["actual_fifo", "consecutive_vwap"] = "actual_fifo",
+        max_gap: str | timedelta | None = None,
+    ) -> RoundTripResult:
+        """Match actual fractional FIFO lots from an explicitly complete opening book.
+
+        Supplied opening rows require asset/quantity and opening_as_of; optional
+        lot_id/entry_timestamp/entry_price/multiplier/remaining_commission retain
+        known cost/time, never guessed zero basis. Supplied row order is FIFO.
+        Marks require timestamp/asset/price and an explicit as_of, which also cuts
+        future executions. Only quotes known at/before as_of are used, with age.
+        Optional synthetic closes are separate hypothetical segments, not actual
+        realizations or changes to open inventory. Supplied returns stay unchanged.
+        The default actual_fifo uses original fills. Explicit consecutive_vwap
+        groups same-direction adjacent fills within max_gap (default8h) before
+        the same matcher. Group prices are retrospective analytical projections,
+        known only at the last member; original executions and membership remain
+        available. This profile is not an intraday execution-state reconstruction.
+        """
+        if self._input_data is None:
+            raise ValueError("FIFO requires owned from_frames execution inputs")
+        result = reconstruct_round_trips(
+            self._input_data.transactions,
+            initial_state=initial_state,
+            opening_lots=opening_lots,
+            opening_as_of=opening_as_of,
+            marks=marks,
+            as_of=as_of,
+            synthetic_close=synthetic_close,
+            timezone=self._input_data.metadata["feed_spec"].get("timezone"),
+            matching=matching,
+            max_gap=max_gap,
+        )
+        declarations = self._input_data.metadata
+        for name in ("feed_spec", "calendar", "calendar_source", "calendar_argument"):
+            if name in declarations:
+                result.metadata[name] = declarations[name]
+        return result
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:
@@ -1027,6 +1091,7 @@ class PortfolioAnalysis:
         cost_info: dict[str, str] | None = None,
         *,
         transactions: TransactionAnalysisResult | None = None,
+        intraday: HoldingsAnalysisResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -1041,6 +1106,8 @@ class PortfolioAnalysis:
         transactions : TransactionAnalysisResult, optional
             Explicitly prepared actual-fill turnover and incremental cost scenarios.
             Computed results are rendered without selecting financial methods again.
+        intraday : HoldingsAnalysisResult, optional
+            Prepared complete intraday snapshots on their own independent clock.
 
         Returns
         -------
@@ -1058,7 +1125,7 @@ class PortfolioAnalysis:
         ):
             holdings = self.compute_holdings_analysis()
         return create_portfolio_dashboard(
-            self, theme=theme, holdings=holdings, transactions=transactions
+            self, theme=theme, holdings=holdings, transactions=transactions, intraday=intraday
         )
 
 

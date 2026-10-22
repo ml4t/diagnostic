@@ -979,8 +979,6 @@ def show_empyrical_tail(output: Path | None = None) -> None:
             title="Supplied GPD tail-risk analysis",
         )
         print(f"Portfolio report with supplied GPD fit: {output}")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

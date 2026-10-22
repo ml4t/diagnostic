@@ -50,6 +50,56 @@ as the supported starting point for that workflow.
 The dashboard is optional; the core ranking above runs without SHAP or a
 browser.
 
+## Preserve execution units and timing
+
+Unreleased after 0.1.9, `TradeRecord` and `TradeMetrics` retain an explicit
+`multiplier`, defaulting to one cash unit per price point per execution unit.
+For example, these two synthetic contracts realize 1000 cash units without
+changing the actual quantity to 100:
+
+```python
+point_trade = TradeRecord(
+    timestamp=datetime(2025, 1, 2, 16),
+    entry_timestamp=datetime(2025, 1, 2, 15),
+    symbol="synthetic_contract", entry_price=100., exit_price=110.,
+    quantity=2., multiplier=50., direction="long", fees=0.,
+    pnl=1000., duration=timedelta(hours=1),
+)
+assert TradeAnalysis([point_trade]).compute_statistics().total_pnl == 1000.
+assert point_trade.quantity == 2.
+```
+
+Prices must be finite; zero and negative actual execution prices are valid.
+Integer prices remain integers through PnL validation, avoiding cancellation
+after premature Float64 conversion. Cash fees are signed: a reported negative
+fee is a rebate. Existing positive-price, unit-multiplier calculations retain
+their definitions. A trade's supplied PnL includes its cash costs; prices already
+reflect execution-price slippage, which must not be charged a second time.
+
+Same-instant entry/exit is valid with zero duration. Negative duration and
+reversed entry/exit chronology remain errors. `TradeMetrics.return_pct` defaults to
+absolute entry-price magnitude and is undefined (`None`) for zero entry price;
+`pnl_per_day` is undefined for zero duration. Defined cash PnL is retained in
+statistics and summaries even when a ratio is undefined. These are price and
+duration ratios, not NAV-normalized portfolio contributions.
+
+Pandas nanosecond timestamps and durations retain their precision in JSON and
+metric tables. Plain Python datetime inputs cannot recover nanoseconds already
+lost upstream. Actual fractional-fill reconstruction is described in the
+[FIFO migration workflow](migration.md#match-actual-fractional-fifo-lots-from-an-explicitly-flat-book);
+including supplied non-flat opening inventory and known-at marks. Complete
+round-trip reports remain separate work.
+
+`RoundTripResult.to_trade_analysis()` aggregates matched lots into actual closing-fill
+observations and explicitly selects net PnL divided by summed absolute entry
+notional. Choose `pnl="gross"` explicitly when fees are unknown; missing selected
+PnL otherwise raises unless exclusion is requested with coverage. This analytical
+return basis does not change native price-return defaults or become a NAV return.
+Known PnL with unknown opening time remains usable through nullable
+`TradeMetrics.duration`; duration summaries include only `n_known_durations` and
+remain unknown if none are available. Single/constant-PnL samples have undefined
+skewness/kurtosis (`None`), rather than NaN standardized moments.
+
 See the [evaluation API surface](../api/index.md#evaluation-workflows)
 for `TradeAnalysis` and the book's
 [trade-SHAP notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/19_risk_management/05_trade_shap_diagnostics.ipynb),
