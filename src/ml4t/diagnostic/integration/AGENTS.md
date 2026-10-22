@@ -15,10 +15,12 @@ Integration points for `ml4t-data`, `ml4t-engineer`, and `ml4t-backtest`.
 
 - `backtest.py` - public bridge functions
 - `backtest_profile.py` - lazy profile object
+- `_calendar.py` - shared argument/feed/default calendar resolution; explicit None retains producer observations
 - `backtest_analytics.py` - normalized analytics assembly
 - `report_metadata.py` - report metadata model
 - `backtest_contract.py` - compatibility models for trade/result exchange
 - `data_contract.py` and `engineer_contract.py` - upstream integration contracts
+- `zipline.py` - pure `portfolio_analysis_from_zipline` extraction into owned native account inputs; no Zipline/Pyfolio runtime import
 
 ## Notes
 

@@ -267,7 +267,10 @@ def plot_quantile_returns_violin(
         data = _signal_frame(
             pl.DataFrame(factor_data) if isinstance(factor_data, dict) else factor_data
         )
-        value_column = f"{period}_fwd_return"
+        canonical = f"{period}_fwd_return"
+        if period in data.columns and canonical in data.columns:
+            raise ValueError(f"ambiguous supplied return columns: {period} and {canonical}")
+        value_column = period if period in data.columns else canonical
         if not {"quantile", value_column}.issubset(data.columns):
             raise ValueError(f"supplied return values require quantile and {value_column} columns")
     if not data["quantile"].dtype.is_numeric():
@@ -279,7 +282,8 @@ def plot_quantile_returns_violin(
         or not ((buckets >= 1) & (buckets == buckets.floor())).all()
     ):
         raise ValueError("supplied quantile labels must be positive integers")
-    if set(buckets.to_list()).difference(range(1, quantile_result.n_quantiles + 1)):
+    bucket_ids = quantile_result.quantile_ids or list(range(1, quantile_result.n_quantiles + 1))
+    if set(buckets.to_list()).difference(bucket_ids):
         raise ValueError("observed buckets are not represented by the result's quantile labels")
     if not (data[value_column].dtype.is_numeric() or data[value_column].dtype == pl.Null):
         raise TypeError("supplied return observations must be numeric")
@@ -318,7 +322,7 @@ def plot_quantile_returns_violin(
     )
 
     for i, q_label in enumerate(quantile_labels):
-        sample = data.filter(pl.col("quantile") == i + 1)
+        sample = data.filter(pl.col("quantile") == bucket_ids[i])
         custom = None
         if empirical:
             sample = sample.sort("date")

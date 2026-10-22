@@ -13,7 +13,7 @@ from __future__ import annotations
 import base64
 import math
 from io import BytesIO
-from typing import Any
+from typing import Annotated, Any
 
 import polars as pl
 from pydantic import Field, field_validator, model_validator
@@ -50,6 +50,10 @@ class QuantileAnalysisResult(BaseResult):
     quantile_labels: list[str] = Field(
         ...,
         description="Labels for each quantile (e.g., ['Q1', 'Q2', ..., 'Q5'])",
+    )
+    quantile_ids: list[Annotated[int, Field(strict=True, gt=0)]] | None = Field(
+        default=None,
+        description="Actual bucket IDs aligned with labels; absent older results use1..n_quantiles",
     )
 
     periods: list[str] = Field(
@@ -240,6 +244,11 @@ class QuantileAnalysisResult(BaseResult):
             raise ValueError(
                 f"n_quantiles ({self.n_quantiles}) != len(quantile_labels) ({len(self.quantile_labels)})"
             )
+        if self.quantile_ids is not None and (
+            len(self.quantile_ids) != self.n_quantiles
+            or len(set(self.quantile_ids)) != len(self.quantile_ids)
+        ):
+            raise ValueError("quantile_ids must contain one distinct positive ID per label")
 
         if self.observations_ipc_base64 is not None:
             self._observations()
@@ -380,7 +389,7 @@ class QuantileAnalysisResult(BaseResult):
         >>> for q, ret in returns.items():
         ...     print(f"{q}: {ret:.2%}")
         """
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.periods)
         return self.mean_returns.get(key, {})
 
     def get_monotonicity(self, period: int | str) -> tuple[bool | None, str]:
@@ -397,7 +406,7 @@ class QuantileAnalysisResult(BaseResult):
         they return None/"unavailable" for an undefined score. Unknown periods
         raise ValueError rather than masquerading as unavailable analysis.
         """
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.periods)
         if key not in self.periods:
             raise ValueError(f"Period {key!r} not found. Available: {self.periods}")
         if not math.isfinite(self.rank_correlation[key]):
@@ -423,7 +432,7 @@ class QuantileAnalysisResult(BaseResult):
         >>> spread, t_stat, p_val = quantile_result.get_spread(21)
         >>> print(f"Spread: {spread:.2%} (t={t_stat:.2f}, p={p_val:.4f})")
         """
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.periods)
         return (
             self.spread_mean.get(key, float("nan")),
             self.spread_t_stat.get(key, float("nan")),
@@ -432,7 +441,7 @@ class QuantileAnalysisResult(BaseResult):
 
     def get_top_quantile_return(self, period: int | str) -> float | None:
         """Get mean return for the top quantile (long side)."""
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.periods)
         if key not in self.mean_returns:
             return None
         # Top quantile is the last one
@@ -441,7 +450,7 @@ class QuantileAnalysisResult(BaseResult):
 
     def get_bottom_quantile_return(self, period: int | str) -> float | None:
         """Get mean return for the bottom quantile (short side)."""
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.periods)
         if key not in self.mean_returns:
             return None
         # Bottom quantile is the first one
@@ -463,7 +472,7 @@ class QuantileAnalysisResult(BaseResult):
         bool
             True if spread p-value < alpha.
         """
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.periods)
         p_val = self.spread_p_value.get(key)
         if p_val is None:
             return False

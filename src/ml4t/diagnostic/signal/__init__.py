@@ -45,7 +45,11 @@ from ml4t.diagnostic.signal.factor_regression import (
     FactorAlphaBetaResult,
     compute_factor_alpha_beta,
 )
-from ml4t.diagnostic.signal.panel import PreparedSignalPanel, prepare_signal_panel
+from ml4t.diagnostic.signal.panel import (
+    MaxLossExceededError,
+    PreparedSignalPanel,
+    prepare_signal_panel,
+)
 from ml4t.diagnostic.signal.portfolio import (
     compute_factor_cumulative_returns,
     compute_factor_returns,
@@ -89,6 +93,7 @@ __all__ = [
     "prepare_data",
     "prepare_signal_panel",
     "PreparedSignalPanel",
+    "MaxLossExceededError",
     "compute_factor_weights",
     "compute_factor_returns",
     "compute_factor_cumulative_returns",

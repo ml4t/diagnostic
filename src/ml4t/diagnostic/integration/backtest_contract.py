@@ -41,11 +41,22 @@ Example workflow - Live vs Backtest comparison:
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from math import isfinite
+from numbers import Integral
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+import pandas as pd
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class EnvironmentType(StrEnum):
@@ -74,6 +85,32 @@ class ComparisonType(StrEnum):
     BOOTSTRAP = "bootstrap"
     PARAMETRIC = "parametric"
     CUSUM = "cusum"
+
+
+def _preserve_trade_nanoseconds(value: Any) -> Any:
+    if isinstance(value, str) and re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}\.\d{7,9}(?:Z|[+-]\d{2}:?\d{2})?", value
+    ):
+        return pd.Timestamp(value)
+    return value
+
+
+def _trade_duration_seconds(value: timedelta) -> float:
+    return value.total_seconds() + (
+        value.nanoseconds / 1e9 if isinstance(value, pd.Timedelta) else 0
+    )
+
+
+def _preserve_trade_duration(value: Any) -> Any:
+    if isinstance(value, str) and re.fullmatch(r"P[0-9DTHM.]+\.[0-9]{7,9}S", value):
+        return pd.Timedelta(value)
+    return value
+
+
+def _preserve_trade_integer_price(value: Any) -> Any:
+    if isinstance(value, bool):
+        raise ValueError("execution price must be numeric, not a boolean")
+    return int(value) if isinstance(value, Integral) else value
 
 
 class TradeRecord(BaseModel):
@@ -166,23 +203,24 @@ class TradeRecord(BaseModel):
         min_length=1,
         description="Asset symbol (e.g., 'AAPL', 'BTC-USD', 'ES_F')",
     )
-    entry_price: float = Field(
+    entry_price: int | float = Field(
         ...,
-        gt=0.0,
-        description="Average entry price (must be positive)",
+        allow_inf_nan=False,
+        description="Finite actual average entry price, including zero/negative contracts",
     )
-    exit_price: float = Field(
+    exit_price: int | float = Field(
         ...,
-        gt=0.0,
-        description="Average exit price (must be positive)",
+        allow_inf_nan=False,
+        description="Finite actual average exit price, including zero/negative contracts",
     )
     pnl: float = Field(
         ...,
+        allow_inf_nan=False,
         description="Realized profit/loss in quote currency (can be negative)",
     )
     duration: timedelta = Field(
         ...,
-        description="Time between entry and exit (must be positive)",
+        description="Nonnegative time between entry and exit; same-instant closes are valid",
     )
 
     # Optional fields
@@ -201,7 +239,11 @@ class TradeRecord(BaseModel):
     quantity: float | None = Field(
         None,
         gt=0.0,
+        allow_inf_nan=False,
         description="Position size (number of shares/contracts/coins)",
+    )
+    multiplier: float = Field(
+        1.0, gt=0.0, allow_inf_nan=False, description="Cash per price point per execution unit"
     )
     entry_timestamp: datetime | None = Field(
         None,
@@ -209,22 +251,50 @@ class TradeRecord(BaseModel):
     )
     fees: float | None = Field(
         None,
-        ge=0.0,
-        description="Total transaction fees (commissions + exchange fees)",
+        allow_inf_nan=False,
+        description="Signed cash transaction fees; negative values are reported rebates",
     )
     slippage: float | None = Field(
         None,
         ge=0.0,
+        allow_inf_nan=False,
         description="Estimated or actual slippage cost",
     )
 
     @field_validator("duration")
     @classmethod
     def validate_duration_positive(cls, v: timedelta) -> timedelta:
-        """Ensure duration is positive."""
-        if v.total_seconds() <= 0:
-            raise ValueError(f"Duration must be positive, got {v}")
+        """Retain real zero-duration trades and reject reversed chronology."""
+        if v < timedelta(0):
+            raise ValueError(f"Duration must be positive or zero, got {v}")
         return v
+
+    @field_validator("timestamp", "entry_timestamp", mode="before")
+    @classmethod
+    def preserve_nanosecond_instants(cls, value: Any) -> Any:
+        return _preserve_trade_nanoseconds(value)
+
+    @field_serializer("timestamp", "entry_timestamp", when_used="json")
+    def serialize_instants(self, value: datetime | None) -> str | None:
+        return value.isoformat() if value is not None else None
+
+    @field_validator("duration", mode="before")
+    @classmethod
+    def preserve_duration_nanoseconds(cls, value: Any) -> Any:
+        return _preserve_trade_duration(value)
+
+    @field_serializer("duration", mode="wrap", when_used="json")
+    def serialize_duration(self, value: timedelta, handler: SerializerFunctionWrapHandler) -> Any:
+        return (
+            value.isoformat()
+            if isinstance(value, pd.Timedelta) and value.nanoseconds
+            else handler(value)
+        )
+
+    @field_validator("entry_price", "exit_price", mode="before")
+    @classmethod
+    def preserve_integer_prices(cls, value: Any) -> Any:
+        return _preserve_trade_integer_price(value)
 
     @model_validator(mode="after")
     def validate_pnl_consistency(self) -> TradeRecord:
@@ -243,13 +313,17 @@ class TradeRecord(BaseModel):
         price_diff = self.exit_price - self.entry_price
 
         if self.direction == "long":
-            expected_pnl = price_diff * self.quantity
+            expected_pnl = price_diff * self.quantity * self.multiplier
         else:  # short
-            expected_pnl = -price_diff * self.quantity
+            expected_pnl = -price_diff * self.quantity * self.multiplier
 
         # Account for fees and slippage
         total_costs = (self.fees or 0.0) + (self.slippage or 0.0)
         expected_pnl -= total_costs
+        if not isfinite(expected_pnl):
+            raise ValueError(
+                "Expected PnL exceeds finite account currency; check prices, units and multiplier"
+            )
 
         # Allow 1% tolerance for rounding and other small discrepancies
         tolerance = abs(expected_pnl) * 0.01 + 0.01  # Minimum 1 cent tolerance
@@ -269,9 +343,9 @@ class TradeRecord(BaseModel):
     def validate_timestamps(self) -> TradeRecord:
         """Validate timestamp ordering if entry_timestamp provided."""
         if self.entry_timestamp is not None:
-            if self.entry_timestamp >= self.timestamp:
+            if self.entry_timestamp > self.timestamp:
                 raise ValueError(
-                    f"Entry timestamp ({self.entry_timestamp}) must be before exit timestamp ({self.timestamp})"
+                    f"Entry timestamp ({self.entry_timestamp}) cannot be after exit timestamp ({self.timestamp})"
                 )
 
             # Verify duration matches timestamps
@@ -307,7 +381,7 @@ class TradeRecord(BaseModel):
         data = self.model_dump(mode="json")
         # Convert timedelta to total seconds for JSON compatibility
         if "duration" in data:
-            data["duration"] = self.duration.total_seconds()
+            data["duration"] = _trade_duration_seconds(self.duration)
         return data
 
     @classmethod

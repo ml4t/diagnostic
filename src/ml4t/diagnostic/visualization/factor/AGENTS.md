@@ -6,6 +6,8 @@ Plotly figures for factor exposure, attribution, risk, and model diagnostics.
 
 - Exposure: `plot_factor_betas_bar`, `plot_rolling_betas`
 - Attribution: `plot_return_attribution_waterfall`, `plot_return_attribution_area`
+- Supplied holdings: `plot_holdings_exposures`, `plot_holdings_attribution` consume
+  `HoldingsAttributionResult`, separately from estimated regression results
 - Risk: `plot_risk_attribution_pie`, `plot_risk_attribution_bar`
 - Diagnostics: `plot_residual_diagnostics`, `plot_factor_correlation_heatmap`, `plot_vif_bar`
 

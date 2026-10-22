@@ -7,6 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset
+
 from ml4t.diagnostic.integration.backtest_contract import (
     ComparisonRequest,
     ComparisonResult,
@@ -53,22 +55,27 @@ def _load_backtest_bridge():
 
 def compute_metrics_from_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     confidence_intervals: bool = False,
+    *,
+    periods_per_year: int | None = None,
 ) -> dict[str, Any]:
     """Compute diagnostic metrics from a BacktestResult."""
     return _load_backtest_bridge().compute_metrics_from_result(
         result=result,
         calendar=calendar,
         confidence_intervals=confidence_intervals,
+        periods_per_year=periods_per_year,
     )
 
 
 def analyze_backtest_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     confidence_intervals: bool = False,
+    *,
+    periods_per_year: int | None = None,
 ):
     """Build a lazy BacktestProfile from a BacktestResult."""
     return _load_backtest_bridge().analyze_backtest_result(
@@ -76,6 +83,7 @@ def analyze_backtest_result(
         calendar=calendar,
         benchmark=benchmark,
         confidence_intervals=confidence_intervals,
+        periods_per_year=periods_per_year,
     )
 
 
@@ -86,7 +94,7 @@ def generate_tearsheet_from_result(
     title: str | None = None,
     output_path: str | Path | None = None,
     include_statistical: bool = True,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
@@ -113,9 +121,11 @@ def profile_from_run_artifacts(
     backtest_dir: str | Path,
     predictions_path: str | Path | None = None,
     signals_path: str | Path | None = None,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     confidence_intervals: bool = False,
+    *,
+    periods_per_year: int | None = None,
 ):
     """Build a BacktestProfile from backtest artifact directories."""
     return _load_backtest_bridge().profile_from_run_artifacts(
@@ -125,6 +135,7 @@ def profile_from_run_artifacts(
         calendar=calendar,
         benchmark=benchmark,
         confidence_intervals=confidence_intervals,
+        periods_per_year=periods_per_year,
     )
 
 
@@ -135,7 +146,7 @@ def generate_tearsheet_from_run_artifacts(
     output_path: str | Path | None = None,
     predictions_path: str | Path | None = None,
     signals_path: str | Path | None = None,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
@@ -159,14 +170,17 @@ def generate_tearsheet_from_run_artifacts(
 
 def portfolio_analysis_from_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
+    *,
+    periods_per_year: int | None = None,
 ) -> PortfolioAnalysis:
     """Create a PortfolioAnalysis from a BacktestResult."""
     return _load_backtest_bridge().portfolio_analysis_from_result(
         result=result,
         calendar=calendar,
         benchmark=benchmark,
+        periods_per_year=periods_per_year,
     )
 
 

@@ -373,6 +373,7 @@ def compute_turnover(
     quantile_col: str = "quantile",
     *,
     lag: int = 1,
+    bucket_ids: Sequence[int] | None = None,
 ) -> float:
     """Compute mean turnover rate across quantiles.
 
@@ -389,6 +390,8 @@ def compute_turnover(
         Column names.
     lag : int, default 1
         Positive separation in sorted observed dates, not calendar days.
+    bucket_ids : sequence of int, optional
+        Actual bucket labels, including sparse labels. Defaults to1..n_quantiles.
 
     Returns
     -------
@@ -405,7 +408,11 @@ def compute_turnover(
         return float("nan")
 
     asset_sets = _membership_cache(data, date_col, asset_col, quantile_col)
-    buckets = list(range(1, n_quantiles + 1))
+    buckets = (
+        _positive_selection(bucket_ids, "bucket_ids")
+        if bucket_ids is not None
+        else list(range(1, n_quantiles + 1))
+    )
     by_bucket: dict[int, list[float]] = {bucket: [] for bucket in buckets}
     for entry in _turnover_entries(
         asset_sets, unique_dates, buckets, [lag], current_denominator=False

@@ -29,6 +29,7 @@ _OWNED_FRAMES = (
     ("_dated_turnover", "dated_turnover"),
     ("_dated_autocorrelation", "dated_autocorrelation"),
     ("_quantile_observations", "quantile_observations"),
+    ("_outcome_data", "outcome_data"),
 )
 
 
@@ -119,11 +120,19 @@ class SignalResult:
     date_range: tuple[str, str] = ("", "")
     periods: tuple[int, ...] = ()
     quantiles: int = 5
+    horizon_labels: tuple[str, ...] = ()
+    quantile_ids: tuple[int, ...] = ()
     preparation_metadata: dict[str, Any] = field(default_factory=dict)
     _prepared_data: bytes | None = field(default=None, repr=False, compare=False)
     _dated_turnover: bytes | None = field(default=None, repr=False, compare=False)
     _dated_autocorrelation: bytes | None = field(default=None, repr=False, compare=False)
     _quantile_observations: bytes | None = field(default=None, repr=False, compare=False)
+    _outcome_data: bytes | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def period_keys(self) -> tuple[str, ...]:
+        """Exact analysis labels, with compatibility for older integer-day results."""
+        return self.horizon_labels or tuple(f"{period}D" for period in self.periods)
 
     @property
     def prepared_data(self) -> pl.DataFrame | None:
@@ -133,6 +142,15 @@ class SignalResult:
         import polars as pl
 
         return pl.read_ipc(BytesIO(self._prepared_data))
+
+    @property
+    def outcome_data(self) -> pl.DataFrame | None:
+        """Return the owned supplied long outcomes and exact endpoint durations."""
+        if self._outcome_data is None:
+            return None
+        import polars as pl
+
+        return pl.read_ipc(BytesIO(self._outcome_data))
 
     @property
     def dated_turnover(self) -> pl.DataFrame | None:
@@ -181,12 +199,14 @@ class SignalResult:
         lines = [
             f"Signal Analysis: {self.n_assets} assets, {self.n_dates} dates",
             f"Date range: {self.date_range[0]} to {self.date_range[1]}",
-            f"Periods: {self.periods}, Quantiles: {self.quantiles}",
+            f"Periods: {self.periods}, Quantiles: {self.quantiles}"
+            if self.periods
+            else f"Horizons: {self.period_keys}, Quantiles: {self.quantiles}",
             "",
             "IC Summary:",
         ]
 
-        for period in [f"{p}D" for p in self.periods]:
+        for period in self.period_keys:
             ic_val = self.ic.get(period, float("nan"))
             t = self.ic_t_stat.get(period, float("nan"))
             p = self.ic_p_value.get(period, float("nan"))
@@ -204,7 +224,7 @@ class SignalResult:
             )
 
         lines.append("\nSpread (Top - Bottom):")
-        for period in [f"{p}D" for p in self.periods]:
+        for period in self.period_keys:
             spread = self.spread.get(period, float("nan"))
             t = self.spread_t_stat.get(period, float("nan"))
             p = self.spread_p_value.get(period, float("nan"))
@@ -215,13 +235,13 @@ class SignalResult:
             lines.append(f"  {period}: {spread_display} (t={t_display}, p={p_display}){sig}")
 
         lines.append("\nMonotonicity:")
-        for period in [f"{p}D" for p in self.periods]:
+        for period in self.period_keys:
             mono = self.monotonicity.get(period, float("nan"))
             lines.append(f"  {period}: {format_finite(mono, '+.3f')}")
 
         if self.turnover:
             lines.append("\nTurnover:")
-            for period in [f"{p}D" for p in self.periods]:
+            for period in self.turnover:
                 t = self.turnover.get(period, float("nan"))
                 lines.append(f"  {period}: {format_finite(t, '.1%')}")
 
@@ -272,13 +292,13 @@ class SignalResult:
         period_keys: list[str]
         if period is not None:
             key = f"{period}D" if isinstance(period, int) else str(period)
-            if not key.endswith("D"):
+            if key not in self.ic and key.isdecimal():
                 key = f"{key}D"
             if key not in self.ic:
                 raise ValueError(f"Period '{key}' not found. Available: {list(self.ic.keys())}")
             period_keys = [key]
         else:
-            period_keys = [f"{p}D" for p in self.periods]
+            period_keys = list(self.period_keys)
 
         # Find common date intersection across requested periods
         date_sets = [set(self.ic_dates[k]) for k in period_keys if k in self.ic_dates]
@@ -331,8 +351,9 @@ class SignalResult:
         """
         from ml4t.diagnostic.results.signal_results.quantile import QuantileAnalysisResult
 
-        period_keys = [f"{p}D" for p in self.periods]
-        quantile_labels = [f"Q{i}" for i in range(1, self.quantiles + 1)]
+        period_keys = self.period_keys
+        bucket_ids = self.quantile_ids or tuple(range(1, self.quantiles + 1))
+        quantile_labels = [f"Q{i}" for i in bucket_ids]
 
         # Convert int quantile keys to string labels: {1: val} -> {"Q1": val}
         def _relabel(d: dict[int, float]) -> dict[str, float]:
@@ -350,10 +371,7 @@ class SignalResult:
 
         # count_by_quantile with string labels
         count_by_q: dict[str, int]
-        if self.count_by_quantile:
-            count_by_q = {f"Q{k}": v for k, v in sorted(self.count_by_quantile.items())}
-        else:
-            count_by_q = dict.fromkeys(quantile_labels, 0)
+        count_by_q = {f"Q{k}": self.count_by_quantile.get(k, 0) for k in bucket_ids}
 
         # Spread metrics
         spread_mean = {pk: self.spread.get(pk, 0.0) for pk in period_keys}
@@ -393,7 +411,8 @@ class SignalResult:
         return QuantileAnalysisResult(
             n_quantiles=self.quantiles,
             quantile_labels=quantile_labels,
-            periods=period_keys,
+            quantile_ids=list(bucket_ids),
+            periods=list(period_keys),
             mean_returns=mean_returns,
             std_returns=std_returns,
             count_by_quantile=count_by_q,
@@ -548,6 +567,9 @@ class SignalResult:
             data["date_range"] = tuple(data["date_range"])
         if "periods" in data:
             data["periods"] = tuple(data["periods"])
+        for name in ("horizon_labels", "quantile_ids"):
+            if name in data:
+                data[name] = tuple(data[name])
 
         def restore_numeric(value: Any) -> Any:
             if isinstance(value, dict):
