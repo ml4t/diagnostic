@@ -434,6 +434,8 @@ jobs:
           -q tests/test_compat/test_alphalens_preparation.py
           tests/test_compat/test_alphalens_time_alignment.py
           tests/test_compat/test_alphalens_bucketing.py
+          tests/test_compat/test_alphalens_portfolio.py
+          tests/test_signal/test_signal_portfolio_interchange.py
           tests/test_signal/test_signal_outcome_ingestion.py
           tests/test_signal/test_signal_price_preparation.py
       - name: Run aligned event migration from installed wheel
