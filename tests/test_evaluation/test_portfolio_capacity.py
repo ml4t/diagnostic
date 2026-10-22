@@ -161,7 +161,13 @@ def test_explicit_calendar_none_overrides_declared_calendar_and_preserves_ns_row
     assert result.liquidation["liquidation_duration"].to_list() == [None, 1.0]
 
 
-def test_capital_scenario_uses_quadratic_volume_share_and_beginning_nav_once():
+@pytest.mark.parametrize(
+    "coefficient,cash_at_base,cash_at_double",
+    [(0.05, 0.01, 0.08), (0.1, 0.02, 0.16), (0.2, 0.04, 0.32)],
+)
+def test_capital_scenario_uses_quadratic_volume_share_and_beginning_nav_once(
+    coefficient, cash_at_base, cash_at_double
+):
     positions, market = _inputs()
     positions, market = (
         frame.with_columns(pl.col("date").cast(pl.Datetime("us"))) for frame in (positions, market)
@@ -183,21 +189,38 @@ def test_capital_scenario_uses_quadratic_volume_share_and_beginning_nav_once():
         returns=returns,
         base_capital=100000.0,
         scenario_capitals=[100000.0, 200000.0],
+        impact=coefficient,
     )
     assert result.participation["participation"].to_list() == [0.01, 0.01]
-    # Each asset: (.01**2)*.1*(100*10) = .01 cash. NAV before day2=110000.
-    assert result.scenarios["extra_impact_cash"].to_list() == [
-        0.0,
-        0.02,
-        0.0,
-        0.0,
-        0.0,
-        0.16,
-        0.0,
-        0.0,
-    ]
-    assert result.scenarios["adjusted_return"][1] == pytest.approx(-0.1 - 0.02 / 110000)
-    assert result.scenarios["adjusted_return"][5] == pytest.approx(-0.1 - 0.16 / 220000)
+    # Two assets: (.01**2)*coefficient*(100*10) each. Beginning day2 NAV=110000.
+    assert result.scenarios["extra_impact_cash"].to_list() == pytest.approx(
+        [
+            0.0,
+            cash_at_base,
+            0.0,
+            0.0,
+            0.0,
+            cash_at_double,
+            0.0,
+            0.0,
+        ],
+        rel=1e-12,
+        abs=1e-15,
+    )
+    assert result.scenarios["adjusted_return"][1] == pytest.approx(-0.1 - cash_at_base / 110000)
+    assert result.scenarios["adjusted_return"][5] == pytest.approx(-0.1 - cash_at_double / 220000)
+
+
+def test_each_asset_uses_its_own_market_record_not_another_assets_liquidity():
+    positions, market = _inputs()
+    market = market.with_columns(
+        pl.when(pl.col("asset") == "B").then(20.0).otherwise(pl.col("price")).alias("price"),
+        pl.when(pl.col("asset") == "B").then(20000.0).otherwise(pl.col("volume")).alias("volume"),
+    )
+    assert (
+        _analyze(positions, market).liquidation["liquidation_duration"].to_list()
+        == [None, None] + [1.0, 0.25] * 3
+    )
 
 
 def test_missing_active_volume_cannot_turn_a_trade_into_zero_cost():
