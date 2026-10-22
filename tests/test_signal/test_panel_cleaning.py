@@ -302,11 +302,16 @@ def test_submicrosecond_observed_bar_keys_are_preserved_without_claiming_day_hor
     expected = [day.value for day in dates[1:4] for _ in assets]
     assert data["date"].cast(pl.Int64).to_list() == expected
     assert panel.metadata["return_columns"] == ["1bar", "2bar"]
-    path = tmp_path / "existing.json"
-    path.write_text("existing report")
-    with pytest.raises(ValueError, match="horizon labels"):
-        panel.analyze(min_assets=2).to_json(str(path))
-    assert path.read_text() == "existing report"
+    path = tmp_path / "result.json"
+    result = panel.analyze(min_assets=2)
+    result.to_json(str(path))
+    from ml4t.diagnostic.signal import SignalResult
+
+    restored = SignalResult.from_json(str(path))
+    assert restored.horizon_labels == ("1bar", "2bar")
+    assert restored.periods == ()
+    assert restored.prepared_data["date"].cast(pl.Int64).to_list() == expected
+    assert restored.prepared_data.equals(data)
 
 
 @pytest.mark.parametrize("side", ["factor", "returns", "groups"])

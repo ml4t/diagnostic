@@ -6,13 +6,20 @@ an existing return panel and its buckets. Both use the same analysis functions.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from importlib.metadata import version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
-from ml4t.diagnostic.signal._prepared import positive_count, prepared_snapshot
+from ml4t.diagnostic.signal._prepared import (
+    positive_count,
+    prepared_snapshot,
+    signal_input_contract,
+)
 from ml4t.diagnostic.signal._utils import (
     QuantileMethod,
     compute_forward_returns,
@@ -214,27 +221,42 @@ def analyze_signal(
 def analyze_prepared_signal(
     data: pl.DataFrame | pd.DataFrame,
     *,
-    periods: tuple[int, ...] = (1, 5, 21),
-    quantiles: int = 5,
+    periods: tuple[int, ...] | None = None,
+    return_columns: Sequence[str] | None = None,
+    quantiles: int | None = None,
     ic_method: str = "spearman",
     compute_turnover_flag: bool = False,
     autocorrelation_lags: int = 10,
     min_assets: int = 10,
     factor_col: str = "factor",
-    date_col: str = "date",
-    asset_col: str = "asset",
+    date_col: str | None = None,
+    asset_col: str | None = None,
+    timestamp_col: str | None = None,
+    entity_col: str | None = None,
+    feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
 ) -> SignalResult:
     """Analyze an owned prepared sample without prices or reassigned buckets.
 
-    Required columns are date, asset, factor, quantile and ``{period}D_fwd_return``
-    for every requested period. An Alphalens pandas MultiIndex table can instead
-    supply ``factor_quantile`` and ``{period}D`` columns. Both representations
-    together are ambiguous and rejected. Duplicate keys, missing/nonfinite values
-    and invalid buckets raise before calculations; this route does not clean data.
+    Use either integer ``periods`` (default1,5,21) or exact ``return_columns``
+    selectors, never both. The former accepts ``{period}D_fwd_return`` or legacy
+    ``{period}D`` aliases and defaults to five buckets. The latter preserves
+    arbitrary column names and, without quantiles, the actual positive integer
+    bucket IDs, including sparse labels. Neither route reassigns buckets.
+    Pandas MultiIndex tables and ``factor_quantile`` are supported. Conflicting
+    representations, duplicate keys, missing/nonfinite values and invalid buckets
+    raise before calculations; this route does not clean data.
+
+    Canonical timestamp_col/entity_col arguments override FeedSpec mappings;
+    date_col/asset_col remain aliases and conflicting explicit names raise.
+    Calendar resolution is explicit argument > declared feed metadata > NYSE;
+    explicit None disables calendars. The owned audit preserves declaration
+    presence, but supplied outcomes do not establish schedule conformance.
 
     Supplied horizon labels are selectors, not computed durations. No calendar,
-    session grid or return endpoint is inferred or validated. Optional turnover
-    retains the existing observed-factor-date lag convention. IC/quantile/spread
+    session grid or return endpoint is inferred or validated. Automatic turnover
+    uses only positive exact-day selectors as observed-factor-date lags; subday
+    and composite selectors are still analyzed. IC/quantile/spread
     calculations retain their native definitions, including pooled quantile
     statistics and two-sample spread inference, not all Alphalens conventions.
 
@@ -243,18 +265,51 @@ def analyze_prepared_signal(
     This ingestion route does not implement grouped/neutral analytics or complete
     legacy report workflows.
     """
-    periods = tuple(positive_count(period, "periods") for period in periods)
-    quantiles = positive_count(quantiles, "quantiles")
+    date_col, asset_col, contract = signal_input_contract(
+        feed_spec=feed_spec,
+        timestamp_col=timestamp_col,
+        entity_col=entity_col,
+        date_col=date_col,
+        asset_col=asset_col,
+        calendar=calendar,
+    )
+    if periods is not None and return_columns is not None:
+        raise ValueError("supply periods or return_columns, not both")
+    periods = (
+        tuple(
+            positive_count(period, "periods")
+            for period in ((1, 5, 21) if periods is None else periods)
+        )
+        if return_columns is None
+        else ()
+    )
+    if quantiles is None and return_columns is None:
+        quantiles = 5
+    if quantiles is not None:
+        quantiles = positive_count(quantiles, "quantiles")
     min_assets = positive_count(min_assets, "min_assets")
     if compute_turnover_flag:
         autocorrelation_lags = positive_count(autocorrelation_lags, "autocorrelation_lags")
     owned, payload, metadata = prepared_snapshot(
-        data, periods, quantiles, factor_col, date_col, asset_col
+        data, periods, quantiles, factor_col, date_col, asset_col, return_columns=return_columns
     )
+    metadata.update(contract)
+    bucket_ids = (
+        tuple(metadata["bucket_ids"]) if quantiles is None else tuple(range(1, quantiles + 1))
+    )
+    selected = tuple(metadata["return_columns"]) if return_columns is not None else None
+    if selected is not None and all(re.fullmatch(r"[1-9]\d*D", column) for column in selected):
+        periods = tuple(int(column[:-1]) for column in selected)
+    metadata["automatic_turnover_lags"] = (
+        [int(column[:-1]) for column in selected if re.fullmatch(r"[1-9]\d*D", column)]
+        if selected is not None
+        else list(periods)
+    )
+    metadata["turnover_lag_unit"] = "observed factor timestamps, not elapsed days"
     result = _analyze_data(
         owned,
         tuple(periods),
-        quantiles,
+        len(bucket_ids),
         ic_method,
         compute_turnover_flag,
         autocorrelation_lags,
@@ -262,6 +317,8 @@ def analyze_prepared_signal(
         factor_col,
         date_col,
         asset_col,
+        return_columns=selected,
+        bucket_ids=bucket_ids,
     )
     return replace(result, _prepared_data=payload, preparation_metadata=metadata)
 
@@ -277,7 +334,13 @@ def _analyze_data(
     factor_col: str,
     date_col: str,
     asset_col: str,
+    *,
+    return_columns: tuple[str, ...] | None = None,
+    bucket_ids: tuple[int, ...] | None = None,
 ) -> SignalResult:
+    horizons = return_columns if return_columns is not None else tuple(f"{p}D" for p in periods)
+    selectors: tuple[int | str, ...] = return_columns if return_columns is not None else periods
+    buckets = bucket_ids if bucket_ids is not None else tuple(range(1, quantiles + 1))
     # Extract metadata
     n_assets = data.select(asset_col).n_unique()
     n_dates = data.select(date_col).n_unique()
@@ -307,9 +370,7 @@ def _analyze_data(
     monotonicity: dict[str, float] = {}
 
     # Compute metrics for each period
-    for period in periods:
-        period_key = f"{period}D"
-
+    for period, period_key in zip(selectors, horizons, strict=True):
         # IC
         dates, ic_vals = extract_signal_ic_series(
             data, period, ic_method, factor_col, date_col, asset_col, min_assets
@@ -331,12 +392,16 @@ def _analyze_data(
         ic_positive_pct[period_key] = summary["pct_positive"] * 100
 
         # Quantile returns
-        q_returns, q_std = _compute_quantile_return_statistics(data, period, quantiles)
+        q_returns, q_std = _compute_quantile_return_statistics(
+            data, period, quantiles, bucket_ids=buckets
+        )
         quantile_returns[period_key] = q_returns
         quantile_returns_std[period_key] = q_std
 
         # Spread
-        spread_stats = compute_spread(data, period, quantiles)
+        spread_stats = compute_spread(
+            data, period, quantiles, upper_quantile=max(buckets), lower_quantile=min(buckets)
+        )
         spread[period_key] = spread_stats["spread"]
         spread_t_stat[period_key] = spread_stats["t_stat"]
         spread_p_value[period_key] = spread_stats["p_value"]
@@ -352,8 +417,12 @@ def _analyze_data(
         monotonicity[period_key] = monotonicity_score(q_returns)
 
     quantile_observations: bytes | None = None
-    if periods:
-        columns = {f"{period}D_fwd_return": f"{period}D" for period in periods}
+    if horizons:
+        columns = (
+            {column: column for column in return_columns}
+            if return_columns is not None
+            else {f"{period}D_fwd_return": f"{period}D" for period in periods}
+        )
         observations = compute_quantile_statistics(
             data,
             return_columns=list(columns),
@@ -373,27 +442,44 @@ def _analyze_data(
     dated_autocorrelation: bytes | None = None
 
     if compute_turnover_flag:
+        lag_labels = (
+            {
+                column: int(column[:-1])
+                for column in return_columns
+                if re.fullmatch(r"[1-9]\d*D", column)
+            }
+            if return_columns is not None
+            else {f"{p}D": p for p in periods}
+        )
         turnover_dict = {
-            f"{p}D": compute_turnover(data, quantiles, date_col, asset_col, lag=p) for p in periods
+            label: compute_turnover(
+                data, quantiles, date_col, asset_col, lag=lag, bucket_ids=buckets
+            )
+            for label, lag in lag_labels.items()
         }
 
         lags = list(range(1, autocorrelation_lags + 1))
         autocorr = compute_autocorrelation(data, lags, date_col, asset_col, factor_col)
         half_life = estimate_half_life(autocorr)
-        dated_turnover = (
-            compute_quantile_turnover(
-                data, lags=tuple(dict.fromkeys(periods)), date_col=date_col, asset_col=asset_col
+        if lag_labels:
+            dated_turnover = (
+                compute_quantile_turnover(
+                    data,
+                    lags=tuple(dict.fromkeys(lag_labels.values())),
+                    quantiles=buckets,
+                    date_col=date_col,
+                    asset_col=asset_col,
+                )
+                .write_ipc(None)
+                .getvalue()
             )
-            .write_ipc(None)
-            .getvalue()
-        )
-        dated_autocorrelation = (
-            compute_rank_autocorrelation(
-                data, lags=lags, date_col=date_col, asset_col=asset_col, factor_col=factor_col
+            dated_autocorrelation = (
+                compute_rank_autocorrelation(
+                    data, lags=lags, date_col=date_col, asset_col=asset_col, factor_col=factor_col
+                )
+                .write_ipc(None)
+                .getvalue()
             )
-            .write_ipc(None)
-            .getvalue()
-        )
 
     return SignalResult(
         ic=ic,
@@ -423,6 +509,8 @@ def _analyze_data(
         date_range=date_range,
         periods=periods,
         quantiles=quantiles,
+        horizon_labels=horizons,
+        quantile_ids=buckets,
     )
 
 

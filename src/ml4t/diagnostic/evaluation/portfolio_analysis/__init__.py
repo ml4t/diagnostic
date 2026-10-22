@@ -17,7 +17,22 @@ from __future__ import annotations
 
 # Main analysis class
 from ml4t.diagnostic.evaluation.portfolio_analysis.analysis import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.portfolio_analysis.benchmark import benchmark_batting_average
+from ml4t.diagnostic.evaluation.portfolio_analysis.capacity import (
+    CapacityAnalysisResult,
+    analyze_capacity,
+)
+from ml4t.diagnostic.evaluation.portfolio_analysis.fifo import RoundTripResult
+from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_statistics import (
+    RoundTripStatisticsResult,
+    summarize_round_trips,
+)
+from ml4t.diagnostic.evaluation.portfolio_analysis.frame_inputs import PortfolioInputData
 from ml4t.diagnostic.evaluation.portfolio_analysis.holdings import HoldingsAnalysisResult
+from ml4t.diagnostic.evaluation.portfolio_analysis.intraday import analyze_intraday_exposure
+from ml4t.diagnostic.evaluation.portfolio_analysis.intraday_estimate import (
+    estimate_intraday_positions,
+)
 
 # Core metric functions
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
@@ -31,8 +46,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
     calmar_ratio,
     compute_portfolio_turnover,
     conditional_var,
+    gaussian_value_at_risk,
     information_ratio,
     max_drawdown,
+    normal_cash_value_at_risk,
     omega_ratio,
     stability_of_timeseries,
     tail_ratio,
@@ -48,11 +65,22 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
     PortfolioMetrics,
     RollingMetricsResult,
 )
+from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import TransactionAnalysisResult
 
 __all__ = [
+    "CapacityAnalysisResult",
+    "analyze_capacity",
+    "analyze_intraday_exposure",
+    "estimate_intraday_positions",
+    "benchmark_batting_average",
     # Main class
     "PortfolioAnalysis",
     "HoldingsAnalysisResult",
+    "PortfolioInputData",
+    "TransactionAnalysisResult",
+    "RoundTripResult",
+    "RoundTripStatisticsResult",
+    "summarize_round_trips",
     # Result classes
     "PortfolioMetrics",
     "RollingMetricsResult",
@@ -67,6 +95,8 @@ __all__ = [
     "annual_return",
     "annual_volatility",
     "value_at_risk",
+    "gaussian_value_at_risk",
+    "normal_cash_value_at_risk",
     "conditional_var",
     "stability_of_timeseries",
     "alpha_beta",

@@ -77,6 +77,22 @@ def hit_rate(
     return float(hit_rate_value)
 
 
+def _relative_price_return(
+    exit_price: pl.Expr, reference_price: pl.Expr, *, integer_prices: bool
+) -> pl.Expr:
+    if integer_prices:
+        difference = exit_price.cast(pl.Decimal(38, 0)) - reference_price.cast(pl.Decimal(38, 0))
+        return difference.cast(pl.Float64) / reference_price.cast(pl.Float64)
+    exit_value = exit_price.cast(pl.Float64)
+    reference = reference_price.cast(pl.Float64)
+    difference = exit_value - reference
+    return (
+        pl.when(difference.is_finite())
+        .then(difference / reference)
+        .otherwise(exit_value / reference - 1)
+    )
+
+
 def compute_forward_returns(
     prices: pl.DataFrame | pd.DataFrame,
     periods: int | list[int] = 1,
@@ -88,15 +104,16 @@ def compute_forward_returns(
 ) -> pl.DataFrame | pd.DataFrame:
     """Compute forward returns for given periods.
 
-    This is a helper function for IC analysis, computing the forward-looking
-    returns that will be correlated with predictions/features.
+    Row shifts are within each asset after sorting, not independently validated
+    trading days or bars. Returns use Float64; integer differences are taken
+    before floating conversion so one-tick changes are not rounded to zero.
 
     Parameters
     ----------
     prices : Union[pl.DataFrame, pd.DataFrame]
         Price data with at least price_col and optionally group_col
     periods : Union[int, list[int]], default 1
-        Forward periods to compute (e.g., [1, 5, 21] for 1d, 1w, 1m)
+        Forward observation counts within each asset (e.g., [1, 5, 21]).
     price_col : str, default "close"
         Column name containing prices
     group_col : str | None, default None
@@ -157,9 +174,11 @@ def compute_forward_returns(
             col_name = output_col_template.format(period=period)
             return_cols.append(col_name)
             df = df.with_columns(
-                ((pl.col(price_col).shift(-period).over(group_col) / pl.col(price_col)) - 1).alias(
-                    col_name
-                )
+                _relative_price_return(
+                    pl.col(price_col).shift(-period).over(group_col),
+                    pl.col(price_col),
+                    integer_prices=df.schema[price_col].is_integer(),
+                ).alias(col_name)
             )
     else:
         # Simple forward returns
@@ -168,7 +187,11 @@ def compute_forward_returns(
             col_name = output_col_template.format(period=period)
             return_cols.append(col_name)
             df = df.with_columns(
-                ((pl.col(price_col).shift(-period) / pl.col(price_col)) - 1).alias(col_name)
+                _relative_price_return(
+                    pl.col(price_col).shift(-period),
+                    pl.col(price_col),
+                    integer_prices=df.schema[price_col].is_integer(),
+                ).alias(col_name)
             )
 
     if nan_to_null:

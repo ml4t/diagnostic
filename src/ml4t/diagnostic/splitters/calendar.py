@@ -226,6 +226,9 @@ class TradingCalendar:
     def get_sessions_and_mask(
         self,
         timestamps: pd.DatetimeIndex,
+        *,
+        include_daily_labels: bool = True,
+        bar_close: bool = False,
     ) -> tuple[pd.Series, np.ndarray]:
         """Assign each timestamp to its trading session date and identify non-trading rows.
 
@@ -233,6 +236,11 @@ class TradingCalendar:
         Non-trading rows (weekends, holidays) get NaT session and False mask.
         Active overnight rows use the exchange session date, not their civil date.
         Other rows retain daily-date classification; this is not an intraday-hours filter.
+        With include_daily_labels=False, require an actual open exchange interval,
+        excluding scheduled intraday breaks. The closing instant is included.
+        bar_close=True assigns a touching open/close boundary to the completed
+        interval instead of the next session. Ordinary event instants retain the
+        most recent open, and existing daily-label classification is unchanged.
 
         The result does not depend on the order of the input.
 
@@ -263,6 +271,8 @@ class TradingCalendar:
         ts_dates_naive = ts_dates.tz_localize(None) if ts_dates.tz else ts_dates
 
         trading_mask = np.array([d in trading_dates for d in ts_dates_naive], dtype=bool)
+        if not include_daily_labels:
+            trading_mask[:] = False
 
         session_values = np.full(len(timestamps), np.datetime64("NaT"), dtype="datetime64[ns]")
         session_values[trading_mask] = ts_dates_naive[trading_mask].to_numpy(dtype="datetime64[ns]")
@@ -272,9 +282,21 @@ class TradingCalendar:
             opens = schedule["market_open"].dt.as_unit("ns").to_numpy(dtype=np.int64)
             closes = schedule["market_close"].dt.as_unit("ns").to_numpy(dtype=np.int64)
             session_dates = schedule.index.to_numpy(dtype="datetime64[ns]")
-            candidates = np.searchsorted(opens, ts_ns, side="right") - 1
+            candidates = np.searchsorted(opens, ts_ns, side="left" if bar_close else "right") - 1
             active = candidates >= 0
-            active[active] = ts_ns[active] < closes[candidates[active]]
+            active[active] = (
+                ts_ns[active] < closes[candidates[active]]
+                if include_daily_labels
+                else ts_ns[active] <= closes[candidates[active]]
+            )
+            if not include_daily_labels and {"break_start", "break_end"}.issubset(schedule.columns):
+                starts = schedule["break_start"].dt.as_unit("ns").to_numpy(dtype=np.int64)
+                ends = schedule["break_end"].dt.as_unit("ns").to_numpy(dtype=np.int64)
+                selected = np.flatnonzero(active)
+                during_break = (ts_ns[selected] >= starts[candidates[selected]]) & (
+                    ts_ns[selected] < ends[candidates[selected]]
+                )
+                active[selected[during_break]] = False
             session_values[active] = session_dates[candidates[active]]
             trading_mask[active] = True
 

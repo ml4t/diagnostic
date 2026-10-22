@@ -381,6 +381,10 @@ def show_backtest_exposure() -> None:
         assert len(result.fills) == 1
         assert result.fills[0].quantity == 10 and result.fills[0].price == 100
         assert result.fills[0].timestamp == prices["timestamp"][1]
+        observed = analyze_backtest_result(result, calendar=None, periods_per_year=252)
+        assert observed.resolved_calendar is None
+        assert observed.daily_returns.equals(result.to_returns_series().alias("daily_return"))
+        assert observed.periods_per_year == 252
         occupancy = analyze_backtest_result(result).occupancy
         last = occupancy["timeline"].row(-1, named=True)
         assert last["cash"] == 2000
@@ -484,12 +488,17 @@ def show_prepared_holdings() -> None:
     )
     canonical["asset"] = canonical["asset"].map({"A": 1, "B": 2})
     for shape, snapshot, short_id in [("wide", positions, "B"), ("integer-ID long", canonical, 2)]:
-        analysis = PortfolioAnalysis(returns, positions=snapshot)
+        analysis = PortfolioAnalysis.from_frames(
+            returns,
+            positions=snapshot,
+            valuations=valuations,
+            complete_snapshots=True,
+            calendar=None,
+            periods_per_year=252,
+        )
         long_id = "A" if shape == "wide" else 1
         mapping = {long_id: "Technology", short_id: "Finance"}
-        holdings = analysis.compute_holdings_analysis(
-            valuations, complete_snapshots=True, sector_mapping=mapping
-        )
+        holdings = analysis.compute_holdings_analysis(sector_mapping=mapping)
         assert holdings.sectors is not None
         final = holdings.timeline.row(-1, named=True)
         np.testing.assert_allclose(
@@ -554,7 +563,14 @@ def show_prepared_holdings_report(output: Path) -> None:
     from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
 
     returns, positions, valuations = _prepared_holdings_inputs()
-    analysis = PortfolioAnalysis(returns, positions=positions)
+    analysis = PortfolioAnalysis.from_frames(
+        returns,
+        positions=positions,
+        valuations=valuations,
+        complete_snapshots=True,
+        calendar=None,
+        periods_per_year=252,
+    )
     holdings = analysis.compute_holdings_analysis(
         valuations, complete_snapshots=True, sector_mapping={"A": "Technology"}
     )
@@ -571,6 +587,235 @@ def show_prepared_holdings_report(output: Path) -> None:
     print("Unmapped short B remains visible; account cash stays separate from asset sectors")
     print(report.availability)
     print(list(report.figures))
+
+
+def show_empyrical_native() -> None:
+    """Run captured-price scalar and path adapters without a legacy dependency."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+
+    prices = pd.DataFrame(
+        {"complete": [100, 102, 101, 103, 104], "missing": [50, 51, 52, 51, np.nan]},
+        index=pd.bdate_range("2025-01-02", periods=5, tz="UTC"),
+    )
+    returns = prices.pct_change(fill_method=None).iloc[1:]
+    before = returns.copy(deep=True)
+    annual = metrics.annual_return(returns, annualization=12)
+    np.testing.assert_allclose(annual, [1.04**3 - 1, 1.02**3 - 1])
+    for name in [
+        "annual_return",
+        "cagr",
+        "annual_volatility",
+        "calmar_ratio",
+        "sharpe_ratio",
+        "sortino_ratio",
+        "downside_risk",
+    ]:
+        kwargs = {"annualization": 12}
+        if name == "sharpe_ratio":
+            kwargs["risk_free"] = 0.001
+        if name in {"sortino_ratio", "downside_risk"}:
+            kwargs["required_return"] = 0.001
+        function = getattr(metrics, name)
+        result = (
+            returns.apply(lambda column, call=function, options=kwargs: call(column, **options))
+            if name == "calmar_ratio"
+            else function(returns, **kwargs)
+        )
+        print(f"{name}: {type(result).__name__}; {np.asarray(result).tolist()}")
+    out = np.empty(2)
+    result = metrics.sortino_ratio(returns, required_return=0.001, annualization=12, out=out)
+    assert list(result.index) == ["complete", "missing"] and np.shares_memory(result, out)
+    assert metrics.annualization_factor("ignored", 52.5) == 52.5
+    pd.testing.assert_frame_equal(returns, before)
+    print("Empyrical scalar adapters: 7 routes; 4 dated rows; 2 columns; 1 missing return")
+    path_prices = pd.DataFrame(
+        {"strategy": [100.0, 101.0, 98.0, np.nan, 103.0], "benchmark": [50, 50, 52, 51, 53]},
+        index=pd.date_range("2025-01-02", periods=5, tz="UTC", name="date"),
+    )
+    paths = pd.DataFrame(
+        metrics.simple_returns(path_prices.to_numpy()),
+        index=path_prices.index[1:],
+        columns=path_prices.columns,
+    )
+    wealth = metrics.cum_returns(paths, starting_value=100)
+    np.testing.assert_allclose(wealth, [[101, 100], [98, 104], [98, 102], [98, 106]])
+    np.testing.assert_allclose(metrics.cum_returns_final(paths), [-0.02, 0.06], atol=1e-15)
+    drawdown = metrics.drawdown_series(paths)
+    np.testing.assert_allclose(
+        drawdown, [[0, 0], [-3 / 101, 0], [-3 / 101, -1 / 52], [-3 / 101, 0]], atol=1e-15
+    )
+    np.testing.assert_allclose(metrics.max_drawdown(paths), [-3 / 101, -1 / 52], atol=1e-15)
+    assert wealth.index.equals(paths.index) and drawdown.columns.equals(paths.columns)
+    print(
+        "Empyrical return paths: 5 routes; missing adjacent prices retained; initial capital checked"
+    )
+
+
+def show_empyrical_benchmark() -> None:
+    """Exercise arbitrary supplied-benchmark adapters without a legacy dependency."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        alpha_beta,
+        benchmark_batting_average,
+        information_ratio,
+    )
+
+    dates = pd.bdate_range("2025-01-02", periods=6, tz="UTC")
+    factor = pd.Series([-0.02, -0.01, 0.0, 0.01, 0.02], index=dates[1:])
+    prices = np.concatenate(([100.0], 100 * np.cumprod(1 + 0.0003 + 1.2 * factor.to_numpy())))
+    returns = pd.Series(metrics.simple_returns(prices), index=dates[1:])
+    actual = metrics.alpha_beta(returns, factor.iloc[::-1], annualization=252)
+    np.testing.assert_allclose(actual, [(1.0003) ** 252 - 1, 1.2], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(alpha_beta(returns, factor), [0.0756, 1.2], rtol=1e-12, atol=1e-12)
+    excess = metrics.excess_sharpe(returns, factor)
+    np.testing.assert_allclose(information_ratio(returns, factor), excess * np.sqrt(252))
+    for function in (metrics.up_alpha_beta, metrics.down_alpha_beta):
+        np.testing.assert_allclose(
+            function(returns, factor, annualization=12),
+            [(1.0003) ** 12 - 1, 1.2],
+            rtol=1e-12,
+            atol=1e-12,
+        )
+    tied = 1.2 * factor
+    native = benchmark_batting_average(tied, factor)
+    familiar = metrics.batting_average(tied, factor)
+    assert native["overall"] == 0.4 and native["up"] == 1 and native["n_up"] == 2
+    np.testing.assert_allclose(familiar.to_numpy(), [0.4, 2 / 3, 0])
+    print(
+        f"Benchmark alpha (annual compounded return): {actual[0]}; beta (dimensionless): {actual[1]}"
+    )
+    print(f"Active Sharpe (dimensionless, not annualized): {excess}")
+    print(f"Native strict-positive-up batting/counts: {native}")
+    print(f"Familiar zero-in-up batting: {familiar.to_dict()}")
+    sample = np.array([0.04, 0.01, -0.01, -0.03])
+    market = np.array([0.02, 0.01, -0.02, -0.01])
+    up = ((1.04 * 1.01) ** 6 - 1) / ((1.02 * 1.01) ** 6 - 1)
+    down = ((0.99 * 0.97) ** 6 - 1) / ((0.98 * 0.99) ** 6 - 1)
+    np.testing.assert_allclose(metrics.up_capture(sample, market, period="monthly"), up)
+    np.testing.assert_allclose(metrics.down_capture(sample, market, period="monthly"), down)
+    np.testing.assert_allclose(metrics.up_down_capture(sample, market, period="monthly"), up / down)
+    print(f"Geometric capture (dimensionless): up={up}; down={down}; up/down={up / down}")
+    prices32 = pd.Series([100, 101, 99, 102, 103, 101], index=dates, dtype="float32")
+    market32 = pd.Series([100, 100.5, 100, 101, 101.5, 100.8], index=dates, dtype="float32")
+    fit32 = metrics.alpha_beta(prices32.pct_change().iloc[1:], market32.pct_change().iloc[1:])
+    np.testing.assert_allclose(
+        fit32, [-0.48021420462687964, 2.952578779409444], rtol=1e-12, atol=1e-12
+    )
+    print(
+        f"Float32 price inputs with float64 calculation: annual alpha={fit32[0]}; beta={fit32[1]}"
+    )
+
+
+def show_empyrical_definitions() -> None:
+    """Keep legacy metric definitions explicit without changing native defaults."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        gaussian_value_at_risk,
+        normal_cash_value_at_risk,
+    )
+    from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as native
+
+    returns = pd.Series([-0.2, -0.1, np.nan, -0.1, 0.1], name="strategy")
+    fixed = metrics.conditional_value_at_risk(returns, cutoff=0.5)
+    tied = native.conditional_var(returns, confidence=0.5)
+    np.testing.assert_allclose([fixed, tied], [-0.15, -2 / 15])
+    assert np.isnan(metrics.value_at_risk(returns, cutoff=0.25))
+    np.testing.assert_allclose(native.value_at_risk(returns, confidence=0.75), -0.125)
+    growth = pd.Series([0.1, np.nan, 0.1, 0.1, 0.1])
+    np.testing.assert_allclose(metrics.stability_of_timeseries(growth), 1)
+    assert native.stability_of_timeseries(growth) < 1
+    losses = np.array([-0.4, -0.3, -0.2, -0.1])
+    np.testing.assert_allclose(metrics.tail_ratio(losses), 0.115 / 0.385)
+    np.testing.assert_allclose(native.tail_ratio(losses), -0.115 / 0.385)
+    assert np.isnan(metrics.omega_ratio(np.array([0.1, 0.2])))
+    assert np.isposinf(native.omega_ratio(np.array([0.1, 0.2])))
+    print(f"Fixed-count CVaR (decimal return): {fixed}; threshold-tie native CVaR: {tied}")
+    print("Empirical VaR: legacy propagates NaN; native omits it, yielding -0.125")
+    print("Log stability (dimensionless): 1; native wealth-fit stability remains distinct")
+    print("Legacy tail ratio uses absolute tails; native numerator retains its sign")
+    print("No-loss Omega: legacy undefined; native positive infinity")
+    crossing = pd.Series(
+        [0.1, 0.2, np.nan, -0.1],
+        index=pd.to_datetime(["2019-12-30", "2019-12-31", "2020-01-02", "2020-01-03"], utc=True),
+    )
+    weekly = metrics.aggregate_returns(crossing, "weekly")
+    assert weekly.index.to_list() == [(2020, 1)]
+    np.testing.assert_allclose(weekly.to_numpy(), [1.1 * 1.2 * 0.9 - 1])
+    print(f"Observed civil ISO-week products (decimal returns): {weekly.to_dict()}")
+    gaussian = gaussian_value_at_risk(np.array([-0.02, 0.0, 0.02]), sigma=2)
+    cash = normal_cash_value_at_risk(1000, 0.5, mean=-0.01, std=0.02)
+    np.testing.assert_allclose([gaussian, cash], [-0.04, 10])
+    print(f"Gaussian mean-minus-two-deviations VaR (decimal return): {gaussian}")
+    print(f"Normal-model median VaR for 1000 supplied cash units (cash loss): {cash}")
+
+
+def show_empyrical_rolling() -> None:
+    """Compare legacy row endpoints with the unchanged native padded workflow."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
+
+    dates = pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-07", "2025-01-10"], utc=True)
+    returns = pd.Series([0.1, -0.1, 0.2, 0.05], index=dates)
+    familiar = metrics.roll_sharpe_ratio(returns, window=3, annualization=12)
+    expected = [
+        returns.iloc[:3].mean() / returns.iloc[:3].std() * np.sqrt(12),
+        returns.iloc[1:].mean() / returns.iloc[1:].std() * np.sqrt(12),
+    ]
+    np.testing.assert_allclose(familiar.to_numpy(), expected)
+    assert familiar.index.equals(dates[2:])
+    analysis = PortfolioAnalysis(returns, periods_per_year=12)
+    native = analysis.compute_rolling_metrics(windows=[3], metrics=["sharpe", "returns"])
+    assert native.sharpe[3].null_count() == 2
+    np.testing.assert_allclose(native.sharpe[3].to_numpy()[2:], familiar.to_numpy())
+    cagr = metrics.roll_cagr(returns, window=3, annualization=12)
+    np.testing.assert_allclose(
+        cagr.to_numpy(), [(1.1 * 0.9 * 1.2) ** 4 - 1, (0.9 * 1.2 * 1.05) ** 4 - 1]
+    )
+    assert len(metrics.roll_sharpe_ratio(returns, window=5)) == 1
+    empty = metrics.roll(returns, window=5, function=metrics.sharpe_ratio)
+    assert empty.empty
+    print(f"Legacy row-window Sharpe (dimensionless): {familiar.to_dict()}")
+    print(f"Native full-length padded Sharpe: {native.sharpe[3].to_list()}")
+    print(f"Annualized exact-window CAGR (decimal return): {cagr.to_dict()}")
+    print("Vectorized overlong window: one short sample; generic callback: no full sample")
+    strategies = pd.concat({"long": returns, "hedge": -0.5 * returns}, axis=1)
+    wide = pd.concat(
+        {
+            name: metrics.roll_sharpe_ratio(values, window=3, annualization=12)
+            for name, values in strategies.items()
+        },
+        axis=1,
+    )
+    assert wide.columns.to_list() == ["long", "hedge"] and wide.index.equals(dates[2:])
+    np.testing.assert_allclose(wide["long"], expected)
+    np.testing.assert_allclose(wide["hedge"], -np.array(expected))
+    print(f"Columnwise strategy migration retains labels: {wide.to_dict()}")
+
+
+def show_empyrical_fragility() -> None:
+    """Expose the actual interpolation sample behind the familiar scalar heuristic."""
+    from ml4t.diagnostic.compat import empyrical as metrics
+    from ml4t.diagnostic.metrics import beta_fragility
+
+    dates = pd.bdate_range("2025-01-02", periods=4, tz="UTC")
+    prices = pd.Series([100, 99.96, 99.96, 99.870036], index=dates)
+    market = pd.Series([100, 98, 98, 100.94], index=dates)
+    returns, benchmark = metrics.simple_returns(prices), metrics.simple_returns(market)
+    result = beta_fragility(returns, benchmark.iloc[::-1])
+    np.testing.assert_allclose(result.fragility, -0.0006, atol=1e-15)
+    assert result.n_pairs == 3 and result.selected_keys == tuple(returns.index)
+    np.testing.assert_allclose(result.endpoint_weights, [0.6, 0.4])
+    np.testing.assert_allclose(
+        metrics.beta_fragility_heuristic(returns, benchmark), result.fragility, atol=1e-15
+    )
+    print(f"Fragility (periodic decimal-return gap): {result.fragility}")
+    print(
+        f"Actual selected benchmark points: {result.benchmark_points}; weights: {result.endpoint_weights}"
+    )
+    print(
+        f"Usable pairs: {result.n_pairs}/{result.n_observations}; selected rows: {result.selected_keys}"
+    )
+    print("A three-point heuristic, not an estimated beta, p-value or predictive-accuracy score")
 
 
 def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
@@ -667,6 +912,111 @@ def show_signal_turnover(output: Path) -> None:
     print("Observed-date clock; defined rank dates at lags 1/2/5: 11/10/7")
 
 
+def show_supplied_transactions(output: Path | None = None) -> None:
+    """Actual overnight fills, explicit turnover and extra costs, without a broker."""
+    import polars as pl
+
+    dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.01, -0.02, 0.03], index=dates),
+        positions=pd.DataFrame({"A": [200.0, 400.0, 600.0]}, index=dates),
+        valuations=pd.DataFrame(
+            {
+                "date": pd.DatetimeIndex(["2025-07-03T00:00Z", *dates]),
+                "equity": [1000.0, 1100.0, 1200.0, 1300.0],
+            }
+        ),
+        transactions=pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2025-07-06T23:30Z", "2025-07-07T00:30Z"]),
+                "asset": ["A", "A"],
+                "quantity": [0.5, -0.5],
+                "price": [2.0, 2.0],
+                "multiplier": [100.0, 100.0],
+                "commission": [0.1, 0.1],
+                "slippage": [0.0, 0.0],
+            }
+        ),
+        complete_snapshots=True,
+        feed_spec={
+            "timestamp_col": "date",
+            "entity_col": "asset",
+            "calendar": "CME_Equity",
+            "time_contract_version": 2,
+            "timestamp_semantics": "session_label",
+        },
+        transaction_timestamp_col="timestamp",
+        periods_per_year=252,
+    )
+    activity = analysis.compute_transaction_analysis(incremental_bps=[0, 10])
+    np.testing.assert_allclose(activity.timeline["turnover"], [0.2, 0, 0])
+    np.testing.assert_allclose(
+        activity.scenarios.filter(pl.col("incremental_bps") == 10)["net_return"],
+        [0.0098, -0.02, 0.03],
+    )
+    print(activity.executions.select("timestamp", "session", "filled_notional"))
+    print(activity.timeline)
+    print(activity.scenarios)
+    print("200 traded / 1000 beginning NAV = .2 gross turnover; 10 extra bps = .0002 return")
+    print("Supplied net returns already include observed fees; only extra cost is subtracted")
+    if output is not None:
+        analysis.create_tear_sheet(transactions=activity).save_html(output, include_plotlyjs=True)
+        print(f"Actual transaction HTML: {output}")
+
+
+def show_empyrical_tail(output: Path | None = None) -> None:
+    """Inspect native and familiar tail-risk methods on the same supplied account."""
+    from dataclasses import asdict
+
+    from ml4t.diagnostic import metrics
+    from ml4t.diagnostic.compat import empyrical as ep
+
+    returns = np.r_[
+        np.repeat(0.002, 40), -np.array([0.03, 0.04, 0.05, 0.07, 0.09, 0.12, 0.15, 0.2])
+    ]
+    prices = pd.Series(
+        np.r_[100.0, 100 * np.cumprod(1 + returns)],
+        index=pd.bdate_range("2025-01-02", periods=49, tz="UTC"),
+    )
+    supplied = prices.pct_change(fill_method=None).iloc[1:]
+    native = metrics.estimate_gpd_tail_risk(supplied, threshold=0.02, tail_probability=0.02)
+    familiar = metrics.estimate_gpd_tail_risk(
+        supplied, method="empyrical_raw_tail", tail_probability=0.02
+    )
+    assert native.status == "ok" and native.n_finite == 48 and native.n_exceedances == 8
+    np.testing.assert_allclose(native.value_at_risk, 0.1784, rtol=0, atol=1e-8)
+    assert native.expected_shortfall >= native.value_at_risk
+    print("Native positive periodic loss risk:", asdict(native))
+    print("Named raw-tail method (different fit and denominator):", asdict(familiar))
+    print("Familiar five-field projection:", ep.gpd_risk_estimates(supplied, var_p=0.02).tolist())
+    print("No annualization or calendar inference; failed fits are undefined, not zero risk")
+    benchmark = pd.Series(np.linspace(-0.02, 0.02, len(supplied)), index=supplied.index)
+    statistics = {
+        function.__name__: (
+            function(supplied, var_p=0.02)
+            if function.__name__ == "gpd_risk_estimates"
+            else function(supplied, benchmark)
+        )
+        for function in ep.FACTOR_STAT_FUNCS
+    }
+    assert np.shape(statistics["gpd_risk_estimates"]) == (5,)
+    expected_beta = np.cov(supplied, benchmark)[0, 1] / np.var(benchmark, ddof=1)
+    np.testing.assert_allclose(statistics["beta"], expected_beta)
+    print("Complete factor-statistics registry (mixed units/signatures):", statistics)
+    if output is not None:
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        generate_backtest_tearsheet(
+            returns=supplied.to_numpy(),
+            metrics={"gpd_tail_risk": native},
+            output_path=output,
+            include_statistical=False,
+            periods_per_year=252,
+            title="Supplied GPD tail-risk analysis",
+        )
+        print(f"Portfolio report with supplied GPD fit: {output}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -677,6 +1027,12 @@ def main() -> None:
             "pyfolio",
             "alphalens",
             "empyrical",
+            "empyrical-native",
+            "empyrical-benchmark",
+            "empyrical-definitions",
+            "empyrical-rolling",
+            "empyrical-tail",
+            "empyrical-fragility",
             "exposure",
             "activity",
             "holdings",
@@ -684,20 +1040,24 @@ def main() -> None:
             "events",
             "event-returns",
             "turnover",
+            "transactions",
+            "transactions-report",
         ),
         default="diagnostic",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for --task holdings-report, events, event-returns or turnover",
+        help="HTML path for holdings-report, transactions-report, events, event-returns, turnover or empyrical-tail",
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "events", "event-returns", "turnover"):
+    if task in ("holdings-report", "transactions-report", "events", "event-returns", "turnover") or (
+        task == "empyrical-tail" and arguments.output is not None
+    ):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -709,6 +1069,31 @@ def main() -> None:
         print(f"{package}=={version(package)}")
     if task == "turnover":
         show_signal_turnover(arguments.output or Path("turnover-report.html"))
+        return
+    if task == "empyrical-native":
+        show_empyrical_native()
+        return
+    if task == "empyrical-benchmark":
+        show_empyrical_benchmark()
+        return
+    if task == "empyrical-definitions":
+        show_empyrical_definitions()
+        return
+    if task == "empyrical-rolling":
+        show_empyrical_rolling()
+        return
+    if task in ("transactions", "transactions-report"):
+        show_supplied_transactions(
+            arguments.output or Path("transactions-report.html")
+            if task == "transactions-report"
+            else None
+        )
+        return
+    if task == "empyrical-tail":
+        show_empyrical_tail(arguments.output)
+        return
+    if task == "empyrical-fragility":
+        show_empyrical_fragility()
         return
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
