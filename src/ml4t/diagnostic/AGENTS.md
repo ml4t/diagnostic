@@ -36,6 +36,9 @@
   native calculations. Pyfolio attribution figures and `tears.create_perf_attrib_tear_sheet`
   use optional Plotly/HTML presentation, not a mandatory Reloaded or Matplotlib runtime.
 - Reporting and tearsheet entry points are in `integration/` and `visualization/backtest/`.
+- `compat.pyfolio.create_returns_tear_sheet` composes the familiar complete returns manifest
+  with the existing `PortfolioTearSheet` renderer, explicit availability and native kernels.
+  The plotting adapters return Plotly figures; Matplotlib artist mutation is not preserved.
 - Correlation-adjusted DSR now lives in `evaluation.stats` via
   `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.
 - For book and case-study workflows, set `periods_per_year` from the return

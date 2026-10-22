@@ -39,7 +39,108 @@ __all__ = [
     "summarize_paths",
     "forecast_cone_bootstrap",
     "extract_interesting_date_ranges",
+    "rolling_volatility",
+    "rolling_sharpe",
+    "rolling_beta",
+    "gen_drawdown_table",
 ]
+
+
+def _rolling_complete(returns: pd.Series, window: int, metric: str, scale: int) -> pd.Series:
+    width = positive_integer(window, "rolling window")
+    scale = positive_integer(scale, "periods_per_year")
+    if not isinstance(returns, pd.Series):
+        raise TypeError("rolling returns must be a pandas Series")
+    if len(returns) < width:
+        return pd.Series(np.nan, index=returns.index, dtype=float)
+    values = getattr(ep, metric)(returns, window=width, annualization=scale).reindex(returns.index)
+    # The familiar Pyfolio path requires every row, unlike Empyrical's NaN-omitting windows.
+    return values.where(returns.rolling(width).count() == width)
+
+
+def rolling_volatility(
+    returns: pd.Series, rolling_vol_window: int, *, periods_per_year: int = 252
+) -> pd.Series:
+    """Annualized sample dispersion on full observed row windows, with padded warmup."""
+    return _rolling_complete(
+        returns, rolling_vol_window, "roll_annual_volatility", periods_per_year
+    )
+
+
+def rolling_sharpe(
+    returns: pd.Series, rolling_sharpe_window: int, *, periods_per_year: int = 252
+) -> pd.Series:
+    """Zero-periodic-RF Sharpe with original full-window missingness and explicit scale."""
+    return _rolling_complete(returns, rolling_sharpe_window, "roll_sharpe_ratio", periods_per_year)
+
+
+def rolling_beta(
+    returns: pd.Series, factor_returns: pd.Series | pd.DataFrame, rolling_window: int = 126
+) -> pd.Series | pd.DataFrame:
+    """Retain Pyfolio's inclusive endpoints: window126 selects127 observed rows."""
+    width = positive_integer(rolling_window, "rolling_window") + 1
+    if isinstance(factor_returns, pd.DataFrame):
+        return factor_returns.apply(lambda factor: rolling_beta(returns, factor, rolling_window))
+    if not isinstance(returns, pd.Series) or not isinstance(factor_returns, pd.Series):
+        raise TypeError("rolling beta requires pandas Series or benchmark columns")
+    if not returns.index.is_unique or not factor_returns.index.is_unique:
+        raise ValueError("rolling beta requires unique observation keys")
+    if len(returns) < width:
+        return pd.Series(np.nan, index=returns.index, dtype=float)
+    factor = factor_returns.reindex(returns.index)
+    return ep.roll_beta(returns, factor, window=width).reindex(returns.index)
+
+
+def gen_drawdown_table(returns: pd.Series, top: int = 10) -> pd.DataFrame:
+    """Project shared initial-capital episodes; do not invent an initial timestamp.
+
+    Depth is percent. Duration retains the original inclusive civil-business-date
+    count only when both peak and recovery dates exist, not exchange sessions.
+    Empty slots are padded as in the familiar table. A monotone gain has no episode.
+    """
+    from ml4t.diagnostic.evaluation.portfolio_analysis.drawdowns import _identify_drawdown_periods
+
+    from .txn import _dated
+
+    _dated(returns, "returns")
+    if isinstance(top, bool | np.bool_) or not isinstance(top, int | np.integer) or top < 0:
+        raise ValueError("top must be a nonnegative integer")
+    curve = ep.drawdown_series(returns)
+    episodes = sorted(
+        _identify_drawdown_periods(as_array(curve), returns.index, 0.0), key=lambda p: p.depth
+    )
+    table = pd.DataFrame(
+        np.nan,
+        index=range(top),
+        columns=["Net drawdown in %", "Peak date", "Valley date", "Recovery date", "Duration"],
+    ).astype(object)
+    for row, episode in enumerate(episodes[:top]):
+        peak, valley, recovery = [
+            pd.NaT if value is None else pd.Timestamp(value)
+            for value in (episode.peak_date, episode.valley_date, episode.recovery_date)
+        ]
+        table.loc[row] = [
+            -100 * episode.depth,
+            peak,
+            valley,
+            recovery,
+            len(pd.bdate_range(peak, recovery))
+            if pd.notna(peak) and pd.notna(recovery)
+            else np.nan,
+        ]
+    for name in ("Peak date", "Valley date", "Recovery date"):
+        table[name] = pd.to_datetime(table[name], utc=returns.index.tz is not None)
+        if returns.index.tz is not None:
+            table[name] = table[name].dt.tz_convert(returns.index.tz)
+    table.attrs["diagnostic"] = {
+        "depth_units": "percent",
+        "initial_capital_peak_timestamp": "unavailable",
+        "duration_units": "inclusive civil Monday-Friday dates, not exchange sessions",
+        "initial_capital_included": True,
+        "padding_is_unavailable_not_zero_risk": True,
+    }
+    return table
+
 
 _STAT_NAMES = {
     "annual_return": "Annual return",

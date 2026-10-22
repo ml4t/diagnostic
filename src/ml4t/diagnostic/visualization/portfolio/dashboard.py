@@ -219,7 +219,7 @@ class PortfolioTearSheet:
             white-space: pre-wrap;
             overflow-wrap: anywhere;
         }}
-        .plot-container {{
+        body > .plot-container {{
             background: white;
             border-radius: 8px;
             padding: 15px;

@@ -60,6 +60,28 @@ def _time_axis(figure: go.Figure, index: pd.DatetimeIndex) -> None:
     )
 
 
+def _set_legend(figure: go.Figure, location: str | int | None) -> None:
+    from .stress_sheet import _LOCATIONS
+
+    if isinstance(location, int) and 0 <= location < len(_LOCATIONS):
+        location = _LOCATIONS[location]
+    if location is not None and location not in _LOCATIONS:
+        raise ValueError("legend_loc must be a supported location or None")
+    figure.update_layout(showlegend=location is not None)
+    if location not in (None, "best"):
+        x = 0 if "left" in location else 1 if "right" in location else 0.5
+        y = 1 if "upper" in location else 0 if "lower" in location else 0.5
+        figure.update_layout(
+            legend={
+                "orientation": "v",
+                "x": x,
+                "y": y,
+                "xanchor": "left" if x == 0 else "right" if x == 1 else "center",
+                "yanchor": "top" if y == 1 else "bottom" if y == 0 else "middle",
+            }
+        )
+
+
 def plot_returns(returns: pd.Series, live_start_date: Any = None, ax: Any = None) -> go.Figure:
     """Render the original raw return sample; NaNs remain gaps, not cash returns."""
     import plotly.graph_objects as go
@@ -124,18 +146,10 @@ def plot_rolling_returns(
     import plotly.graph_objects as go
 
     from .plotting import _figure
-    from .stress_sheet import _LOCATIONS
 
     supplied = _return_series(returns)
     if not all(isinstance(flag, bool | np.bool_) for flag in (logy, volatility_match)):
         raise TypeError("logy and volatility_match must be boolean")
-    location = (
-        _LOCATIONS[legend_loc]
-        if isinstance(legend_loc, int) and 0 <= legend_loc < len(_LOCATIONS)
-        else legend_loc
-    )
-    if location is not None and location not in _LOCATIONS:
-        raise ValueError("legend_loc must be a supported location or None")
     benchmark = None
     if factor_returns is not None:
         benchmark = _return_series(factor_returns).reindex(supplied.index)
@@ -161,6 +175,7 @@ def plot_rolling_returns(
         else "Cumulative wealth"
     )
     figure = _figure(title, "Wealth multiple", ax, kwargs)
+    _set_legend(figure, legend_loc)
     if kwargs:
         raise TypeError(f"Unknown Plotly layout options: {', '.join(sorted(kwargs))}")
     if benchmark is not None:
@@ -229,7 +244,6 @@ def plot_rolling_returns(
     figure.update_yaxes(type="log" if logy else "linear")
     figure.add_hline(y=1.0, line_dash="dash")
     figure.update_layout(
-        showlegend=location is not None,
         meta={
             "analysis": "legacy_returns",
             "units": "wealth multiple",
@@ -239,18 +253,6 @@ def plot_rolling_returns(
             "description": "Full-clock products start at one, not net cumulative returns. NaNs are neutral product factors, not imputed observations. Cones sample only actual pre-live returns; bounds are mean +/- population std, not confidence coverage. Date spacing counts observations; exact original timestamps remain on hover.",
         },
     )
-    if location not in (None, "best"):
-        x = 0 if "left" in location else 1 if "right" in location else 0.5
-        y = 1 if "upper" in location else 0 if "lower" in location else 0.5
-        figure.update_layout(
-            legend={
-                "orientation": "v",
-                "x": x,
-                "y": y,
-                "xanchor": "left" if x == 0 else "right" if x == 1 else "center",
-                "yanchor": "top" if y == 1 else "bottom" if y == 0 else "middle",
-            }
-        )
     return figure
 
 

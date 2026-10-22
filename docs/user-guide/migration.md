@@ -1746,6 +1746,71 @@ computed values. Live bootstrap samples pair the benchmark on each split's
 actual dates. Neither correction changes native inference defaults or claims
 complete portfolio-report coverage.
 
+### Run a complete familiar returns report
+
+The unreleased `compat.pyfolio.create_returns_tear_sheet` (also available under
+`compat.pyfolio.tears`) selects the original returns-report financial panels
+and uses the existing `PortfolioTearSheet` renderer. Supplied raw returns need
+no producer or Reloaded runtime:
+
+```python
+from ml4t.diagnostic.compat import pyfolio as familiar_portfolio
+
+returns_sheet = familiar_portfolio.create_returns_tear_sheet(
+    performance_returns, return_fig=True, periods_per_year=12,
+)
+assert len(returns_sheet.figures) == 14
+assert np.isclose(returns_sheet.figures["Underwater"].data[0].y[1], -0.1)
+assert returns_sheet.availability["volatility_match"]["status"] == "not_requested"
+print("Complete familiar returns manifest: existing native renderer and explicit availability")
+```
+
+The report contains performance and drawdown tables, wealth/log/live/cone views,
+raw returns, rolling volatility and Sharpe, drawdown episodes/underwater, monthly
+heatmap/distribution, annual returns and daily/weekly/monthly return quantiles.
+A benchmark adds rolling beta and enables volatility matching. `bootstrap=True`
+requires a benchmark and adds actual IID metric distributions. A missing benchmark
+or undefined dispersion leaves volatility matching explicitly unavailable rather
+than displaying an unmatched curve under that name. `return_fig=True` returns the
+native report with `show()`, `save_html()` and `to_dict()`, not a Matplotlib figure;
+the default displays the report and returns `None`.
+
+The runnable price-to-report example produces 280 observations and a 260/20
+training/live split, with all JavaScript embedded for offline viewing:
+
+```bash
+uv run --extra viz python examples/pyfolio_returns_report.py --bootstrap --output returns-report.html
+```
+
+The optional reference run uses published Pyfolio 0.10.0 / Empyrical 0.7.0 and
+their supported pandas 2.3.3 profile, separately from native pandas 3 workflows:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --extra viz --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/pyfolio_returns_report.py --compare --bootstrap --output returns-reference.html
+```
+
+Windows count observations, not inferred sessions or rebalances. The original
+126/252 rolling-beta arguments use inclusive endpoints and therefore select
+127/253 rows; volatility and Sharpe require complete 126-row samples. The same
+explicit `periods_per_year` reaches both summary and rolling risk calculations.
+Calendar-year/month products include partial boundary periods and are not CAGR.
+Live quantiles aggregate independently inside each split. Monthly heatmap
+display retains the reference's three-decimal return rounding but leaves absent
+months blank instead of displaying invented zero returns. Tables and monthly
+heatmaps scroll horizontally on narrow screens to preserve readable values.
+
+Drawdown tables, shading and underwater curves include initial capital, matching
+Diagnostic's existing scalar drawdown. Pyfolio 0.10.0's report excludes that peak:
+returns `[-.2, .25, -.1]` produce a correct scalar drawdown of -20%, but its table's
+largest loss is only 10%. Diagnostic reports both 20% and 10% episodes. The initial
+peak timestamp is not present in a raw return Series, so this familiar table
+leaves it blank rather than guessing the first observation. Native supplied-account
+analysis can retain an initial valuation timestamp. The familiar duration column counts
+inclusive Monday-Friday civil dates only when peak and recovery are known,
+not exchange sessions. Existing native episode durations still count observations.
+This returns workflow does not yet qualify every combined account report or
+original notebook; retain Pyfolio for those unfinished journeys.
+
 ### Normalize a supplied account without a backtest engine
 
 Unreleased after 0.1.9, `PortfolioAnalysis.from_frames()` accepts dated returns,
