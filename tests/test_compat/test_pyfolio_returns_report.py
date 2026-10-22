@@ -154,6 +154,43 @@ def test_one_observation_report_retains_actual_loss_without_inventing_dispersion
     assert report.figures["Underwater"].data[0].y == pytest.approx([-0.2])
 
 
+def test_short_price_history_does_not_present_unavailable_rolling_risk_as_an_estimate():
+    prices = pd.Series([100.0, 110, 99, 103.95], index=pd.bdate_range("2025-01-02", periods=4))
+    returns = prices.pct_change(fill_method=None).iloc[1:]
+    report = tears.create_returns_tear_sheet(returns, benchmark_rets=returns * 0.5, return_fig=True)
+    for name in ("Rolling volatility", "Rolling Sharpe", "Rolling beta"):
+        figure = report.figures[name]
+        assert all(not np.isfinite(np.asarray(trace.y, dtype=float)).any() for trace in figure.data)
+        assert figure.layout.meta["status"] == "unavailable"
+        assert figure.layout.yaxis.visible is False
+        assert any("no finite" in annotation.text for annotation in figure.layout.annotations)
+
+
+def test_observed_flat_prices_keep_known_zero_rolling_volatility_instead_of_an_unavailable_panel():
+    prices = pd.Series(100.0, index=pd.bdate_range("2025-01-02", periods=130))
+    report = tears.create_returns_tear_sheet(
+        prices.pct_change(fill_method=None).iloc[1:], return_fig=True
+    )
+    figure = report.figures["Rolling volatility"]
+    finite = np.asarray(figure.data[0].y, dtype=float)
+    np.testing.assert_array_equal(finite[np.isfinite(finite)], [0.0] * 4)
+    assert figure.layout.meta["status"] == "available"
+    assert figure.layout.meta["finite_estimates"]["Volatility"] == 4
+    assert figure.layout.yaxis.visible is not False
+    assert not figure.layout.annotations
+
+
+def test_available_benchmark_risk_is_not_hidden_when_only_strategy_windows_are_incomplete():
+    dates = pd.bdate_range("2025-01-02", periods=130)
+    short = pd.Series([0.01, -0.02, 0.03], index=dates[:3])
+    benchmark = pd.Series(np.sin(np.arange(130)) * 0.01, index=dates)
+    figure = plotting.plot_rolling_volatility(short, benchmark)
+    assert figure.layout.meta["status"] == "available"
+    assert figure.layout.meta["finite_estimates"] == {"Volatility": 0, "Benchmark": 5}
+    assert figure.layout.yaxis.visible is not False
+    assert not figure.layout.annotations
+
+
 def test_benchmark_range_clipping_retains_actual_keys_and_discloses_excluded_observations():
     returns, benchmark = _inputs()
     selected = benchmark.iloc[10:-10]

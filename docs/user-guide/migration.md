@@ -1762,6 +1762,7 @@ returns_sheet = familiar_portfolio.create_returns_tear_sheet(
 assert len(returns_sheet.figures) == 14
 assert np.isclose(returns_sheet.figures["Underwater"].data[0].y[1], -0.1)
 assert returns_sheet.availability["volatility_match"]["status"] == "not_requested"
+assert returns_sheet.figures["Rolling volatility"].layout.meta["status"] == "unavailable"
 print("Complete familiar returns manifest: existing native renderer and explicit availability")
 ```
 
@@ -1793,6 +1794,9 @@ Windows count observations, not inferred sessions or rebalances. The original
 126/252 rolling-beta arguments use inclusive endpoints and therefore select
 127/253 rows; volatility and Sharpe require complete 126-row samples. The same
 explicit `periods_per_year` reaches both summary and rolling risk calculations.
+Rolling panels with no finite estimates show an unavailable explanation instead
+of an empty auto-scaled risk axis. Observed zero volatility remains a plotted
+zero, and an available benchmark is not hidden by incomplete strategy windows.
 Calendar-year/month products include partial boundary periods and are not CAGR.
 Live quantiles aggregate independently inside each split. Monthly heatmap
 display retains the reference's three-decimal return rounding but leaves absent

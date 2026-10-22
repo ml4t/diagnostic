@@ -37,6 +37,35 @@ def _line(figure: go.Figure, values: pd.Series, label: str) -> None:
     )
 
 
+def _rolling_availability(figure: go.Figure) -> bool:
+    counts = {
+        trace.name: int(np.isfinite(np.asarray(trace.y, dtype=float)).sum())
+        for trace in figure.data
+    }
+    available = any(counts.values())
+    figure.update_layout(
+        meta={
+            **(figure.layout.meta or {}),
+            "status": "available" if available else "unavailable",
+            "finite_estimates": counts,
+        }
+    )
+    if not available:
+        figure.update_xaxes(visible=False)
+        figure.update_yaxes(visible=False)
+        figure.update_layout(showlegend=False)
+        figure.add_annotation(
+            text="Unavailable: no finite<br>complete-window estimates.",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font_size=14,
+        )
+    return available
+
+
 def _rolling_panel(
     returns: pd.Series,
     factor_returns: pd.Series | None,
@@ -64,7 +93,6 @@ def _rolling_panel(
         dates = dates.union(benchmark.index)
     if np.isfinite(actual.mean()):
         figure.add_hline(y=actual.mean(), line_dash="dash")
-    figure.add_hline(y=0)
     _time_axis(figure, dates)
     figure.update_layout(
         meta={
@@ -75,7 +103,10 @@ def _rolling_panel(
         },
     )
     if metric == "rolling_volatility":
-        figure.update_yaxes(tickformat=".1%")
+        figure.update_yaxes(tickformat=".1%", rangemode="nonnegative")
+    figure.update_yaxes(automargin=True)
+    if _rolling_availability(figure):
+        figure.add_hline(y=0)
     return figure
 
 
@@ -139,7 +170,6 @@ def plot_rolling_beta(
         _line(figure, values, f"{window}+1 observations")
         if window == 126 and np.isfinite(values.mean()):
             figure.add_hline(y=values.mean(), line_dash="dash")
-    figure.add_hline(y=1)
     _time_axis(figure, supplied.index)
     figure.update_layout(
         meta={
@@ -148,6 +178,9 @@ def plot_rolling_beta(
             "description": "Historical inclusive endpoint convention: named126/252windows contain127/253observations. Existing paired regression omits missing pairs within each selected window. Beta is dimensionless.",
         },
     )
+    figure.update_yaxes(automargin=True)
+    if _rolling_availability(figure):
+        figure.add_hline(y=1)
     return figure
 
 
