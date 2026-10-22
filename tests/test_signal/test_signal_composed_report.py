@@ -48,7 +48,7 @@ def test_composed_signal_report_renders_every_real_component_and_original_factor
     )
     target = tmp_path / "signal.html"
     generate_signal_report(returns, information, turnover, summary=summary, output_file=target)
-    html = target.read_text()
+    html = target.read_text(encoding="utf-8")
     assert html.count('class="plot-container"') == len(figures)
     frames = pd.read_html(StringIO(html), attrs={"id": "factor-statistics"})
     assert len(frames) == 1
@@ -82,7 +82,7 @@ def test_composed_report_refuses_information_from_another_real_factor_sample_wit
     )
     information = analyze_signal_information(different, min_obs=2)
     target = tmp_path / "retained.html"
-    target.write_text("retained report")
+    target.write_text("retained report", encoding="utf-8")
     with pytest.raises(ValueError, match="prepared sample"):
         generate_signal_report(returns, information, turnover, output_file=target)
-    assert target.read_text() == "retained report"
+    assert target.read_text(encoding="utf-8") == "retained report"

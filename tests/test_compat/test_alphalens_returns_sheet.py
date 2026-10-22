@@ -27,7 +27,7 @@ def test_familiar_returns_sheet_keeps_global_panels_groups_and_atomic_failure(by
         data, by_group=by_group, return_fig=True, output_file=target, set_context=False
     )
     assert len(figures) == (12 if by_group else 8)
-    assert target.read_text().count('class="plot-container"') == len(figures)
+    assert target.read_text(encoding="utf-8").count('class="plot-container"') == len(figures)
     assert (
         len([figure for figure in figures if figure.layout.meta["analysis"] == "factor_wealth"])
         == 1
@@ -40,10 +40,10 @@ def test_familiar_returns_sheet_keeps_global_panels_groups_and_atomic_failure(by
     assert spread.layout.meta["rolling_window_observations"] == 22
     assert spread.layout.meta["bandwidth"] == 0.5
     pd.testing.assert_frame_equal(data, before)
-    target.write_text("retained report")
+    target.write_text("retained report", encoding="utf-8")
     with pytest.raises(TypeError, match="long_short"):
         tears.create_returns_tear_sheet(data, long_short="yes", output_file=target)
-    assert target.read_text() == "retained report"
+    assert target.read_text(encoding="utf-8") == "retained report"
 
 
 @pytest.mark.parametrize("long_short", [False, True])

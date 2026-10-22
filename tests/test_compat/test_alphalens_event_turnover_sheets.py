@@ -50,7 +50,7 @@ def test_price_preparation_to_familiar_reports_retains_every_panel_and_input(rou
     )
     expected = {"turnover": 4, "event_returns": 5, "event_study": 6}[route]
     assert len(figures) == expected and all(len(figure.data) for figure in figures)
-    assert target.read_text().count('class="plot-container"') == expected
+    assert target.read_text(encoding="utf-8").count('class="plot-container"') == expected
     pd.testing.assert_frame_equal(panel, before)
     pd.testing.assert_frame_equal(prices, original_prices)
     assert len(panel) == 48 and list(utils.get_forward_returns_columns(panel.columns)) == [

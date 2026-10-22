@@ -55,7 +55,7 @@ def test_familiar_composition_keeps_every_component_and_reference_information_ad
         data, group_neutral=True, return_fig=True, output_file=target, set_context=False, **options
     )
     assert len(figures) == count
-    html = target.read_text()
+    html = target.read_text(encoding="utf-8")
     assert html.count('class="plot-container"') == count
     assert f"information group adjustment: {sheet == 'full'}" in html
     for identifier in (
@@ -69,10 +69,10 @@ def test_familiar_composition_keeps_every_component_and_reference_information_ad
     ):
         assert len(pd.read_html(StringIO(html), attrs={"id": identifier})) == 1
     pd.testing.assert_frame_equal(data, before)
-    target.write_text("retained report")
+    target.write_text("retained report", encoding="utf-8")
     with pytest.raises(TypeError, match="group_neutral"):
         route(data, group_neutral="yes", output_file=target)
-    assert target.read_text() == "retained report"
+    assert target.read_text(encoding="utf-8") == "retained report"
 
 
 @pytest.mark.parametrize("sheet,by_group", [("summary", False), ("full", False), ("full", True)])
@@ -169,7 +169,7 @@ def test_complete_reference_summary_full_workflows_retain_factor_return_informat
         set_context=False,
         **options,
     )
-    html = target.read_text()
+    html = target.read_text(encoding="utf-8")
 
     def table(identifier):
         return pd.read_html(StringIO(html), attrs={"id": identifier})[0]

@@ -295,15 +295,15 @@ def test_owned_returns_renderer_exposes_every_selected_horizon_and_never_compoun
         assert spread.layout.meta["bandwidth"] == 0.5
     target = tmp_path / "returns.html"
     assert generate_signal_returns_report(result, output_file=target) == str(target)
-    html = target.read_text()
+    html = target.read_text(encoding="utf-8")
     assert html.count('class="plot-container"') == 10
     assert "annual_alpha" in html and "beta" in html
     assert "dimensionless" in html and "not self-financing" in html
     assert "sample standard error" in html
-    target.write_text("retained")
+    target.write_text("retained", encoding="utf-8")
     with pytest.raises(ValueError, match="rolling_window"):
         generate_signal_returns_report(result, output_file=target, rolling_window=0)
-    assert target.read_text() == "retained"
+    assert target.read_text(encoding="utf-8") == "retained"
 
 
 def test_owned_return_cumulative_charts_retain_nanosecond_keys_and_group_means():
