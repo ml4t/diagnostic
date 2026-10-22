@@ -526,9 +526,15 @@ filter options. Integer-tick/Float32 accuracy is checked against independent
 fractions rather than reproducing legacy cancellation. These preparation calls
 do not yet provide every performance function or all seven legacy report routes.
 The keyword-only `reference_version` defaults to `"0.5.0"`; `"0.4.6"` explicitly
-selects the frozen profile. These preparation definitions are shared; the
-historical intraday frequency-assignment failure is not reproduced. The profile
-is retained and threaded through the convenience call without global state.
+selects the frozen profile without global state. Actual 0.4.6 comparisons match
+daily price returns, retained keys and buckets for cumulative and terminal-bar
+outcomes. Historical intraday labels are corrected, not copied: on the shared
+regular 30-minute input, 0.4.6 calls one observation `1D30m` and two `2D1h`.
+The independently measured endpoints are 30 minutes and one hour, so Diagnostic
+retains `30m` and `1h`. Nanosecond, overnight and DST-fold cases likewise retain
+their actual subday lengths rather than adding one fictitious day per observation.
+Return values and sample/bucket membership match after reconciling those labels.
+The historical intraday frequency-assignment failure is not reproduced either.
 The installed preparation profile uses Python 3.12.11, pandas 3.0.6, NumPy 2.5.4,
 Polars 2.0.0, SciPy 1.18.1 and Plotly 7.1.0. A separate consumer/reference profile
 uses pandas 2.3.3, NumPy 2.2.6, Polars 1.36.1 and SciPy 1.17.0. The pinned Engineer

@@ -202,6 +202,71 @@ def test_preparation_profiles_are_explicit_and_do_not_change_native_return_defin
         utils.get_clean_factor_and_forward_returns(factor, prices, reference_version="unknown")
 
 
+@pytest.mark.parametrize("clock", ["holiday", "businessday", "1D"])
+@pytest.mark.parametrize("cumulative", [False, True])
+def test_frozen_reference_daily_preparation_preserves_values_keys_and_buckets(clock, cumulative):
+    reference = pytest.importorskip("alphalens.utils")
+    if version("alphalens-reloaded") != "0.4.6":
+        pytest.skip("this comparison pins the separate historical Alphalens0.4.6 profile")
+    from ml4t.diagnostic.compat.alphalens import utils
+
+    factor, prices = _inputs(clock)
+    options = {"periods": (1, 2), "quantiles": 2, "max_loss": 0, "filter_zscore": None}
+    expected = reference.get_clean_factor_and_forward_returns(
+        factor, prices, cumulative_returns=cumulative, **options
+    )
+    actual = utils.get_clean_factor_and_forward_returns(
+        factor, prices, cumulative_returns=cumulative, reference_version="0.4.6", **options
+    )
+    pd.testing.assert_frame_equal(actual, expected, check_exact=False, rtol=3e-14)
+    assert actual.columns.tolist() == ["1D", "2D", "factor", "factor_quantile"]
+    assert actual.iloc[:4]["factor_quantile"].tolist() == [1, 1, 2, 2]
+    assert actual.iloc[0]["1D"] == pytest.approx(float(Fraction(1, 100)), rel=3e-16)
+    assert actual.iloc[0]["2D"] == pytest.approx(
+        float(Fraction(2, 100) if cumulative else Fraction(1, 101)), rel=3e-16
+    )
+
+
+@pytest.mark.parametrize(
+    "clock,labels,incorrect_labels",
+    [
+        ("30min", ["30m", "1h"], ["1D30m", "2D1h"]),
+        ("1ns", ["1ns", "2ns"], ["1D1ns", "2D2ns"]),
+        ("overnight", ["1h", "2h"], ["1D1h", "2D2h"]),
+        ("dst", ["1h", "2h"], ["1D1h", "2D2h"]),
+    ],
+)
+@pytest.mark.parametrize("cumulative", [False, True])
+def test_frozen_intraday_label_defect_does_not_invent_whole_days_in_prepared_analysis(
+    clock, labels, incorrect_labels, cumulative
+):
+    reference = pytest.importorskip("alphalens.utils")
+    if version("alphalens-reloaded") != "0.4.6":
+        pytest.skip("this defect reconciliation pins historical Alphalens0.4.6")
+    from ml4t.diagnostic.compat.alphalens import utils
+
+    factor, prices = _inputs(clock)
+    options = {"periods": (1, 2), "quantiles": 2, "max_loss": 0, "filter_zscore": None}
+    old = reference.get_clean_factor_and_forward_returns(
+        factor, prices, cumulative_returns=cumulative, **options
+    )
+    actual = utils.get_clean_factor_and_forward_returns(
+        factor, prices, cumulative_returns=cumulative, reference_version="0.4.6", **options
+    )
+    assert old.columns.tolist()[:2] == incorrect_labels
+    assert actual.columns.tolist()[:2] == labels
+    for steps, label in enumerate(labels, 1):
+        elapsed = prices.index[steps] - prices.index[0]
+        assert pd.Timedelta(label) == elapsed
+        assert pd.Timedelta(old.columns[steps - 1]) - elapsed == pd.Timedelta(steps, unit="D")
+    reconciled = old.rename(columns=dict(zip(incorrect_labels, labels, strict=True)))
+    pd.testing.assert_frame_equal(actual, reconciled, check_exact=False, rtol=3e-14)
+    assert actual.iloc[0][labels[0]] == pytest.approx(float(Fraction(1, 100)), rel=3e-16)
+    assert actual.iloc[0][labels[1]] == pytest.approx(
+        float(Fraction(2, 100) if cumulative else Fraction(1, 101)), rel=3e-16
+    )
+
+
 def test_legacy_label_arithmetic_does_not_construct_deprecated_unitless_durations():
     from ml4t.diagnostic.compat.alphalens import utils
 
