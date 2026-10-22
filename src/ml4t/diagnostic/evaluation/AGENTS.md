@@ -8,6 +8,7 @@ This package holds the main research and validation workflows.
 - `audit_lookahead` and `assert_causal` for model-agnostic feature causality checks
 - `FeatureDiagnostics` for feature-quality checks
 - `PortfolioAnalysis` for return and risk analytics
+- `PortfolioAnalysis.compute_stress` and `compute_live_split` for owned dated regime samples, unchanged native summary definitions and exact return/account boundary membership
 - `PortfolioAnalysis.from_frames` for owned supplied-account inputs, without reconstructing returns or fills
 - `portfolio_analysis.analyze_intraday_exposure` for complete observed marked holdings on their own clock, reusing shared holdings/occupancy calculations without return reconstruction or continuous-peak claims
 - `PortfolioAnalysis.compute_intraday_estimate` and independent `portfolio_analysis.estimate_intraday_positions` for explicit daily transaction-notional estimates; `estimated_intraday` is not observed holdings or cash-price account replay, and unknown first-period scalars require no fabricated return series

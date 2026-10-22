@@ -54,6 +54,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
 )
 
 # Result classes
+from ml4t.diagnostic.evaluation.portfolio_analysis.regimes import PortfolioRegimeResult
 from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
     DistributionResult,
     DrawdownPeriod,
@@ -76,6 +77,7 @@ __all__ = [
     "RoundTripStatisticsResult",
     "summarize_round_trips",
     # Result classes
+    "PortfolioRegimeResult",
     "PortfolioMetrics",
     "RollingMetricsResult",
     "DrawdownPeriod",

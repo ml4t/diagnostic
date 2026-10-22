@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from ..factor.holdings_attribution import HoldingsAttributionResult
+    from .regimes import PortfolioRegimeResult
 
 # Type aliases - use Union for Python 3.9 compatibility
 ArrayLike = Union[np.ndarray, pl.Series, "pd.Series", "list[float]"]
@@ -410,6 +411,31 @@ class PortfolioAnalysis:
     def has_transactions(self) -> bool:
         """Check if transactions data was provided."""
         return self._transactions is not None
+
+    def compute_stress(
+        self,
+        periods: Mapping[str, tuple[date | datetime | str, date | datetime | str]] | None = None,
+    ) -> PortfolioRegimeResult:
+        """Analyze exact named/custom stress windows with native common-scale summaries.
+
+        Datetime endpoints are inclusive instants; date endpoints include their
+        supplied civil day. Unobserved windows remain in coverage, not zero-return
+        samples. Default historical windows use the supplied sample extent for
+        open-ended events. Optional account components require from_frames.
+        """
+        from .regimes import analyze_regimes
+
+        return analyze_regimes(self, periods=periods)
+
+    def compute_live_split(self, *, live_start: date | datetime | str) -> PortfolioRegimeResult:
+        """Partition real return/account rows strictly before versus at/after live_start.
+
+        Actual execution nanoseconds and input units remain unchanged. No row,
+        fill, position or NAV is inferred from a return or an absent component.
+        """
+        from .regimes import analyze_regimes
+
+        return analyze_regimes(self, live_start=live_start)
 
     def compute_holdings_analysis(
         self,
