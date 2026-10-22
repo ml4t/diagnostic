@@ -989,9 +989,11 @@ JSON alongside the HTML. Run it from a checkout containing this unreleased API:
 uv run --extra viz python examples/legacy_migration_comparison.py --task turnover --output turnover-report.html
 ```
 
-Clock choice changes the sample. Alphalens Reloaded 0.4.6 with pandas 2.3.3
+Clock choice changes the sample. Corrected Alphalens Reloaded 0.5.0 retains the
+12 observed scored dates when the prepared index has no frequency, matching
+Diagnostic's default. Frozen Alphalens Reloaded 0.4.6 with pandas 2.3.3
 calls `asfreq(None)` on the prepared index used in the comparison, inserting
-civil daily dates. Diagnostic's default uses the 12 observed scored dates.
+civil daily dates. This is a different sample, not a numerical tolerance issue.
 To compare on that reference's 16-date clock, supply the same grid to both
 Diagnostic calculations:
 
@@ -1008,7 +1010,8 @@ assert turnover_daily.get_dataframe("autocorrelation")["n_dates"].to_list() == [
 
 The rotating sample has the same mean rank correlations under these two
 clocks, but different dates, missingness and counts. The reference comparison
-checks those intermediates and calls the complete reference turnover sheet
+checks those intermediates in separate corrected and frozen profiles and calls
+the complete reference turnover sheet
 for rotating, changing-membership, constant-rank and single-asset samples.
 Inserted weekends remain unavailable, not zero turnover or zero correlation.
 Choose the intended clock explicitly; neither observation lags nor this civil

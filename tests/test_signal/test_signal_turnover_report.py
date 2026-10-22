@@ -223,13 +223,17 @@ def test_complete_report_contains_all_quantile_and_rank_summaries_and_publishes_
 @pytest.mark.parametrize("profile", ["rotating", "departures", "constant", "singleton"])
 def test_complete_report_traces_and_summary_tables_match_actual_alphalens_on_shared_rows(profile):
     reference = pytest.importorskip("alphalens.performance")
+    from importlib.metadata import version
+
     from ml4t.diagnostic.visualization.signal import plot_signal_turnover
 
     panel, _, dates = captured_turnover(profile)
     data = panel.data.to_pandas().rename(columns={"quantile": "factor_quantile"})
     data = data.set_index(["date", "asset"]).sort_index()
     assert data.index.levels[0].freq is None
-    grid = pd.DataFrame({"date": pd.date_range(dates[0], dates[-1], freq="D")})
+    frozen = version("alphalens-reloaded") == "0.4.6"
+    expected_dates = pd.date_range(dates[0], dates[-1], freq="D") if frozen else dates
+    grid = pd.DataFrame({"date": expected_dates}) if frozen else None
     component = TurnoverAnalysisResult.from_observations(
         panel.quantile_turnover(lags=(1, 2, 5), date_grid=grid),
         panel.rank_autocorrelation(lags=(1, 2, 5), date_grid=grid),
@@ -240,6 +244,9 @@ def test_complete_report_traces_and_summary_tables_match_actual_alphalens_on_sha
     for lag in [1, 2, 5]:
         expected_rank = reference.factor_rank_autocorrelation(data, period=lag)
         rank = figures[("rank", lag)].data[0]
+        assert [pd.Timestamp(value).value for value in rank.x] == [
+            value.value for value in expected_dates
+        ]
         assert [pd.Timestamp(value).value for value in rank.x] == [
             pd.Timestamp(value).value for value in expected_rank.index
         ]
