@@ -13,10 +13,13 @@ from pathlib import Path
 import psutil
 import kaleido
 import plotly.graph_objects as go
+import plotly.io as pio
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from ml4t.diagnostic.visualization import export_figures_to_pdf
 
+# Plain-text cleanup controls must reach their intended fault without a vendor CDN.
+pio.defaults.mathjax=False
 mode=sys.argv[1]
 output=Path(sys.argv[2])
 startup_delay=float(sys.argv[3])
@@ -257,6 +260,31 @@ finally:
 '''
 
 
+def _run_pdf_probe(code, arguments):
+    psutil = pytest.importorskip("psutil")
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+        process = subprocess.Popen(
+            [sys.executable, "-c", code, *arguments], stdout=output, stderr=output
+        )
+        try:
+            process.wait(timeout=120)
+        finally:
+            if process.poll() is None:
+                owned = psutil.Process(process.pid).children(recursive=True)
+                for child in reversed(owned):
+                    try:
+                        child.kill()
+                    except psutil.NoSuchProcess:
+                        pass
+                process.kill()
+                process.wait(timeout=5)
+                psutil.wait_procs(owned, timeout=5)
+        output.seek(0)
+        text = output.read()
+    assert process.returncode == 0, text
+    return json.loads(text.splitlines()[-1])
+
+
 @pytest.mark.parametrize(
     "mode,startup_delay",
     [
@@ -291,30 +319,7 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
 ):
     pytest.importorskip("kaleido")
     pytest.importorskip("pypdf")
-    psutil = pytest.importorskip("psutil")
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
-        process = subprocess.Popen(
-            [sys.executable, "-c", _PROBE, mode, str(tmp_path / "report.pdf"), str(startup_delay)],
-            stdout=output,
-            stderr=output,
-        )
-        try:
-            process.wait(timeout=120)
-        finally:
-            if process.poll() is None:
-                owned = psutil.Process(process.pid).children(recursive=True)
-                for child in reversed(owned):
-                    try:
-                        child.kill()
-                    except psutil.NoSuchProcess:
-                        pass
-                process.kill()
-                process.wait(timeout=5)
-                psutil.wait_procs(owned, timeout=5)
-        output.seek(0)
-        text = output.read()
-    assert process.returncode == 0, text
-    result = json.loads(text.splitlines()[-1])
+    result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
 
@@ -350,17 +355,10 @@ def test_owned_worker_preserves_packaged_and_supported_custom_plotlyjs(tmp_path,
     )
 
 
-@pytest.mark.parametrize("mathjax", [False, None, True])
-def test_explicit_mathjax_disable_does_not_fetch_default_script(mathjax, tmp_path, monkeypatch):
-    pytest.importorskip("kaleido")
-    pypdf = pytest.importorskip("pypdf")
+@pytest.fixture
+def unavailable_mathjax_default():
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    import plotly.graph_objects as go
-    import plotly.io as pio
-
-    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
 
     requests = []
 
@@ -378,31 +376,64 @@ def test_explicit_mathjax_disable_does_not_fetch_default_script(mathjax, tmp_pat
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         url = f"http://127.0.0.1:{server.server_port}/unavailable-mathjax.js"
-        # Redirect only the real renderer's default resource, not its loading logic.
-        bootstrap = (
-            "import kaleido._page_generator as pages\n"
-            + f"pages.DEFAULT_MATHJAX={url!r}\n"
-            + _pdf_process._BOOTSTRAP
-        )
-        monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", bootstrap)
-        monkeypatch.setattr(pio.defaults, "mathjax", mathjax)
-        figure = go.Figure(go.Bar(x=["A", "B"], y=[1, 3]))
-        figure.update_layout(title="Explicit MathJax configuration")
-        original = figure.to_json()
         try:
-            path = export_figures_to_pdf([figure], tmp_path / "mathjax.pdf", scale=1)
-            pages = pypdf.PdfReader(path).pages
-            assert len(pages) == 1
-            assert "Explicit MathJax configuration" in pages[0].extract_text()
-            assert figure.to_json() == original
-            if mathjax is False:
-                assert requests == [], "Explicit False must disable the default script request"
-            else:
-                assert requests and set(requests) == {"/unavailable-mathjax.js"}
+            yield url, requests
         finally:
             server.shutdown()
             thread.join(timeout=5)
         assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("mathjax", [False, None, True])
+def test_explicit_mathjax_disable_does_not_fetch_default_script(
+    mathjax, tmp_path, monkeypatch, unavailable_mathjax_default
+):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    url, requests = unavailable_mathjax_default
+    # Redirect only the real renderer's default resource, not its loading logic.
+    bootstrap = (
+        "import kaleido._page_generator as pages\n"
+        + f"pages.DEFAULT_MATHJAX={url!r}\n"
+        + _pdf_process._BOOTSTRAP
+    )
+    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", bootstrap)
+    monkeypatch.setattr(pio.defaults, "mathjax", mathjax)
+    figure = go.Figure(go.Bar(x=["A", "B"], y=[1, 3]))
+    figure.update_layout(title="Explicit MathJax configuration")
+    original = figure.to_json()
+    path = export_figures_to_pdf([figure], tmp_path / "mathjax.pdf", scale=1)
+    pages = pypdf.PdfReader(path).pages
+    assert len(pages) == 1
+    assert "Explicit MathJax configuration" in pages[0].extract_text()
+    assert figure.to_json() == original
+    if mathjax is False:
+        assert requests == [], "Explicit False must disable the default script request"
+    else:
+        assert requests and set(requests) == {"/unavailable-mathjax.js"}
+
+
+def test_plain_text_cleanup_fault_reaches_topojson_failure_without_vendor_mathjax(
+    tmp_path, unavailable_mathjax_default
+):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    url, requests = unavailable_mathjax_default
+    resource = "import kaleido._page_generator as pages\n" + f"pages.DEFAULT_MATHJAX={url!r}\n"
+    bootstrap = (
+        "from ml4t.diagnostic.visualization import _pdf_process\n"
+        + f"_pdf_process._BOOTSTRAP={resource!r}+_pdf_process._BOOTSTRAP\n"
+    )
+    observed = _run_pdf_probe(
+        bootstrap + _PROBE, ["resource_error_close_hang", str(tmp_path / "failure.pdf"), "0"]
+    )
+    assert observed["running"] == [] and observed["neighbor_alive"]
+    assert requests == [], "Plain-text cleanup controls must not depend on the vendor CDN"
 
 
 def test_pdf_worker_renders_without_initializing_the_analytical_package(tmp_path, monkeypatch):
