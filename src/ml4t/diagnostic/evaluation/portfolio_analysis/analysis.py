@@ -1158,6 +1158,9 @@ class PortfolioAnalysis:
         *,
         transactions: TransactionAnalysisResult | None = None,
         intraday: HoldingsAnalysisResult | None = None,
+        stress: PortfolioRegimeResult | None = None,
+        live: PortfolioRegimeResult | None = None,
+        wealth_cones: WealthConeResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -1174,6 +1177,10 @@ class PortfolioAnalysis:
             Computed results are rendered without selecting financial methods again.
         intraday : HoldingsAnalysisResult, optional
             Prepared complete intraday snapshots on their own independent clock.
+        stress, live : PortfolioRegimeResult, optional
+            Explicitly prepared stress windows and pre-live/live split.
+        wealth_cones : WealthConeResult, optional
+            Training-only forecast, with actual held-out live overlay.
 
         Returns
         -------
@@ -1191,7 +1198,14 @@ class PortfolioAnalysis:
         ):
             holdings = self.compute_holdings_analysis()
         return create_portfolio_dashboard(
-            self, theme=theme, holdings=holdings, transactions=transactions, intraday=intraday
+            self,
+            theme=theme,
+            holdings=holdings,
+            transactions=transactions,
+            intraday=intraday,
+            stress=stress,
+            live=live,
+            wealth_cones=wealth_cones,
         )
 
 
