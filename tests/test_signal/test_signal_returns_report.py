@@ -1,6 +1,7 @@
 """A prepared-price return report must retain samples, scale and missing uncertainty."""
 
 from fractions import Fraction
+from importlib.metadata import version
 
 import numpy as np
 import pandas as pd
@@ -215,6 +216,100 @@ def test_return_report_cannot_fit_on_dates_hidden_from_its_requested_return_grid
     clock = panel.data.select("date").unique().sort("date").slice(1)
     with pytest.raises(ValueError, match="retain every observed date"):
         analyze_signal_returns(panel, annualization_factors={"1D": 2, "3D": 2 / 3}, date_grid=clock)
+
+
+@pytest.mark.parametrize("demeaned", [False, True])
+@pytest.mark.parametrize("group_adjust", [False, True])
+@pytest.mark.parametrize("by_group", [False, True])
+def test_return_report_matches_reference_weights_regression_and_exact_quantile_samples(
+    demeaned, group_adjust, by_group
+):
+    reference = pytest.importorskip("alphalens.performance")
+    if version("alphalens-reloaded") not in {"0.5.0", "0.4.6"}:
+        pytest.skip("Corrected and frozen reference profiles are qualified separately")
+    import runpy
+    from pathlib import Path
+
+    from ml4t.diagnostic.signal import analyze_signal_returns
+
+    fixture = (
+        Path(__file__).resolve().parents[1] / "test_compat/test_alphalens_information_sheet.py"
+    )
+    data = runpy.run_path(str(fixture))["_price_panel"]()
+    columns = ["1D", "2D"]
+    panel = PreparedSignalPanel.from_prepared(data, return_columns=columns, calendar=None)
+    result = analyze_signal_returns(
+        panel,
+        annualization_factors={"1D": 252, "2D": 126},
+        demeaned=demeaned,
+        group_adjust=group_adjust,
+        by_group=by_group,
+        rate_conversion_factors={"1D": 1, "2D": 0.5},
+    )
+    weights = reference.factor_weights(data, demeaned=demeaned, group_adjust=group_adjust)
+    actual = result.get_table("factor_weights").to_pandas().set_index(["date", "asset"])["weight"]
+    pd.testing.assert_index_equal(actual.index, weights.index)
+    np.testing.assert_allclose(actual, weights, rtol=1e-12, atol=1e-12)
+    returns = reference.factor_returns(data, demeaned=demeaned, group_adjust=group_adjust)
+    actual = (
+        result.get_table("factor_returns")
+        .to_pandas()
+        .pivot(index="date", columns="return_column", values="weighted_return")[columns]
+    )
+    pd.testing.assert_index_equal(actual.index, returns.index)
+    np.testing.assert_allclose(actual, returns, rtol=1e-12, atol=1e-12)
+    regression = reference.factor_alpha_beta(
+        data, returns=returns, demeaned=demeaned, group_adjust=group_adjust
+    )
+    for row in result.get_table("regression_statistics").iter_rows(named=True):
+        np.testing.assert_allclose(
+            [row["annual_alpha"], row["beta"]],
+            regression[row["return_column"]].to_numpy(),
+            rtol=1e-12,
+            atol=1e-12,
+        )
+    for table, grouped, dated in [
+        ("quantile_statistics", False, False),
+        ("quantile_observations", False, True),
+        *([("group_quantile_statistics", True, False)] if by_group else []),
+    ]:
+        means, errors = reference.mean_return_by_quantile(
+            data, by_date=dated, by_group=grouped, demeaned=demeaned, group_adjust=group_adjust
+        )
+        # Pandas retains nanoseconds; Python datetimes from Polars rows do not.
+        for row in result.get_table(table).to_pandas().to_dict(orient="records"):
+            key = (
+                (row["quantile"], row["date"])
+                if dated
+                else (row["quantile"], row["group"])
+                if grouped
+                else row["quantile"]
+            )
+            column = row["return_column"]
+            np.testing.assert_allclose(row["mean"], means.loc[key, column], rtol=1e-12, atol=1e-12)
+            np.testing.assert_allclose(
+                np.nan if row["standard_error"] is None else row["standard_error"],
+                errors.loc[key, column],
+                rtol=1e-12,
+                atol=1e-12,
+                equal_nan=True,
+            )
+    raw_daily, _ = reference.mean_return_by_quantile(
+        data, by_date=True, demeaned=demeaned, group_adjust=group_adjust
+    )
+    for column in columns:
+        path = result.get_table("factor_paths").filter(pl.col("return_column") == column)
+        np.testing.assert_allclose(
+            path["wealth"], reference.cumulative_returns(returns[column]), rtol=1e-12, atol=1e-12
+        )
+        for quantile in (1, 2, 3):
+            actual = result.get_table("quantile_paths").filter(
+                (pl.col("return_column") == column) & (pl.col("quantile") == quantile)
+            )
+            expected = reference.cumulative_returns(
+                raw_daily.xs(quantile, level="factor_quantile")[column]
+            )
+            np.testing.assert_allclose(actual["wealth"], expected, rtol=1e-12, atol=1e-12)
 
 
 @pytest.mark.parametrize("width", [375, 1200])
