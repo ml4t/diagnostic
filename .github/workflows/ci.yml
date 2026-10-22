@@ -399,6 +399,28 @@ jobs:
             --with pytest \
             python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_integration/test_capacity_backtest.py
+      - name: Run complete stress live and cone workflows from installed wheel
+        shell: bash
+        run: |
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_evaluation/test_portfolio_stress_live.py \
+            tests/test_evaluation/test_portfolio_wealth_cones.py \
+            tests/test_compat/test_pyfolio_wealth_cones.py \
+            tests/test_compat/test_pyfolio_cone_plotting.py \
+            tests/test_compat/test_pyfolio_stress_sheet.py \
+            tests/test_visualization/test_portfolio_regime_report.py
+          mkdir -p artifacts/regimes
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" \
+            python -I examples/portfolio_regimes.py --task all --compare-pyfolio \
+            --output artifacts/regimes/native.html \
+            --familiar-output artifacts/regimes/familiar.html
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-

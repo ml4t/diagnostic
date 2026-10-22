@@ -58,6 +58,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
 )
 
 # Result classes
+from ml4t.diagnostic.evaluation.portfolio_analysis.regimes import PortfolioRegimeResult
 from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
     DistributionResult,
     DrawdownPeriod,
@@ -66,6 +67,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
     RollingMetricsResult,
 )
 from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import TransactionAnalysisResult
+from ml4t.diagnostic.evaluation.portfolio_analysis.wealth_cones import (
+    WealthConeResult,
+    analyze_wealth_cones,
+)
 
 __all__ = [
     "CapacityAnalysisResult",
@@ -82,6 +87,9 @@ __all__ = [
     "RoundTripStatisticsResult",
     "summarize_round_trips",
     # Result classes
+    "PortfolioRegimeResult",
+    "WealthConeResult",
+    "analyze_wealth_cones",
     "PortfolioMetrics",
     "RollingMetricsResult",
     "DrawdownPeriod",

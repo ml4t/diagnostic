@@ -80,6 +80,8 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from ..factor.holdings_attribution import HoldingsAttributionResult
+    from .regimes import PortfolioRegimeResult
+    from .wealth_cones import WealthConeResult
 
 # Type aliases - use Union for Python 3.9 compatibility
 ArrayLike = Union[np.ndarray, pl.Series, "pd.Series", "list[float]"]
@@ -485,6 +487,72 @@ class PortfolioAnalysis:
     def has_transactions(self) -> bool:
         """Check if transactions data was provided."""
         return self._transactions is not None
+
+    def compute_stress(
+        self,
+        periods: Mapping[str, tuple[date | datetime | str, date | datetime | str]] | None = None,
+    ) -> PortfolioRegimeResult:
+        """Analyze exact named/custom stress windows with native common-scale summaries.
+
+        Datetime endpoints are inclusive instants; date endpoints include their
+        supplied civil day. Unobserved windows remain in coverage, not zero-return
+        samples. Default historical windows use the supplied sample extent for
+        open-ended events. Optional account components require from_frames.
+        """
+        from .regimes import analyze_regimes
+
+        return analyze_regimes(self, periods=periods)
+
+    def compute_live_split(self, *, live_start: date | datetime | str) -> PortfolioRegimeResult:
+        """Partition real return/account rows strictly before versus at/after live_start.
+
+        Actual execution nanoseconds and input units remain unchanged. No row,
+        fill, position or NAV is inferred from a return or an absent component.
+        """
+        from .regimes import analyze_regimes
+
+        if live_start is None:
+            raise ValueError("live_start requires a nonmissing date or instant")
+        return analyze_regimes(self, live_start=live_start)
+
+    def compute_wealth_cones(
+        self,
+        *,
+        live_start: date | datetime | str,
+        horizon: int,
+        n_samples: int = 1000,
+        method: Literal["iid", "stationary"] = "iid",
+        seed: int | None = 0,
+        initial_capital: float = 1.0,
+        block_size: float | None = None,
+        quantiles: Sequence[float] = (0.025, 0.5, 0.975),
+        cone_std: Sequence[float] = (1.0, 1.5, 2.0),
+        horizon_unit: Literal["observations"] = "observations",
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    ) -> WealthConeResult:
+        """Simulate forward wealth from strictly pre-live observed returns.
+
+        Observation steps are not calendar days. Actual live rows overlay the
+        forecast but cannot influence its training sample or draws. IID and
+        circular stationary bootstrap share existing compounding/resampling
+        kernels; benchmark draws retain paired observation membership.
+        """
+        from .wealth_cones import analyze_wealth_cones
+
+        return analyze_wealth_cones(
+            self,
+            live_start=live_start,
+            horizon=horizon,
+            n_samples=n_samples,
+            method=method,
+            seed=seed,
+            initial_capital=initial_capital,
+            block_size=block_size,
+            quantiles=quantiles,
+            cone_std=cone_std,
+            horizon_unit=horizon_unit,
+            calendar=calendar,
+        )
 
     def compute_holdings_analysis(
         self,
@@ -1168,6 +1236,9 @@ class PortfolioAnalysis:
         transactions: TransactionAnalysisResult | None = None,
         capacity: CapacityAnalysisResult | None = None,
         intraday: HoldingsAnalysisResult | None = None,
+        stress: PortfolioRegimeResult | None = None,
+        live: PortfolioRegimeResult | None = None,
+        wealth_cones: WealthConeResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -1186,6 +1257,10 @@ class PortfolioAnalysis:
             Explicitly prepared liquidity, coverage and capital scenarios.
         intraday : HoldingsAnalysisResult, optional
             Prepared complete intraday snapshots on their own independent clock.
+        stress, live : PortfolioRegimeResult, optional
+            Explicitly prepared stress windows and pre-live/live split.
+        wealth_cones : WealthConeResult, optional
+            Training-only forecast, with actual held-out live overlay.
 
         Returns
         -------
@@ -1209,6 +1284,9 @@ class PortfolioAnalysis:
             transactions=transactions,
             capacity=capacity,
             intraday=intraday,
+            stress=stress,
+            live=live,
+            wealth_cones=wealth_cones,
         )
 
 

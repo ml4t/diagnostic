@@ -46,6 +46,7 @@ PAGES = {
         "Supplied account preserves net returns and unknown fees",
         "200 actual notional / 1000 beginning NAV; extra 10bps costs .0002 return",
         "Zipline input preserves sid, reported cash/NAV and unknown fill costs",
+        "Stress/live/cones: 4 selected, 8 training, 4 live; steps count observations",
         "Capacity report preserves the explicit empty actual ledger",
     ),
     "docs/user-guide/empyrical-migration.md": (

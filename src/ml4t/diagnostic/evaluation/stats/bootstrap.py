@@ -181,6 +181,8 @@ def _stationary_bootstrap_indices(
     n: int,
     block_size: float,
     rng: np.random.Generator,
+    *,
+    sample_size: int | None = None,
 ) -> "NDArray[np.int_]":
     """Generate indices for one stationary bootstrap sample.
 
@@ -193,27 +195,31 @@ def _stationary_bootstrap_indices(
     rng : np.random.Generator
         Source of randomness. Passed in rather than drawn from the module-level
         legacy generator so a caller's result reproduces.
+    sample_size : int, optional
+        Output length, defaulting to n. Forecasts may exceed the training length;
+        wrapping remains on the original n observations.
 
     Returns
     -------
     np.ndarray
-        Bootstrap indices of length n
+        Bootstrap indices of length sample_size, or n when omitted
     """
     p = 1.0 / block_size  # Probability of ending a block
+    size = n if sample_size is None else sample_size
     indices: list[int] = []
 
-    while len(indices) < n:
+    while len(indices) < size:
         # Start a new block at a random position
         start_idx = rng.integers(0, n)
         # Generate block length from geometric distribution
         block_length = rng.geometric(p)
         # Add indices from this block (with wrapping)
         for j in range(block_length):
-            if len(indices) >= n:
+            if len(indices) >= size:
                 break
             indices.append((start_idx + j) % n)
 
-    return np.array(indices[:n], dtype=np.int_)
+    return np.array(indices[:size], dtype=np.int_)
 
 
 def _optimal_block_size(data: "NDArray[Any]") -> float:

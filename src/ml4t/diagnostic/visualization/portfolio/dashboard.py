@@ -30,9 +30,11 @@ if TYPE_CHECKING:
         HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
+        PortfolioRegimeResult,
         RoundTripResult,
         RoundTripStatisticsResult,
         TransactionAnalysisResult,
+        WealthConeResult,
     )
 
 
@@ -77,6 +79,9 @@ class PortfolioTearSheet:
     round_trip_statistics: RoundTripStatisticsResult | None = None
     round_trip_attribution: pl.DataFrame | None = None
     intraday: HoldingsAnalysisResult | None = None
+    stress: PortfolioRegimeResult | None = None
+    live: PortfolioRegimeResult | None = None
+    wealth_cones: WealthConeResult | None = None
 
     def _availability_html(self) -> str:
         if not self.availability:
@@ -92,6 +97,25 @@ class PortfolioTearSheet:
             "<p>Panels describe the supplied observations. Missing analysis is not zero risk.</p>"
             f"<ul>{notes}</ul></section>"
         )
+
+    def _prepared_tables_html(self) -> list[str]:
+        """Render the same prepared tables in notebook and saved HTML views."""
+        tables = []
+        if self.stress is not None or self.live is not None:
+            from .regime_plots import regime_tables_html
+
+            for title, regimes in (("Stress windows", self.stress), ("Live split", self.live)):
+                if regimes is not None:
+                    tables.append(regime_tables_html(regimes, title))
+        if self.capacity is not None:
+            from .capacity_plots import _capacity_tables
+
+            tables.append(_capacity_tables(self.capacity))
+        if self.round_trip_statistics is not None:
+            from .round_trip_plots import _round_trip_tables_html
+
+            tables.append(_round_trip_tables_html(self.round_trip_statistics))
+        return tables
 
     def show(self, compact: bool = False) -> None:
         """Display tear sheet in Jupyter notebook or browser.
@@ -119,10 +143,8 @@ class PortfolioTearSheet:
                 display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
             if self.availability:
                 display(HTML(self._availability_html()))
-            if self.round_trip_statistics is not None:
-                from .round_trip_plots import _round_trip_tables_html
-
-                display(HTML(_round_trip_tables_html(self.round_trip_statistics)))
+            for tables in self._prepared_tables_html():
+                display(HTML(tables))
             for fig in self.figures.values():
                 _display_figure(fig).show()
         except ImportError:
@@ -235,14 +257,7 @@ class PortfolioTearSheet:
 """)
 
         html_parts.append(self._availability_html())
-        if self.capacity is not None:
-            from .capacity_plots import _capacity_tables
-
-            html_parts.append(_capacity_tables(self.capacity))
-        if self.round_trip_statistics is not None:
-            from .round_trip_plots import _round_trip_tables_html
-
-            html_parts.append(_round_trip_tables_html(self.round_trip_statistics))
+        html_parts.extend(self._prepared_tables_html())
 
         # Add each figure
         for name, fig in self.figures.items():
@@ -331,6 +346,11 @@ class PortfolioTearSheet:
             "availability": deepcopy(self.availability),
             "capacity": None if self.capacity is None else json.loads(self.capacity.to_json()),
             "round_trips": _round_trip_export(self),
+            "stress": None if self.stress is None else json.loads(self.stress.to_json()),
+            "live": None if self.live is None else json.loads(self.live.to_json()),
+            "wealth_cones": None
+            if self.wealth_cones is None
+            else json.loads(self.wealth_cones.to_json()),
             "transactions": None
             if self.transactions is None
             else {
@@ -364,6 +384,9 @@ def create_portfolio_dashboard(
     transactions: TransactionAnalysisResult | None = None,
     capacity: CapacityAnalysisResult | None = None,
     intraday: HoldingsAnalysisResult | None = None,
+    stress: PortfolioRegimeResult | None = None,
+    live: PortfolioRegimeResult | None = None,
+    wealth_cones: WealthConeResult | None = None,
 ) -> PortfolioTearSheet:
     """Create a return dashboard with optional prepared holdings.
 
@@ -449,6 +472,27 @@ def create_portfolio_dashboard(
         ):
             raise ValueError("capacity must match the exact analysis return observations")
     prepared_intraday = None
+    from .regime_plots import (
+        regime_figures,
+        validate_cone_result,
+        validate_regime_result,
+        wealth_cone_figure,
+    )
+
+    prepared_stress = None if stress is None else validate_regime_result(analysis, stress, "stress")
+    prepared_live = None if live is None else validate_regime_result(analysis, live, "live")
+    prepared_cones = None if wealth_cones is None else validate_cone_result(analysis, wealth_cones)
+    for name, prepared_result in (
+        ("stress", prepared_stress),
+        ("live", prepared_live),
+        ("wealth_cones", prepared_cones),
+    ):
+        availability[name] = {
+            "status": "not_requested" if prepared_result is None else "available",
+            "reason": "Supply the corresponding explicitly prepared native result."
+            if prepared_result is None
+            else None,
+        }
     if intraday is not None:
         from ml4t.diagnostic.evaluation.portfolio_analysis import HoldingsAnalysisResult
 
@@ -667,6 +711,18 @@ def create_portfolio_dashboard(
         availability.update(
             {"intraday_" + name: value for name, value in intraday_availability.items()}
         )
+    if prepared_stress is not None:
+        figures.update(
+            regime_figures(prepared_stress, "Stress samples", theme, height_per_row, width)
+        )
+    if prepared_live is not None:
+        figures.update(
+            regime_figures(prepared_live, "Live regime samples", theme, height_per_row, width)
+        )
+    if prepared_cones is not None:
+        figures["Training-only wealth cones"] = wealth_cone_figure(
+            prepared_cones, theme, height_per_row, width
+        )
     for name, fig in figures.items():
         fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
         fig.update_xaxes(tickfont_size=14, title_font_size=14)
@@ -696,6 +752,9 @@ def create_portfolio_dashboard(
         transactions=prepared_transactions,
         capacity=capacity,
         intraday=prepared_intraday,
+        stress=prepared_stress,
+        live=prepared_live,
+        wealth_cones=prepared_cones,
     )
 
 

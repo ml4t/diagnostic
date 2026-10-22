@@ -8,6 +8,8 @@ This package holds the main research and validation workflows.
 - `audit_lookahead` and `assert_causal` for model-agnostic feature causality checks
 - `FeatureDiagnostics` for feature-quality checks
 - `PortfolioAnalysis` for return and risk analytics
+- `PortfolioAnalysis.compute_stress` and `compute_live_split` for owned dated regime samples, unchanged native summary definitions and exact return/account boundary membership
+- `PortfolioAnalysis.compute_wealth_cones` and independent `portfolio_analysis.analyze_wealth_cones` for training-only IID/stationary forecasts, paired benchmark draws and actual live overlays; horizon steps count observations, not inferred future dates
 - `PortfolioAnalysis.from_frames` for owned supplied-account inputs, without reconstructing returns or fills
 - `PortfolioAnalysis.compute_capacity` or `portfolio_analysis.analyze_capacity` for supplied-market liquidity, availability and declared impact scenarios; native marked-dollar/beginning-NAV conventions are separate from the fixed-capital/closing-NAV Pyfolio adapter
 - `portfolio_analysis.analyze_intraday_exposure` for complete observed marked holdings on their own clock, reusing shared holdings/occupancy calculations without return reconstruction or continuous-peak claims

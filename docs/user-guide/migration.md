@@ -2064,8 +2064,10 @@ preparation, while Diagnostic evaluates the resulting factor.
 [Pyfolio's `create_full_tear_sheet()`](https://github.com/quantopian/pyfolio/blob/4b901f6d73aa02ceb6d04b7d83502e5c6f2e81aa/pyfolio/tears.py)
 takes noncumulative daily returns, with optional positions, transactions,
 benchmark returns, and other inputs. Diagnostic separates numeric analysis
-from HTML rendering. It does not accept Pyfolio's tear-sheet call or a
-Zipline backtest object directly.
+from HTML rendering. Current unreleased source includes selected familiar
+`compat.pyfolio` report calls and a normalized Zipline performance-frame adapter.
+These are not a qualified replacement for `create_full_tear_sheet()` or an
+execution engine. Published 0.1.9 does not contain the additions below.
 
 <div class="migration-table" markdown="1">
 
@@ -2074,10 +2076,10 @@ Zipline backtest object directly.
 | Daily noncumulative return Series | `PortfolioAnalysis(returns=..., dates=...)` | A pandas DatetimeIndex is retained automatically. Explicit dates must agree with it; set `periods_per_year` and risk-free convention explicitly. |
 | Benchmark return Series | `PortfolioAnalysis(benchmark=...)` | A dated Series is aligned to every strategy observation, with extra benchmark dates excluded. Missing/duplicate keys and timezone mismatches raise; verify currency separately. Undated arrays must have equal lengths. |
 | Complete dated signed holdings | `PortfolioAnalysis(positions=...).compute_holdings_analysis(valuations, complete_snapshots=True)` | Unreleased after 0.1.9. Wide string asset columns or long `date`, `asset`, `value`; supply exact observed keys and reported account values. See [prepared holdings](#analyze-prepared-holdings-on-observed-keys). |
-| Fill transactions | `PortfolioAnalysis(transactions=...)` | Currently stored only, not a direct transaction-analysis or fill-to-trade workflow. Passing a table does not enable those analyses. Reconcile fees and executed quantities upstream. |
+| Fill transactions | `PortfolioAnalysis.from_frames(..., transactions=...).compute_transaction_analysis(...)` | Unreleased owned actual-fill analysis; select the denominator and known fee/cost declarations. [Actual transactions](#analyze-actual-transactions-and-incremental-costs) and [fractional FIFO](#match-actual-fractional-fifo-lots-from-an-explicitly-flat-book) are separate calculations, not inferred from changing weights. |
 | Performance HTML | `generate_backtest_tearsheet(returns=..., metrics=...)` | Install the `viz` extra; supply a return array and any precomputed metrics. This is not a Pyfolio report template. |
-| A completed `ml4t-backtest` result | `generate_tearsheet_from_result(result)` | Only this bridge takes an `ml4t-backtest` result; it does not ingest a Pyfolio or Zipline result. |
-| Trade-level ranking | `TradeAnalysis` on `TradeRecord` objects | Pair fills into completed trades and calculate PnL and duration first. Raw Pyfolio transaction rows are not completed trades. |
+| A completed `ml4t-backtest` result | `generate_tearsheet_from_result(result)` or [normalized captured account](#consume-actual-backtest-account-capture) | The existing Backtest report bridge is distinct from supplied-account and Zipline performance-frame adapters. |
+| Trade-level ranking | `TradeAnalysis` on `TradeRecord` objects | Consume the explicitly prepared [FIFO result](#match-actual-fractional-fifo-lots-from-an-explicitly-flat-book); raw transaction rows are not completed trades. |
 
 </div>
 
@@ -3148,6 +3150,115 @@ example declares 252*390 periods per year, rather than using an hourly scale.
 Original position quantities, marks and multipliers remain in owned inputs;
 reported liquidation value and notional exposure are kept distinct.
 
+### Analyze dated stress, live splits and training-only wealth cones
+
+Current unreleased source can evaluate an existing dated portfolio without a
+backtest engine. The same owned account boundary feeds native summaries,
+stress/live analysis and the existing report. Stationary resampling provides
+an explicit dependence-aware alternative to IID draws; this is a tested reason
+to evaluate the native workflow, not a claim of superior forecast accuracy.
+Install the `viz` extra for the report calls below; numeric analysis remains core-only.
+
+```python
+import pandas as pd
+
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+regime_dates = pd.date_range("2025-01-13", periods=12, tz="UTC")
+regime_returns = pd.Series(
+    [0.01, -0.02, 0.005, 0.02, -0.01, 0.03,
+     -0.005, 0.01, -0.01, 0.02, 0.04, -0.03],
+    index=regime_dates,
+)
+regime_account = PortfolioAnalysis.from_frames(
+    regime_returns, calendar=None, periods_per_year=252,
+)
+regime_stress = regime_account.compute_stress({
+    "selected": (regime_dates[1], regime_dates[4]),
+    "unobserved": ("1990", "1990"),
+})
+regime_live = regime_account.compute_live_split(live_start=regime_dates[8])
+regime_cones = regime_account.compute_wealth_cones(
+    live_start=regime_dates[8], horizon=7, n_samples=256,
+    method="stationary", block_size=3, seed=42, initial_capital=1000,
+)
+assert regime_stress.coverage["n_observations"].to_list() == [4, 0]
+assert regime_cones.training.height == 8 and regime_cones.live.height == 4
+assert regime_cones.paths.height == 1792
+regime_report = regime_account.create_tear_sheet(
+    stress=regime_stress, live=regime_live, wealth_cones=regime_cones,
+)
+regime_report.save_html("regimes.html", include_plotlyjs=True)
+print("Stress/live/cones: 4 selected, 8 training, 4 live; steps count observations")
+```
+
+Stress datetime endpoints are inclusive instants. Civil dates and partial
+year/month strings select their full civil interval in the input timezone.
+Coverage distinguishes unobserved, partially covered and observed extents;
+it does not infer a trading grid or declare missing sessions. Native default
+historical windows use the supplied sample extent for open-ended events.
+Empty explicit `periods={}` requests no windows. Benchmarks retain the same
+native aligned observations and scale as the account. Returns, drawdowns and
+volatility are fractions; Sharpe and beta are dimensionless.
+
+The live split uses `<live_start` and `>=live_start`, preserving actual fill
+nanoseconds. Cone training uses only pre-live returns. Each simulated row
+retains its source training-row identity and sampled return; benchmark draws
+use that same row. Changing all live outcomes leaves draws and bands unchanged.
+Wealth compounds from positive initial capital, including absorbing total loss.
+The seed controls a local Generator, not global random state. Stationary
+`block_size` counts training observations and wraps circularly.
+
+Forecast steps count observations, not days or inferred future sessions.
+`calendar` follows explicit argument, then input declaration, then NYSE;
+explicit `None` disables it. For this observation forecast it is provenance
+only and never invents future dates. Quantile lines use linear quantiles.
+Mean-plus/minus-population-standard-deviation bounds are separately labeled,
+may be negative and are not mean confidence intervals. Actual live overlays
+retain supplied dates; simulated future steps have no fabricated timestamps.
+
+The same prepared report renders coverage/statistics tables in notebook
+`regime_report.show()` and saved HTML, alongside the actual Plotly paths.
+Result exports retain the owned Arrow clocks and method declarations. The
+native prepared-report notebook test executes a real kernel; it is not a
+qualification of every original Pyfolio notebook or combined report.
+
+Run the shared-input recipe, including optional offline reports:
+
+```bash
+uv run python examples/portfolio_regimes.py --task all
+uv run --extra viz python examples/portfolio_regimes.py --task all \
+  --output regimes.html --familiar-output stress.html
+```
+
+The familiar `compat.pyfolio.timeseries` calls are `simulate_paths`,
+`summarize_paths`, `forecast_cone_bootstrap` and
+`extract_interesting_date_ranges`. Their explicit profile preserves Pyfolio
+0.10.0's local RandomState stream, NaN-neutral path products, numeric std
+columns and `starting_value=0` net-return convention. Native finite-input
+and positive-capital defaults do not change. Familiar event selection retains
+partial pandas label slices and missing observations; unobserved periods are
+omitted there, unlike native coverage. Invalid boundaries raise rather than
+reproducing the reference's blanket suppression. Default Covid ends at call
+time instead of module import; supply explicit periods to freeze the sample.
+
+`compat.pyfolio.tears.create_interesting_times_tear_sheet` includes original
+mean/min/max percent statistics, all event paths and available benchmarks.
+It returns offline HTML, or per-event Plotly figures with `return_fig=True`;
+`output_file` saves the complete report in either mode. Missing benchmark
+events are unavailable, not zero-return curves. `legend_loc` maps to documented
+native positions without changing global Matplotlib state. Familiar
+`plotting.plot_cones` supports zero through three original lower-two-std
+crossing redraws. They additively shift the same supplied bounds from realized
+wealth, not retrained forecasts; the original `num_samples` and `random_seed`
+arguments do not sample anything on that plotting route.
+
+Shared-input tests execute actual Pyfolio 0.10.0 / Empyrical 0.7.0 with pandas
+2.3.3, including raw draws, all bounds, event samples, original printed stress
+statistics and actual Matplotlib redraw artists. This does not qualify the
+remaining combined returns/full-sheet, bootstrap or original notebook routes.
+Those remain required before any full replacement claim.
+
 ### Analyze prepared holdings on observed keys
 
 In unreleased source after 0.1.9, use the existing `PortfolioAnalysis` workflow
@@ -3596,10 +3707,9 @@ result. These capacity routes do not certify all Pyfolio reports or the combined
 Retain Pyfolio for unqualified report choices until installed-artifact and supported-platform
 evidence covers the workflow you need.
 
-Pyfolio's full sheet can additionally include return cones, significant
-events, round trips reconstructed from fills, capacity analysis using
-market data, and optional factor-attribution panels. Diagnostic has related
-statistics and reports but no one-call equivalence for that full collection.
-Keep Pyfolio or implement the specific analysis you need if those sections
-are part of your acceptance criteria. Compare annualization, benchmark
-alignment, cash, and cost conventions before comparing metrics.
+Selected unreleased Diagnostic workflows above implement dated stress/live
+analysis, training-only cones, actual FIFO, supplied-market capacity and
+supplied-holdings attribution. Their existence does not establish one-call
+equivalence for Pyfolio's full collection. Retain Pyfolio for any unqualified
+combined report, option or notebook route, and compare annualization, benchmark
+alignment, cash and cost conventions before comparing metrics.
