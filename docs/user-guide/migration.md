@@ -1630,6 +1630,43 @@ default notebook calls display the report and return `None`; `return_fig=True`
 returns native Plotly figures. Summary/full-sheet compositions and original
 notebook qualification remain separate unfinished acceptance.
 
+### Compose owned return, information and turnover results
+
+For a native summary or full report, reuse the same prepared sample rather than
+joining independently cleaned analyses:
+
+```python
+from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+from ml4t.diagnostic.signal import analyze_signal_information
+from ml4t.diagnostic.visualization.signal import generate_signal_report
+
+report_information = analyze_signal_information(return_panel, min_obs=2)
+report_turnover = TurnoverAnalysisResult.from_observations(
+    return_panel.quantile_turnover(lags=[1, 2]),
+    return_panel.rank_autocorrelation(lags=[1, 2]),
+)
+full_signal_html = generate_signal_report(return_analysis, report_information, report_turnover)
+assert full_signal_html.count('class="plot-container"') == 22
+generate_signal_report(
+    return_analysis, report_information, report_turnover,
+    summary=True, output_file="signal_summary.html",
+)
+print("Composed native signal report: owned returns, information and recorded persistence")
+```
+
+The full view renders the existing component collections. The summary retains
+mean bars plus actual factor, alpha/beta, quantile/spread, IC and persistence
+tables. Original factor statistics reuse the event-study calculation, including
+sample deviation and actual counts. Return and information components must own
+identical prepared rows and horizon order; a mismatch raises before replacing an
+output file. Supply dated turnover/rank components from that same sample; their
+recorded lag clocks are not inferred return horizons. Native information
+adjustment follows the supplied information result explicitly.
+
+These are native compositions, not yet qualified familiar summary/full wrappers
+or a full Alphalens replacement. The original notebook journeys and remaining
+compatibility helpers retain their separate acceptance requirements.
+
 ### Align observed-clock event paths
 
 This how-to replaces the aligned-value workflow of Alphalens 0.4.6

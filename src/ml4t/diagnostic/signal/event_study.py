@@ -107,6 +107,39 @@ class SignalEventStudyResult:
         )
 
 
+def _factor_statistics(data: pl.DataFrame, factor_col: str) -> pl.DataFrame:
+    """Reduce actual scored bucket samples for event and composed report tables."""
+    rows = []
+    for part in data.partition_by("quantile", maintain_order=True):
+        values = part[factor_col].to_numpy()
+        mean, std, count, _ = _sample_return_statistics(values)
+        rows.append(
+            {
+                "quantile": part["quantile"][0],
+                "min": float(np.min(values)),
+                "max": float(np.max(values)),
+                "mean": mean,
+                "std": std if count > 1 else None,
+                "count": count,
+            }
+        )
+    return (
+        pl.DataFrame(
+            rows,
+            schema={
+                "quantile": data.schema["quantile"],
+                "min": pl.Float64,
+                "max": pl.Float64,
+                "mean": pl.Float64,
+                "std": pl.Float64,
+                "count": pl.UInt64,
+            },
+        )
+        .with_columns((pl.col("count") / pl.col("count").sum() * 100).alias("count_percent"))
+        .sort("quantile")
+    )
+
+
 def analyze_signal_event_study(
     panel: PreparedSignalPanel,
     values: pl.DataFrame | pd.DataFrame | None = None,
@@ -165,35 +198,7 @@ def analyze_signal_event_study(
         ratios = declared
     means = _display_returns(panel.quantile_statistics(demeaned=False), ratios)
     observations = _display_returns(panel.quantile_statistics(by_date=True, demeaned=False), ratios)
-    factor_rows = []
-    for part in data.partition_by("quantile", maintain_order=True):
-        values_in_bucket = part[panel.factor_col].to_numpy()
-        mean, std, count, _ = _sample_return_statistics(values_in_bucket)
-        factor_rows.append(
-            {
-                "quantile": part["quantile"][0],
-                "min": float(np.min(values_in_bucket)),
-                "max": float(np.max(values_in_bucket)),
-                "mean": mean,
-                "std": std if count > 1 else None,
-                "count": count,
-            }
-        )
-    factors = (
-        pl.DataFrame(
-            factor_rows,
-            schema={
-                "quantile": data.schema["quantile"],
-                "min": pl.Float64,
-                "max": pl.Float64,
-                "mean": pl.Float64,
-                "std": pl.Float64,
-                "count": pl.UInt64,
-            },
-        )
-        .with_columns((pl.col("count") / pl.col("count").sum() * 100).alias("count_percent"))
-        .sort("quantile")
-    )
+    factors = _factor_statistics(data, panel.factor_col)
     dates = pd.DatetimeIndex(data[panel.date_col].to_pandas()).as_unit("ns")
     events = pd.DataFrame(
         {"event_row": np.arange(len(dates)), "factor": data[panel.factor_col].to_numpy()},

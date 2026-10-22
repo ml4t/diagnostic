@@ -40,6 +40,10 @@ All plots follow the ML4T Diagnostic visualization standards:
 - Configurable colors and dimensions
 """
 
+from ml4t.diagnostic.visualization.signal.composed_report import (
+    generate_signal_report,
+    plot_signal_report,
+)
 from ml4t.diagnostic.visualization.signal.dashboard import SignalDashboard
 from ml4t.diagnostic.visualization.signal.event_plots import (
     generate_aligned_event_report,
@@ -94,6 +98,8 @@ __all__ = [
     # Dashboards
     "SignalDashboard",
     "MultiSignalDashboard",
+    "plot_signal_report",
+    "generate_signal_report",
     # IC plots
     "plot_ic_ts",
     "plot_ic_histogram",
