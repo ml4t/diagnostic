@@ -2282,6 +2282,7 @@ backtest engine. The same owned account boundary feeds native summaries,
 stress/live analysis and the existing report. Stationary resampling provides
 an explicit dependence-aware alternative to IID draws; this is a tested reason
 to evaluate the native workflow, not a claim of superior forecast accuracy.
+Install the `viz` extra for the report calls below; numeric analysis remains core-only.
 
 ```python
 import pandas as pd
