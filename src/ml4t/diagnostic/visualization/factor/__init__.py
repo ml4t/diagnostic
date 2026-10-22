@@ -17,12 +17,15 @@ from .exposure_plots import (  # noqa: F401
     plot_factor_betas_bar,
     plot_rolling_betas,
 )
+from .holdings_plots import plot_holdings_attribution, plot_holdings_exposures
 from .risk_plots import (  # noqa: F401
     plot_risk_attribution_bar,
     plot_risk_attribution_pie,
 )
 
 __all__: list[str] = [
+    "plot_holdings_exposures",
+    "plot_holdings_attribution",
     # Exposure plots
     "plot_factor_betas_bar",
     "plot_rolling_betas",

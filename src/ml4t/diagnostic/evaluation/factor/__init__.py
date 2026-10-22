@@ -3,6 +3,8 @@
 Provides returns-based factor regression (OLS+HAC), rolling exposures,
 lagged return attribution, variance-based risk decomposition, and
 model validation via QLIKE/MALV.
+Supplied-holdings attribution separately consumes declared NAV weights/loadings
+without fitting return-regression exposures.
 
 References
 ----------
@@ -31,6 +33,7 @@ from .attribution import (  # noqa: F401
     compute_return_attribution,
 )
 from .data import FactorData  # noqa: F401
+from .holdings_attribution import HoldingsAttributionResult, compute_holdings_attribution
 from .kalman import compute_kalman_betas  # noqa: F401
 from .regularized import compute_regularized_model  # noqa: F401
 from .results import (  # noqa: F401
@@ -87,6 +90,8 @@ def load_fama_french_5factor(
 
 
 __all__: list[str] = [
+    "HoldingsAttributionResult",
+    "compute_holdings_attribution",
     # Data container
     "FactorData",
     # Convenience loaders

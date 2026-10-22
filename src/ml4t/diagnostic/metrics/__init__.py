@@ -21,6 +21,7 @@ from ml4t.diagnostic.metrics.calibration import (
 )
 from ml4t.diagnostic.metrics.conditional import compute_conditional_ic
 from ml4t.diagnostic.metrics.feature_outcome import analyze_feature_outcome
+from ml4t.diagnostic.metrics.fragility import BetaFragilityResult, beta_fragility
 from ml4t.diagnostic.metrics.ic import (
     compute_ic_by_horizon,
     compute_ic_ir,
@@ -51,12 +52,14 @@ from ml4t.diagnostic.metrics.percentiles import compute_fold_percentiles
 from ml4t.diagnostic.metrics.quantile_profile import QuantileProfile, quantile_profile
 from ml4t.diagnostic.metrics.risk_adjusted import (
     maximum_drawdown,
+    periodic_downside_risk,
     periodic_sharpe_ratio,
     periodic_sortino_ratio,
     sharpe_ratio,
     sharpe_ratio_with_ci,
     sortino_ratio,
 )
+from ml4t.diagnostic.metrics.tail_risk import GPDTailRiskResult, estimate_gpd_tail_risk
 from ml4t.diagnostic.metrics.uncertainty import (
     compute_auc_uncertainty,
     compute_ic_uncertainty,
@@ -64,6 +67,10 @@ from ml4t.diagnostic.metrics.uncertainty import (
 )
 
 __all__ = [
+    "GPDTailRiskResult",
+    "estimate_gpd_tail_risk",
+    "BetaFragilityResult",
+    "beta_fragility",
     "hit_rate",
     "compute_forward_returns",
     "pooled_ic",
@@ -84,6 +91,7 @@ __all__ = [
     "maximum_drawdown",
     "sortino_ratio",
     "periodic_sortino_ratio",
+    "periodic_downside_risk",
     "analyze_feature_outcome",
     "compute_permutation_importance",
     "compute_mdi_importance",
