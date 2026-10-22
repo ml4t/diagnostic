@@ -3,7 +3,7 @@
 from importlib import import_module
 from types import ModuleType
 
-from . import perf_attrib, round_trips, tears, txn, utils
+from . import perf_attrib, round_trips, tears, timeseries, txn, utils
 
 
 def __getattr__(name: str) -> ModuleType:
@@ -14,4 +14,4 @@ def __getattr__(name: str) -> ModuleType:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["perf_attrib", "plotting", "round_trips", "tears", "txn", "utils"]
+__all__ = ["perf_attrib", "plotting", "round_trips", "tears", "timeseries", "txn", "utils"]

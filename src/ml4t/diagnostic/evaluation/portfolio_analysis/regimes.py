@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -129,14 +130,20 @@ def _pack(tables: Mapping[str, pl.DataFrame], metadata: dict[str, Any]) -> Portf
     )
 
 
-def _boundary(value: date | datetime | str, index: pd.DatetimeIndex) -> pd.Timestamp:
+def _boundary(
+    value: date | datetime | str, index: pd.DatetimeIndex, *, end_of_period: bool = False
+) -> pd.Timestamp:
     civil = (
         isinstance(value, date)
         and not isinstance(value, datetime)
         or isinstance(value, str)
-        and len(value) == 10
+        and re.fullmatch(r"\d{4}(?:-\d{2})?(?:-\d{2})?", value) is not None
     )
-    stamp = pd.Timestamp(value)
+    if civil and end_of_period:
+        period = pd.Period(value)
+        stamp = period.end_time
+    else:
+        stamp = pd.Timestamp(value)
     if pd.isna(stamp):
         raise ValueError("period boundaries must be nonmissing dates or instants")
     if civil and index.tz is not None:
@@ -157,16 +164,8 @@ def _window_mask(
     left = np.ones(len(index), dtype=bool) if start is None else index >= _boundary(start, index)
     if end is None:
         return np.asarray(left)
-    stop = _boundary(end, index)
-    civil_end = (
-        isinstance(end, date)
-        and not isinstance(end, datetime)
-        or isinstance(end, str)
-        and len(end) == 10
-    )
-    right = (
-        index < stop if end_exclusive else index.date <= stop.date() if civil_end else index <= stop
-    )
+    stop = _boundary(end, index, end_of_period=not end_exclusive)
+    right = index < stop if end_exclusive else index <= stop
     return np.asarray(left & right)
 
 
@@ -222,14 +221,14 @@ def analyze_regimes(
     else:
         windows = dict(_PERIOD_DATES if periods is None else periods)
         label = "period"
-    if not windows or any(not isinstance(name, str) or not name for name in windows):
+    if any(not isinstance(name, str) or not name for name in windows):
         raise ValueError("periods must contain nonempty named windows")
     for name, bounds in windows.items():
         if not isinstance(bounds, tuple | list) or len(bounds) != 2:
             raise ValueError(f"period {name!r} requires one start/end pair")
         if bounds[0] is not None and bounds[1] is not None:
             index = pd.DatetimeIndex(dates.to_pandas())
-            if _boundary(bounds[0], index) > _boundary(bounds[1], index):
+            if _boundary(bounds[0], index) > _boundary(bounds[1], index, end_of_period=True):
                 raise ValueError(f"period {name!r} ends before it starts")
     members, coverage = [], []
     for name, (start, end) in windows.items():
@@ -238,19 +237,40 @@ def analyze_regimes(
         )
         sample = full.filter(pl.Series(selected)).with_columns(pl.lit(name).alias(label))
         members.append(sample)
+        index = pd.DatetimeIndex(dates.to_pandas())
+        extends_left = start is not None and _boundary(start, index) < index[0]
+        extends_right = (
+            end is not None
+            and _boundary(end, index, end_of_period=name != "pre_live" or live_start is None)
+            > index[-1]
+        )
         coverage.append(
             {
                 label: name,
                 "n_observations": sample.height,
-                "status": "observed" if sample.height else "unobserved",
+                "status": "unobserved"
+                if not sample.height
+                else "partial"
+                if extends_left or extends_right
+                else "observed",
                 "requested_start": str(start) if start is not None else None,
                 "requested_end": str(end) if end is not None else None,
             }
         )
+    samples = pl.concat(members) if members else full.head(0).with_columns(pl.lit("").alias(label))
     tables = {
-        "samples": pl.concat(members),
-        "coverage": pl.DataFrame(coverage),
-        "statistics": _summaries(analysis, pl.concat(members), label, list(windows)),
+        "samples": samples,
+        "coverage": pl.DataFrame(
+            coverage,
+            schema={
+                label: pl.String,
+                "n_observations": pl.Int64,
+                "status": pl.String,
+                "requested_start": pl.String,
+                "requested_end": pl.String,
+            },
+        ),
+        "statistics": _summaries(analysis, samples, label, list(windows)),
     }
     inputs = analysis.input_data
     availability = {}
@@ -270,7 +290,9 @@ def analyze_regimes(
                 end_exclusive=window == "pre_live" and live_start is not None,
             )
             pieces.append(frame.filter(pl.Series(mask)).with_columns(pl.lit(window).alias(label)))
-        tables[name] = pl.concat(pieces)
+        tables[name] = (
+            pl.concat(pieces) if pieces else frame.head(0).with_columns(pl.lit("").alias(label))
+        )
     metadata = {
         "kind": "live_split" if live_start is not None else "stress",
         "label_column": label,
@@ -282,6 +304,7 @@ def analyze_regimes(
         "availability": availability,
         "account": inputs.metadata if inputs is not None else None,
         "default_periods": periods is None and live_start is None,
+        "coverage_definition": "requested extent versus observed extent; no expected grid or missing-session inference",
         "open_event_end": "supplied observation extent, not import-time today",
         "returns": "owned finite native simple-return sample; no NAV reconstruction or calendar resampling",
     }

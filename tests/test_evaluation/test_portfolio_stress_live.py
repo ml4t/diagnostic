@@ -8,6 +8,35 @@ from ml4t.diagnostic.evaluation import PortfolioAnalysis
 from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioRegimeResult
 
 
+def test_stress_empty_selection_is_typed_and_does_not_request_default_historical_windows():
+    analysis, _ = _account(with_fills=True)
+    result = analysis.compute_stress({})
+    assert result.samples.is_empty() and result.coverage.is_empty()
+    assert result.statistics.is_empty() and result.transactions.is_empty()
+    assert result.samples.columns == ["date", "return", "period"]
+    assert not result.metadata["default_periods"]
+
+
+def test_stress_partial_civil_month_and_year_keep_extent_coverage_distinct_from_missing_rows():
+    dates = pd.DatetimeIndex(["2025-01-31T12:00Z", "2025-02-01T12:00Z", "2025-02-03T12:00Z"])
+    analysis = PortfolioAnalysis.from_frames(pd.Series([0.1, 0.2, 0.3], index=dates), calendar=None)
+    result = analysis.compute_stress(
+        {
+            "month": ("2025-02", "2025-02"),
+            "year": ("2025", "2025"),
+            "interior": (dates[1], dates[2]),
+        }
+    )
+    assert result.samples.filter(pl.col("period") == "month")["return"].to_list() == [0.2, 0.3]
+    assert result.samples.filter(pl.col("period") == "year")["return"].to_list() == [0.1, 0.2, 0.3]
+    assert result.coverage["status"].to_list() == ["partial", "partial", "observed"]
+    assert result.coverage["n_observations"].to_list() == [2, 3, 2]
+    assert (
+        result.metadata["coverage_definition"]
+        == "requested extent versus observed extent; no expected grid or missing-session inference"
+    )
+
+
 def _account(*, with_fills=False, scale=252):
     dates = pd.date_range("2025-01-13", periods=5, tz="UTC")
     fills = None

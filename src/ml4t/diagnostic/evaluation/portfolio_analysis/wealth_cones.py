@@ -114,7 +114,10 @@ def _sample_indices(
     method: str,
     seed: int | None,
     block_size: float | None,
+    legacy_rng: bool = False,
 ) -> np.ndarray:
+    if legacy_rng:
+        return np.random.RandomState(seed).choice(n, size=(n_samples, horizon))
     rng = np.random.default_rng(seed)
     if method == "iid":
         return rng.integers(0, n, size=(n_samples, horizon))
@@ -127,6 +130,8 @@ def _sample_indices(
 
 
 def _wealth_paths(samples: np.ndarray, initial_capital: float) -> np.ndarray:
+    if samples.size == 0:
+        return np.empty_like(samples, dtype=float)
     with np.errstate(over="ignore", invalid="ignore"):
         result = np.stack([_safe_cumprod(1 + row) * initial_capital for row in samples])
     if not np.isfinite(result).all():
