@@ -98,6 +98,25 @@ class PortfolioTearSheet:
             f"<ul>{notes}</ul></section>"
         )
 
+    def _prepared_tables_html(self) -> list[str]:
+        """Render the same prepared tables in notebook and saved HTML views."""
+        tables = []
+        if self.stress is not None or self.live is not None:
+            from .regime_plots import regime_tables_html
+
+            for title, regimes in (("Stress windows", self.stress), ("Live split", self.live)):
+                if regimes is not None:
+                    tables.append(regime_tables_html(regimes, title))
+        if self.capacity is not None:
+            from .capacity_plots import _capacity_tables
+
+            tables.append(_capacity_tables(self.capacity))
+        if self.round_trip_statistics is not None:
+            from .round_trip_plots import _round_trip_tables_html
+
+            tables.append(_round_trip_tables_html(self.round_trip_statistics))
+        return tables
+
     def show(self, compact: bool = False) -> None:
         """Display tear sheet in Jupyter notebook or browser.
 
@@ -124,10 +143,8 @@ class PortfolioTearSheet:
                 display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
             if self.availability:
                 display(HTML(self._availability_html()))
-            if self.round_trip_statistics is not None:
-                from .round_trip_plots import _round_trip_tables_html
-
-                display(HTML(_round_trip_tables_html(self.round_trip_statistics)))
+            for tables in self._prepared_tables_html():
+                display(HTML(tables))
             for fig in self.figures.values():
                 _display_figure(fig).show()
         except ImportError:
@@ -240,20 +257,7 @@ class PortfolioTearSheet:
 """)
 
         html_parts.append(self._availability_html())
-        if self.stress is not None or self.live is not None:
-            from .regime_plots import regime_tables_html
-
-            for title, regimes in (("Stress windows", self.stress), ("Live split", self.live)):
-                if regimes is not None:
-                    html_parts.append(regime_tables_html(regimes, title))
-        if self.capacity is not None:
-            from .capacity_plots import _capacity_tables
-
-            html_parts.append(_capacity_tables(self.capacity))
-        if self.round_trip_statistics is not None:
-            from .round_trip_plots import _round_trip_tables_html
-
-            html_parts.append(_round_trip_tables_html(self.round_trip_statistics))
+        html_parts.extend(self._prepared_tables_html())
 
         # Add each figure
         for name, fig in self.figures.items():

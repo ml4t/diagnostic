@@ -2309,6 +2309,10 @@ regime_cones = regime_account.compute_wealth_cones(
 assert regime_stress.coverage["n_observations"].to_list() == [4, 0]
 assert regime_cones.training.height == 8 and regime_cones.live.height == 4
 assert regime_cones.paths.height == 1792
+regime_report = regime_account.create_tear_sheet(
+    stress=regime_stress, live=regime_live, wealth_cones=regime_cones,
+)
+regime_report.save_html("regimes.html", include_plotlyjs=True)
 print("Stress/live/cones: 4 selected, 8 training, 4 live; steps count observations")
 ```
 
@@ -2336,6 +2340,12 @@ only and never invents future dates. Quantile lines use linear quantiles.
 Mean-plus/minus-population-standard-deviation bounds are separately labeled,
 may be negative and are not mean confidence intervals. Actual live overlays
 retain supplied dates; simulated future steps have no fabricated timestamps.
+
+The same prepared report renders coverage/statistics tables in notebook
+`regime_report.show()` and saved HTML, alongside the actual Plotly paths.
+Result exports retain the owned Arrow clocks and method declarations. The
+native prepared-report notebook test executes a real kernel; it is not a
+qualification of every original Pyfolio notebook or combined report.
 
 Run the shared-input recipe, including optional offline reports:
 
