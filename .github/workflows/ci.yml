@@ -421,10 +421,12 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
           --with pytest --with pytest-timeout --with pytest-xdist
-          --with "alphalens-reloaded==0.4.6" --with playwright
+          --with "alphalens-reloaded==0.4.6" --with "empyrical-reloaded==0.7.0" --with playwright
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q -n auto --timeout 120 tests/test_signal/
           tests/test_compat/test_alphalens_information_sheet.py
+          tests/test_compat/test_alphalens_statistics.py
+          tests/test_compat/test_alphalens_event_turnover_sheets.py
       - name: Run corrected Alphalens preparation and report workflows from installed wheel
         shell: bash
         run: >-
@@ -438,6 +440,8 @@ jobs:
           tests/test_compat/test_alphalens_time_alignment.py
           tests/test_compat/test_alphalens_bucketing.py
           tests/test_compat/test_alphalens_information_sheet.py
+          tests/test_compat/test_alphalens_statistics.py
+          tests/test_compat/test_alphalens_event_turnover_sheets.py
           tests/test_signal/test_signal_turnover_report.py
           tests/test_signal/test_signal_turnover_notebook.py
           tests/test_signal/test_signal_turnover_browser.py

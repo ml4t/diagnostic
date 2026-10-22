@@ -741,6 +741,10 @@ preserve supplied levels without compounding or event-zero rebasing. For simple
 returns, use the native `panel.event_returns(..., input_kind="returns")` instead.
 `long_short`, `group_neutral`, `by_group` and `std_bar` retain their analytical
 roles; displayed error bars are sample deviations, not confidence intervals.
+Reference event plots multiply these values by 10,000 for BPS display;
+Diagnostic labels supplied-level or level-difference units. Diagnostic sorts
+event offsets chronologically; comparisons use exact offset labels when clipped
+reference windows retain concatenation order.
 Event study retains unadjusted date/bucket observations, optional level paths
 and elapsed-time event bins. `rate_of_ret=True` converts display means to the
 first supplied horizon using duration labels; the native route still requires
