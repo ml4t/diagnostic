@@ -67,6 +67,40 @@ correction applies to subsequent source revisions. Portfolio input alignment,
 calendar selection and full Pyfolio/Alphalens capability coverage are separate
 requirements, not guarantees established by report generation.
 
+### Keep calendar omission distinct from disabling aggregation
+
+Unreleased after 0.1.9, the lazy Backtest bridge uses the shared calendar
+contract: an explicit argument overrides declared producer feed metadata, then
+the default is NYSE. Omitting `calendar` inherits that resolution. Explicit
+`calendar=None` instead keeps the producer's observation-level returns and exact
+timestamp keys, without daily/session aggregation. It does not mean "inherit the
+engine calendar". No return is reconstructed from NAV by this choice.
+
+For an existing `result = engine.run()`, choose the return scale explicitly:
+
+```pycon
+>>> from ml4t.diagnostic.integration import analyze_backtest_result
+>>> observed = analyze_backtest_result(result, calendar=None, periods_per_year=252)
+>>> observed.resolved_calendar is None
+True
+>>> observed.daily_returns.equals(result.to_returns_series().alias("daily_return"))
+True
+```
+
+Here 252 declares a daily trading-year convention for already-daily observations;
+use the scale appropriate to the actual return cadence. Backtest observation-mode
+metrics and reports reject a missing scale. The same `periods_per_year` override reaches
+`compute_metrics_from_result`, `portfolio_analysis_from_result`, artifact profiles
+and HTML reports. Passing a descriptive report calendar that conflicts with the
+resolved analysis calendar is rejected before writing an output file.
+
+The runnable `examples/legacy_migration_comparison.py --task exposure` exercises
+this bridge on actual engine output. The captured calendar regression uses a
+Sunday-night CME run: omission retains the declared CME calendar while explicit
+None retains all three observed bars. Neither a selected scale nor three received
+bars establishes a complete exchange grid. The optional producer remains optional
+for ordinary supplied-return analysis.
+
 ## Choose a template
 
 Profile attribution bars and contributor rankings use signed cash P&L. The
@@ -105,7 +139,7 @@ nonfinite or nonpositive declared multipliers raise an error. Direct
 Legacy inputs with no multiplier declaration retain cash-per-unit prices; they
 do not establish support for contract prices quoted in points.
 
-Filled notional is absolute quantity times execution price times multiplier.
+Filled notional is the absolute cash value of quantity times execution price times multiplier.
 Slippage quoted in price points uses the same multiplier; commission is already
 cash and is not multiplied again. In the tested one-contract example, price
 100 and multiplier 50 produce $5,000 notional and 0.50 turnover against $10,000
@@ -117,6 +151,17 @@ These activity ratios use the NAV at the matched observed timestamp. They do
 not establish exchange-session aggregation, Pyfolio's average-gross-book
 denominator, or beginning-session-NAV return scenarios. Those workflows require
 separate input and calendar contracts.
+For supplied accounts, the unreleased native
+[transaction workflow](migration.md#analyze-actual-transactions-and-incremental-costs)
+provides explicit beginning-NAV/average-gross-book turnover and extra-bps scenarios.
+It does not change this profile's matched-observation default.
+
+Saved target weights do not establish executed quantities, prices or account
+cash. Unreleased artifact loading now leaves execution and occupancy panels
+unavailable when `fills.parquet` or `portfolio_state.parquet` is absent, rather
+than manufacturing fills at price 1 or deriving cash as NAV times one minus gross
+weight. Saved weights remain available as intended signals. Real execution and
+account-state artifacts continue to take precedence.
 
 Trade profit factor divides gross positive lifecycle cash P&L by gross loss
 magnitude. Empty or all-flat samples have an unavailable `0/0` ratio, displayed
@@ -135,6 +180,10 @@ PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).
 A headless environment can verify HTML generation without claiming that
 browser-dependent PDF export was exercised.
+If rendering fails, the exporter attempts browser shutdown before its bounded
+process cleanup and preserves the rendering error. An incomplete export does
+not publish a partial PDF. A failed or hung browser close still requires verified
+termination of the owned process tree before temporary profiles can be removed.
 
 See the [visualization API](../api/index.md#visualization) and the book's
 [performance reporting notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/16_strategy_simulation/09_performance_reporting.ipynb),

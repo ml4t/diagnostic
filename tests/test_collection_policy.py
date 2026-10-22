@@ -46,7 +46,7 @@ def test_explicit_timing_opt_in():
     pytest.fail("Explicit timing tests must not run under the standard selection")
 """
     )
-    result = pytester.runpytest_subprocess(
+    result = pytester.runpytest_inprocess(
         "-c",
         str(project / "pyproject.toml"),
         "--rootdir",
@@ -57,6 +57,5 @@ def test_explicit_timing_opt_in():
         "0",
         "-q",
         str(contribution),
-        timeout=60,
     )
     result.assert_outcomes(passed=3, deselected=1)

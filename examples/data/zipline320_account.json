@@ -1,0 +1,107 @@
+{
+  "format_version": 1,
+  "producer_versions": {
+    "zipline-reloaded": "3.2.0",
+    "pandas": "2.3.3",
+    "numpy": "2.4.6",
+    "exchange-calendars": "4.13.2"
+  },
+  "producer": "published run_algorithm, local deterministic daily bundle, no downloads",
+  "records": [
+    {
+      "date": "2025-07-07T20:00:00+00:00",
+      "returns": 0.0,
+      "portfolio_value": 1000.0,
+      "starting_cash": 1000.0,
+      "ending_cash": 1000.0,
+      "positions": [],
+      "transactions": []
+    },
+    {
+      "date": "2025-07-08T20:00:00+00:00",
+      "returns": -0.00029999999999996696,
+      "portfolio_value": 999.7,
+      "starting_cash": 1000.0,
+      "ending_cash": 699.7,
+      "positions": [
+        {
+          "sid": {
+            "sid": 7,
+            "symbol": "A",
+            "multiplier": 1.0
+          },
+          "amount": 3,
+          "cost_basis": 100.10000000000001,
+          "last_sale_price": 100.0
+        }
+      ],
+      "transactions": [
+        {
+          "amount": 3,
+          "dt": "2025-07-08T20:00:00+00:00",
+          "price": 100.0,
+          "order_id": "138805c601f040599f410270a2098544",
+          "sid": {
+            "sid": 7,
+            "symbol": "A",
+            "multiplier": 1.0
+          },
+          "commission": null
+        }
+      ]
+    },
+    {
+      "date": "2025-07-09T20:00:00+00:00",
+      "returns": 0.030009002700810194,
+      "portfolio_value": 1029.7,
+      "starting_cash": 699.7,
+      "ending_cash": 699.7,
+      "positions": [
+        {
+          "sid": {
+            "sid": 7,
+            "symbol": "A",
+            "multiplier": 1.0
+          },
+          "amount": 3,
+          "cost_basis": 100.10000000000001,
+          "last_sale_price": 110.0
+        }
+      ],
+      "transactions": []
+    },
+    {
+      "date": "2025-07-10T20:00:00+00:00",
+      "returns": 0.029037583762260732,
+      "portfolio_value": 1059.6,
+      "starting_cash": 699.7,
+      "ending_cash": 819.6,
+      "positions": [
+        {
+          "sid": {
+            "sid": 7,
+            "symbol": "A",
+            "multiplier": 1.0
+          },
+          "amount": 2,
+          "cost_basis": 100.15,
+          "last_sale_price": 120.0
+        }
+      ],
+      "transactions": [
+        {
+          "amount": -1,
+          "dt": "2025-07-10T20:00:00+00:00",
+          "price": 120.0,
+          "order_id": "c63acbdabb7a44b7b4f443e3fbf37f42",
+          "sid": {
+            "sid": 7,
+            "symbol": "A",
+            "multiplier": 1.0
+          },
+          "commission": null
+        }
+      ]
+    }
+  ]
+}

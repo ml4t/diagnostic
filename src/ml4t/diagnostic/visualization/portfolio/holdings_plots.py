@@ -24,20 +24,49 @@ def _holdings_records(frame: pl.DataFrame | None) -> list[dict[str, Any]] | None
     if frame is None:
         return None
     rows = frame.to_dicts()
-    if "date" in frame.columns:
-        for row, date in zip(rows, _exact_dates(frame["date"]), strict=True):
-            row["date"] = date
+    for column, dtype in frame.schema.items():
+        if dtype == pl.Date:
+            values = [
+                value.isoformat() if value is not None else None
+                for value in frame[column].to_list()
+            ]
+        elif isinstance(dtype, pl.Datetime):
+            values = [
+                value.isoformat() if pd.notna(value) else None
+                for value in pd.DatetimeIndex(frame[column].to_pandas())
+            ]
+        else:
+            continue
+        for row, value in zip(rows, values, strict=True):
+            row[column] = value
     return rows
 
 
 def _holdings_figures(
-    result: HoldingsAnalysisResult, theme: str, height: int, width: int | None
+    result: HoldingsAnalysisResult,
+    theme: str,
+    height: int,
+    width: int | None,
+    *,
+    sample_axis: bool = False,
 ) -> tuple[dict[str, go.Figure], dict[str, dict[str, Any]]]:
     timeline = result.timeline
     dates = _exact_dates(timeline["date"])
+    if "observation_id" in timeline.columns:
+        dates = [
+            f"{timestamp} [observation_id={identity}]"
+            for timestamp, identity in zip(dates, timeline["observation_id"].to_list(), strict=True)
+        ]
     n_defined = result.coverage["n_normalized_observations"]
     normalized = n_defined > 0
-    units = "fraction of reported NAV" if normalized else "account currency"
+    nav_name = (
+        "estimated NAV"
+        if result.snapshot_kind == "estimated_intraday"
+        else "cash-price NAV"
+        if result.metadata.get("method") == "explicit_cash_price_reconstruction"
+        else "reported NAV"
+    )
+    units = f"fraction of {nav_name}" if normalized else "account currency"
     suffix = "_fraction" if normalized else ""
     figures: dict[str, go.Figure] = {}
     availability: dict[str, dict[str, Any]] = {
@@ -58,7 +87,7 @@ def _holdings_figures(
         }
     }
 
-    def figure(title: str, unit: str) -> go.Figure:
+    def figure(title: str, unit: str, *, temporal: bool = True) -> go.Figure:
         fig = create_base_figure(
             title=title,
             yaxis_title=unit,
@@ -66,6 +95,16 @@ def _holdings_figures(
             height=max(height, 320),
             width=width,
         )
+        if sample_axis and temporal:
+            selected = sorted({0, len(dates) // 2, len(dates) - 1})
+            fig.update_xaxes(
+                type="category",
+                tickmode="array",
+                tickvals=[dates[index] for index in selected],
+                ticktext=[f"Obs {index + 1}" for index in selected],
+                tickangle=0,
+                title_text="Observation",
+            )
         fig.update_layout(
             colorway=get_theme_config(theme)["colorway"],
             showlegend=True,
@@ -76,7 +115,7 @@ def _holdings_figures(
                 "units": unit,
                 "snapshot_kind": result.snapshot_kind,
                 "n_observations": timeline.height,
-                "description": f"{timeline.height} supplied observations. Snapshot kind: {result.snapshot_kind}. Units: {unit}. No calendar grouping or intraday reconstruction. Export preserves exact observation keys and raw values.",
+                "description": f"{timeline.height} observations. Snapshot kind: {result.snapshot_kind}. Units: {unit}. Method: {result.metadata.get('method', 'observed holdings')}. Export preserves exact observation keys and raw values.",
             },
         )
         figures[title] = fig
@@ -155,7 +194,7 @@ def _holdings_figures(
         timeline["max_long_weight"].null_count() < timeline.height
         or timeline["min_short_weight"].null_count() < timeline.height
     ):
-        weights = figure("Signed Position Weights", "fraction of reported NAV")
+        weights = figure("Signed Position Weights", units)
         for name, column in [
             ("Maximum long", "max_long_weight"),
             ("Median long", "median_long_weight"),
@@ -186,13 +225,18 @@ def _holdings_figures(
         }
         if top.is_empty():
             continue
-        fig = figure(f"Top {side.title()} Holdings", "account currency")
+        fig = figure(f"Top {side.title()} Holdings", "account currency", temporal=False)
         fig.add_trace(
-            go.Bar(x=top["value"].to_list(), y=top["asset"].to_list(), orientation="h", name=side)
+            go.Bar(
+                x=top["value"].to_list(),
+                y=top["asset"].to_list(),
+                orientation="h",
+                name=side,
+            )
         )
         fig.update_layout(
             showlegend=False,
-            xaxis_title="Sample-extreme value<br>(account currency)",
+            xaxis_title="Sample extreme<br>(account currency)",
             yaxis_title="Asset ID",
         )
         fig.update_yaxes(type="category", autorange="reversed")
