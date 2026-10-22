@@ -63,7 +63,7 @@ def test_native_capacity_tables_and_figures_export_supplied_results_without_refi
         assert ratio == pytest.approx(sample.mean() / sample.std(ddof=1) * np.sqrt(12))
     path = tmp_path / "capacity.html"
     sheet.save_html(path, include_plotlyjs=True)
-    html = path.read_text()
+    html = path.read_text(encoding="utf-8")
     assert "Worst liquidation: full/recent observations" in html
     assert "Capacity assumptions and coverage" in html
     assert "hypothetical" in html
@@ -79,10 +79,10 @@ def test_capacity_from_other_return_sample_is_rejected_before_output_changes(tmp
     )
     other = PortfolioAnalysis(analysis.returns + 0.001, dates=analysis.dates)
     path = tmp_path / "previous.html"
-    path.write_text("previous verified report")
+    path.write_text("previous verified report", encoding="utf-8")
     with pytest.raises(ValueError, match="return observations"):
         create_portfolio_dashboard(other, capacity=result).save_html(path)
-    assert path.read_text() == "previous verified report"
+    assert path.read_text(encoding="utf-8") == "previous verified report"
     with pytest.raises(TypeError, match="CapacityAnalysisResult"):
         analysis.create_tear_sheet(capacity={})
 
@@ -100,7 +100,7 @@ def test_unbounded_liquidation_is_named_in_report_not_plotted_as_zero(tmp_path):
     assert all(value is None for value in sheet.figures["Lagged Market Liquidation"].data[0].y)
     path = tmp_path / "unbounded.html"
     sheet.save_html(path)
-    assert "Unbounded" in path.read_text()
+    assert "Unbounded" in path.read_text(encoding="utf-8")
     assert result.metadata["unbounded_liquidation_rows"] == 7
 
 

@@ -100,7 +100,7 @@ def main():
     print(result.metadata)
     if args.output:
         analysis.create_tear_sheet(capacity=result).save_html(args.output, include_plotlyjs=True)
-        args.output.with_suffix(".json").write_text(result.to_json())
+        args.output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
         print("Wrote HTML and typed JSON", args.output)
 
 

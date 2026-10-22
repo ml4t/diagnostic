@@ -1908,10 +1908,14 @@ reasons as HTML. Install IPython and nbformat in the notebook kernel and use a
 Plotly-compatible frontend. `report.show(compact=True)` remains the four-panel
 returns overview; it does not display the prepared holdings panels.
 
-These are observed prepared-holdings panels, not the complete Pyfolio positions
-tear sheet or all portfolio reports. Calendar-aware ingestion, intraday
-reconstruction, transactions/cost scenarios, risk/capacity/round-trip workflows
-and full Alphalens/Pyfolio composition remain accepted work.
+These observed prepared-holdings panels do not establish the complete Pyfolio positions
+tear sheet or all portfolio reports. The separately tested unreleased
+[supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine),
+[actual transaction analysis](#analyze-actual-transactions-and-incremental-costs) and
+[capacity workflow](#supplied-market-capacity-and-impact-scenarios-unreleased) have their own
+methods and coverage below or above. Full positions-sheet composition, intraday reconstruction,
+round trips, unqualified risk/report options and complete Alphalens/Pyfolio composition remain
+accepted work.
 
 ### Retain raw exposure when equity cannot normalize it
 
@@ -2014,8 +2018,11 @@ explicit daily input date. It does not establish exchange-session alignment,
 intraday aggregation or AGB support. Invalid-NAV reference divisions are
 recorded as differences, not parity targets.
 
-Direct Pyfolio transaction ingestion, complete unknown-fee handling, cost
-scenarios, flow adjustments and calendar/session grouping remain accepted work.
+For direct supplied-frame ingestion, unknown fees, extra-cost scenarios and explicit
+observation/session grouping, use the newer
+[actual-transaction workflow](#analyze-actual-transactions-and-incremental-costs).
+The earlier bridge example here does not qualify those methods. External-flow adjustments
+and complete original-sheet options remain separate accepted work.
 The full performance report still requires valid simple returns: a negative-NAV
 step below -100%, or a later 0/0 return after NAV reaches zero, is not supported
 by the current performance workflow. Standalone activity analysis does not
@@ -2028,7 +2035,7 @@ checks and typed capacity results in the existing portfolio report. The native r
 exported as JSON without losing nanosecond keys or unbounded durations. This is a hypothetical
 liquidity analysis, not a fitted execution model or a speed claim.
 
-The runnable [capacity example](https://github.com/ml4t/diagnostic/blob/feat/portfolio-capacity/examples/portfolio_capacity.py)
+The runnable [capacity example](https://github.com/ml4t/diagnostic/blob/2025fa9f3a3ced81d0fc078eb9bea02d8d834e88/examples/portfolio_capacity.py)
 constructs a consistent two-asset toy account with actual stated fills, then runs:
 
 ```python
