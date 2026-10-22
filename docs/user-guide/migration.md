@@ -1297,6 +1297,14 @@ when a strategy selection starts later. `observations` retains the original
 pre-resampling outcomes, finite counts and wealth. No transactions, fees or
 slippage are fabricated.
 
+`to_pyfolio()` retains a minimal `attrs["diagnostic"]` origin marker on each
+returned object. Familiar simple/full account reports recognize synthetic
+forward-outcome returns separately from synthetic holdings, including mixed
+supplied/research inputs and hidden-position reports. They label these as
+research allocations and returns, not executed account P&L. Removing the marker
+removes that provenance; ordinary unmarked frames remain supplied observations,
+not evidence of executions. The marker does not change values or clocks.
+
 The adapters also provide `factor_weights`, `factor_returns` (including
 `by_asset=True`), `cumulative_returns`, `positions`, `factor_positions` and
 `factor_cumulative_returns`. Corrected Alphalens 0.5.0 comparisons exercise actual

@@ -7,6 +7,90 @@ import pytest
 from ml4t.diagnostic.compat import pyfolio as pf
 
 
+@pytest.mark.parametrize(
+    "workflow,hide_positions",
+    [
+        ("create_simple_tear_sheet", False),
+        ("create_full_tear_sheet", False),
+        ("create_full_tear_sheet", True),
+    ],
+)
+@pytest.mark.parametrize(
+    "input_origin", ["both_synthetic", "returns_synthetic", "positions_synthetic"]
+)
+def test_signal_produced_research_portfolio_is_not_relabelled_as_executed_account_facts(
+    workflow, hide_positions, input_origin, tmp_path
+):
+    import json
+
+    from plotly.utils import PlotlyJSONEncoder
+
+    from ml4t.diagnostic.signal import prepare_signal_panel
+
+    dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+    factors = pd.DataFrame(
+        {
+            "date": dates.repeat(2),
+            "asset": ["PRIVATE_A", "PRIVATE_B"] * 3,
+            "factor": [1.0, 3.0] * 3,
+        }
+    )
+    outcomes = factors[["date", "asset"]].assign(custom=[0.1, 0.1, 0.2, 0.2, 0.05, 0.05])
+    expiries = factors[["date", "asset"]].assign(
+        requested_exit_time=factors["date"] + pd.Timedelta("2D")
+    )
+    research = prepare_signal_panel(
+        factors, outcomes, return_columns=["custom"], quantiles=2
+    ).to_portfolio_inputs(
+        return_column="custom",
+        expiries=expiries,
+        demeaned=False,
+        benchmark_column=None,
+        capital=1000.0,
+    )
+    returns, positions, benchmark = research.to_pyfolio()
+    if input_origin == "positions_synthetic":
+        prices = pd.Series(
+            [100.0, 110.0, 132.0, 138.6],
+            index=pd.date_range("2025-07-06", periods=4, tz="UTC"),
+        )
+        returns = prices.pct_change(fill_method=None).iloc[1:]
+    if input_origin == "returns_synthetic":
+        positions = pd.DataFrame(
+            {"PRIVATE_A": [660.0, 792.0, 831.6], "cash": [440.0, 528.0, 554.4]},
+            index=dates,
+        )
+    report = getattr(pf, workflow)(
+        returns,
+        positions=positions,
+        benchmark_rets=benchmark,
+        estimate_intraday=False,
+        return_fig=True,
+        **({"hide_positions": hide_positions} if workflow == "create_full_tear_sheet" else {}),
+    )
+    assert "supplied account facts" not in report.availability["composition"]["reason"]
+    assert report.availability["composition"]["returns_kind"] == (
+        "supplied_observations"
+        if input_origin == "positions_synthetic"
+        else "synthetic_forward_outcomes"
+    )
+    assert report.availability["composition"]["positions_kind"] == (
+        "supplied" if input_origin == "returns_synthetic" else "synthetic"
+    )
+    if workflow == "create_full_tear_sheet":
+        assert report.availability["positions"]["snapshot_kind"] == (
+            "supplied" if input_origin == "returns_synthetic" else "synthetic"
+        )
+    assert report.availability["transactions"]["status"] == "not_requested"
+    assert "not executed" in report.availability["composition"]["reason"]
+    assert _figure(report, "Cumulative wealth").data[0].y[-1] == pytest.approx(1.386)
+    report.save_html(tmp_path / "research-report.html", include_plotlyjs=True)
+    if hide_positions:
+        payload = json.dumps(report.to_dict(), cls=PlotlyJSONEncoder)
+        assert "PRIVATE_A" not in payload and "PRIVATE_B" not in payload
+    assert research.metadata["representation"] == "synthetic_daily_portfolio_inputs"
+
+
 def _account():
     dates = pd.bdate_range("2025-02-03", periods=4, tz="UTC")
     prices = pd.Series([100.0, 110, 99, 103.95], index=dates)

@@ -196,6 +196,11 @@ def test_native_daily_defaults_keep_active_holdings_and_first_wealth_change():
     np.testing.assert_allclose(returns, [0.32, 0.0, 0.0, 0.05])
     np.testing.assert_allclose(holdings.iloc[1], [0.25, 0.75, 0.0])
     np.testing.assert_allclose(holdings.iloc[2], [0.0, 0.0, 1.0])
+    returns.attrs["diagnostic"]["snapshot_kind"] = "caller-changed"
+    assert holdings.attrs["diagnostic"]["snapshot_kind"] == "synthetic"
+    fresh_returns, _, _ = result.to_pyfolio()
+    assert fresh_returns.attrs["diagnostic"]["snapshot_kind"] == "synthetic"
+    assert result.metadata["representation"] == "synthetic_daily_portfolio_inputs"
     # Annualization is selected by daily return cadence, not the two-day expiry.
     stats = result.analyze(periods_per_year=365).compute_summary_stats()
     expected = 1.386 ** (365 / 4) - 1

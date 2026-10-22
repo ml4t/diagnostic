@@ -20,6 +20,14 @@ if TYPE_CHECKING:
     from ml4t.diagnostic.visualization.portfolio import PortfolioTearSheet
 
 
+def _synthetic_input(frame: pd.Series | pd.DataFrame | None) -> bool:
+    return (
+        frame is not None
+        and isinstance(frame.attrs.get("diagnostic"), Mapping)
+        and frame.attrs["diagnostic"].get("representation") == "synthetic_daily_portfolio_inputs"
+    )
+
+
 def _owned_inputs(
     returns: pd.Series,
     positions: pd.DataFrame | None,
@@ -76,8 +84,18 @@ def _anonymous_inputs(
         # Only the actual-fill fields consumed by these workflows belong in exports.
         fills = fills[["symbol", "amount", "price"]]
         fills.attrs = {}
+    synthetic_book = _synthetic_input(book)
     book = book.rename(columns=labels)
-    book.attrs = {}
+    book.attrs = (
+        {
+            "diagnostic": {
+                "representation": "synthetic_daily_portfolio_inputs",
+                "snapshot_kind": "synthetic",
+            }
+        }
+        if synthetic_book
+        else {}
+    )
     anonymous_sectors = None
     if sectors is not None:
         if isinstance(sectors, pd.Series):
@@ -182,6 +200,8 @@ def _create_account_tear_sheet(
             "capacity, round trips and slippage require positions and actual transactions"
         )
     supplied, book, fills = _owned_inputs(returns, positions, transactions)
+    synthetic_returns = _synthetic_input(returns)
+    synthetic_positions = _synthetic_input(book)
     if hide_positions and book is not None:
         book, fills, sector_mappings, market_data, factor_loadings = _anonymous_inputs(
             book, fills, sector_mappings, market_data, factor_loadings
@@ -214,7 +234,11 @@ def _create_account_tear_sheet(
         )
         report.figures = {
             "Returns/Performance statistics": _table_figure(
-                stats, "Performance statistics", "Supplied returns and actual account observations."
+                stats,
+                "Performance statistics",
+                "Synthetic forward-outcome research returns; not executed account P&L."
+                if synthetic_returns
+                else "Supplied return and position observations; no execution is inferred.",
             ),
             "Returns/Cumulative wealth": plotting.plot_rolling_returns(
                 supplied,
@@ -378,13 +402,28 @@ def _create_account_tear_sheet(
         "workflow": "simple" if simple else "full",
         "periods_per_year": scale,
         "turnover_denom": turnover_denom,
+        "returns_kind": "synthetic_forward_outcomes"
+        if synthetic_returns
+        else "supplied_observations",
         "source_fill_timezone": None if transactions is None else str(transactions.index.tz),
         "civil_day_timezone": None if book is None else str(book.index.tz),
         "positions_kind": "not_supplied"
         if selected is None
-        else selected.attrs.get("diagnostic", {}).get("snapshot_kind", "supplied"),
+        else selected.attrs.get("diagnostic", {}).get(
+            "snapshot_kind", "synthetic" if synthetic_positions else "supplied"
+        ),
         "identities": "anonymized assets and sectors" if hide_positions else "supplied",
-        "reason": "Component-specific samples, missingness and definitions remain explicit. Returns are supplied account facts; fills are actual executions. Scale counts return observations, not rebalances. set_context does not mutate Matplotlib global styling. Plotly replaces the original artist API.",
+        "reason": (
+            "Synthetic research returns compound supplied forward outcomes, not executed account P&L. "
+            if synthetic_returns
+            else "Returns and positions are supplied observations; execution is not inferred. "
+        )
+        + (
+            "Positions are synthetic research allocations, not executed holdings. "
+            if synthetic_positions
+            else ""
+        )
+        + "Component-specific samples, missingness and definitions remain explicit. Supplied fills are not fabricated. Scale counts return observations, not rebalances. set_context does not mutate Matplotlib global styling. Plotly replaces the original artist API.",
     }
     if return_fig:
         return report

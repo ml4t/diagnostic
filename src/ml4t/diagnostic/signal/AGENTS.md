@@ -54,6 +54,8 @@ zero signal means zero exposure. These are not dated holdings/expiration account
 before those same weights and compound one supplied horizon using the existing NaN-aware product.
 They retain actual return/count missingness, labelled observation-order wealth and an explicit
 flat-wealth policy. No calendar, holding expiration or self-financing daily accounting is inferred.
+`SyntheticPortfolioInputs.to_pyfolio()` retains a minimal independent research-origin marker on
+each pandas result; familiar account reports preserve it without relabeling research as execution.
 `panel.factor_alpha_beta` and `compute_factor_alpha_beta` reuse those weights/returns and the
 existing OLS kernel against equal-asset same-universe means. They require explicit horizon scales
 for compounded alpha, retain joint dated samples/counts and undefined statuses, and expose owned
