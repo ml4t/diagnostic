@@ -77,6 +77,55 @@ jobs:
           path: ${{ runner.temp }}/pdf-crash-lifecycle/
           if-no-files-found: warn
 
+  pyfolio-notebooks:
+    name: Installed original Pyfolio notebooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.10.9"
+      - run: uv python install 3.12
+      - run: uv build --out-dir artifacts/notebooks
+      - name: Execute four standalone originals without any Reloaded or producer runtime
+        shell: bash
+        env:
+          ML4T_REQUIRED_PYFOLIO_NOTEBOOKS: "standalone"
+        run: |
+          for profile in current floor; do
+            packages=(--with pandas==3.0.6)
+            if [ "$profile" = floor ]; then
+              packages=(--with pandas==2.3.3 --with numpy==2.2.6 --with polars==1.36.1 --with plotly==6.1.2)
+            fi
+            uv run --isolated --no-project --python 3.12 \
+              --with "$(find artifacts/notebooks -name '*.whl' -print -quit)[viz]" \
+              --with pytest --with nbclient --with ipykernel "${packages[@]}" \
+              python -I -c "import importlib.util, pytest; assert all(importlib.util.find_spec(n) is None for n in ('pyfolio', 'empyrical', 'alphalens', 'zipline', 'ml4t.data', 'ml4t.engineer', 'ml4t.backtest')); raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/$profile', 'tests/test_compat/test_pyfolio_notebook_migration.py']))"
+          done
+      - name: Execute the captured original Zipline account, not its trading algorithm
+        shell: bash
+        env:
+          ML4T_REQUIRED_PYFOLIO_NOTEBOOKS: "all"
+          ML4T_ORIGINAL_ZIPLINE_OUTPUT: ${{ runner.temp }}/original-pyfolio-results.pickle
+        run: |
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/stefan-jansen/pyfolio-reloaded/185eaa1657a845a5e1c8c82809248eac7ce99340/src/pyfolio/examples/results.pickle \
+            --output "$ML4T_ORIGINAL_ZIPLINE_OUTPUT"
+          uv run --isolated --no-project --python 3.12 \
+            --with "$(find artifacts/notebooks -name '*.whl' -print -quit)[viz]" \
+            --with pandas==2.3.3 --with numpy==2.2.6 --with polars==1.36.1 --with plotly==6.1.2 \
+            --with zipline-reloaded==3.2.0 --with pytest --with nbclient --with ipykernel \
+            python -I -c "import importlib.util, pytest; assert all(importlib.util.find_spec(n) is None for n in ('pyfolio', 'alphalens')); raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/zipline', 'tests/test_compat/test_pyfolio_notebook_migration.py']))"
+      - name: Retain converted notebooks and installed artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: original-pyfolio-notebook-replays
+          path: artifacts/notebooks/
+
   security:
     uses: ./.github/workflows/security.yml
 
@@ -236,6 +285,7 @@ jobs:
       - viz-coverage
       - property-tests
       - benchmarks
+      - pyfolio-notebooks
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

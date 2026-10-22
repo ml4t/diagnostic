@@ -3,10 +3,10 @@ repos:
     rev: v0.13.2
     hooks:
       - id: ruff-format
-        exclude: ^examples/
+        exclude: ^(examples/|tests/fixtures/pyfolio_original/)
       - id: ruff
         args: [--fix]
-        exclude: ^examples/
+        exclude: ^(examples/|tests/fixtures/pyfolio_original/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

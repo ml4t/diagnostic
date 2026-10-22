@@ -271,6 +271,8 @@ target-version = "py312"
 fix = true
 # Ruff 0.16+ formats fenced Python in Markdown; prose files are not formatter inputs.
 exclude = ["scripts", "*.md"]
+# Licensed reference cells are hash-checked and executed, not rewritten by Ruff.
+extend-exclude = ["tests/fixtures/pyfolio_original/*.ipynb"]
 
 [tool.ruff.lint]
 select = [
