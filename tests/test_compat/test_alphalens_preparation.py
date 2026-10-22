@@ -202,6 +202,31 @@ def test_preparation_profiles_are_explicit_and_do_not_change_native_return_defin
         utils.get_clean_factor_and_forward_returns(factor, prices, reference_version="unknown")
 
 
+@pytest.mark.parametrize("two_stages", [False, True])
+def test_preparation_keeps_declared_unused_dates_without_inventing_factor_observations(two_stages):
+    from ml4t.diagnostic.compat.alphalens import utils
+
+    factor, prices = _inputs("1D")
+    declared = factor.index.levels[0].copy()
+    factor = factor.drop(declared[2], level="date")
+    assert len(factor.index.levels[0]) == 6 and factor.index.levels[0].freq is not None
+    if two_stages:
+        outcomes = utils.compute_forward_returns(factor, prices, periods=(1, 2))
+        assert len(outcomes.index.levels[0]) == 6
+        pd.testing.assert_index_equal(outcomes.index.levels[0], declared)
+        assert outcomes.index.levels[0].freq == declared.freq
+        result = utils.get_clean_factor(factor, outcomes, quantiles=2, max_loss=0)
+    else:
+        result = utils.get_clean_factor_and_forward_returns(
+            factor, prices, periods=(1, 2), quantiles=2, max_loss=0, filter_zscore=None
+        )
+    assert len(result) == len(factor) == 20
+    assert result.index.get_level_values("date").nunique() == 5
+    pd.testing.assert_index_equal(result.index.levels[0], declared)
+    assert result.index.levels[0].freq == declared.freq
+    assert result.iloc[0]["1D"] == pytest.approx(float(Fraction(1, 100)), rel=3e-16)
+
+
 @pytest.mark.parametrize("clock", ["holiday", "businessday", "1D"])
 @pytest.mark.parametrize("cumulative", [False, True])
 def test_frozen_reference_daily_preparation_preserves_values_keys_and_buckets(clock, cumulative):
