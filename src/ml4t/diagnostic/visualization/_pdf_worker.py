@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 import kaleido
@@ -28,16 +29,35 @@ async def _render(request_path: Path, status_path: Path) -> None:
         temporary.replace(destination)
 
     renderer = kaleido.Kaleido(n=1, timeout=90, **request["defaults"])
-    render_error = None
-    try:
+
+    async def pages() -> None:
+        nonlocal completed
         await renderer.open()
         status("rendering", browser_pid=renderer.subprocess.pid)
         for spec in request["pages"]:
             await renderer.write_fig_from_object([spec], cancel_on_error=True)
             completed += 1
             status("rendering", browser_pid=renderer.subprocess.pid)
+
+    rendering = asyncio.create_task(pages())
+
+    async def watch_cancellation() -> None:
+        while not request_path.with_suffix(".cancel").exists():
+            await asyncio.sleep(0.05)
+        rendering.cancel()
+
+    cancellation = asyncio.create_task(watch_cancellation())
+    render_error = None
+    try:
+        await rendering
+    except asyncio.CancelledError:
+        render_error = RuntimeError("PDF rendering cancelled")
     except Exception as error:
         render_error = error
+    finally:
+        cancellation.cancel()
+        with suppress(asyncio.CancelledError):
+            await cancellation
     details = (
         {"error": f"{type(render_error).__name__}: {render_error}"}
         if render_error is not None
@@ -47,9 +67,21 @@ async def _render(request_path: Path, status_path: Path) -> None:
     status("closing", browser_pid=getattr(browser, "pid", None), **details)
     close_error = None
     try:
-        await renderer.close()
+        await asyncio.wait_for(renderer.close(), timeout=10)
     except Exception as error:
         close_error = error
+
+        # A failed vendor close can leave a healthy browser owning its profile.
+        # Request normal browser shutdown before the parent resorts to OS termination.
+        async def close_browser() -> None:
+            await renderer.send_command("Browser.close")
+            while renderer.subprocess.poll() is None:
+                await asyncio.sleep(0.05)
+
+        try:
+            await asyncio.wait_for(close_browser(), timeout=3)
+        except Exception:
+            pass
     if render_error is not None:
         if close_error is not None:
             details["close_error"] = f"{type(close_error).__name__}: {close_error}"

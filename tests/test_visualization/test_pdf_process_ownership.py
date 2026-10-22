@@ -34,6 +34,13 @@ observed=Path(OBSERVED)
 original_open=kaleido.Kaleido.open
 original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
+original_command=kaleido.Kaleido.send_command
+async def command(self,method,*args,**kwargs):
+    result=await original_command(self,method,*args,**kwargs)
+    if method=='Browser.close':
+        observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
+    return result
+kaleido.Kaleido.send_command=command
 def snapshot(self):
     processes=[psutil.Process(self.subprocess.pid)]
     processes+=processes[0].children(recursive=True)
@@ -56,8 +63,8 @@ async def written(self,specs,*args,**kwargs):
     for spec in specs:
         page=PdfReader(spec['path'])
         assert len(page.pages)==1 and 'Owned PDF page' in page.pages[0].extract_text()
-    if mode=='render_error': raise RuntimeError('Actual renderer failed after first page')
-    if mode=='render_hang':
+    if mode in ('render_error','cleanup_error'): raise RuntimeError('Actual renderer failed after first page')
+    if mode in ('render_hang','cancel'):
         observed.with_suffix('.fault.json').write_text(json.dumps({'stage':'after_first_valid_page'}))
         await asyncio.sleep(3600)
     if mode=='invalid_page': Path(specs[0]['path']).write_bytes(b'invalid PDF')
@@ -71,7 +78,7 @@ async def closed(self,*args,**kwargs):
         result=await original_close(self,*args,**kwargs)
         marker.write_text(json.dumps({'entered':True,'finished':True}))
         return result
-    if mode in ('shared_status','permanent_status'):
+    if mode in ('shared_status','permanent_status','profile_sharing'):
         return await original_close(self,*args,**kwargs)
     if mode=='exit7': os._exit(7)
     if mode=='close_hang': await asyncio.sleep(3600)
@@ -88,6 +95,22 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='cancel':
+        import _thread
+        original_observe=_pdf_process._OwnedProcesses.observe
+        interrupted=[]
+        def cancel_after_valid_page(self):
+            original_observe(self)
+            if observed.with_suffix('.fault.json').exists() and not interrupted:
+                interrupted.append(True)
+                _thread.interrupt_main()
+        _pdf_process._OwnedProcesses.observe=cancel_after_valid_page
+    if mode=='cleanup_error':
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        def terminate_then_fail(self):
+            original_terminate(self)
+            raise RuntimeError('Owned termination verification failed')
+        _pdf_process._OwnedProcesses.terminate=terminate_then_fail
     if mode=='render_hang':
         original_observe=_pdf_process._OwnedProcesses.observe
         def arm_timeout_after_browser_open(self):
@@ -160,8 +183,28 @@ else:
             finally:
                 release_sharing()
                 for timer in sharing_timers: timer.join(timeout=1)
-        Path.read_text=read_with_real_share_lock
-        _pdf_process._OwnedProcesses.terminate=terminate_and_release_sharing
+        if mode=='profile_sharing':
+            def terminate_then_lock_profile(self):
+                original_terminate(self)
+                profile=Path(json.loads(observed.with_suffix('.profiles.json').read_text())[0])
+                candidate=next(path for path in profile.rglob('*') if path.is_file())
+                handle=api.CreateFileW(str(candidate),0x80000000,0x00000003,None,3,0x80,None)
+                if handle==ctypes.c_void_p(-1).value:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                sharing_handles.append(handle)
+                try: candidate.unlink()
+                except PermissionError as error:
+                    assert error.winerror==32
+                    actual_denials.append(error.winerror)
+                else: raise AssertionError('Profile lock did not prevent deletion')
+                timer=threading.Timer(.2,release_sharing)
+                timer.daemon=True
+                sharing_timers.append(timer)
+                timer.start()
+            _pdf_process._OwnedProcesses.terminate=terminate_then_lock_profile
+        else:
+            Path.read_text=read_with_real_share_lock
+            _pdf_process._OwnedProcesses.terminate=terminate_and_release_sharing
 
 neighbor=subprocess.Popen([sys.executable,'-c','import time;time.sleep(180)'])
 server=None
@@ -186,11 +229,15 @@ try:
     originals=[figure.to_json() for figure in figures]
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
-    except Exception as error:
-        if mode in ('close_error','close_hang','held_status','shared_status'): raise
+    except BaseException as error:
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
+        if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
-        if mode=='render_error': assert 'Actual renderer failed after first page' in str(error),repr(error)
+        if mode in ('render_error','cleanup_error'):
+            assert 'Actual renderer failed after first page' in str(error),repr(error)
+            if mode=='cleanup_error':
+                assert any('Owned termination verification failed' in note for note in error.__notes__)
         if mode.startswith('resource_error'):
             assert requests and any('world' in path for path in requests),requests
             assert 'topojson' in str(error).lower(),repr(error)
@@ -204,7 +251,7 @@ try:
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','held_status','shared_status'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','held_status','shared_status','profile_sharing'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -215,6 +262,10 @@ try:
     if mode in ('shared_status','permanent_status'):
         assert sharing_started and actual_denials, 'No real Windows sharing denial was exercised'
         assert not sharing_handles and all(not timer.is_alive() for timer in sharing_timers)
+    if mode=='profile_sharing':
+        assert actual_denials==[32] and not sharing_handles
+        for timer in sharing_timers: timer.join(timeout=1)
+        assert all(not timer.is_alive() for timer in sharing_timers)
     assert neighbor.poll() is None, 'Unrelated process was killed by renderer cleanup'
     rows=json.loads(observed.read_text())
     assert rows, 'No actual browser processes observed'
@@ -237,6 +288,8 @@ try:
     else: raise AssertionError('Process-wait control accepted a live unrelated child')
     profiles=json.loads(observed.with_suffix('.profiles.json').read_text())
     assert all(not Path(profile).exists() for profile in profiles), profiles
+    if mode in ('close_error','render_error','cancel'):
+        assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
                       'waited_exit_codes':[process.returncode for process in gone],
                       'neighbor_alive':True,'input_figures_unchanged':True}),flush=True)
@@ -293,6 +346,8 @@ def _run_pdf_probe(code, arguments):
             "close_error",
             "close_hang",
             "render_error",
+            "cleanup_error",
+            "cancel",
             "render_hang",
             "invalid_page",
             "exit7",
@@ -311,7 +366,7 @@ def _run_pdf_probe(code, arguments):
                 sys.platform != "win32", reason="Actual Windows file-sharing denial is required"
             ),
         )
-        for mode in ("shared_status", "permanent_status")
+        for mode in ("shared_status", "permanent_status", "profile_sharing")
     ],
 )
 def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(

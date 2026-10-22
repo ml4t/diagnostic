@@ -4,11 +4,13 @@ import ctypes
 import json
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +40,35 @@ _RENDER_TIMEOUT = 90
 _CLOSE_TIMEOUT = 15
 _STATUS_READ_TIMEOUT = 2.0
 _logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _renderer_directory():
+    directory = Path(tempfile.mkdtemp())
+    primary = None
+    try:
+        yield directory
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                shutil.rmtree(directory)
+                break
+            except OSError as error:
+                if (
+                    isinstance(error, PermissionError)
+                    and sys.platform == "win32"
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.02)
+                    continue
+                if primary is None:
+                    raise
+                primary.add_note(f"PDF profile cleanup failed; retained {directory}: {error!r}")
+                break
 
 
 class _WindowsJob:
@@ -287,7 +318,7 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
             for figure, path in zip(figures, paths, strict=True)
         ],
     }
-    with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryFile(mode="w+b") as output:
+    with _renderer_directory() as directory, tempfile.TemporaryFile(mode="w+b") as output:
         request_path = Path(directory) / "request.json"
         status_path = Path(directory) / "status.json"
         request_path.write_text(json.dumps(request, cls=PlotlyJSONEncoder), encoding="utf-8")
@@ -309,6 +340,8 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
         owner = None
         status: dict[str, Any] = {}
         failure = None
+        primary_error = None
+        cleanup_error = None
         sequence = 0
 
         def read_progress() -> None:
@@ -368,18 +401,45 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                 time.sleep(0.05)
             if status.get("completed") != len(paths) or status.get("phase") == "render_failed":
                 failure = failure or f"PDF rendering failed: {status.get('error', status)}"
+        except BaseException as error:
+            primary_error = error
+            if owner is not None and process.poll() is None:
+                try:
+                    request_path.with_suffix(".cancel").touch()
+                    process.wait(timeout=_CLOSE_TIMEOUT)
+                except subprocess.TimeoutExpired:
+                    pass
+                except Exception as cancel_error:
+                    primary_error.add_note(f"PDF graceful cancellation failed: {cancel_error!r}")
         finally:
             try:
                 if owner is not None:
                     owner.terminate()
+            except BaseException as error:
+                cleanup_error = error
             finally:
-                if process.poll() is None:
-                    process.kill()
-                process.wait(timeout=5)
-                if process.stdin is not None and not process.stdin.closed:
-                    process.stdin.close()
+                try:
+                    if process.poll() is None:
+                        process.kill()
+                    process.wait(timeout=5)
+                except BaseException as error:
+                    if cleanup_error is None:
+                        cleanup_error = error
+                    else:
+                        cleanup_error.add_note(f"PDF worker reap failed: {error!r}")
+                finally:
+                    if process.stdin is not None and not process.stdin.closed:
+                        process.stdin.close()
         if failure:
             output.seek(0)
-            raise RuntimeError(f"{failure}\n{output.read().decode('utf-8', errors='replace')}")
+            primary_error = RuntimeError(
+                f"{failure}\n{output.read().decode('utf-8', errors='replace')}"
+            )
+        if primary_error is not None:
+            if cleanup_error is not None:
+                primary_error.add_note(f"PDF process cleanup failed: {cleanup_error!r}")
+            raise primary_error from cleanup_error
+        if cleanup_error is not None:
+            raise cleanup_error
         if status.get("phase") != "closed":
             _logger.warning("Terminated owned PDF renderer after browser close failure: %s", status)
