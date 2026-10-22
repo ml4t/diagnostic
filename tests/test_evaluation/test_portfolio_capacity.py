@@ -163,9 +163,13 @@ def test_explicit_calendar_none_overrides_declared_calendar_and_preserves_ns_row
 
 def test_capital_scenario_uses_quadratic_volume_share_and_beginning_nav_once():
     positions, market = _inputs()
+    positions, market = (
+        frame.with_columns(pl.col("date").cast(pl.Datetime("us"))) for frame in (positions, market)
+    )
     transactions = pl.DataFrame(
         {"timestamp": [date(2025, 1, 7)] * 2, "asset": ["A", "B"], "quantity": [100.0, -100.0]}
     )
+    transactions = transactions.with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
     returns = (
         positions.select("date")
         .unique()
@@ -202,6 +206,10 @@ def test_missing_active_volume_cannot_turn_a_trade_into_zero_cost():
     transactions = pl.DataFrame(
         {"timestamp": [date(2025, 1, 7)], "asset": ["A"], "quantity": [100.0]}
     )
+    positions, market = (
+        frame.with_columns(pl.col("date").cast(pl.Datetime("us"))) for frame in (positions, market)
+    )
+    transactions = transactions.with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
     returns = (
         positions.select("date").unique().sort("date").with_columns(pl.lit(0.01).alias("return"))
     )
@@ -280,6 +288,10 @@ def test_market_and_execution_point_multipliers_cannot_silently_disagree():
     fills = pl.DataFrame(
         {"timestamp": [date(2025, 1, 7)], "asset": ["A"], "quantity": [1.0], "multiplier": [1.0]}
     )
+    positions, market = (
+        frame.with_columns(pl.col("date").cast(pl.Datetime("us"))) for frame in (positions, market)
+    )
+    fills = fills.with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
     with pytest.raises(ValueError, match="multipliers"):
         _analyze(positions, market, transactions=fills)
 
@@ -326,3 +338,49 @@ def test_actual_owned_cash_only_boundary_retains_clock_without_fake_cash_asset()
     assert result.timeline["book_liquidation_duration"].to_list() == [0.0] * 4
     assert result.liquidation.is_empty()
     assert result.worst_positions.is_empty()
+
+
+def test_equivalent_market_precision_does_not_turn_available_history_into_type_error():
+    positions, market = _inputs()
+    positions = positions.with_columns(pl.col("date").cast(pl.Datetime("ns", "UTC")))
+    market = market.with_columns(pl.col("date").cast(pl.Datetime("us", "UTC")))
+    result = _analyze(positions, market)
+    assert result.liquidation["date"].dtype == pl.Datetime("ns", "UTC")
+    assert result.liquidation["liquidation_duration"].to_list() == [None, None] + [1.0] * 6
+
+
+def test_timezone_equivalent_market_instants_share_the_same_row_mode_clock():
+    positions, market = _inputs()
+    positions = positions.with_columns(pl.col("date").cast(pl.Datetime("ns", "UTC")))
+    market = market.with_columns(
+        pl.col("date").cast(pl.Datetime("ns", "UTC")).dt.convert_time_zone("America/New_York")
+    )
+    assert (
+        _analyze(positions, market).liquidation["liquidation_duration"].to_list()
+        == [None, None] + [1.0] * 6
+    )
+
+
+def test_declared_timezone_can_reconcile_naive_position_keys_without_guessing():
+    positions, market = _inputs()
+    positions = positions.with_columns(pl.col("date").cast(pl.Datetime("us")))
+    market = market.with_columns(
+        pl.col("date")
+        .cast(pl.Datetime("us"))
+        .dt.replace_time_zone("America/New_York")
+        .dt.convert_time_zone("UTC")
+    )
+    feed = FeedSpec(
+        timestamp_col="date",
+        entity_col="asset",
+        price_col="price",
+        timezone="America/New_York",
+        calendar=None,
+        time_contract_version=2,
+    )
+    assert (
+        _analyze(positions, market, feed_spec=feed).liquidation["liquidation_duration"].to_list()
+        == [None, None] + [1.0] * 6
+    )
+    with pytest.raises(TypeError, match="temporal types"):
+        _analyze(positions, market)

@@ -1,5 +1,5 @@
 """Explicit Pyfolio analytical adapters without a Pyfolio runtime dependency."""
 
-from . import txn, utils
+from . import capacity, txn, utils
 
-__all__ = ["txn", "utils"]
+__all__ = ["capacity", "txn", "utils"]

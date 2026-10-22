@@ -6,6 +6,7 @@ values and market price times volume times multiplier must share a currency.
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ _TABLES = (
     "worst_positions",
     "worst_transactions",
     "scenarios",
+    "observations",
 )
 
 
@@ -85,15 +87,45 @@ class CapacityAnalysisResult:
         return self._table("scenarios")
 
     @property
+    def observations(self) -> pl.DataFrame:
+        """Authoritative supplied returns, when present, for report identity."""
+        return self._table("observations")
+
+    @property
     def metadata(self) -> dict[str, Any]:
         """Independent declarations and missing/undefined reasons."""
         return json.loads(self._metadata)
+
+    def to_json(self) -> str:
+        """Serialize owned typed tables without losing ns keys or infinity."""
+        return json.dumps(
+            {
+                "format_version": 1,
+                "tables": {
+                    name: base64.b64encode(payload).decode("ascii")
+                    for name, payload in zip(_TABLES, self._tables, strict=True)
+                },
+                "metadata": self.metadata,
+            },
+            allow_nan=False,
+        )
+
+    @classmethod
+    def from_json(cls, value: str) -> CapacityAnalysisResult:
+        """Restore the versioned table snapshot, not mutable caller frames."""
+        parsed = json.loads(value)
+        if parsed.get("format_version") != 1 or set(parsed["tables"]) != set(_TABLES):
+            raise ValueError("unsupported capacity result format")
+        tables = tuple(base64.b64decode(parsed["tables"][name], validate=True) for name in _TABLES)
+        for payload in tables:
+            pl.read_ipc(BytesIO(payload))
+        return cls(tables, json.dumps(parsed["metadata"], allow_nan=False))
 
 
 def _positive_real(value: float, name: str, *, zero: bool = False) -> float:
     if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value):
         raise ValueError(f"{name} must be finite and {'nonnegative' if zero else 'positive'}")
-    if value < 0 if zero else value <= 0:
+    if value < 0 or (not zero and value == 0):
         raise ValueError(f"{name} must be {'nonnegative' if zero else 'positive'}")
     return float(value)
 
@@ -124,16 +156,12 @@ def _volume_share_cost(
     return np.where((units == 0) | (impact == 0), 0.0, result)
 
 
-def _worst(frame: pl.DataFrame, value: str, recent: int | None) -> pl.DataFrame:
+def _worst(frame: pl.DataFrame, value: str, recent: int | None, dates: pl.Series) -> pl.DataFrame:
     outputs = []
-    dates = frame["date"].unique().sort()
-    for label, selected in (
-        ("full", frame),
-        (
-            "recent",
-            frame.filter(pl.col("date").is_in(dates.tail(recent).implode())) if recent else frame,
-        ),
-    ):
+    samples = [("full", frame)]
+    if recent is not None:
+        samples.append(("recent", frame.filter(pl.col("date").is_in(dates.tail(recent).implode()))))
+    for label, selected in samples:
         selected = selected.sort([value, "date"], descending=[True, False], nulls_last=True)
         outputs.append(
             selected.unique("asset", keep="first", maintain_order=True).with_columns(
@@ -248,10 +276,36 @@ def analyze_capacity(
     market = _numeric(market, "multiplier")
     if market.filter(pl.col("multiplier") <= 0).height:
         raise ValueError("market multipliers must be positive")
+    if known_at_col == (timestamp_col or feed.timestamp_col):
+        known_at_col = "date"
     if known_at_col is not None and known_at_col not in market.columns:
         raise ValueError("market data is missing the declared known-at column")
     market = market.with_columns(pl.col(known_at_col or "date").alias("known_at"))
     _validate_observation_keys(market, ["known_at"], "market availability", unique=False)
+    semantics = getattr(feed.timestamp_semantics, "value", feed.timestamp_semantics)
+    target = marked["date"].dtype
+    if isinstance(target, pl.Datetime) and semantics != "session_label":
+        for column in ("date", "known_at"):
+            dtype = market[column].dtype
+            if not isinstance(dtype, pl.Datetime):
+                continue
+            expression = pl.col(column)
+            source_zone = dtype.time_zone
+            if source_zone is None and target.time_zone is not None and feed.timezone:
+                expression = expression.dt.replace_time_zone(feed.timezone)
+                source_zone = feed.timezone
+            if source_zone is not None and target.time_zone is not None:
+                expression = expression.dt.convert_time_zone(target.time_zone)
+            elif source_zone is not None and target.time_zone is None and feed.timezone:
+                expression = expression.dt.convert_time_zone(feed.timezone).dt.replace_time_zone(
+                    None
+                )
+            market = market.with_columns(expression.alias(column))
+    marked, market = _align_datetime_key_resolution(marked, market, "date")
+    market, availability_keys = _align_datetime_key_resolution(
+        market, market.select(pl.col("known_at").alias("date")), "date"
+    )
+    market = market.with_columns(availability_keys["date"].alias("known_at"))
     marked, market = _align_datetime_key_resolution(marked, market, "date")
     if (
         marked["date"].dtype != market["date"].dtype
@@ -260,7 +314,6 @@ def analyze_capacity(
         raise TypeError(
             "market/position/known-at keys must have matching temporal types and timezone"
         )
-    semantics = getattr(feed.timestamp_semantics, "value", feed.timestamp_semantics)
 
     def clock(frame: pl.DataFrame, *, executions: bool = False) -> pl.DataFrame:
         return frame.with_columns(
@@ -377,6 +430,10 @@ def analyze_capacity(
     if transactions is not None:
         fills = _frame(transactions, "timestamp")
         _temporal(fills)
+        if not isinstance(fills["date"].dtype, pl.Datetime):
+            raise TypeError(
+                "actual transaction timestamps must be Datetime instants, not Date labels"
+            )
         _validate_observation_keys(fills, ["date", "asset"], "transactions", unique=False)
         fills = _numeric(fills, "quantity")
         if fills["asset"].dtype != marked["asset"].dtype:
@@ -423,15 +480,23 @@ def analyze_capacity(
         values = observed["return"].to_numpy()
         if np.any(values <= -1):
             raise ValueError("capital scenarios require strictly positive beginning NAV")
-        beginning = starting * np.cumprod(np.r_[1.0, 1 + values[:-1]])
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            beginning = starting * np.cumprod(np.r_[1.0, 1 + values[:-1]])
+        if not np.isfinite(beginning).all() or np.any(beginning <= 0):
+            raise ValueError("scenario beginning NAV must remain positive and representable")
         scenario_tables = []
         for capital in capitals:
+            ratio = _positive_real(capital / starting, "capital ratio")
+            with np.errstate(over="ignore", under="ignore"):
+                scenario_nav = beginning * ratio
+            if not np.isfinite(scenario_nav).all() or np.any(scenario_nav <= 0):
+                raise ValueError("scaled scenario NAV must remain positive and representable")
             costs = _volume_share_cost(
                 activity["absolute_units"].to_numpy(),
                 activity["price"].to_numpy(),
                 activity["volume"].to_numpy(),
                 activity["multiplier"].to_numpy(),
-                capital / starting,
+                ratio,
                 impact,
             )
             daily = (
@@ -453,7 +518,7 @@ def analyze_capacity(
                 .otherwise(pl.col("extra_impact_cash"))
                 .alias("extra_impact_cash")
             )
-            drag = daily["extra_impact_cash"].to_numpy() / (beginning * capital / starting)
+            drag = daily["extra_impact_cash"].to_numpy() / scenario_nav
             scenario_tables.append(
                 observed.with_columns(
                     pl.lit(capital).alias("capital"),
@@ -489,9 +554,12 @@ def analyze_capacity(
         liquidation,
         activity,
         timeline,
-        _worst(liquidation, "liquidation_duration", recent_window),
-        _worst(activity, "participation", recent_window),
+        _worst(liquidation, "liquidation_duration", recent_window, decisions["date"]),
+        _worst(activity, "participation", recent_window, decisions["clock"]),
         scenarios,
+        observed.select("date", "return")
+        if returns is not None
+        else pl.DataFrame(schema={"date": marked["date"].dtype, "return": pl.Float64}),
     )
     return CapacityAnalysisResult(
         tuple(table.write_ipc(None).getvalue() for table in tables),

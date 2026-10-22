@@ -1047,6 +1047,7 @@ class PortfolioAnalysis:
         cost_info: dict[str, str] | None = None,
         *,
         transactions: TransactionAnalysisResult | None = None,
+        capacity: CapacityAnalysisResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -1061,6 +1062,8 @@ class PortfolioAnalysis:
         transactions : TransactionAnalysisResult, optional
             Explicitly prepared actual-fill turnover and incremental cost scenarios.
             Computed results are rendered without selecting financial methods again.
+        capacity : CapacityAnalysisResult, optional
+            Explicitly prepared liquidity, coverage and capital scenarios.
 
         Returns
         -------
@@ -1078,7 +1081,7 @@ class PortfolioAnalysis:
         ):
             holdings = self.compute_holdings_analysis()
         return create_portfolio_dashboard(
-            self, theme=theme, holdings=holdings, transactions=transactions
+            self, theme=theme, holdings=holdings, transactions=transactions, capacity=capacity
         )
 
 

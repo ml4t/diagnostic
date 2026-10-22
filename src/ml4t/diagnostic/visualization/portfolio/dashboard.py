@@ -5,6 +5,7 @@ Creates comprehensive tear sheets with multiple panels.
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from html import escape
@@ -25,6 +26,7 @@ from ml4t.diagnostic.visualization.core import (
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        CapacityAnalysisResult,
         HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
@@ -54,6 +56,7 @@ class PortfolioTearSheet:
     holdings: HoldingsAnalysisResult | None = None
     availability: dict[str, dict[str, Any]] = field(default_factory=dict)
     transactions: TransactionAnalysisResult | None = None
+    capacity: CapacityAnalysisResult | None = None
 
     def _availability_html(self) -> str:
         if not self.availability:
@@ -184,6 +187,9 @@ class PortfolioTearSheet:
             font-size: 16px;
         }}
         .figure-note {{ font-size: 13px; line-height: 1.5; }}
+        .capacity-table {{ border-collapse: collapse; font: inherit; font-size: 14px; }}
+        .capacity-table th, .capacity-table td {{ padding: 6px 8px; text-align: left;
+            border-bottom: 1px solid {COLORS["silver"]}; white-space: nowrap; }}
     </style>
 </head>
 <body>
@@ -199,6 +205,10 @@ class PortfolioTearSheet:
 """)
 
         html_parts.append(self._availability_html())
+        if self.capacity is not None:
+            from .capacity_plots import _capacity_tables
+
+            html_parts.append(_capacity_tables(self.capacity))
 
         # Add each figure
         for name, fig in self.figures.items():
@@ -279,6 +289,7 @@ class PortfolioTearSheet:
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
             "holdings": holdings,
             "availability": deepcopy(self.availability),
+            "capacity": None if self.capacity is None else json.loads(self.capacity.to_json()),
             "transactions": None
             if self.transactions is None
             else {
@@ -310,6 +321,7 @@ def create_portfolio_dashboard(
     *,
     holdings: HoldingsAnalysisResult | None = None,
     transactions: TransactionAnalysisResult | None = None,
+    capacity: CapacityAnalysisResult | None = None,
 ) -> PortfolioTearSheet:
     """Create a return dashboard with optional prepared holdings.
 
@@ -345,6 +357,9 @@ def create_portfolio_dashboard(
         Requested but absent results have an explicit availability reason.
     transactions : TransactionAnalysisResult, optional
         Prepared actual execution activity and incremental-cost scenarios.
+    capacity : CapacityAnalysisResult, optional
+        Prepared supplied-market liquidity and hypothetical capital scenarios.
+        Exact observation keys and any supplied returns must match this analysis.
 
     Returns
     -------
@@ -373,6 +388,18 @@ def create_portfolio_dashboard(
     }
     prepared = None
     prepared_transactions = None
+    if capacity is not None:
+        from ml4t.diagnostic.evaluation.portfolio_analysis import CapacityAnalysisResult
+
+        if not isinstance(capacity, CapacityAnalysisResult):
+            raise TypeError("capacity must be a prepared CapacityAnalysisResult")
+        dates = capacity.timeline["date"]
+        if dates.dtype != analysis.dates.dtype or not dates.equals(analysis.dates):
+            raise ValueError("capacity must match the exact analysis observation keys")
+        if not capacity.observations.is_empty() and not capacity.observations.equals(
+            pl.DataFrame({"date": analysis.dates, "return": analysis.returns})
+        ):
+            raise ValueError("capacity must match the exact analysis return observations")
     if include_transactions and transactions is not None:
         from ml4t.diagnostic.evaluation.portfolio_analysis import TransactionAnalysisResult
 
@@ -536,6 +563,14 @@ def create_portfolio_dashboard(
         )
         figures.update(transaction_figures)
         availability.update(transaction_availability)
+    if capacity is not None:
+        from .capacity_plots import _capacity_figures
+
+        capacity_figures, capacity_availability = _capacity_figures(
+            capacity, theme, height_per_row, width, analysis._periods_per_year, analysis._risk_free
+        )
+        figures.update(capacity_figures)
+        availability.update(capacity_availability)
     for name, fig in figures.items():
         fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
         fig.update_xaxes(tickfont_size=14, title_font_size=14)
@@ -563,6 +598,7 @@ def create_portfolio_dashboard(
         holdings=prepared,
         availability=availability,
         transactions=prepared_transactions,
+        capacity=capacity,
     )
 
 

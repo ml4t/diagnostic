@@ -9,6 +9,7 @@ This package holds the main research and validation workflows.
 - `FeatureDiagnostics` for feature-quality checks
 - `PortfolioAnalysis` for return and risk analytics
 - `PortfolioAnalysis.from_frames` for owned supplied-account inputs, without reconstructing returns or fills
+- `PortfolioAnalysis.compute_capacity` or `portfolio_analysis.analyze_capacity` for supplied-market liquidity, availability and declared impact scenarios; native marked-dollar/beginning-NAV conventions are separate from the fixed-capital/closing-NAV Pyfolio adapter
 - `portfolio_analysis.benchmark_batting_average` for finite paired benchmark-relative wins/counts and an explicit neutral-market convention; not factor-monotonicity or a strategy's positive-return fraction
 - `TradeAnalysis` and `TradeShapAnalyzer` for trade-level diagnostics
 - `FactorAnalysis` for factor exposure and attribution
