@@ -33,6 +33,7 @@ PAGES = {
         "Aligned event levels: 55.0; finite date paths: 2/3/2",
         "Event-returns report: global view and per-quantile sample deviations",
         "Information report samples:",
+        "Alphalens information adapter preserves the prepared sample and group options",
         "Supplied account preserves net returns and unknown fees",
         "200 actual notional / 1000 beginning NAV; extra 10bps costs .0002 return",
         "Zipline input preserves sid, reported cash/NAV and unknown fill costs",

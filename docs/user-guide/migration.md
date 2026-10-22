@@ -633,6 +633,52 @@ assert restored_information.get_table("prepared_data").height == panel.data.heig
 print("Information report samples:", information.get_table("ic_by_date").height)
 ```
 
+An already-clean factor table can keep its supplied buckets through the native
+`PreparedSignalPanel.from_prepared` constructor or the familiar sheet adapter:
+
+```python
+from ml4t.diagnostic.compat import alphalens as al
+from ml4t.diagnostic.signal import PreparedSignalPanel
+
+familiar_information = (
+    panel.data.to_pandas().set_index(["date", "asset"])
+    .rename(columns={"quantile": "factor_quantile"})
+)
+owned_information = PreparedSignalPanel.from_prepared(
+    familiar_information, return_columns=["1D"], calendar=None,
+)
+assert owned_information.metadata["bucket_source"] == "supplied, not recomputed"
+information_figures = al.tears.create_information_tear_sheet(
+    familiar_information, group_neutral=True, by_group=True,
+    output_file="adapted-information.html", return_fig=True,
+)
+assert len(information_figures) == 4
+print("Alphalens information adapter preserves the prepared sample and group options")
+```
+
+The legacy call is `alphalens.tears.create_information_tear_sheet(factor_data,
+group_neutral=..., by_group=...)`; change its import to
+`ml4t.diagnostic.compat.alphalens.tears`. Default notebook calls display the
+complete HTML report and return `None`. The explicit `return_fig=True` extension
+returns Plotly figures, not Matplotlib figures or axes. `output_file` saves the
+complete report atomically. `set_context` accepts the legacy boolean without
+changing global Matplotlib/seaborn state; use `theme` for native presentation.
+This namespace currently exposes the information sheet, not all seven sheets.
+
+Both routes require complete finite prepared factors/outcomes and positive bucket
+IDs; they do not silently clean or rebucket a supplied table. The constructor
+retains sparse bucket IDs, groups, exact keys and calendar declarations in owned
+data/audit copies. It does not manufacture original price endpoints or causal
+availability that the supplied table does not contain.
+
+The adapter preserves an input pandas frequency as an explicit output grid,
+including unknown ICs on absent factor dates. Preparation retains unused date
+levels without inventing factor rows. A missing declared date therefore remains
+unknown inside the complete 22-date rolling window, rather than compressing it
+into a 22-scored-date window. This is a named legacy reporting convention, not
+exchange-calendar validation. Native `analyze_signal_information` still defaults
+to observed dates; pass `date_grid` explicitly to request other output keys.
+
 `group_adjust` demeans each date/group's outcomes before correlation. Independently,
 `by_group=True` adds group means without replacing the global analysis; `False`
 shows civil-month heatmaps instead. Every supplied horizon gets an IC time series,

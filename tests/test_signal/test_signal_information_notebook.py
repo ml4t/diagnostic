@@ -24,11 +24,13 @@ import numpy as np
 import plotly.io as pio
 from IPython.display import HTML,display
 from ml4t import diagnostic
+from ml4t.diagnostic.compat import alphalens as al
 from ml4t.diagnostic.signal import SignalInformationResult,analyze_signal_information,prepare_signal_panel
 from ml4t.diagnostic.visualization.signal import generate_signal_information_report,plot_signal_information
 pio.renderers.default='plotly_mimetype'
 factor,forward,groups=runpy.run_path({str(recipe)!r})['_signal_information_inputs']()
 panel=prepare_signal_panel(factor,forward,groups=groups,quantiles=3,max_loss=0)
+familiar=panel.data.to_pandas().set_index(['date','asset']).rename(columns={{'quantile':'factor_quantile'}})
 first=factor.index.get_level_values('date')[0]
 figures_count=0
 for adjusted in [False,True]:
@@ -49,6 +51,10 @@ for adjusted in [False,True]:
         assert len(figures)==(7 if grouped else 8)
         for figure in figures: figure.show()
         display(HTML(generate_signal_information_report(restored)))
+        assert al.tears.create_information_tear_sheet(
+            familiar,group_neutral=adjusted,by_group=grouped,
+            output_file=Path(f'adapted-information-{{int(adjusted)}}-{{int(grouped)}}.html'),
+        ) is None
         figures_count+=len(figures)
 print('ML4T_INFORMATION_NOTEBOOK:'+json.dumps({{'module':diagnostic.__file__,'figures':figures_count,'prepared_rows':224,'dates':32,'flag_combinations':4}}))
 """
@@ -88,7 +94,7 @@ print('ML4T_INFORMATION_NOTEBOOK:'+json.dumps({{'module':diagnostic.__file__,'fi
     ]
     assert len(figures) == 30
     html = "\n".join(out.get("data", {}).get("text/html", "") for out in outputs)
-    assert html.count('class="plot-container"') == 30
+    assert html.count('class="plot-container"') == 60
     stream = "".join(out.get("text", "") for out in outputs if out.get("output_type") == "stream")
     metadata = json.loads(
         next(
@@ -100,4 +106,5 @@ print('ML4T_INFORMATION_NOTEBOOK:'+json.dumps({{'module':diagnostic.__file__,'fi
     assert Path(metadata["module"]).resolve() == Path(diagnostic.__file__).resolve()
     assert metadata["figures"] == 30 and metadata["flag_combinations"] == 4
     assert len(list(tmp_path.glob("information-*.json"))) == 4
+    assert len(list(tmp_path.glob("adapted-information-*.html"))) == 4
     print(json.dumps(metadata))

@@ -57,8 +57,15 @@ def create_information_tear_sheet(
         feed_spec=metadata.get("feed_spec"),
         calendar=metadata.get("calendar_argument", UNSET_CALENDAR),
     )
+    observed = factor_data.index.get_level_values("date")
+    frequency = factor_data.index.levels[0].freq
+    date_grid = (
+        pd.DataFrame({"date": pd.date_range(observed.min(), observed.max(), freq=frequency)})
+        if frequency is not None
+        else None
+    )
     result = analyze_signal_information(
-        panel, group_adjust=bool(group_neutral), by_group=bool(by_group)
+        panel, group_adjust=bool(group_neutral), by_group=bool(by_group), date_grid=date_grid
     )
     from ml4t.diagnostic.visualization.signal import (
         generate_signal_information_report,

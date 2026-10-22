@@ -132,6 +132,7 @@ def analyze_signal_information(
     by_group: bool = False,
     method: str = "spearman",
     min_obs: int = 2,
+    date_grid: pl.DataFrame | pd.DataFrame | None = None,
 ) -> SignalInformationResult:
     """Compose global and optional group ICs, naive inference and civil-month means.
 
@@ -139,6 +140,8 @@ def analyze_signal_information(
     group ICs without replacing the global sample. Counts and undefined outcomes
     come from the existing IC kernel. Supplied horizon labels do not declare time
     units, calendars or annualization. Monthly grouping uses supplied civil dates.
+    An explicit date_grid retains requested absent dates with unknown global IC;
+    by-group means still use actual scored group dates. No grid is inferred.
     """
     from ml4t.diagnostic.signal.panel import PreparedSignalPanel
 
@@ -149,7 +152,9 @@ def analyze_signal_information(
     data = panel.data
     if data.is_empty():
         raise ValueError("information analysis requires at least one prepared observation")
-    ic = panel.ic_by_date(group_adjust=group_adjust, method=method, min_obs=min_obs)
+    ic = panel.ic_by_date(
+        group_adjust=group_adjust, method=method, min_obs=min_obs, date_grid=date_grid
+    )
     groups = (
         panel.ic_by_date(group_adjust=group_adjust, by_group=True, method=method, min_obs=min_obs)
         if by_group
@@ -213,6 +218,7 @@ def analyze_signal_information(
         "method": method,
         "min_obs": int(min_obs),
         "sample_unit": "date",
+        "date_grid": "explicit supplied dates" if date_grid is not None else "observed dates",
         "monthly_unit": "supplied civil year/month",
         "inference": "naive two-sided one-sample t; sample standard deviation; no HAC",
         "degenerate_inference": "undefined for fewer than two or zero-variance ICs",

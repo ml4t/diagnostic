@@ -9,7 +9,7 @@ import pytest
 from scipy.stats import rankdata
 
 
-def _price_panel():
+def _price_panel(*, missing_factor_date=False, preparer=None):
     from ml4t.diagnostic.compat.alphalens import utils
 
     dates = pd.date_range("2025-01-02T00:00:00.000000001", periods=30, tz="UTC", unit="ns")
@@ -24,7 +24,10 @@ def _price_panel():
         name="factor",
     )
     groups = {asset: "first" if i < 2 else "second" for i, asset in enumerate(assets)}
-    return utils.get_clean_factor_and_forward_returns(
+    if missing_factor_date:
+        factor = factor.drop(dates[10], level="date")
+    prepare = utils.get_clean_factor_and_forward_returns if preparer is None else preparer
+    return prepare(
         factor,
         prices,
         periods=(1, 2),
@@ -102,3 +105,21 @@ def test_information_adapter_does_not_replace_a_report_for_invalid_prepared_inpu
     with pytest.raises(ValueError, match="complete and finite"):
         tears.create_information_tear_sheet(panel, output_file=target)
     assert target.read_text(encoding="utf-8") == "retained report"
+
+
+def test_familiar_information_sheet_keeps_a_missing_declared_date_unknown_not_observation_compressed():
+    from ml4t.diagnostic.compat.alphalens import tears
+
+    panel = _price_panel(missing_factor_date=True)
+    dates = pd.date_range("2025-01-02T00:00:00.000000001", periods=28, tz="UTC", unit="ns")
+    assert len(panel.index.get_level_values("date").unique()) == 27
+    assert panel.index.levels[0].freq is not None
+    figures = tears.create_information_tear_sheet(panel, return_fig=True)
+    trace = figures[0].data[0]
+    actual_dates = pd.DatetimeIndex(trace.x)
+    pd.testing.assert_index_equal(actual_dates, dates, check_names=False)
+    assert pd.isna(trace.y[10])
+    rolling = figures[0].data[1]
+    assert all(pd.isna(value) for value in rolling.y), (
+        "The missing IC invalidates every22-date window"
+    )

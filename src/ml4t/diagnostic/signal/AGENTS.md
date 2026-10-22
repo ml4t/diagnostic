@@ -32,6 +32,10 @@ print(result.ic["1D"], result.ic_t_stat["1D"])
 `analyze_prepared_signal` accepts already-complete panels without prices or new bucket assignments.
 Its result retains an owned `prepared_data` snapshot. Supplied horizon labels do not establish a
 calendar or session/bar validation; native pooled quantile/spread definitions still apply.
+`PreparedSignalPanel.from_prepared` uses the same strict validator to own an already-clean
+table and its supplied sparse bucket IDs without recalculation. The familiar
+`compat.alphalens.tears.create_information_tear_sheet` delegates to the native information
+analysis/report; a declared pandas output grid retains missing dates as unknown ICs, not factor rows.
 
 `prepare_signal_panel` cleans one common factor/return/group sample before shared qcut/cut
 bucketing. Its owned panel exposes independent data/audit copies; `analyze()` delegates to the
