@@ -21,9 +21,13 @@ from ml4t.diagnostic.signal import PreparedSignalPanel, analyze_signal_informati
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
+    from ml4t.diagnostic.signal import SignalReturnsResult
+
 __all__ = [
     "create_information_tear_sheet",
     "create_returns_tear_sheet",
+    "create_summary_tear_sheet",
+    "create_full_tear_sheet",
     "create_turnover_tear_sheet",
     "create_event_returns_tear_sheet",
     "create_event_study_tear_sheet",
@@ -79,6 +83,166 @@ def _display_report(report: str, output_file: str | Path | None) -> None:
     if hasattr(get_ipython(), "kernel"):
         html = Path(report).read_text(encoding="utf-8") if output_file is not None else report
         display(HTML(html))
+
+
+def _returns_analysis(
+    factor_data: pd.DataFrame,
+    profile: str,
+    long_short: bool,
+    group_neutral: bool,
+    by_group: bool,
+    annualization_factors: Mapping[str, float] | None,
+) -> tuple[PreparedSignalPanel, SignalReturnsResult, pd.DataFrame | None]:
+    from ml4t.diagnostic.signal import analyze_signal_returns
+
+    panel, _ = _prepared(factor_data)
+    columns = panel.metadata["return_columns"]
+    durations = {column: pd.Timedelta(column).value for column in columns}
+    if any(value <= 0 for value in durations.values()):
+        raise ValueError("return-sheet horizons must be positive durations")
+    factors = (
+        {column: pd.Timedelta("252D").value / duration for column, duration in durations.items()}
+        if annualization_factors is None
+        else annualization_factors
+    )
+    grid = _reference_grid(factor_data, profile)
+    result = analyze_signal_returns(
+        panel,
+        annualization_factors=factors,
+        demeaned=bool(long_short),
+        group_adjust=bool(group_neutral),
+        by_group=bool(by_group),
+        rate_conversion_factors={
+            column: durations[columns[0]] / duration for column, duration in durations.items()
+        },
+        date_grid=grid,
+        cumulative_columns=["1D"] if "1D" in columns else [],
+        spread_exposure="unit_gross" if profile == "0.5.0" else "raw_difference",
+    )
+    return panel, result, grid
+
+
+def _composed_sheet(
+    factor_data: pd.DataFrame,
+    long_short: bool,
+    group_neutral: bool,
+    by_group: bool,
+    *,
+    summary: bool,
+    reference_version: str,
+    annualization_factors: Mapping[str, float] | None,
+    output_file: str | Path | None,
+    return_fig: bool,
+    theme: str | None,
+    set_context: bool,
+) -> list[go.Figure] | None:
+    from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+    from ml4t.diagnostic.visualization.signal import generate_signal_report, plot_signal_report
+
+    profile = _profile(reference_version)
+    _flags(
+        long_short=long_short,
+        group_neutral=group_neutral,
+        by_group=by_group,
+        return_fig=return_fig,
+        set_context=set_context,
+    )
+    panel, returns, grid = _returns_analysis(
+        factor_data, profile, long_short, group_neutral, by_group, annualization_factors
+    )
+    information = analyze_signal_information(
+        panel,
+        group_adjust=False if summary else bool(group_neutral),
+        by_group=False if summary else bool(by_group),
+        date_grid=grid,
+    )
+    periods = get_forward_returns_columns(factor_data.columns, require_exact_day_multiple=True)
+    lags = timedelta_strings_to_integers(periods)
+    turnover = TurnoverAnalysisResult.from_observations(
+        panel.quantile_turnover(lags=lags, date_grid=grid),
+        panel.rank_autocorrelation(lags=lags, date_grid=grid),
+    )
+    options = {
+        "summary": summary,
+        "theme": theme,
+        "rolling_window": 22,
+        "bandwidth": 0.5,
+        "ylim_percentiles": (1, 99),
+    }
+    if output_file is not None or not return_fig:
+        report = generate_signal_report(
+            returns, information, turnover, output_file=output_file, **options
+        )
+    if return_fig:
+        return plot_signal_report(returns, information, turnover, **options)
+    _display_report(report, output_file)
+    return None
+
+
+def create_summary_tear_sheet(
+    factor_data: pd.DataFrame,
+    long_short: bool = True,
+    group_neutral: bool = False,
+    *,
+    reference_version: str = "0.5.0",
+    annualization_factors: Mapping[str, float] | None = None,
+    output_file: str | Path | None = None,
+    return_fig: bool = False,
+    theme: str | None = None,
+    set_context: bool = True,
+) -> list[go.Figure] | None:
+    """Compose familiar summary tables and bars, retaining unadjusted summary IC.
+
+    As in both references, group_neutral adjusts returns but not this summary's
+    information table. Use the full or information sheet for group-adjusted IC.
+    """
+    return _composed_sheet(
+        factor_data,
+        long_short,
+        group_neutral,
+        False,
+        summary=True,
+        reference_version=reference_version,
+        annualization_factors=annualization_factors,
+        output_file=output_file,
+        return_fig=return_fig,
+        theme=theme,
+        set_context=set_context,
+    )
+
+
+def create_full_tear_sheet(
+    factor_data: pd.DataFrame,
+    long_short: bool = True,
+    group_neutral: bool = False,
+    by_group: bool = False,
+    *,
+    reference_version: str = "0.5.0",
+    annualization_factors: Mapping[str, float] | None = None,
+    output_file: str | Path | None = None,
+    return_fig: bool = False,
+    theme: str | None = None,
+    set_context: bool = True,
+) -> list[go.Figure] | None:
+    """Compose familiar returns, information and persistence with actual factor stats.
+
+    group_neutral adjusts both returns and IC here. Optional group means
+    supplement the global analysis; event-return/event-study sheets remain
+    separate routes, as in Alphalens. No execution account or data is inferred.
+    """
+    return _composed_sheet(
+        factor_data,
+        long_short,
+        group_neutral,
+        by_group,
+        summary=False,
+        reference_version=reference_version,
+        annualization_factors=annualization_factors,
+        output_file=output_file,
+        return_fig=return_fig,
+        theme=theme,
+        set_context=set_context,
+    )
 
 
 def create_information_tear_sheet(
@@ -147,7 +311,6 @@ def create_returns_tear_sheet(
     Only the supplied1D horizon creates familiar cumulative panels. Native
     callers can request arbitrary supplied-horizon mathematical wealth paths.
     """
-    from ml4t.diagnostic.signal import analyze_signal_returns
     from ml4t.diagnostic.visualization.signal import (
         generate_signal_returns_report,
         plot_signal_returns,
@@ -161,28 +324,8 @@ def create_returns_tear_sheet(
         return_fig=return_fig,
         set_context=set_context,
     )
-    panel, _ = _prepared(factor_data)
-    columns = panel.metadata["return_columns"]
-    durations = {column: pd.Timedelta(column).value for column in columns}
-    if any(value <= 0 for value in durations.values()):
-        raise ValueError("return-sheet horizons must be positive durations")
-    factors = (
-        {column: pd.Timedelta("252D").value / duration for column, duration in durations.items()}
-        if annualization_factors is None
-        else annualization_factors
-    )
-    result = analyze_signal_returns(
-        panel,
-        annualization_factors=factors,
-        demeaned=bool(long_short),
-        group_adjust=bool(group_neutral),
-        by_group=bool(by_group),
-        rate_conversion_factors={
-            column: durations[columns[0]] / duration for column, duration in durations.items()
-        },
-        date_grid=_reference_grid(factor_data, profile),
-        cumulative_columns=["1D"] if "1D" in columns else [],
-        spread_exposure="unit_gross" if profile == "0.5.0" else "raw_difference",
+    _, result, _ = _returns_analysis(
+        factor_data, profile, long_short, group_neutral, by_group, annualization_factors
     )
     options = {"theme": theme, "rolling_window": 22, "bandwidth": 0.5, "ylim_percentiles": (1, 99)}
     if output_file is not None or not return_fig:

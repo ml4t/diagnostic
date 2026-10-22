@@ -83,13 +83,13 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Dated spread/error chart | `plot_spread_timeseries(result.to_quantile_result(), observations=...)` | Unreleased after 0.1.9. Uses actual dated bucket means and independent propagated errors, with explicit pair, bandwidth and observation-window controls. No cumulative-increment reconstruction or inferred confidence coverage. |
 | Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
-| Factor alpha and beta | `panel.factor_alpha_beta(annualization_factors=...)` | Unreleased after 0.1.9. Reuses factor returns and OLS against the same universe's equal-asset mean. Retains dated joint samples/counts and explicitly compounded annual alpha; constant benchmarks and unavailable dates remain explicit. Does not add a complete returns table or tear sheet. |
+| Factor alpha and beta | `panel.factor_alpha_beta(annualization_factors=...)` | Unreleased after 0.1.9. Reuses factor returns and OLS against the same universe's equal-asset mean. Retains dated joint samples/counts and explicitly compounded annual alpha; constant benchmarks and unavailable dates remain explicit. The owned returns/report composition below includes these samples and tables. |
 | Selected-factor cumulative wealth | `panel.factor_cumulative_returns(return_column=..., quantiles=..., groups=...)` | Unreleased after 0.1.9. Selects rows before shared weighting, then compounds one supplied horizon in observation order. Retains actual returns/counts and a labelled flat-wealth policy for unavailable returns. Not self-financing daily holdings or an inferred calendar. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
 | Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | Unreleased after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
-| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | Unreleased after 0.1.9, persistence-enabled analyses also retain dated turnover/rank tables and explicit method/count summaries. Quantile cumulative paths and complete reference chart/report composition remain unavailable. |
-| Dated holdings and the complete Alphalens tear sheet | No complete equivalent | Analytical factor weights and supplied-return contributions do not establish capital/expiry accounting, event paths or the complete tear sheet. |
+| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` for selected components; `generate_signal_report(...)` for owned composition | Unreleased after 0.1.9. The owned composer renders actual returns, information and dated persistence results, including requested mathematical quantile paths. Familiar report routes and their remaining qualification are described below. |
+| Expiring allocations and daily portfolio interchange | `panel.positions(...)`, `panel.to_portfolio_inputs(...)`, `compat.alphalens.performance.create_pyfolio_input(...)` | Unreleased after 0.1.9. Explicit expiry, capital and daily conventions remain distinct from executed holdings/account P&L. Native end-of-day and familiar event-sum definitions are named separately. |
 
 </div>
 
@@ -524,7 +524,8 @@ Preparation comparisons use corrected Alphalens 0.5.0, including retained keys,
 missingness, bucket/group membership, cumulative versus terminal-bar returns and
 filter options. Integer-tick/Float32 accuracy is checked against independent
 fractions rather than reproducing legacy cancellation. These preparation calls
-do not yet provide every performance function or all seven legacy report routes.
+do not establish every performance/plotting adapter or original notebook workflow.
+The report compositions below reuse this preparation without another cleaner.
 The keyword-only `reference_version` defaults to `"0.5.0"`; `"0.4.6"` explicitly
 selects the frozen profile without global state. Actual 0.4.6 comparisons match
 daily price returns, retained keys and buckets for cumulative and terminal-bar
@@ -1775,9 +1776,32 @@ output file. Supply dated turnover/rank components from that same sample; their
 recorded lag clocks are not inferred return horizons. Native information
 adjustment follows the supplied information result explicitly.
 
-These are native compositions, not yet qualified familiar summary/full wrappers
-or a full Alphalens replacement. The original notebook journeys and remaining
-compatibility helpers retain their separate acceptance requirements.
+The familiar compositions enter through the same prepared-data boundary:
+
+```python
+summary_figures = tears.create_summary_tear_sheet(
+    adapter_clean, return_fig=True, output_file="familiar_summary.html", set_context=False,
+)
+full_figures = tears.create_full_tear_sheet(
+    adapter_clean, return_fig=True, output_file="familiar_full.html", set_context=False,
+)
+assert len(summary_figures) == 2 and len(full_figures) == 20
+print("Familiar summary and full sheets: shared native samples and original IC adjustment")
+```
+
+Both references leave summary-sheet IC unadjusted even when `group_neutral=True`
+adjusts returns. The full sheet applies `group_neutral` to both returns and IC;
+`by_group=True` adds group summaries without discarding the global sample.
+Factor, return, IC and persistence tables retain their original analysis inputs;
+the HTML display rounds statistics to six significant digits, while the native
+owned results retain full precision. Native themes and Plotly figures replace
+Matplotlib context/artist behavior. Event-return and event-study sheets remain
+separate routes, as in the reference full-sheet composition.
+
+All seven familiar sheet names now have source implementations. This does not
+qualify every option, plotting/performance helper or the four original notebooks;
+those workflows and final artifact/platform checks remain required before any
+full Alphalens replacement claim.
 
 ### Align observed-clock event paths
 

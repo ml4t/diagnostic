@@ -417,6 +417,7 @@ jobs:
       - name: Run signal workflows with minimum Polars from installed wheel
         shell: bash
         run: >-
+          ML4T_REQUIRED_ALPHALENS_REFERENCE=0.4.6
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
@@ -429,9 +430,11 @@ jobs:
           tests/test_compat/test_alphalens_statistics.py
           tests/test_compat/test_alphalens_event_turnover_sheets.py
           tests/test_compat/test_alphalens_returns_sheet.py
+          tests/test_compat/test_alphalens_composed_sheets.py
       - name: Run corrected Alphalens preparation and report workflows from installed wheel
         shell: bash
         run: >-
+          ML4T_REQUIRED_ALPHALENS_REFERENCE=0.5.0
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
@@ -445,6 +448,7 @@ jobs:
           tests/test_compat/test_alphalens_statistics.py
           tests/test_compat/test_alphalens_event_turnover_sheets.py
           tests/test_compat/test_alphalens_returns_sheet.py
+          tests/test_compat/test_alphalens_composed_sheets.py
           tests/test_signal/test_signal_turnover_report.py
           tests/test_signal/test_signal_turnover_notebook.py
           tests/test_signal/test_signal_turnover_browser.py
