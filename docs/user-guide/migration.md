@@ -1979,6 +1979,47 @@ generate_aligned_event_report(event_result, output_file=Path("aligned_events.htm
 print("Aligned event levels: 55.0; finite date paths: 2/3/2")
 ```
 
+Unreleased after 0.1.9, the direct familiar calls now delegate to that same
+native event engine. Neither call requires a provider, forward returns or a
+factor score. Reuse the supplied events and levels above:
+
+```python
+from ml4t.diagnostic.compat.alphalens import performance as familiar_events
+
+aligned = familiar_events.common_start_returns(
+    event_input, event_prices, 1, 1, cumulative=True, mean_by_date=True,
+)
+event_buckets = event_input.to_frame().assign(factor_quantile=1)
+average = familiar_events.average_cumulative_return_by_quantile(
+    event_buckets, event_prices, periods_before=1, periods_after=1, demeaned=False,
+)
+assert aligned.shape == (3, 3)
+assert average.loc[(1, "mean")].tolist() == [55.0, 55.0, 55.0]
+assert average.loc[(1, "std")].tolist() == [0.0, 0.0, 0.0]
+print("Familiar event paths: observed clocks, date means and supplied levels retained")
+```
+
+`common_start_returns(cumulative=False)` first compounds periodic returns over
+the entire supplied clock. `demean_by` may include peer assets outside the event
+cohort; its event-date universe is held fixed across each window. Individual
+paths have repeated asset columns across event dates, matching the familiar
+layout. Assets within a date follow input order instead of Alphalens's
+unspecified Python-set order. Clipped offsets follow first-seen order, while
+genuinely missing supplied cells stay NaN. The native result additionally
+retains every requested offset, its status and its unique event ID.
+
+The average call consumes levels despite the legacy argument name `returns`.
+It weights date means equally, or group/date means with `group_adjust=True`;
+sample deviations use ddof=1, not standard error. `by_group=True` preserves the
+additional group level. Both Alphalens 0.5.0/pandas 3.0.6 and frozen
+0.4.6/pandas 2.3.3 have been compared on clipped/missing paths, demeaning,
+group options and duplicate events. The familiar no-demeaning aligned-path
+call retains the reference's within-date asset deduplication; native event
+analysis deliberately retains individual event multiplicity as described below.
+Missing assets, invalid clocks and a sample with no event on the value clock
+raise rather than inventing paths. These adapters do not perform calendar-grid
+validation or convert supplied levels into event-zero abnormal returns.
+
 For a price-produced panel with dynamic groups and buckets, run the existing
 migration example with an explicit task:
 

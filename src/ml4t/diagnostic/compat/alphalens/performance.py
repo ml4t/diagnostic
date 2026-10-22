@@ -16,6 +16,7 @@ from pandas.tseries.offsets import BusinessDay
 from ml4t.diagnostic.compat.alphalens.utils import _Keys, _profile, get_forward_returns_columns
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import _safe_cumprod
 from ml4t.diagnostic.signal._prepared import signal_input_contract
+from ml4t.diagnostic.signal.events import align_event_paths, analyze_signal_events
 from ml4t.diagnostic.signal.factor_regression import compute_factor_alpha_beta
 from ml4t.diagnostic.signal.portfolio import (
     _select_factor_sample,
@@ -29,7 +30,11 @@ from ml4t.diagnostic.signal.positions import (
     _expiry_keys,
     compute_factor_positions,
 )
-from ml4t.diagnostic.signal.quantile import _quantile_mean_spread, compute_quantile_statistics
+from ml4t.diagnostic.signal.quantile import (
+    _quantile_mean_spread,
+    _sample_return_statistics,
+    compute_quantile_statistics,
+)
 from ml4t.diagnostic.signal.signal_ic import compute_signal_ic
 from ml4t.diagnostic.signal.turnover import _quantile_turnover, _rank_autocorrelation
 from ml4t.diagnostic.utils.legacy_time import add_custom_calendar_timedelta
@@ -44,6 +49,8 @@ __all__ = [
     "factor_alpha_beta",
     "quantile_turnover",
     "factor_rank_autocorrelation",
+    "common_start_returns",
+    "average_cumulative_return_by_quantile",
     "cumulative_returns",
     "positions",
     "factor_cumulative_returns",
@@ -267,6 +274,144 @@ def cumulative_returns(returns: pd.Series | pd.DataFrame) -> pd.Series | pd.Data
     if not isinstance(returns, pd.Series):
         raise TypeError("returns must be a pandas Series or DataFrame")
     return pd.Series(_safe_cumprod(1 + returns.to_numpy()), index=returns.index)
+
+
+def _event_inputs(
+    factor: pd.Series | pd.DataFrame, values: pd.DataFrame, *, statistics: bool = False
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    if not isinstance(factor, pd.Series | pd.DataFrame):
+        raise TypeError("factor must be an indexed pandas Series or DataFrame")
+    if not isinstance(factor.index, pd.MultiIndex) or factor.index.names != ["date", "asset"]:
+        raise ValueError("factor requires a (date, asset) MultiIndex")
+    if not isinstance(values, pd.DataFrame) or not values.columns.is_unique:
+        raise ValueError("returns must be a wide pandas DataFrame with unique asset columns")
+    codes = {asset: index for index, asset in enumerate(values.columns)}
+    keys = factor.index.to_frame(index=False)
+    if not keys["asset"].isin(values.columns).all():
+        raise ValueError("event universe contains assets absent from returns")
+    keys["asset"] = keys["asset"].map(codes)
+    if statistics:
+        if not isinstance(factor, pd.DataFrame) or "factor_quantile" not in factor:
+            raise ValueError("factor_data requires factor_quantile")
+        for column in ("factor_quantile", "group"):
+            if column in factor:
+                keys[column] = factor[column].to_numpy()
+    return keys.sort_values("date", kind="stable"), values.rename(columns=codes), codes
+
+
+def common_start_returns(
+    factor: pd.Series | pd.DataFrame,
+    returns: pd.DataFrame,
+    before: int,
+    after: int,
+    cumulative: bool = False,
+    mean_by_date: bool = False,
+    demean_by: pd.Series | pd.DataFrame | None = None,
+    *,
+    reference_version: str = "0.5.0",
+) -> pd.DataFrame:
+    """Adapt native observed-clock paths to the familiar wide event layout.
+
+    Supplied levels are not rebased. Simple returns compound over the full input
+    clock before alignment. Repeated asset columns identify separate event dates;
+    within each date, asset order follows the input rather than the reference's
+    unspecified set order. Structurally clipped offsets are omitted, while real
+    missing values remain NaN. Native paths retain their explicit event IDs.
+    """
+    _profile(reference_version)
+    if not all(isinstance(flag, bool | np.bool_) for flag in (cumulative, mean_by_date)):
+        raise TypeError("cumulative and mean_by_date must be boolean")
+    events, values, codes = _event_inputs(factor, returns)
+    universe = None if demean_by is None else _event_inputs(demean_by, returns)[0]
+    # The original no-demeaning selection uses a set. Demeaned selections retain
+    # repeated rows, including their weight in a date mean.
+    if universe is None:
+        events = events.drop_duplicates(["date", "asset"])
+    paths = align_event_paths(
+        events,
+        values,
+        before=before,
+        after=after,
+        input_kind="levels" if cumulative else "returns",
+        demean_by=universe,
+    ).to_pandas()
+    reached = paths[paths.source_date.notna()]
+    if reached.empty:
+        raise ValueError("no event timestamp is on the supplied value clock")
+    reverse = {code: asset for asset, code in codes.items()}
+    columns = []
+    if mean_by_date:
+        for _, part in reached.groupby("event_date", sort=True):
+            means = {
+                offset: _sample_return_statistics(sample.value.dropna().to_numpy())[0]
+                for offset, sample in part.groupby("offset", sort=True)
+            }
+            columns.append(pd.Series(means, dtype=float))
+    else:
+        for _, part in reached.groupby("event_id", sort=False):
+            columns.append(part.set_index("offset")["value"].rename(reverse[part.asset.iloc[0]]))
+    result = pd.concat(columns, axis=1)
+    result.index.name = None
+    result.columns.name = (
+        None if mean_by_date else "asset" if universe is not None else returns.columns.name
+    )
+    return result
+
+
+def average_cumulative_return_by_quantile(
+    factor_data: pd.DataFrame,
+    returns: pd.DataFrame,
+    periods_before: int = 10,
+    periods_after: int = 15,
+    demeaned: bool = True,
+    group_adjust: bool = False,
+    by_group: bool = False,
+    *,
+    reference_version: str = "0.5.0",
+) -> pd.DataFrame:
+    """Reshape native date/group-weighted level-path means and sample deviations.
+
+    Despite the legacy argument name, ``returns`` supplies cumulative levels,
+    not periodic returns. Offsets count supplied rows, and deviations use ddof=1
+    across date means (group/date means when group_adjust=True), not asset rows.
+    No forward-return columns, factor score or fresh quantile assignment is needed.
+    """
+    _profile(reference_version)
+    if not all(isinstance(flag, bool | np.bool_) for flag in (demeaned, group_adjust, by_group)):
+        raise TypeError("event analysis options must be boolean")
+    events, values, _ = _event_inputs(factor_data, returns, statistics=True)
+    result = analyze_signal_events(
+        events,
+        values,
+        before=periods_before,
+        after=periods_after,
+        input_kind="levels",
+        demeaned=bool(demeaned),
+        group_adjust=bool(group_adjust),
+        by_group=bool(by_group),
+    )
+    reached = result.paths.filter(pl.col("source_date").is_not_null()).to_pandas()
+    if reached.empty:
+        raise ValueError("no event timestamp is on the supplied value clock")
+    keys = ["quantile", *(["group"] if by_group else [])]
+    available = reached[[*keys, "offset"]].drop_duplicates()
+    statistics = result.statistics.to_pandas().merge(available, on=[*keys, "offset"])
+    output = statistics.melt(
+        id_vars=[*keys, "offset"],
+        value_vars=["mean", "std"],
+        var_name="statistic",
+        value_name="value",
+    ).pivot(
+        index=["quantile", "statistic", *(["group"] if by_group else [])],
+        columns="offset",
+        values="value",
+    )
+    output.index.names = ["factor_quantile", None, *(["group"] if by_group else [])]
+    output.columns.name = None
+    if by_group:
+        output = output.sort_index(level=["group", "factor_quantile"], sort_remaining=False)
+        output.columns = output.columns.astype(object)
+    return output
 
 
 def _expiry_dates(
