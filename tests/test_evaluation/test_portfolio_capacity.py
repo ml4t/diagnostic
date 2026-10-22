@@ -414,3 +414,23 @@ def test_owned_microprice_token_fill_does_not_round_its_reported_integer_units()
         market, currency="USD", price_basis="raw", volume_basis="raw", lookback=1
     )
     assert result.participation["absolute_units"].to_list() == [quantity]
+
+
+def test_owned_account_accepts_equivalent_finer_market_keys_without_changing_report_keys():
+    from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
+
+    positions, market = _inputs()
+    positions = positions.with_columns(pl.col("date").cast(pl.Datetime("us", "UTC")))
+    returns = (
+        positions.select("date").unique().sort("date").with_columns(pl.lit(0.0).alias("return"))
+    )
+    market = market.with_columns(pl.col("date").cast(pl.Datetime("ns", "UTC")))
+    analysis = PortfolioAnalysis.from_frames(
+        returns, positions=positions, complete_snapshots=True, calendar=None
+    )
+    result = analysis.compute_capacity(
+        market, currency="USD", price_basis="raw", volume_basis="raw", lookback=1
+    )
+    assert result.timeline["date"].equals(analysis.dates)
+    assert result.observations["date"].equals(analysis.dates)
+    assert result.liquidation["liquidation_duration"].to_list() == [None, None] + [1.0] * 6

@@ -2081,6 +2081,10 @@ or future volume. Native observation windows retain the common supplied clock an
 argument, then declared market/account feed, then NYSE; explicit `calendar=None` preserves exact
 row keys. Delayed supplied `known_at_col` observations cannot enter an earlier decision.
 Recent native summaries count observations, not elapsed civil days.
+Capacity plots retain distinct nanosecond observations on equal-spaced observation axes with
+exact keys on hover. A complete-book absent asset is plotted at zero exposure; an unknown
+market denominator or unbounded liquidation time remains a gap, not zero. Finer market-key
+precision is used internally without changing the authoritative account/report observation keys.
 
 Material corrections relative to Pyfolio 0.10.0 are deliberate. Its daily transaction helper
 raises on two traded assets sharing a date; the adapter retains both asset/date records.

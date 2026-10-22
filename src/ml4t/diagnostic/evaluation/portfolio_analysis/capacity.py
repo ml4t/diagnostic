@@ -283,6 +283,17 @@ def analyze_capacity(
         raise ValueError("market data is missing the declared known-at column")
     market = market.with_columns(pl.col(known_at_col or "date").alias("known_at"))
     _validate_observation_keys(market, ["known_at"], "market availability", unique=False)
+    observation_dtype = marked["date"].dtype
+    original_observations = None
+    observed_input = None
+    if returns is not None:
+        original_observations = _frame(returns, "date").sort("date")
+        _temporal(original_observations)
+        _validate_observation_keys(original_observations, ["date"], "returns")
+        observation_dtype = original_observations["date"].dtype
+        marked, observed_input = _align_datetime_key_resolution(
+            marked, original_observations, "date"
+        )
     semantics = getattr(feed.timestamp_semantics, "value", feed.timestamp_semantics)
     target = marked["date"].dtype
     if isinstance(target, pl.Datetime) and semantics != "session_label":
@@ -308,6 +319,8 @@ def analyze_capacity(
     )
     market = market.with_columns(availability_keys["date"].alias("known_at"))
     marked, market = _align_datetime_key_resolution(marked, market, "date")
+    if observed_input is not None:
+        observed_input, marked = _align_datetime_key_resolution(observed_input, marked, "date")
     if (
         marked["date"].dtype != market["date"].dtype
         or market["known_at"].dtype != market["date"].dtype
@@ -330,11 +343,8 @@ def analyze_capacity(
     marked, market = clock(marked), clock(market)
     for name, frame in (("positions", marked), ("market", market)):
         _validate_observation_keys(frame, ["clock", "asset"], name)
-    if returns is not None:
-        observed = _frame(returns, "date")
-        _temporal(observed)
-        _validate_observation_keys(observed, ["date"], "returns")
-        observed = clock(observed).sort("date")
+    if observed_input is not None:
+        observed = clock(observed_input).sort("date")
         decisions = observed.select("clock", "date")
         if not marked["date"].is_in(observed["date"].implode()).all():
             raise ValueError("position keys must belong to the supplied return observation clock")
@@ -407,7 +417,7 @@ def analyze_capacity(
     )
     activity = pl.DataFrame(
         schema={
-            "date": marked["date"].dtype,
+            "date": marked["clock"].dtype,
             "asset": marked["asset"].dtype,
             "absolute_units": pl.Float64,
             "price": pl.Float64,
@@ -475,7 +485,8 @@ def analyze_capacity(
                 "capital scenarios require returns, actual transactions and base_capital"
             )
         starting = _positive_real(base_capital, "base_capital")
-        observed = _numeric(_frame(returns, "date"), "return")
+        assert observed_input is not None
+        observed = _numeric(observed_input, "return")
         _validate_observation_keys(observed, ["date"], "returns")
         if not observed["date"].equals(decisions["date"]):
             raise ValueError(
@@ -554,6 +565,14 @@ def analyze_capacity(
         "unbounded_liquidation_rows": liquidation["liquidation_duration"].is_infinite().sum(),
         "book_assumption": "parallel liquidation with independent per-asset participation budgets",
     }
+
+    def observation_keys(frame: pl.DataFrame) -> pl.DataFrame:
+        values = frame["date"]
+        restored = values.cast(observation_dtype)
+        if not restored.cast(values.dtype).equals(values):
+            raise ValueError("capacity observation keys cannot lose timestamp precision")
+        return frame.with_columns(restored)
+
     tables = (
         liquidation,
         activity,
@@ -561,9 +580,15 @@ def analyze_capacity(
         _worst(liquidation, "liquidation_duration", recent_window, decisions["date"]),
         _worst(activity, "participation", recent_window, decisions["clock"]),
         scenarios,
-        observed.select("date", "return")
-        if returns is not None
-        else pl.DataFrame(schema={"date": marked["date"].dtype, "return": pl.Float64}),
+        original_observations.select("date", "return")
+        if original_observations is not None
+        else pl.DataFrame(schema={"date": observation_dtype, "return": pl.Float64}),
+    )
+    tables = tuple(
+        observation_keys(table)
+        if name not in ("participation", "worst_transactions") or effective_calendar is None
+        else table
+        for name, table in zip(_TABLES, tables, strict=True)
     )
     return CapacityAnalysisResult(
         tuple(table.write_ipc(None).getvalue() for table in tables),

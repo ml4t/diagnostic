@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
+import pandas as pd
 import polars as pl
 import pytest
 
@@ -109,6 +110,95 @@ def test_recent_participation_uses_the_full_account_clock_not_last_active_trade(
         market, currency="USD", price_basis="raw", volume_basis="raw", lookback=1, recent_window=1
     )
     assert result.worst_transactions["sample"].to_list() == ["full"]
+
+
+def test_complete_flat_asset_observation_is_not_bridged_by_a_liquidation_curve():
+    dates = pd.date_range("2025-01-13", periods=4, tz="UTC")
+    positions = pl.from_pandas(
+        pd.DataFrame(
+            {
+                "date": dates[[0, 0, 1, 1, 2, 3, 3]],
+                "asset": ["A", "B", "A", "B", "B", "A", "B"],
+                "value": [10000.0] * 7,
+            }
+        )
+    )
+    account = pd.DataFrame({"equity": [20000.0] * 4, "cash": [0.0, 0.0, 10000.0, 0.0]}, index=dates)
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.0] * 4, index=dates),
+        positions=positions,
+        valuations=account,
+        complete_snapshots=True,
+        calendar=None,
+    )
+    market = pl.from_pandas(
+        pd.DataFrame(
+            {
+                "date": dates.repeat(2),
+                "asset": ["A", "B"] * 4,
+                "price": [10.0] * 8,
+                "volume": [10000.0] * 8,
+            }
+        )
+    )
+    result = analysis.compute_capacity(
+        market, currency="USD", price_basis="raw", volume_basis="raw", lookback=1
+    )
+    figure = analysis.create_tear_sheet(capacity=result).figures["Lagged Market Liquidation"]
+    trace = next(trace for trace in figure.data if trace.name == "A")
+    assert len(trace.x) == 4
+    assert list(trace.y) == [None, 1.0, 0.0, 1.0]
+
+
+def test_actual_capacity_render_does_not_collapse_distinct_nanosecond_observations(tmp_path):
+    import shutil
+
+    playwright_api = pytest.importorskip("playwright.sync_api")
+    executable = shutil.which("chromium") or shutil.which("google-chrome")
+    if executable is None:
+        pytest.skip("Actual Chrome/Chromium required for rendered ns-key checks")
+    dates = pd.to_datetime(
+        [
+            "2025-01-13T20:00:00.000000001Z",
+            "2025-01-13T20:00:00.000000002Z",
+            "2025-01-13T20:00:00.000000003Z",
+        ]
+    )
+    price = pd.Series([100.0, 101.0, 99.99], index=dates)
+    analysis = PortfolioAnalysis.from_frames(
+        price.pct_change().fillna(0.0),
+        positions=pd.DataFrame({"A": price * 100, "cash": 0.0}, index=dates),
+        complete_snapshots=True,
+        calendar=None,
+        periods_per_year=12,
+    )
+    market = pl.from_pandas(
+        pd.DataFrame(
+            {"date": dates, "asset": ["A"] * 3, "price": price.to_numpy(), "volume": [10000.0] * 3}
+        )
+    )
+    result = analysis.compute_capacity(
+        market, currency="USD", price_basis="raw", volume_basis="raw", lookback=1
+    )
+    path = tmp_path / "nanoseconds.html"
+    analysis.create_tear_sheet(capacity=result).save_html(path, include_plotlyjs=True)
+    with playwright_api.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=executable, headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 375, "height": 900})
+            page.goto(path.as_uri())
+            container = page.locator(".plot-container").filter(
+                has=page.get_by_role("heading", name="Lagged Market Liquidation", exact=True)
+            )
+            graph = container.locator(".js-plotly-plot")
+            graph.locator(".main-svg").first.wait_for()
+            actual = graph.evaluate("""p=>({keys:p.data[0].x,
+                renderedPositions:p.calcdata[0].filter(point=>Number.isFinite(point.y)).map(point=>point.x)})""")
+        finally:
+            browser.close()
+    assert actual["keys"][1].endswith("000000002+00:00")
+    assert len(actual["renderedPositions"]) == 2
+    assert len(set(actual["renderedPositions"])) == 2
 
 
 @pytest.mark.parametrize("width", [375, 1280])

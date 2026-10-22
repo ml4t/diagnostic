@@ -105,18 +105,54 @@ def _capacity_figures(
         figures[title] = fig
         return fig
 
+    def clock_axis(fig: go.Figure, dates: pl.Series, title: str) -> None:
+        keys = _exact_dates(dates)
+        selected = sorted({0, len(keys) // 2, len(keys) - 1}) if keys else []
+        unique_days = dates.dtype == pl.Date or dates.dt.date().n_unique() == len(dates)
+        fig.update_xaxes(
+            type="category",
+            categoryorder="array",
+            categoryarray=keys,
+            tickmode="array",
+            tickvals=[keys[index] for index in selected],
+            ticktext=[
+                dates[index].strftime("%b %d") if unique_days else f"Obs {index + 1}"
+                for index in selected
+            ],
+            tickangle=0,
+            title_text=title,
+        )
+
     liquidation = figure("Lagged Market Liquidation", metadata["window_unit"] + "s")
     values = result.liquidation
     for asset in values["asset"].unique(maintain_order=True):
-        sample = values.filter(values["asset"] == asset)
+        sample = result.timeline.select("date").join(
+            values.filter(values["asset"] == asset).select("date", "value", "liquidation_duration"),
+            on="date",
+            how="left",
+        )
         y = sample["liquidation_duration"].to_list()
         liquidation.add_scatter(
             x=_exact_dates(sample["date"]),
-            y=[value if value is not None and np.isfinite(value) else None for value in y],
+            y=[
+                0.0
+                if position is None
+                else value
+                if value is not None and np.isfinite(value)
+                else None
+                for position, value in zip(sample["value"].to_list(), y, strict=True)
+            ],
             mode="lines+markers",
             name=str(asset),
             connectgaps=False,
         )
+    clock_axis(liquidation, result.timeline["date"], "Observation")
+    liquidation.update_layout(
+        meta={
+            **liquidation.layout.meta,
+            "description": "Exact observation keys use equal-spaced categories so nanosecond instants remain distinct. Complete-book absent assets have zero exposure; unknown market coverage and unbounded duration remain gaps, with explicit tables.",
+        }
+    )
     participation = figure("Observed Market Participation", "fraction of same-bar volume")
     values = result.participation
     for asset in values["asset"].unique(maintain_order=True):
@@ -124,9 +160,21 @@ def _capacity_figures(
         participation.add_scatter(
             x=_exact_dates(sample["date"]),
             y=sample["participation"].to_list(),
-            mode="lines+markers",
+            mode="markers",
             name=str(asset),
             connectgaps=False,
+        )
+    clock_axis(participation, values["date"].unique().sort(), "Activity observation")
+    if values.is_empty():
+        participation.add_annotation(
+            text="Actual transactions were not supplied"
+            if not metadata["transactions_supplied"]
+            else "No recorded executions on the supplied clock",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
         )
     scenarios = result.scenarios
     if not scenarios.is_empty():
