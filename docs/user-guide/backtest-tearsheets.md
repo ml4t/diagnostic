@@ -180,6 +180,18 @@ PDF export also depends on the browser and rendering packages documented in the
 [installation guide](../getting-started/installation.md).
 A headless environment can verify HTML generation without claiming that
 browser-dependent PDF export was exercised.
+For charts without mathematical typesetting, explicitly disable MathJax before
+exporting to avoid loading its default external script:
+
+```python
+import plotly.io as pio
+
+pio.defaults.mathjax = False
+```
+
+The isolated PDF worker preserves this explicit setting. `None` and `True`
+retain Kaleido's default MathJax resource; disabling MathJax does not change other
+external resources that a chart may require, such as geographic data.
 If rendering fails, the exporter attempts browser shutdown before its bounded
 process cleanup and preserves the rendering error. An incomplete export does
 not publish a partial PDF. A failed or hung browser close still requires verified
