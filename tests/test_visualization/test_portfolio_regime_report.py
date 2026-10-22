@@ -1,7 +1,9 @@
 """Prepared regime/cone reports must render actual results and reject another account."""
 
+import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -88,7 +90,16 @@ def test_offline_regime_cone_report_keeps_readable_labels_and_real_live_values(w
         target, include_plotlyjs=True
     )
     with playwright.sync_playwright() as runtime:
-        browser = runtime.chromium.launch()
+        executable = None
+        if importlib.util.find_spec("choreographer") is not None:
+            from choreographer.browsers.chromium import Chromium
+
+            executable = Chromium.find_browser(skip_local=False)
+        executable = executable or shutil.which("google-chrome") or shutil.which("chromium")
+        if executable is None and Path(runtime.chromium.executable_path).is_file():
+            executable = runtime.chromium.executable_path
+        assert executable is not None, "An actual Chrome/Chromium browser must be provisioned"
+        browser = runtime.chromium.launch(executable_path=executable, headless=True)
         page = browser.new_page(viewport={"width": width, "height": 1000})
         page.route("http://**/*", lambda route: route.abort())
         page.route("https://**/*", lambda route: route.abort())
@@ -108,6 +119,16 @@ def test_offline_regime_cone_report_keeps_readable_labels_and_real_live_values(w
                 labels:labels.map(t=>{const b=t.getBoundingClientRect();return {text:t.textContent,size:parseFloat(getComputedStyle(t).fontSize),left:b.left-box.left,right:b.right-box.left,top:b.top-box.top,bottom:b.bottom-box.top}}),
                 height:box.height,actual:e.data.find(t=>t.name==='Actual live wealth').y};
         }""")
+        evidence.update(browser_executable=executable, browser_version=browser.version)
+        print(
+            json.dumps(
+                {
+                    "viewport": width,
+                    "browser_executable": executable,
+                    "browser_version": browser.version,
+                }
+            )
+        )
         assert evidence["actual"] == pytest.approx([1900, 380])
         assert evidence["bodySize"] == 16
         assert evidence["labels"]
