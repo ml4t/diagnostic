@@ -687,13 +687,13 @@ still require qualification before a full Alphalens migration claim.
 
 ### Run preserved original Alphalens notebooks
 
-Unreleased source includes `examples/migrate_alphalens_notebooks.py` for the
+Unreleased source includes `scripts/migrate_alphalens_notebooks.py` for the
 original overview, intraday-factor and event-study notebooks. The unmodified
 upstream fixtures and their Apache 2.0 license are retained under
 `tests/fixtures/alphalens_original/`, pinned to Alphalens source
 `1bc181de4aafbe33437ed0e362ff96aa7ce20acd`. The generator checks the original
-hash, records every import/I/O/presentation edit and retains the original
-calculation cells. It replaces the obsolete Yahoo acquisition call, not the
+hash, records every import/I/O/missing-value-method/presentation edit and retains
+the original analytical expressions. It replaces the obsolete Yahoo acquisition call, not the
 subsequent date conversion or stack operations. It does not download data.
 
 Supply a captured parquet file with unique date rows and Yahoo-shaped
@@ -706,7 +706,7 @@ is not a new requirement on Diagnostic's native long-frame analytical APIs.
 From a checkout of this matching source revision, run:
 
 ```bash
-uv run --with nbclient --with ipykernel python examples/migrate_alphalens_notebooks.py --source-notebook tests/fixtures/alphalens_original/overview.ipynb --ohlc captured_ohlc.parquet --output migrated_overview.ipynb --execute
+uv run --with nbclient --with ipykernel python scripts/migrate_alphalens_notebooks.py --source-notebook tests/fixtures/alphalens_original/overview.ipynb --ohlc captured_ohlc.parquet --output migrated_overview.ipynb --execute
 ```
 
 Use the corresponding `intraday_factor.ipynb` or `event_study.ipynb` source and
@@ -715,6 +715,13 @@ notebook are never overwritten. Modified outputs include a visible migration
 notice, the original license and the exact edit record. Optional Jupyter tools
 execute the generated notebook; no Alphalens, Empyrical or Pyfolio installation
 is required by the migrated analyses.
+
+Pandas 3's stack implementation retains missing values that the original
+notebooks' default omitted. The recorded `_stack_observed` method drops missing
+Series values and all-missing DataFrame rows explicitly, preserving absent-event
+membership instead of counting every missing event as a supplied factor. Native
+cleaner loss limits and missing-value accounting are unchanged. This converter
+requires external inputs; it is a migration tool, not a no-argument demo script.
 
 The tested overview preserves eleven independently compared intermediate tables
 and Series against actual Alphalens 0.5.0 on shared captured inputs. Diagnostic

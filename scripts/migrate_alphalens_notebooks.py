@@ -1,4 +1,4 @@
-"""Preserve original Alphalens calculation cells while migrating input/display code.
+"""Convert original Alphalens notebooks using explicit captured inputs and native display.
 
 Supply an original pinned notebook and a captured Yahoo-shaped OHLC parquet file.
 The script never downloads prices or modifies the original notebook. Execution
@@ -92,6 +92,41 @@ def _provider_input(text: str, ohlc: Path) -> tuple[str, list[dict[str, str]], i
     return text, edits, providers
 
 
+def _observed_stack_calls(text: str) -> tuple[str, list[dict[str, str]]]:
+    offsets = [0]
+    for line in text.splitlines(keepends=True):
+        offsets.append(offsets[-1] + len(line))
+    replacements = []
+    for node in ast.walk(ast.parse(text)):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "stack"
+            and not node.args
+            and not node.keywords
+        ):
+            frame = ast.get_source_segment(text, node.func.value)
+            replacements.append(
+                (
+                    offsets[node.lineno - 1] + node.col_offset,
+                    offsets[node.end_lineno - 1] + node.end_col_offset,
+                    f"_stack_observed({frame})",
+                )
+            )
+    edits = []
+    for start, end, replacement in sorted(replacements, reverse=True):
+        original = text[start:end]
+        text = text[:start] + replacement + text[end:]
+        edits.append(
+            {
+                "category": "explicit_missing_value_method",
+                "original": original,
+                "replacement": replacement,
+            }
+        )
+    return text, edits
+
+
 def migrate_notebook(original: Path, ohlc: Path) -> dict[str, Any]:
     """Translate allowlisted imports, fixture I/O and presentation, retaining calculations."""
     raw = original.read_bytes()
@@ -143,6 +178,8 @@ def migrate_notebook(original: Path, ohlc: Path) -> dict[str, Any]:
                     )
             text, displayed = _display_calls(text)
             edits.extend({"cell": number, **edit} for edit in displayed)
+        text, stacked = _observed_stack_calls(text)
+        edits.extend({"cell": number, **edit} for edit in stacked)
         cell.update(source=text.splitlines(keepends=True), outputs=[], execution_count=None)
     if provider_cells != 1:
         raise ValueError("expected exactly one pinned source provider cell")
@@ -154,6 +191,9 @@ def migrate_notebook(original: Path, ohlc: Path) -> dict[str, Any]:
             "outputs": [],
             "execution_count": None,
             "source": [
+                "def _stack_observed(frame):\n",
+                "    observed = frame.stack()\n",
+                "    return observed.dropna(how='all') if isinstance(observed, pd.DataFrame) else observed.dropna()\n",
                 "def _display_migrated_figures(value):\n",
                 "    for figure in value if isinstance(value, list) else [value]:\n",
                 "        figure.show(renderer='plotly_mimetype')\n",
@@ -170,7 +210,7 @@ def migrate_notebook(original: Path, ohlc: Path) -> dict[str, Any]:
         "license_text": (
             Path(__file__).parents[1] / "tests/fixtures/alphalens_original/LICENSE"
         ).read_text(),
-        "scope": "Preserved original calculation cells; native Plotly/HTML replaces Matplotlib presentation. Other original notebook families and remaining analytical routes require their own qualification.",
+        "scope": "Original analytical expressions retained with recorded import, I/O, explicit legacy stack missingness and presentation edits. Other original notebook families and remaining analytical routes require their own qualification.",
     }
     notebook["cells"].insert(
         0,
@@ -178,7 +218,7 @@ def migrate_notebook(original: Path, ohlc: Path) -> dict[str, Any]:
             "cell_type": "markdown",
             "metadata": {},
             "source": [
-                "This notebook is a modified Alphalens Reloaded example. Original calculation cells are retained; imports, captured-data I/O and Plotly presentation are changed.\n",
+                "This notebook is a modified Alphalens Reloaded example. Original analytical expressions are retained with recorded import, captured-data I/O, legacy stack missingness and Plotly presentation edits.\n",
                 f"Original source: https://github.com/stefan-jansen/alphalens-reloaded/blob/{REFERENCE_REVISION}/src/alphalens/examples/{original.name}\n",
                 "Original copyright 2018 Quantopian, Inc.; Apache License 2.0. The complete original license and edit record are included in this notebook's diagnostic_migration metadata.\n",
             ],

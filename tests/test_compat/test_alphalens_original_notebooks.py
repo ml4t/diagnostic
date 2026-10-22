@@ -52,7 +52,7 @@ def _ohlc(name, original):
 def test_real_long_market_frame_is_rejected_before_original_yahoo_wide_stack_can_add_a_third_level(
     tmp_path,
 ):
-    migrate = runpy.run_path(str(ROOT / "examples/migrate_alphalens_notebooks.py"))[
+    migrate = runpy.run_path(str(ROOT / "scripts/migrate_alphalens_notebooks.py"))[
         "migrate_notebook"
     ]
     original = FIXTURES / "overview.ipynb"
@@ -81,7 +81,7 @@ def test_preserved_original_calculations_execute_native_reports_with_actual_keys
         pytest.skip("Native-only original journey profile, separate from actual reference profiles")
     import ml4t.diagnostic
 
-    migrate = runpy.run_path(str(ROOT / "examples/migrate_alphalens_notebooks.py"))[
+    migrate = runpy.run_path(str(ROOT / "scripts/migrate_alphalens_notebooks.py"))[
         "migrate_notebook"
     ]
     original = FIXTURES / f"{name}.ipynb"
