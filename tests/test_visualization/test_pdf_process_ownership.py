@@ -335,6 +335,7 @@ def test_owned_worker_preserves_packaged_and_supported_custom_plotlyjs(tmp_path,
     custom_path_supported = hasattr(pio.defaults, "plotlyjs")
     if custom_path_supported:
         monkeypatch.setattr(pio.defaults, "plotlyjs", bundle)
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
     figure = go.Figure(go.Scatter(x=[1, 2, 3], y=[1, 3, 2]))
     figure.update_layout(title="Local Plotly source")
     original = figure.to_json()
@@ -347,6 +348,61 @@ def test_owned_worker_preserves_packaged_and_supported_custom_plotlyjs(tmp_path,
             {"custom_plotlyjs_supported": custom_path_supported, "packaged_bundle": str(bundle)}
         )
     )
+
+
+@pytest.mark.parametrize("mathjax", [False, None, True])
+def test_explicit_mathjax_disable_does_not_fetch_default_script(mathjax, tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    requests = []
+
+    class UnavailableDefault(BaseHTTPRequestHandler):
+        def do_GET(self):
+            requests.append(self.path)
+            self.send_response(503)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), UnavailableDefault) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        url = f"http://127.0.0.1:{server.server_port}/unavailable-mathjax.js"
+        # Redirect only the real renderer's default resource, not its loading logic.
+        bootstrap = (
+            "import kaleido._page_generator as pages\n"
+            + f"pages.DEFAULT_MATHJAX={url!r}\n"
+            + _pdf_process._BOOTSTRAP
+        )
+        monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", bootstrap)
+        monkeypatch.setattr(pio.defaults, "mathjax", mathjax)
+        figure = go.Figure(go.Bar(x=["A", "B"], y=[1, 3]))
+        figure.update_layout(title="Explicit MathJax configuration")
+        original = figure.to_json()
+        try:
+            path = export_figures_to_pdf([figure], tmp_path / "mathjax.pdf", scale=1)
+            pages = pypdf.PdfReader(path).pages
+            assert len(pages) == 1
+            assert "Explicit MathJax configuration" in pages[0].extract_text()
+            assert figure.to_json() == original
+            if mathjax is False:
+                assert requests == [], "Explicit False must disable the default script request"
+            else:
+                assert requests and set(requests) == {"/unavailable-mathjax.js"}
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+        assert not thread.is_alive()
 
 
 def test_pdf_worker_renders_without_initializing_the_analytical_package(tmp_path, monkeypatch):

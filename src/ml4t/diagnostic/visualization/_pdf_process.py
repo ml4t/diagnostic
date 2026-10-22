@@ -269,7 +269,7 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
         "defaults": {
             name: resource(value)
             for name in ("plotlyjs", "mathjax", "headers")
-            if (value := getattr(pio.defaults, name, None))
+            if (value := getattr(pio.defaults, name, None)) is not None
         },
         "pages": [
             {
