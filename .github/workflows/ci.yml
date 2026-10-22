@@ -417,6 +417,7 @@ jobs:
             tests/test_compat/test_pyfolio_positions.py \
             tests/test_compat/test_pyfolio_position_report.py \
             tests/test_compat/test_pyfolio_transaction_report.py \
+            tests/test_compat/test_pyfolio_account_reports.py \
             tests/test_visualization/test_pyfolio_positions_browser.py \
             tests/test_compat/test_pyfolio_return_plotting.py \
             tests/test_compat/test_pyfolio_returns_report.py \

@@ -1808,8 +1808,102 @@ leaves it blank rather than guessing the first observation. Native supplied-acco
 analysis can retain an initial valuation timestamp. The familiar duration column counts
 inclusive Monday-Friday civil dates only when peak and recovery are known,
 not exchange sessions. Existing native episode durations still count observations.
-This returns workflow does not yet qualify every combined account report or
-original notebook; retain Pyfolio for those unfinished journeys.
+The combined account route below reuses these panels. Qualification of every
+original notebook and producer/provider journey remains separate work.
+
+### Compose a familiar simple or full account report
+
+Unreleased after 0.1.9, `compat.pyfolio.create_simple_tear_sheet` and
+`create_full_tear_sheet` accept supplied pandas returns, optional marked dollar
+positions with separate `cash`, and an optional actual-fill ledger. No Data,
+Engineer, Backtest, Zipline or Reloaded runtime is required. This route is useful
+when migrating an existing account report to Diagnostic's owned report exports
+and its [supplied-account analysis](#normalize-a-supplied-account-without-a-backtest-engine).
+It does not reconstruct a broker account from a partial ledger.
+
+```python
+account_report_dates = pd.bdate_range("2025-02-04", periods=3, tz="UTC")
+account_report_returns = pd.Series([.1, -.1, .05], index=account_report_dates)
+account_report_nav = pd.Series([1100., 990., 1039.5], index=account_report_dates)
+account_report_positions = pd.DataFrame({
+    "Core": .6 * account_report_nav, "Hedge": -.2 * account_report_nav,
+    "cash": .6 * account_report_nav,
+})
+account_report_fills = pd.DataFrame({
+    "symbol": ["Core", "Core"], "amount": [1., -1.], "price": [110., 99.],
+}, index=account_report_dates[:2] + pd.Timedelta(hours=15))
+full_account_sheet = familiar_portfolio.create_full_tear_sheet(
+    account_report_returns, account_report_positions, account_report_fills,
+    turnover_denom="portfolio_value", estimate_intraday=False,
+    periods_per_year=12, return_fig=True,
+)
+assert np.isclose(full_account_sheet.figures["Returns/Cumulative wealth"].data[0].y[-1], 1.0395)
+assert np.allclose(full_account_sheet.figures["Transactions/Turnover"].data[0].y, [.1, .1, 0.])
+simple_account_sheet = familiar_portfolio.create_simple_tear_sheet(
+    account_report_returns, account_report_positions, account_report_fills,
+    slippage=10, estimate_intraday=False, return_fig=True,
+)
+assert np.isclose(simple_account_sheet.figures["Returns/Cumulative wealth"].data[0].y[-1], 1.0392900105)
+print("Familiar account composition: supplied returns, actual fills and options reach nested reports")
+```
+
+The simple report selects performance statistics, wealth, rolling Sharpe,
+underwater, optional benchmark beta, four position views and actual turnover/
+timing. The full report composes the complete returns, stress, positions and
+transaction manifests. Supply `market_data` for the original fixed-capital
+capacity sweep and all four threshold tables. Supply both `factor_returns` and
+`factor_loadings` for attribution statistics, factor statistics and partitioned
+paths/exposures. `factor_partitions=None` selects all factors; `{}` suppresses
+partition panels without suppressing the summary. `round_trips=True` additionally
+requires a flat opening state and complete actual execution history, as described
+in the [complete round-trip sheet](#use-the-familiar-complete-round-trip-sheet).
+The partial ledger in this example does not establish that condition.
+
+`return_fig=True` returns the existing `PortfolioTearSheet`; otherwise the
+functions display it and return `None`. Save offline HTML with
+`.save_html(path, include_plotlyjs=True)`. The full report retains optional
+tables in figures/export, not only an HTML string or a list of plots. Each
+component keeps its own keys, missingness and membership rules. Returns-only
+input does not create an empty transaction ledger. Invalid incomplete requested
+inputs raise before display. Matplotlib artist mutation and global style
+contexts do not migrate; `set_context` is accepted without mutating Matplotlib.
+
+`periods_per_year` reaches all selected annualized statistics, rolling risk,
+slippage and capacity curves and attribution statistics. It counts observations
+in the supplied return series, not rebalance dates. `turnover_denom` reaches both
+statistics and transaction panels. Pyfolio 0.10.0's full wrapper drops that
+argument when calling its transaction sheet, so its chart always uses AGB even
+when statistics use closing portfolio value. Diagnostic preserves the requested
+denominator. UTC fill instants use the supplied book's timezone before daily
+aggregation; naive/aware ambiguity is rejected rather than guessed.
+
+Additional `slippage` is a hypothetical cash-bps penalty, never a second charge
+for observed fees. Full composition preserves the original order: adjust on
+the supplied closing book before intraday selection, only when no explicit
+`unadjusted_returns` baseline was supplied. Simple composition selects intraday
+positions before applying additional costs. Tied equal-NAV peak candidates
+remain separate exposure observations but cannot duplicate a daily return or
+charge. The shared slippage adapter collapses their equal NAV denominator once;
+conflicting same-date NAV raises. Pyfolio's duplicate-index projection instead
+duplicates that day's adjusted return and compounds the cost twice.
+
+With `hide_positions=True`, full composition anonymizes asset and sector
+identities before preparing positions, fills, capacity, attribution or FIFO
+results. That includes exported tables and notebook payloads. Caller inputs
+remain unchanged. User-supplied free text such as `header_rows` is not a secret
+redaction service; do not place confidential identities there.
+
+Run the existing price-to-report example end to end:
+
+```bash
+uv run --extra viz python examples/pyfolio_returns_report.py --simple-output simple-account.html --full-output full-account.html --output returns-report.html
+```
+
+Add `--compare` under the published Pyfolio 0.10.0 / Empyrical 0.7.0 / pandas
+2.3.3 reference environment shown above to execute the actual original complete
+simple and full sheets as well. Native pandas 3 support is qualified separately
+from that reference's declared pandas range. These supplied-account examples
+do not establish every original notebook/provider workflow or full replacement.
 
 ### Normalize a supplied account without a backtest engine
 
@@ -3123,9 +3217,9 @@ route establishes all portfolio reports. The separately tested unreleased
 [supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine),
 [actual transaction analysis](#analyze-actual-transactions-and-incremental-costs) and
 [capacity workflow](#supplied-market-capacity-and-impact-scenarios-unreleased) have their own
-methods and coverage below or above. Complete simple/full account composition,
-unqualified risk/report options and original Alphalens/Pyfolio notebook/provider
-journeys remain accepted work.
+methods and coverage below or above. The [familiar account composition](#compose-a-familiar-simple-or-full-account-report)
+reuses those components. Unqualified risk/report options and original
+Alphalens/Pyfolio notebook/provider journeys remain accepted work.
 
 #### Keep familiar position projections without changing native account defaults
 
@@ -3256,8 +3350,8 @@ figure. Use `.save_html()`, `.show()` or `.to_dict()`; Matplotlib axes, artist
 mutation and plotting-style kwargs do not migrate. Notebook display requires
 a Plotly-compatible frontend. Exact keys remain in hover/export; horizontal
 spacing follows categorical observation order, not elapsed exchange sessions.
-This positions workflow does not yet qualify full/simple account composition
-or all original portfolio notebooks.
+This positions workflow is also used by the familiar full account report.
+Qualification of all original portfolio notebooks remains separate work.
 
 ### Retain raw exposure when equity cannot normalize it
 

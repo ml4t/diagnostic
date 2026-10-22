@@ -40,25 +40,39 @@ def _table_figure(table: pd.DataFrame, title: str, description: str) -> go.Figur
     ] + rows
     figure = _figure(title, "", None, {"height": max(360, 150 + len(rows) * 30)})
     header_height = 48 if isinstance(table.columns, pd.MultiIndex) else 32
+    labels = [
+        cell(table.index.name) if table.index.name is not None else "Metric",
+        *[
+            "<br>".join(cell(part) for part in column)
+            if isinstance(column, tuple)
+            else cell(column)
+            for column in table.columns
+        ],
+    ]
+    widths = [
+        max(
+            200 if number == 0 else 150,
+            28
+            + 9
+            * max(
+                len(line)
+                for value in [label, *[row[number] for row in rows]]
+                for line in value.split("<br>")
+            ),
+        )
+        for number, label in enumerate(labels)
+    ]
     figure.update_layout(
-        width=240 + 150 * len(table.columns),
+        width=40 + sum(widths),
         autosize=False,
         height=max(360, 60 + header_height + len(rows) * 30),
         margin={"l": 20, "r": 20, "t": 20, "b": 20},
     )
     figure.add_trace(
         go.Table(
-            columnwidth=[200, *[150] * len(table.columns)],
+            columnwidth=widths,
             header={
-                "values": [
-                    cell(table.index.name) if table.index.name is not None else "Metric",
-                    *[
-                        "<br>".join(cell(part) for part in column)
-                        if isinstance(column, tuple)
-                        else cell(column)
-                        for column in table.columns
-                    ],
-                ],
+                "values": labels,
                 "font_size": 14,
                 "height": header_height,
             },

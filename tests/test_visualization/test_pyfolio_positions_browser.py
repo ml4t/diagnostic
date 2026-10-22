@@ -12,9 +12,12 @@ from ml4t.diagnostic.compat import pyfolio as pf
 
 
 @pytest.mark.parametrize("width", [375, 1280])
-@pytest.mark.parametrize("hidden", [False, True])
+@pytest.mark.parametrize(
+    "kind,hidden",
+    [("positions", False), ("positions", True), ("full", False), ("full", True), ("simple", False)],
+)
 def test_whole_positions_report_keeps_actual_panels_readable_without_leaking_hidden_ids(
-    width, hidden, tmp_path
+    width, kind, hidden, tmp_path
 ):
     chrome = shutil.which("google-chrome") or shutil.which("chromium")
     if chrome is None:
@@ -26,14 +29,26 @@ def test_whole_positions_report_keeps_actual_panels_readable_without_leaking_hid
         {"PRIVATE_ASSET_A": [60.0] * 5, "PRIVATE_ASSET_B": [-20.0] * 5, "cash": [60.0] * 5},
         index=dates,
     )
-    report = pf.create_position_tear_sheet(
-        returns,
-        positions,
-        sector_mappings={"PRIVATE_ASSET_A": "Technology", "PRIVATE_ASSET_B": "Finance"},
-        hide_positions=hidden,
-        estimate_intraday=False,
-        return_fig=True,
-    )
+    options = {"estimate_intraday": False, "return_fig": True}
+    if kind != "simple":
+        options.update(
+            sector_mappings={"PRIVATE_ASSET_A": "Technology", "PRIVATE_ASSET_B": "Finance"},
+            hide_positions=hidden,
+        )
+    if kind == "positions":
+        report = pf.create_position_tear_sheet(returns, positions, **options)
+    else:
+        fills = pd.DataFrame(
+            {"symbol": ["PRIVATE_ASSET_A"], "amount": [1.0], "price": [10.0]},
+            index=dates[:1] + pd.Timedelta(hours=15),
+        )
+        if kind == "full":
+            market = pd.DataFrame(
+                {"PRIVATE_ASSET_A": [10.0, 1000.0] * 5, "PRIVATE_ASSET_B": [20.0, 2000.0] * 5},
+                index=pd.MultiIndex.from_product([dates, ["price", "volume"]]),
+            )
+            options.update(market_data=market, unadjusted_returns=returns)
+        report = getattr(pf, f"create_{kind}_tear_sheet")(returns, positions, fills, **options)
     target = tmp_path / "positions.html"
     report.save_html(target, include_plotlyjs=True)
     errors, external = [], []
@@ -54,7 +69,7 @@ def test_whole_positions_report_keeps_actual_panels_readable_without_leaking_hid
                 const plots=[...document.querySelectorAll('.js-plotly-plot')];
                 return plots.length===count && plots.every(p=>p._fullLayout && p.calcdata);
             }""",
-                arg=7 if hidden else 10,
+                arg=len(report.figures),
             )
             actual = page.evaluate("""() => ({
                 width:innerWidth,scroll:document.documentElement.scrollWidth,
@@ -63,7 +78,7 @@ def test_whole_positions_report_keeps_actual_panels_readable_without_leaking_hid
                 plots:[...document.querySelectorAll('body > .plot-container')].map(section=>{
                     const p=section.querySelector('.js-plotly-plot');
                     const b=p.getBoundingClientRect(), first=p.data[0] || {};
-                    const labels=[...p.querySelectorAll('.xtick text,.ytick text,.legendtext,.xtitle,.ytitle,.cell-text,.annotation-text,.gtitle')];
+                    const labels=[...p.querySelectorAll('.xtick text,.ytick text,.legendtext,.xtitle,.ytitle,.cell-text,.annotation-text,.gtitle,.heatmaplayer text')];
                     return {name:section.querySelector('h2').textContent,
                         sizes:labels.map(t=>parseFloat(getComputedStyle(t).fontSize)),
                         families:[...new Set(labels.map(t=>getComputedStyle(t).fontFamily))],
@@ -77,10 +92,11 @@ def test_whole_positions_report_keeps_actual_panels_readable_without_leaking_hid
             if screenshots:
                 directory = Path(screenshots)
                 directory.mkdir(parents=True, exist_ok=True)
-                page.screenshot(path=str(directory / f"positions-{width}-{hidden}-prose.png"))
-                for number in (1, 4, 6):
+                page.screenshot(path=str(directory / f"{kind}-{width}-{hidden}-prose.png"))
+                selected = (1, 4, 6) if kind == "positions" else (0, 2, len(report.figures) - 1)
+                for number in selected:
                     page.locator("body > .plot-container").nth(number).screenshot(
-                        path=str(directory / f"positions-{width}-{hidden}-{number}.png")
+                        path=str(directory / f"{kind}-{width}-{hidden}-{number}.png")
                     )
         finally:
             browser.close()
@@ -92,7 +108,10 @@ def test_whole_positions_report_keeps_actual_panels_readable_without_leaking_hid
         assert all(14 <= size <= actual["prose"] * 1.1 for size in panel["sizes"]), panel["name"]
         if hidden:
             assert "PRIVATE_ASSET" not in panel["payload"]
-    assert actual["plots"][0]["y"] == [0.6] * 5
+    exposure = next(
+        panel for panel in actual["plots"] if panel["name"].split("/")[-1] == "Exposure"
+    )
+    assert exposure["y"] == [0.6] * 5
     print(json.dumps({key: value for key, value in actual.items() if key != "plots"}))
     print(
         json.dumps(

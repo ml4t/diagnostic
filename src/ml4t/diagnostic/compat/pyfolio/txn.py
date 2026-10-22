@@ -185,6 +185,14 @@ def adjust_returns_for_slippage(
         raise ValueError("slippage_bps must be a finite real value")
     _dated(positions, "positions")
     _, nav = _books(positions)
+    if nav.index.has_duplicates:
+        grouped = nav.groupby(level=0, sort=False)
+        if (grouped.nunique(dropna=False) > 1).any():
+            raise ValueError(
+                "duplicate position dates disagree on the closing NAV cost denominator"
+            )
+        # Tied exposure candidates are not additional return periods or duplicate costs.
+        nav = grouped.agg(lambda values: values.iloc[0])
     costs = get_txn_vol(transactions)["txn_volume"] * (0.0001 * slippage_bps)
     index = returns.index.union(nav.index).union(costs.index)
     frame = pl.DataFrame(

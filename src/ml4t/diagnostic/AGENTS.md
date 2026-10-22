@@ -45,6 +45,9 @@
   are anonymized before constructing figures or notebook/export payloads.
 - `compat.pyfolio.create_txn_tear_sheet` composes actual turnover, volume, timing and optional
   additional-slippage panels; aware fill instants use the supplied book's civil-day timezone.
+- `compat.pyfolio.create_simple_tear_sheet` and `create_full_tear_sheet` compose supplied-account
+  workflows from those components. Full reports retain optional capacity/attribution tables and
+  actual FIFO results; they do not infer a broker history or fabricate absent inputs.
 - Correlation-adjusted DSR now lives in `evaluation.stats` via
   `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.
 - For book and case-study workflows, set `periods_per_year` from the return

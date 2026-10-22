@@ -5,7 +5,7 @@ from __future__ import annotations
 from html import escape
 from numbers import Real
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -52,7 +52,7 @@ def _table(frame: pd.DataFrame, name: str) -> str:
     )
 
 
-def create_capacity_tear_sheet(
+def _prepare_capacity_tear_sheet(
     returns: pd.Series,
     positions: pd.DataFrame,
     transactions: pd.DataFrame,
@@ -62,26 +62,12 @@ def create_capacity_tear_sheet(
     last_n_days: int = 126,
     days_to_liquidate_limit: float = 1,
     estimate_intraday: bool | np.bool_ | str | None = "infer",
-    return_fig: bool = False,
     *,
     periods_per_year: int = 252,
     impact: float = 0.1,
-    output_file: str | Path | None = None,
     theme: str | None = None,
-) -> str | go.Figure:
-    """Render the complete familiar fixed-capital capacity workflow.
-
-    Returns offline HTML (or its saved path), rather than implicit notebook
-    display. return_fig=True returns the single Plotly sweep; output_file still
-    writes all tables. The original four threshold tables and infer/forced/off
-    choices remain. Both full/recent views honor the requested liquidation
-    threshold, unlike the reference's hardcoded recent threshold. Recent helper
-    cutoffs count civil days from their respective input endpoints, not sessions.
-    Legacy liquidation uses fixed1m capital and five prior supplied market rows;
-    impact scenarios use compounded closing NAV. Neither changes native defaults.
-    """
-    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
-
+) -> tuple[go.Figure, list[dict[str, Any]], dict[str, pd.DataFrame]]:
+    """Prepare all tables and the figure once for standalone and account reports."""
     from . import capacity, plotting, utils
     from .txn import _dated
 
@@ -90,8 +76,6 @@ def create_capacity_tear_sheet(
     _dated(returns, "returns")
     if not returns.index.is_unique or not returns.index.is_monotonic_increasing:
         raise ValueError("return dates must be sorted and unique")
-    if not isinstance(return_fig, bool | np.bool_):
-        raise TypeError("return_fig must be a boolean")
     liquidation = _limit(
         liquidation_daily_vol_limit, "liquidation_daily_vol_limit", positive=True, fraction=True
     )
@@ -199,8 +183,10 @@ def create_capacity_tear_sheet(
             + "</p>",
         }
     ]
+    tables = {}
     for name, title, frame, column, limit in views:
         flagged = frame[(frame[column] > limit) | frame[column].isna()]
+        tables[title] = flagged.copy(deep=True)
         sections.append(
             {
                 "title": title,
@@ -209,6 +195,52 @@ def create_capacity_tear_sheet(
             }
         )
     sections.append({"title": "Capital base performance sweep", "figure_index": 0})
+    sections[0]["description"] = note
+    return figure, sections, tables
+
+
+def create_capacity_tear_sheet(
+    returns: pd.Series,
+    positions: pd.DataFrame,
+    transactions: pd.DataFrame,
+    market_data: pd.DataFrame,
+    liquidation_daily_vol_limit: float = 0.2,
+    trade_daily_vol_limit: float = 0.05,
+    last_n_days: int = 126,
+    days_to_liquidate_limit: float = 1,
+    estimate_intraday: bool | np.bool_ | str | None = "infer",
+    return_fig: bool = False,
+    *,
+    periods_per_year: int = 252,
+    impact: float = 0.1,
+    output_file: str | Path | None = None,
+    theme: str | None = None,
+) -> str | go.Figure:
+    """Render complete capacity tables and a sweep through the existing renderer.
+
+    return_fig=True returns the Plotly sweep; output_file still writes every
+    table. Legacy fixed1m capital, five prior rows and civil-day lookbacks remain
+    explicit. Both views honor the selected threshold, unlike the reference's
+    hardcoded recent threshold. Native capacity defaults are unchanged.
+    """
+    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
+
+    if not isinstance(return_fig, bool | np.bool_):
+        raise TypeError("return_fig must be a boolean")
+    figure, sections, _ = _prepare_capacity_tear_sheet(
+        returns,
+        positions,
+        transactions,
+        market_data,
+        liquidation_daily_vol_limit,
+        trade_daily_vol_limit,
+        last_n_days,
+        days_to_liquidate_limit,
+        estimate_intraday,
+        periods_per_year=periods_per_year,
+        impact=impact,
+        theme=theme,
+    )
     html = combine_figures_to_html(
         [figure],
         title="Supplied-market capacity analysis",

@@ -18,6 +18,8 @@ def main() -> None:
     parser.add_argument("--bootstrap", action="store_true")
     parser.add_argument("--compare", action="store_true")
     parser.add_argument("--positions-output", type=Path)
+    parser.add_argument("--simple-output", type=Path)
+    parser.add_argument("--full-output", type=Path)
     parser.add_argument("--hide-positions", action="store_true")
     args = parser.parse_args()
     dates = pd.bdate_range("2024-01-02", periods=281, tz="UTC")
@@ -44,9 +46,12 @@ def main() -> None:
     assert report.figures["Rolling beta"].layout.meta["window_observations"] == [127, 253]
     position_report = None
     position_values = None
-    if args.positions_output is not None:
+    if any(
+        path is not None for path in (args.positions_output, args.simple_output, args.full_output)
+    ):
         nav = 10000 * prices.iloc[1:] / prices.iloc[0]
         position_values = pd.DataFrame({"Core": 0.6 * nav, "Hedge": -0.2 * nav, "cash": 0.6 * nav})
+    if args.positions_output is not None:
         position_report = pf.create_position_tear_sheet(
             returns,
             position_values,
@@ -62,6 +67,67 @@ def main() -> None:
             f"Complete positions manifest: {len(position_report.figures)} panels from supplied example snapshots, not inferred fills"
         )
         print(f"Wrote {args.positions_output}")
+    # These are supplied example executions, not an opening inventory or a complete broker history.
+    transactions = pd.DataFrame(
+        {"symbol": ["Core"] * 2, "amount": [1.0, -1], "price": prices.iloc[[1, 261]].to_numpy()},
+        index=returns.index[[0, 260]] + pd.Timedelta(hours=15),
+    )
+    account_options = {
+        "positions": position_values,
+        "transactions": transactions,
+        "benchmark_rets": benchmark,
+        "live_start_date": returns.index[260],
+        "estimate_intraday": False,
+    }
+    for kind, output in (("simple", args.simple_output), ("full", args.full_output)):
+        if output is None:
+            continue
+        combined = getattr(pf, f"create_{kind}_tear_sheet")(
+            returns,
+            **account_options,
+            return_fig=True,
+            num_samples=64,
+            random_seed=7,
+            **({"hide_positions": args.hide_positions, "cone_std": None} if kind == "full" else {}),
+        )
+        assert np.isclose(combined.figures["Returns/Cumulative wealth"].data[2].y[-1], expected)
+        assert combined.availability["transactions"]["status"] == "available"
+        combined.save_html(output, include_plotlyjs=True)
+        print(
+            f"Complete {kind} account: supplied returns/marked book/actual example fills; wrote {output}"
+        )
+        if args.compare:
+            import pyfolio
+            from matplotlib import pyplot
+
+            try:
+                pyplot.close("all")
+                getattr(pyfolio, f"create_{kind}_tear_sheet")(
+                    returns,
+                    **account_options,
+                    **(
+                        {
+                            "hide_positions": args.hide_positions,
+                            "cone_std": None,
+                            "set_context": False,
+                        }
+                        if kind == "full"
+                        else {}
+                    ),
+                )
+                originals = [pyplot.figure(number) for number in pyplot.get_fignums()]
+                for original in originals:
+                    original.set_dpi(20)
+                    original.canvas.draw()
+                np.testing.assert_allclose(
+                    originals[0].axes[0].lines[2].get_ydata(),
+                    combined.figures["Returns/Cumulative wealth"].data[2].y,
+                    rtol=1e-12,
+                )
+                assert len(originals) == (4 if kind == "full" else 1)
+            finally:
+                pyplot.close("all")
+            print(f"Actual Pyfolio reference complete {kind} account executed; live wealth matches")
     if args.compare:
         import pyfolio
         from matplotlib import pyplot
