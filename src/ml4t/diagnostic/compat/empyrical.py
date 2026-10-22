@@ -31,6 +31,7 @@ from ml4t.diagnostic.compat._fragility import (
     beta_fragility_heuristic,
     beta_fragility_heuristic_aligned,
 )
+from ml4t.diagnostic.compat._holdings_attribution import compute_exposures, perf_attrib
 from ml4t.diagnostic.compat._returns import (
     MetricOutput,
     ReturnInput,
@@ -414,6 +415,8 @@ FACTOR_STAT_FUNCS = [
 
 
 __all__ = [
+    "compute_exposures",
+    "perf_attrib",
     "FACTOR_STAT_FUNCS",
     "gpd_es_calculator",
     "gpd_loglikelihood",

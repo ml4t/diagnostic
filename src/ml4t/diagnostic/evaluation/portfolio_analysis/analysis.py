@@ -40,6 +40,8 @@ from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapsho
 from .holdings_sectors import SectorMapping, analyze_sector_exposures
 from .inputs import (
     annual_risk_free,
+    date_index,
+    date_snapshot,
     initial_valuation_time,
     normalize_observations,
     positive_integer,
@@ -74,6 +76,8 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
     import pandas as pd
+
+    from ..factor.holdings_attribution import HoldingsAttributionResult
 
 # Type aliases - use Union for Python 3.9 compatibility
 ArrayLike = Union[np.ndarray, pl.Series, "pd.Series", "list[float]"]
@@ -840,6 +844,57 @@ class PortfolioAnalysis:
             periods.append(period)
 
         return periods
+
+    def compute_holdings_attribution(
+        self,
+        weights: DataFrameLike,
+        factor_returns: DataFrameLike,
+        factor_loadings: DataFrameLike,
+        *,
+        period_starts: pl.Series | pd.DatetimeIndex | None = None,
+        factor_names: Sequence[str] | None = None,
+        complete_snapshots: bool = False,
+        cash_contributions: DataFrameLike | None = None,
+        observed_snapshot_dates: pl.Series | pd.DatetimeIndex | None = None,
+        cumulative_method: Literal["wealth_linked", "arithmetic"] = "wealth_linked",
+        timestamp_col: str = "timestamp",
+        entity_col: str = "asset",
+    ) -> HoldingsAttributionResult:
+        """Analyze supplied beginning-period weights/loadings without fitting betas.
+
+        Explicit interval starts take precedence. Otherwise an observed initial
+        valuation time and preceding return timestamps define interval starts.
+        The first interval is never guessed from a calendar or row frequency.
+        End-period holdings are not automatically reinterpreted as beginning
+        weights. Inputs and existing portfolio caches remain unchanged on error.
+        """
+        import pandas as pd
+
+        from ..factor.holdings_attribution import compute_holdings_attribution
+
+        self.require_dates()
+        if period_starts is None:
+            if self._initial_timestamp is None:
+                raise ValueError("period_starts or initial_timestamp is required for attribution")
+            period_starts = pd.DatetimeIndex([self._initial_timestamp]).append(
+                date_index(self._dates)[:-1]
+            )
+        starts = date_snapshot(period_starts, len(self._returns), "period_starts")
+        return compute_holdings_attribution(
+            pl.DataFrame(
+                {"timestamp": self._dates, "period_start": starts, "return": self._returns}
+            ),
+            weights,
+            factor_returns,
+            factor_loadings,
+            factor_names=factor_names,
+            complete_snapshots=complete_snapshots,
+            cash_contributions=cash_contributions,
+            observed_snapshot_dates=observed_snapshot_dates,
+            cumulative_method=cumulative_method,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+        )
 
     def compute_returns_distribution(self) -> DistributionResult:
         """Compute returns distribution analysis.

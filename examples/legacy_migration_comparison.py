@@ -1030,13 +1030,6 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
-    if task in ("transactions", "transactions-report"):
-        show_supplied_transactions(
-            arguments.output or Path("transactions-report.html")
-            if task == "transactions-report"
-            else None
-        )
-        return
     if task == "empyrical-native":
         show_empyrical_native()
         return
@@ -1048,6 +1041,13 @@ def main() -> None:
         return
     if task == "empyrical-rolling":
         show_empyrical_rolling()
+        return
+    if task in ("transactions", "transactions-report"):
+        show_supplied_transactions(
+            arguments.output or Path("transactions-report.html")
+            if task == "transactions-report"
+            else None
+        )
         return
     if task == "empyrical-tail":
         show_empyrical_tail(arguments.output)

@@ -483,6 +483,176 @@ threshold, scale, dimensionless shape, loss VaR and expected shortfall.
 The runnable `--task empyrical-tail` recipe also executes this complete
 registry without requiring Empyrical at runtime.
 
+## Attribute returns to supplied holdings and loadings (unreleased)
+
+Use this workflow when you already have asset NAV weights and factor loadings.
+It does not estimate betas from portfolio returns. The same calculation serves
+the native result and the familiar `perf_attrib` and `compute_exposures` adapters.
+Neither route requires Data, Engineer, Backtest or a legacy package at runtime.
+
+From this source revision, run the independently checked two-period example:
+
+```bash
+uv run --extra viz python examples/holdings_factor_attribution.py --report holdings-attribution.html
+```
+
+To compare the familiar public tables with Empyrical Reloaded 0.7.0, use its
+qualified pandas 2.3.3 profile in an isolated environment:
+
+```bash
+uv run --no-project --isolated --python 3.12 --with '.[viz]' --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --report holdings-attribution.html
+```
+
+The example prints actual package versions and checks exposures `[1.5, 0.25]`
+and `[1, 0.5]`, common periodic returns `0.02` and `-0.015`, and specific
+returns `0.01` and `0.005`. Wealth-linked common and specific contributions
+finish at `0.00455` and `0.01515`; their sum is the portfolio return `0.0197`.
+The report displays those stored contributions without annualizing or
+compounding each component independently.
+
+For an existing Empyrical workflow, change the import and retain the supplied
+pandas inputs. This executable two-date book uses the same weights and loadings:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.compat import empyrical as ep
+
+attribution_dates = pd.DatetimeIndex(["2025-07-07T20:00Z", "2025-07-08T20:00Z"])
+attribution_keys = pd.MultiIndex.from_product(
+    [attribution_dates, ["A", "B"]], names=["dt", "ticker"]
+)
+attribution_returns = pd.Series([0.03, -0.01], index=attribution_dates)
+positions = pd.Series([0.5, 0.5, 0.25, 0.75], index=attribution_keys)
+factor_loadings = pd.DataFrame(
+    {"market": [2.0, 1.0, 1.0, 1.0], "style": [0.0, 0.5, 2.0, 0.0]},
+    index=attribution_keys,
+)
+factor_returns = pd.DataFrame(
+    {"market": [0.01, -0.02], "style": [0.02, 0.01]}, index=attribution_dates
+)
+exposures, contributions = ep.perf_attrib(
+    attribution_returns, positions, factor_returns, factor_loadings
+)
+np.testing.assert_allclose(exposures, [[1.5, 0.25], [1.0, 0.5]])
+np.testing.assert_allclose(contributions["common_returns"], [0.02, -0.015])
+```
+
+Here `positions` is a fractional NAV-weight Series with a date/asset
+MultiIndex, not dollar holdings. `factor_loadings` has that same kind of index
+and one column per factor. `returns` and `factor_returns` have datetime
+indexes. Original factor labels, including numeric labels or names such as
+`asset`, survive conversion to the native table representation. The adapters
+preserve the tested reference's observed-label alignment and skip-missing
+sums, with warnings for uncovered loadings or missing weights. They do not
+assert that the information was available before trading.
+
+Asset matching uses one joint pandas identity index before native transport;
+numeric asset `1` and text asset `"1"` remain distinct even when loading rows
+arrive in a different asset order. Missing or empty asset labels are rejected.
+The familiar date-sliced workflow requires chronological outer date groups in
+the loading MultiIndex, as Empyrical/Pyfolio do; within-date asset order need
+not match the holdings rows. Native frame inputs retain their declared asset
+ID types rather than adopting these internal transport codes.
+
+For explicit availability and coverage checks, use
+`evaluation.factor.compute_holdings_attribution` or
+`PortfolioAnalysis.compute_holdings_attribution`. Supply dated returns with
+explicit `period_start`, fractional weights and loadings with `known_at`,
+and same-period factor returns. Declare `complete_snapshots=True` only for
+complete account observations. A genuine all-cash observation may have no
+asset rows; pass its actual timeline through `observed_snapshot_dates` rather
+than inventing asset rows or treating a missing observation as cash. The class
+method accepts `period_starts`, or uses its actual `initial_timestamp` and
+preceding return observations. It does not infer the first interval from a
+calendar frequency.
+
+Native defaults reject future information and uncovered active loadings.
+`missing_loadings="legacy_skip"` and `timing="legacy_observed"` are explicitly
+different choices. Native cumulative contributions use beginning wealth;
+`cumulative_method="arithmetic"` selects a named sum of periodic contributions.
+Full-sample mean exposure defines tilt, not a forecast. Specific returns are
+unexplained returns, not evidence of skill. Without explicitly supplied cash
+contributions, cash remains in the specific residual.
+
+`result.to_dataframe()` returns an owned Polars contribution table with its
+temporal dtype. `result.to_dict()` exports exact ISO observation keys, including
+nanoseconds and timezone offsets. Explicit legacy Date labels remain dates;
+the export does not turn them into invented midnight instants. Modifying either
+export does not change the stored analytical result.
+
+Pass the native result as `metrics={"holdings_attribution": result}` to the
+existing [backtest report](backtest-tearsheets.md) function, builder or workspace
+export. It produces separate supplied-exposure, attribution, and loading-coverage
+sections. The report rejects a different return path or a serialized dictionary
+in place of the typed result before changing output. This supplied-holdings
+workflow remains distinct from the existing fitted factor regression and does
+not yet establish complete Pyfolio performance-attribution tear-sheet coverage.
+
+The same native calculation also backs
+`ml4t.diagnostic.compat.pyfolio.perf_attrib.perf_attrib` and `compute_exposures`.
+These accept the familiar wide dollar/fractional positions with an explicit
+account `cash` column. `create_perf_attrib_stats` retains the reference's
+independently compounded component statistics, with explicit
+`periods_per_year=252` by default. These component growth paths do not add up to
+the wealth-linked decomposition. `show_perf_attrib_stats` prints and returns
+the tables without requiring IPython; it does not produce Pyfolio's notebook
+display object. Use `--compare-pyfolio` in the example with optional Pyfolio
+Reloaded 0.10.0, Empyrical 0.7.0 and pandas 2.3.3 to run both public workflows.
+
+```bash
+uv run --no-project --isolated --python 3.12 --with '.[viz]' --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --compare-pyfolio --report holdings-attribution.html
+```
+
+One numerical correction is intentional. Pyfolio 0.10.0 drops an asset without
+loadings before normalizing dollar holdings. On the tested full-NAV-1000 book,
+covered asset A has fractions `0.5, 0.25, 0.5` and market loadings `2, 1, 2`.
+The correct covered exposure is `1, 0.25, 1`. The reference returns `2, 1, 2`
+after removing B from its NAV denominator. Diagnostic retains the full account
+denominator and warns about the uncovered loadings; dollar and equivalent
+fractional inputs therefore agree. Unknown B exposure is still unknown, not
+proved zero. Missing whole loading dates retain the familiar warned sample
+exclusion. A high-turnover warning does not repair missing intraday exposures.
+The same module provides `plot_returns`, `plot_alpha_returns`,
+`plot_factor_contribution_to_perf` and `plot_risk_exposures`. These return Plotly
+figures; remove a supplied Matplotlib `ax` and use `write_html` or `show`.
+Explicit periodic costs subtract from gross total returns once, before
+compounding; their separately plotted path is negative compounded cost.
+The factor plot retains `specific_returns` alongside factors, as the reference
+does, and omits total/common/tilt/timing aggregates. Specific-return histograms
+use ten explicit equal-width bins and count nonfinite exclusions.
+
+Run the complete familiar attribution report on the same supplied inputs:
+
+```bash
+uv run --extra viz python examples/holdings_factor_attribution.py --pyfolio-report pyfolio-attribution.html
+```
+
+This writes an offline full sheet and `pyfolio-attribution-specific-returns.html`.
+`ml4t.diagnostic.compat.pyfolio.tears.create_perf_attrib_tear_sheet` includes the
+summary/exposure tables, total/specific/common growth and factor-partition
+contribution/exposure panels. It preserves `transactions`, `pos_in_dollars`
+and `factor_partitions` input choices. Defaults retain Pyfolio's canonical
+style/sector members; pass `factor_partitions=None` to show every supplied
+factor. A custom mapping selects members while preserving input-column order.
+An empty mapping produces only the returns panel; it does not reserve blank
+axes. A named group with no matching supplied factor is visibly unavailable.
+
+Presentation differs explicitly. By default the function returns HTML, or the
+saved path when `output_file` is given, without triggering IPython display.
+`return_fig=True` returns the ordered list of Plotly figures rather than one
+Matplotlib figure. HTML output always contains the tables. `periods_per_year`
+sets table annualization explicitly; it does not annualize already compounded
+paths. `theme` uses Diagnostic's existing report themes.
+
+Actual Pyfolio 0.10.0 with Matplotlib 3.11.2 plots the histogram but then raises
+`AttributeError` while sorting rectangle legend handles. The factor/exposure
+plots draw their paths but raise `ValueError` while constructing an empty
+legend. Diagnostic compares those unmodified artist values and independent
+bin/path expectations; it does not reproduce the rendering exceptions or
+claim those reference calls completed. Complete attribution-report browser,
+artifact and platform qualification is recorded separately from table matches.
+
 ## Inspect a fitted generalized-Pareto tail (unreleased)
 
 `metrics.estimate_gpd_tail_risk(returns, tail_probability=0.01, threshold=None)`
@@ -551,6 +721,7 @@ corrected Empyrical 0.7.0 workflow, not zero or a negative loss.
 This source implementation is still undergoing reference, artifact and report
 qualification. It does not yet replace the retained-Empyrical recommendation
 below or describe the published 0.1.9 distribution.
+
 ## Inspect benchmark fragility (unreleased)
 
 `ml4t.diagnostic.metrics.beta_fragility` returns an immutable
@@ -614,7 +785,7 @@ input, Empyrical `stability_of_timeseries` returned `0.252783` and Diagnostic
 Diagnostic fits cumulative simple wealth. Do not relabel one as the other.
 
 This assessment does not yet qualify Empyrical's `gpd_risk_estimates`,
-`perf_attrib` or a general multi-asset matrix rolling contract as drop-in
+the complete `perf_attrib` report workflow or a general multi-asset matrix rolling contract as drop-in
 replacements. Diagnostic has other portfolio and factor analyses, but their
 inputs and result definitions must be checked separately. Keep Empyrical for
 those tasks until a specific migration is verified. All sections marked

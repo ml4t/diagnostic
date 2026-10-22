@@ -113,6 +113,13 @@ def _numeric(frame: pl.DataFrame, column: str, *, nullable: bool = False) -> pl.
     return frame
 
 
+def _validate_asset_ids(asset: pl.Series) -> None:
+    if asset.dtype != pl.Utf8 and not asset.dtype.is_integer():
+        raise TypeError("asset IDs must be stable strings or integers")
+    if asset.null_count() or (asset.dtype == pl.Utf8 and (asset == "").any()):
+        raise ValueError("asset IDs must be nonmissing and nonempty")
+
+
 def analyze_holdings(
     positions: pl.DataFrame,
     valuations: pl.DataFrame | pd.DataFrame,
@@ -146,11 +153,7 @@ def analyze_holdings(
         if not {"date", "asset", "value"}.issubset(positions.columns):
             raise ValueError("long positions require date, asset and value columns")
         long = positions.select("date", "asset", "value")
-        asset = long["asset"]
-        if asset.dtype != pl.Utf8 and not asset.dtype.is_integer():
-            raise TypeError("asset IDs must be stable strings or integers")
-        if asset.null_count() or (asset.dtype == pl.Utf8 and (asset == "").any()):
-            raise ValueError("asset IDs must be nonmissing and nonempty")
+        _validate_asset_ids(long["asset"])
         snapshot_dates = long["date"].unique().sort()
     else:
         _same_dates(positions["date"], dates, "position")

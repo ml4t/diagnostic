@@ -318,6 +318,30 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)[viz]" --with pytest
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_visualization/test_gpd_tail_report.py
+      - name: Run supplied-holdings attribution workflow from installed wheel
+        shell: bash
+        run: |
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_evaluation/test_holdings_factor_attribution.py \
+            tests/test_compat/test_empyrical_holdings_attribution.py \
+            tests/test_compat/test_pyfolio_holdings_attribution.py \
+            tests/test_compat/test_pyfolio_attribution_plots.py \
+            tests/test_compat/test_pyfolio_attribution_sheet.py \
+            tests/test_visualization/test_holdings_attribution_report.py \
+            tests/test_visualization/test_pyfolio_attribution_browser.py \
+            tests/test_visualization/test_report_output_integrity.py
+          mkdir -p artifacts/attribution
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" \
+            python -I examples/holdings_factor_attribution.py --compare --compare-pyfolio \
+            --report artifacts/attribution/native.html \
+            --pyfolio-report artifacts/attribution/pyfolio.html
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-
