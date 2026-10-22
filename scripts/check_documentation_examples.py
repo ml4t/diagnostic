@@ -64,6 +64,7 @@ PAGES = {
     "docs/user-guide/empyrical-migration.md": (
         "Empyrical scalar adapters: columnwise counts, periodic rates and labels checked",
         "Return paths: dated labels, missing adjacencies and initial capital checked",
+        "Utility migration: explicit paths, UTC convention and caller warnings",
     ),
 }
 

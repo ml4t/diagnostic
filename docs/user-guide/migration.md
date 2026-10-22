@@ -2607,8 +2607,8 @@ leaves it blank rather than guessing the first observation. Native supplied-acco
 analysis can retain an initial valuation timestamp. The familiar duration column counts
 inclusive Monday-Friday civil dates only when peak and recovery are known,
 not exchange sessions. Existing native episode durations still count observations.
-The combined account route below reuses these panels. Qualification of every
-original notebook and producer/provider journey remains separate work.
+The combined account route below reuses these panels. The original-notebook
+replay and producer examples below exercise their distinct input contracts.
 
 ### Compose a familiar simple or full account report
 
@@ -3200,8 +3200,8 @@ native-backed familiar tables. The callable
 `pf.round_trips.print_round_trip_stats(trades, hide_pos=True)` omits the symbol
 table. It writes plain text, not IPython display objects; cash is labeled supplied
 account currency rather than assumed USD. Return tables display NAV-relative
-percent, while `gen_round_trip_stats` keeps decimal fractions. These named calls
-do not yet complete the standalone plotting options or full tear sheet.
+percent, while `gen_round_trip_stats` keeps decimal fractions. For the complete
+report, use the [familiar round-trip sheet](#use-the-familiar-complete-round-trip-sheet).
 
 `pf.round_trips.add_closing_transactions(positions, transactions)` supplies the
 familiar optional closing projection for a declared-flat opening book and a
@@ -3257,7 +3257,8 @@ requested from known-at marks in reconstruction, with separate histogram traces,
 dashed lifelines and an explicit sample count. Original fills, actual realized
 PnL and remaining open lots do not change. Observed and explicit cash-price
 intraday routes and the bounded familiar round-trip sheet are described below.
-The complete multi-report portfolio facade remains separate accepted work.
+The [full account report](#compose-a-familiar-simple-or-full-account-report)
+composes these native results when their inputs are supplied.
 
 ### Analyze observed intraday snapshots on their own clock
 
@@ -4052,8 +4053,9 @@ defined, exposure/sector charts show raw account-currency values with explicit
 units. Undefined concentration or absent sides have an explanation instead of
 an empty chart. `report.availability` distinguishes requested unavailable data
 from disabled analysis; `include_positions=True` without `holdings` supplies an
-actionable preparation reason. Transaction reporting in this dashboard remains
-explicitly unavailable, not silently implemented by the flag.
+actionable preparation reason. Supply an owned transaction analysis through
+`transactions=` to include actual turnover and incremental-cost panels; the
+positions flag alone does not create transaction data.
 
 The report owns its prepared snapshot and validates exact observation keys and
 timezone. Date labels cannot alias midnight timestamps; timestamp transport
@@ -4211,7 +4213,8 @@ mutation and plotting-style kwargs do not migrate. Notebook display requires
 a Plotly-compatible frontend. Exact keys remain in hover/export; horizontal
 spacing follows categorical observation order, not elapsed exchange sessions.
 This positions workflow is also used by the familiar full account report.
-Qualification of all original portfolio notebooks remains separate work.
+The [original notebook replays](#replay-the-original-pyfolio-analytical-notebooks)
+exercise the complete report compositions with their pinned analytical inputs.
 
 ### Retain raw exposure when equity cannot normalize it
 
