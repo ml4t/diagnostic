@@ -2602,10 +2602,33 @@ checks and typed capacity results in the existing portfolio report. The native r
 exported as JSON without losing nanosecond keys or unbounded durations. This is a hypothetical
 liquidity analysis, not a fitted execution model or a speed claim.
 
-The runnable [capacity example](https://github.com/ml4t/diagnostic/blob/2025fa9f3a3ced81d0fc078eb9bea02d8d834e88/examples/portfolio_capacity.py)
+The runnable [capacity example](https://github.com/ml4t/diagnostic/blob/5bc2dbbce947d072b500cbc88a6508021eceac23/examples/portfolio_capacity.py)
 constructs a consistent two-asset toy account with actual stated fills, then runs:
 
 ```python
+import pandas as pd
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+dates = pd.date_range("2025-01-13", periods=3, tz="UTC")
+empty_fills = pd.DataFrame({
+    "timestamp": pd.DatetimeIndex([], tz="UTC"),
+    "asset": pd.Series(dtype=str),
+    "quantity": pd.Series(dtype=float),
+    "price": pd.Series(dtype=float),
+})
+analysis = PortfolioAnalysis.from_frames(
+    pd.Series([0.0, 0.001, -1 / 1001], index=dates),
+    positions=pd.DataFrame({"A": [100.0, 101.0, 100.0], "cash": 900.0}, index=dates),
+    valuations=pd.DataFrame({"equity": [1000.0, 1001.0, 1000.0], "cash": 900.0}, index=dates),
+    transactions=empty_fills,
+    transaction_timestamp_col="timestamp",
+    complete_snapshots=True,
+    calendar=None,
+)
+market_data = pd.DataFrame({
+    "date": dates, "asset": ["A"] * 3,
+    "price": [10.0, 10.1, 10.0], "volume": [10_000.0] * 3,
+})
 capacity_result = analysis.compute_capacity(
     market_data,
     currency="USD",
@@ -2613,10 +2636,11 @@ capacity_result = analysis.compute_capacity(
     volume_basis="raw",
     participation=0.1,
     lookback=1,
-    base_capital=100_000,
-    scenario_capitals=[100_000, 200_000, 300_000],
+    base_capital=1000,
+    scenario_capitals=[1000, 2000, 3000],
 )
 analysis.create_tear_sheet(capacity=capacity_result).save_html("capacity.html")
+print("Capacity report preserves the explicit empty actual ledger")
 ```
 
 `analysis` uses the owned `PortfolioAnalysis.from_frames` boundary. Positions are complete,

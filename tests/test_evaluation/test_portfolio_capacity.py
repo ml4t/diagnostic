@@ -457,3 +457,86 @@ def test_owned_account_accepts_equivalent_finer_market_keys_without_changing_rep
     assert result.timeline["date"].equals(analysis.dates)
     assert result.observations["date"].equals(analysis.dates)
     assert result.liquidation["liquidation_duration"].to_list() == [None, None] + [1.0] * 6
+
+
+@pytest.mark.parametrize("filled", [False, True])
+@pytest.mark.parametrize("fill_zone", ["UTC", "America/New_York"])
+@pytest.mark.parametrize("account_unit,fill_unit", [("us", "ms"), ("ms", "us"), ("us", "ns")])
+def test_owned_actual_or_explicitly_empty_ledger_joins_equivalent_clock_units_losslessly(
+    filled, fill_zone, account_unit, fill_unit
+):
+    from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+    dates = pd.date_range("2025-01-13", periods=3, tz="UTC").as_unit(account_unit)
+    clock = dates.as_unit(fill_unit).tz_convert(fill_zone)
+    timestamps = clock[1:2] if filled else clock[:0]
+    fills = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "asset": pd.Series(["A"] if filled else [], dtype=str),
+            "quantity": pd.Series([1.0] if filled else [], dtype=float),
+            "price": pd.Series([10.0] if filled else [], dtype=float),
+        }
+    )
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([0.0] * 3, index=dates),
+        positions=pd.DataFrame(
+            {
+                "A": [100.0, 110.0, 110.0] if filled else [100.0] * 3,
+                "cash": [900.0, 890.0, 890.0] if filled else [900.0] * 3,
+            },
+            index=dates,
+        ),
+        transactions=fills,
+        transaction_timestamp_col="timestamp",
+        complete_snapshots=True,
+        calendar=None,
+    )
+    market = pd.DataFrame(
+        {"date": dates, "asset": ["A"] * 3, "price": [10.0] * 3, "volume": [1000.0] * 3}
+    )
+    result = analysis.compute_capacity(
+        market,
+        currency="USD",
+        price_basis="raw",
+        volume_basis="raw",
+        lookback=1,
+        base_capital=1000,
+        scenario_capitals=[1000],
+    )
+    assert result.observations["date"].equals(analysis.dates)
+    assert result.timeline["date"].equals(analysis.dates)
+    if filled:
+        assert result.participation["absolute_units"].to_list() == [1.0]
+        assert result.participation["participation"].to_list() == [0.001]
+        assert result.scenarios["extra_impact_return"].to_list() == pytest.approx([0, 1e-9, 0])
+    else:
+        assert result.participation.is_empty()
+        assert result.scenarios["extra_impact_return"].to_list() == [0.0] * 3
+
+
+def test_finer_execution_clock_does_not_round_a_nonmatching_nanosecond_onto_a_decision():
+    from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+    positions, market = _inputs()
+    positions = positions.with_columns(pl.col("date").cast(pl.Datetime("us", "UTC")))
+    market = market.with_columns(pl.col("date").cast(pl.Datetime("us", "UTC")))
+    returns = (
+        positions.select("date").unique().sort("date").with_columns(pl.lit(0.0).alias("return"))
+    )
+    instant = pd.Timestamp(returns["date"][1]) + pd.Timedelta(1, unit="ns")
+    fills = pd.DataFrame(
+        {"timestamp": [instant], "asset": ["A"], "quantity": [1.0], "price": [10.0]}
+    )
+    analysis = PortfolioAnalysis.from_frames(
+        returns,
+        positions=positions,
+        transactions=fills,
+        transaction_timestamp_col="timestamp",
+        complete_snapshots=True,
+        calendar=None,
+    )
+    with pytest.raises(ValueError, match="matching position/return observation clock"):
+        analysis.compute_capacity(
+            market, currency="USD", price_basis="raw", volume_basis="raw", lookback=1
+        )

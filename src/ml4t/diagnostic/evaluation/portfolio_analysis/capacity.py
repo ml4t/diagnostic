@@ -450,6 +450,26 @@ def analyze_capacity(
         if fills["asset"].dtype != marked["asset"].dtype:
             raise TypeError("transaction asset IDs must match positions")
         fills = clock(fills, executions=True)
+        if fills.is_empty():
+            fills = fills.with_columns(pl.Series("clock", [], dtype=decisions["clock"].dtype))
+        else:
+            target, source_type = decisions["clock"].dtype, fills["clock"].dtype
+            if isinstance(target, pl.Datetime) and isinstance(source_type, pl.Datetime):
+                expression = pl.col("clock")
+                source_zone = source_type.time_zone
+                if source_zone is None and target.time_zone is not None and feed.timezone:
+                    expression = expression.dt.replace_time_zone(feed.timezone)
+                    source_zone = feed.timezone
+                if source_zone is not None and target.time_zone is not None:
+                    expression = expression.dt.convert_time_zone(target.time_zone)
+                elif source_zone is not None and target.time_zone is None and feed.timezone:
+                    expression = expression.dt.convert_time_zone(
+                        feed.timezone
+                    ).dt.replace_time_zone(None)
+                fills = fills.with_columns(expression.alias("clock"))
+        fills, market = _align_datetime_key_resolution(fills, market, "clock")
+        market, decisions = _align_datetime_key_resolution(market, decisions, "clock")
+        fills, market = _align_datetime_key_resolution(fills, market, "clock")
         if not fills["clock"].is_in(decisions["clock"].implode()).all():
             raise ValueError("transactions have no matching position/return observation clock")
         if "multiplier" in fills.columns:
