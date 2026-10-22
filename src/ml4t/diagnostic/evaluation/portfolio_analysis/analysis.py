@@ -80,6 +80,7 @@ if TYPE_CHECKING:
 
     from ..factor.holdings_attribution import HoldingsAttributionResult
     from .regimes import PortfolioRegimeResult
+    from .wealth_cones import WealthConeResult
 
 # Type aliases - use Union for Python 3.9 compatibility
 ArrayLike = Union[np.ndarray, pl.Series, "pd.Series", "list[float]"]
@@ -436,6 +437,45 @@ class PortfolioAnalysis:
         from .regimes import analyze_regimes
 
         return analyze_regimes(self, live_start=live_start)
+
+    def compute_wealth_cones(
+        self,
+        *,
+        live_start: date | datetime | str,
+        horizon: int,
+        n_samples: int = 1000,
+        method: Literal["iid", "stationary"] = "iid",
+        seed: int | None = 0,
+        initial_capital: float = 1.0,
+        block_size: float | None = None,
+        quantiles: Sequence[float] = (0.025, 0.5, 0.975),
+        cone_std: Sequence[float] = (1.0, 1.5, 2.0),
+        horizon_unit: Literal["observations"] = "observations",
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    ) -> WealthConeResult:
+        """Simulate forward wealth from strictly pre-live observed returns.
+
+        Observation steps are not calendar days. Actual live rows overlay the
+        forecast but cannot influence its training sample or draws. IID and
+        circular stationary bootstrap share existing compounding/resampling
+        kernels; benchmark draws retain paired observation membership.
+        """
+        from .wealth_cones import analyze_wealth_cones
+
+        return analyze_wealth_cones(
+            self,
+            live_start=live_start,
+            horizon=horizon,
+            n_samples=n_samples,
+            method=method,
+            seed=seed,
+            initial_capital=initial_capital,
+            block_size=block_size,
+            quantiles=quantiles,
+            cone_std=cone_std,
+            horizon_unit=horizon_unit,
+            calendar=calendar,
+        )
 
     def compute_holdings_analysis(
         self,

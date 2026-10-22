@@ -63,6 +63,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
     RollingMetricsResult,
 )
 from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import TransactionAnalysisResult
+from ml4t.diagnostic.evaluation.portfolio_analysis.wealth_cones import (
+    WealthConeResult,
+    analyze_wealth_cones,
+)
 
 __all__ = [
     "analyze_intraday_exposure",
@@ -78,6 +82,8 @@ __all__ = [
     "summarize_round_trips",
     # Result classes
     "PortfolioRegimeResult",
+    "WealthConeResult",
+    "analyze_wealth_cones",
     "PortfolioMetrics",
     "RollingMetricsResult",
     "DrawdownPeriod",
