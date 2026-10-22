@@ -367,6 +367,36 @@ jobs:
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             python -I examples/portfolio_intraday.py --estimate \
             --report artifacts/fifo/estimated-intraday.html
+      - name: Run complete capacity workflows from installed wheel
+        shell: bash
+        run: |
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_evaluation/test_portfolio_capacity.py \
+            tests/test_compat/test_pyfolio_capacity.py tests/test_compat/test_pyfolio_capacity_sheet.py \
+            tests/test_visualization/test_capacity_report.py
+          mkdir -p artifacts/capacity
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" \
+            python -I examples/portfolio_capacity.py --compare \
+            --output artifacts/capacity/native.html \
+            --familiar-report artifacts/capacity/familiar.html
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "ml4t-data==0.2.1" --with pytest \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_integration/test_capacity_data_provider.py
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd" \
+            --with pytest \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_integration/test_capacity_backtest.py
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-
