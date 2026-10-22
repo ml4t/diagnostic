@@ -174,6 +174,12 @@ def test_complete_information_report_matches_actual_reference_sheets_and_their_s
         actual = result.get_table("group_ic_by_date" if by_group else "ic_by_date").to_pandas()
         keys = ["date", "group"] if by_group else ["date"]
         actual = actual.pivot(index=keys, columns="return_column", values="ic").sort_index()
+        if by_group:
+            assert actual.index.to_list() == expected.sort_index().index.to_list()
+            for comparison in (actual, expected):
+                comparison.index = comparison.index.set_levels(
+                    comparison.index.levels[1].astype(object), level=1
+                )
         pd.testing.assert_frame_equal(
             actual,
             expected.sort_index(),
