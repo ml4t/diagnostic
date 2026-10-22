@@ -26,6 +26,7 @@ from ml4t.diagnostic.visualization.core import (
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.portfolio_analysis import (
+        CapacityAnalysisResult,
         HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
@@ -73,6 +74,7 @@ class PortfolioTearSheet:
     holdings: HoldingsAnalysisResult | None = None
     availability: dict[str, dict[str, Any]] = field(default_factory=dict)
     transactions: TransactionAnalysisResult | None = None
+    capacity: CapacityAnalysisResult | None = None
     round_trips: RoundTripResult | None = None
     round_trip_statistics: RoundTripStatisticsResult | None = None
     round_trip_attribution: pl.DataFrame | None = None
@@ -219,6 +221,9 @@ class PortfolioTearSheet:
             font-size: 16px;
         }}
         .figure-note {{ font-size: 13px; line-height: 1.5; }}
+        .capacity-table {{ border-collapse: collapse; font: inherit; font-size: 14px; }}
+        .capacity-table th, .capacity-table td {{ padding: 6px 8px; text-align: left;
+            border-bottom: 1px solid {COLORS["silver"]}; white-space: nowrap; }}
     </style>
 </head>
 <body>
@@ -241,6 +246,10 @@ class PortfolioTearSheet:
             for title, regimes in (("Stress windows", self.stress), ("Live split", self.live)):
                 if regimes is not None:
                     html_parts.append(regime_tables_html(regimes, title))
+        if self.capacity is not None:
+            from .capacity_plots import _capacity_tables
+
+            html_parts.append(_capacity_tables(self.capacity))
         if self.round_trip_statistics is not None:
             from .round_trip_plots import _round_trip_tables_html
 
@@ -331,6 +340,7 @@ class PortfolioTearSheet:
             "holdings": holdings_dict(self.holdings),
             "intraday": holdings_dict(self.intraday),
             "availability": deepcopy(self.availability),
+            "capacity": None if self.capacity is None else json.loads(self.capacity.to_json()),
             "round_trips": _round_trip_export(self),
             "stress": None if self.stress is None else json.loads(self.stress.to_json()),
             "live": None if self.live is None else json.loads(self.live.to_json()),
@@ -368,6 +378,7 @@ def create_portfolio_dashboard(
     *,
     holdings: HoldingsAnalysisResult | None = None,
     transactions: TransactionAnalysisResult | None = None,
+    capacity: CapacityAnalysisResult | None = None,
     intraday: HoldingsAnalysisResult | None = None,
     stress: PortfolioRegimeResult | None = None,
     live: PortfolioRegimeResult | None = None,
@@ -407,6 +418,9 @@ def create_portfolio_dashboard(
         Requested but absent results have an explicit availability reason.
     transactions : TransactionAnalysisResult, optional
         Prepared actual execution activity and incremental-cost scenarios.
+    capacity : CapacityAnalysisResult, optional
+        Prepared supplied-market liquidity and hypothetical capital scenarios.
+        Exact observation keys and any supplied returns must match this analysis.
     intraday : HoldingsAnalysisResult, optional
         Explicit complete intraday snapshots on their own observation clock.
         They are not resampled or joined onto return/EOD observations. Reported
@@ -441,6 +455,18 @@ def create_portfolio_dashboard(
     }
     prepared = None
     prepared_transactions = None
+    if capacity is not None:
+        from ml4t.diagnostic.evaluation.portfolio_analysis import CapacityAnalysisResult
+
+        if not isinstance(capacity, CapacityAnalysisResult):
+            raise TypeError("capacity must be a prepared CapacityAnalysisResult")
+        dates = capacity.timeline["date"]
+        if dates.dtype != analysis.dates.dtype or not dates.equals(analysis.dates):
+            raise ValueError("capacity must match the exact analysis observation keys")
+        if not capacity.observations.is_empty() and not capacity.observations.equals(
+            pl.DataFrame({"date": analysis.dates, "return": analysis.returns})
+        ):
+            raise ValueError("capacity must match the exact analysis return observations")
     prepared_intraday = None
     from .regime_plots import (
         regime_figures,
@@ -648,6 +674,14 @@ def create_portfolio_dashboard(
         )
         figures.update(transaction_figures)
         availability.update(transaction_availability)
+    if capacity is not None:
+        from .capacity_plots import _capacity_figures
+
+        capacity_figures, capacity_availability = _capacity_figures(
+            capacity, theme, height_per_row, width, analysis._periods_per_year, analysis._risk_free
+        )
+        figures.update(capacity_figures)
+        availability.update(capacity_availability)
     if prepared_intraday is not None and prepared_intraday.timeline.height:
         from .holdings_plots import _holdings_figures
 
@@ -712,6 +746,7 @@ def create_portfolio_dashboard(
         holdings=prepared,
         availability=availability,
         transactions=prepared_transactions,
+        capacity=capacity,
         intraday=prepared_intraday,
         stress=prepared_stress,
         live=prepared_live,

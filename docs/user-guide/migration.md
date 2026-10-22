@@ -2575,10 +2575,14 @@ reasons as HTML. Install IPython and nbformat in the notebook kernel and use a
 Plotly-compatible frontend. `report.show(compact=True)` remains the four-panel
 returns overview; it does not display the prepared holdings panels.
 
-These are observed prepared-holdings panels, not the complete Pyfolio positions
-tear sheet or all portfolio reports. Calendar-aware ingestion, intraday
-reconstruction, transactions/cost scenarios, risk/capacity/round-trip workflows
-and full Alphalens/Pyfolio composition remain accepted work.
+These observed prepared-holdings panels do not establish the complete Pyfolio positions
+tear sheet or all portfolio reports. The separately tested unreleased
+[supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine),
+[actual transaction analysis](#analyze-actual-transactions-and-incremental-costs) and
+[capacity workflow](#supplied-market-capacity-and-impact-scenarios-unreleased) have their own
+methods and coverage below or above. Full positions-sheet composition, intraday reconstruction,
+round trips, unqualified risk/report options and complete Alphalens/Pyfolio composition remain
+accepted work.
 
 ### Retain raw exposure when equity cannot normalize it
 
@@ -2681,18 +2685,145 @@ explicit daily input date. It does not establish exchange-session alignment,
 intraday aggregation or AGB support. Invalid-NAV reference divisions are
 recorded as differences, not parity targets.
 
-For owned actual-fill ingestion, unknown-fee handling, incremental costs and
-explicit denominator/calendar choices, use the transaction workflow above.
-The older activity bridge in this subsection has its own narrower contract;
-passing raw rows to that report is not a substitute for prepared analysis.
+For direct supplied-frame ingestion, unknown fees, extra-cost scenarios and explicit
+observation/session grouping, use the newer
+[actual-transaction workflow](#analyze-actual-transactions-and-incremental-costs).
+The earlier bridge example here does not qualify those methods. External-flow adjustments
+and complete original-sheet options remain separate accepted work.
 The full performance report still requires valid simple returns: a negative-NAV
 step below -100%, or a later 0/0 return after NAV reaches zero, is not supported
 by the current performance workflow. Standalone activity analysis does not
 remove those restrictions.
 
+### Supplied-market capacity and impact scenarios (unreleased)
+
+Evaluate Diagnostic when you want to combine supplied account inputs, explicit market-coverage
+checks and typed capacity results in the existing portfolio report. The native result can be
+exported as JSON without losing nanosecond keys or unbounded durations. This is a hypothetical
+liquidity analysis, not a fitted execution model or a speed claim.
+
+The runnable [capacity example](https://github.com/ml4t/diagnostic/blob/5bc2dbbce947d072b500cbc88a6508021eceac23/examples/portfolio_capacity.py)
+constructs a consistent two-asset toy account with actual stated fills, then runs:
+
+```python
+import pandas as pd
+from ml4t.diagnostic.evaluation import PortfolioAnalysis
+
+dates = pd.date_range("2025-01-13", periods=3, tz="UTC")
+empty_fills = pd.DataFrame({
+    "timestamp": pd.DatetimeIndex([], tz="UTC"),
+    "asset": pd.Series(dtype=str),
+    "quantity": pd.Series(dtype=float),
+    "price": pd.Series(dtype=float),
+})
+analysis = PortfolioAnalysis.from_frames(
+    pd.Series([0.0, 0.001, -1 / 1001], index=dates),
+    positions=pd.DataFrame({"A": [100.0, 101.0, 100.0], "cash": 900.0}, index=dates),
+    valuations=pd.DataFrame({"equity": [1000.0, 1001.0, 1000.0], "cash": 900.0}, index=dates),
+    transactions=empty_fills,
+    transaction_timestamp_col="timestamp",
+    complete_snapshots=True,
+    calendar=None,
+)
+market_data = pd.DataFrame({
+    "date": dates, "asset": ["A"] * 3,
+    "price": [10.0, 10.1, 10.0], "volume": [10_000.0] * 3,
+})
+capacity_result = analysis.compute_capacity(
+    market_data,
+    currency="USD",
+    price_basis="raw",
+    volume_basis="raw",
+    participation=0.1,
+    lookback=1,
+    base_capital=1000,
+    scenario_capitals=[1000, 2000, 3000],
+)
+analysis.create_tear_sheet(capacity=capacity_result).save_html("capacity.html")
+print("Capacity report preserves the explicit empty actual ledger")
+```
+
+`analysis` uses the owned `PortfolioAnalysis.from_frames` boundary. Positions are complete,
+signed account-currency marked values; fills retain actual quantities and point multipliers.
+Market data uses the existing `FeedSpec` timestamp, asset, price and volume mappings. Declare one
+common currency and matching price/share-volume adjustment basis. Diagnostic performs no FX,
+corporate-action adjustment, provider acquisition or trade simulation here. A market multiplier
+defaults to one; supplied execution multipliers must agree. Missing market data is not filled.
+
+Run the complete account-to-report workflow, and optionally compare the actual reference:
+
+```bash
+uv run --extra viz python examples/portfolio_capacity.py --output capacity.html
+uv run --extra viz --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/portfolio_capacity.py --compare --output capacity-reference.html
+uv run --extra viz --with ml4t-data==0.2.1 python examples/portfolio_capacity.py --data-provider --output provider-capacity.html
+uv run --extra viz python examples/portfolio_capacity.py --familiar-report familiar-capacity.html
+```
+
+The provider command uses the actual offline `SyntheticProvider`, not observed exchange liquidity.
+If an older single-symbol provider omits its identity column, the example carries the explicit
+requested symbol alongside those bars. It never infers an asset from prices or row positions,
+and it rejects a contradictory returned identity. Published Data 0.2.1 supplies that column itself.
+No Data or Reloaded installation is required for the supplied-input command. The example prints
+installed package versions. These new APIs belong to an unreleased source/wheel candidate, not
+the immutable published Diagnostic 0.1.9 distribution.
+
+For familiar calls, change the import to
+`from ml4t.diagnostic.compat.pyfolio import capacity`. The five capacity functions retain pandas
+labels and their distinct legacy conventions: fixed capital multiplied by signed NAV allocation,
+trimmed row windows, inclusive recent liquidation versus strict recent transaction civil-day
+cutoffs, and compounded closing-NAV impact. `plot_capacity_sweep` in `compat.pyfolio.plotting`
+returns Plotly instead of Matplotlib; it retains the capital grid and stop-before-Sharpe-below-minus-one
+rule, with explicit optional `periods_per_year`. Sharpe is dimensionless. Native extra-impact
+scenarios instead use beginning-period NAV and actual marked position dollars. Neither route
+deducts observed fees in supplied net returns again.
+
+Liquidation uses `mean(price * volume * multiplier).shift(1)`, not a product of separate means
+or future volume. Native observation windows retain the common supplied clock and asset holes;
+`window_unit="session"` also retains missing scheduled rows. Calendar resolution is explicit
+argument, then declared market/account feed, then NYSE; explicit `calendar=None` preserves exact
+row keys. Delayed supplied `known_at_col` observations cannot enter an earlier decision.
+Recent native summaries count observations, not elapsed civil days.
+Capacity plots retain distinct nanosecond observations on equal-spaced observation axes with
+exact keys on hover. A complete-book absent asset is plotted at zero exposure; an unknown
+market denominator or unbounded liquidation time remains a gap, not zero. Finer market-key
+precision is used internally without changing the authoritative account/report observation keys.
+
+Material corrections relative to Pyfolio 0.10.0 are deliberate. Its daily transaction helper
+raises on two traded assets sharing a date; the adapter retains both asset/date records.
+Its liquidation helper replaces known zero volume with NaN; Diagnostic reports an open position
+as unbounded. Missing active market volume remains unavailable in impact scenarios rather than
+being summed into a zero penalty. Native reports name unavailable and unbounded cases and do
+not draw unbounded duration as zero. Defined reference liquidation, daily transaction, summary
+and impact cases are compared separately from these independent corrections.
+
+The unreleased `compat.pyfolio.tears.create_capacity_tear_sheet` composes all four familiar
+full/recent liquidation/participation tables and the capital-performance sweep. It retains
+`liquidation_daily_vol_limit`, `trade_daily_vol_limit`, `last_n_days`,
+`days_to_liquidate_limit` and the original `estimate_intraday="infer"`, forced and disabled
+choices. It reuses the estimator described above, not a second account-reconstruction engine.
+Tied peak candidates remain separate dated observations; the worst-row allocation comes from
+that same candidate, not a Series of ambiguous duplicate-date values. Such retrospective
+estimates are not observed inventory or causal intraday liquidity.
+
+Both liquidation views honor the caller's threshold. Actual Pyfolio 0.10.0 instead hardcodes
+`> 1` for the recent view and prints a 20% assumption even when a different participation limit
+was requested. The guide tests the actual original full sheet, its four rendered tables and
+Matplotlib curve against the same supplied inputs, and separately verifies those corrections.
+Recent helper windows count civil days from their respective supplied endpoints, not exchange
+sessions. Unknown estimates remain visible as unavailable; unbounded risk is not zero.
+
+The familiar function returns offline HTML or its saved path, replacing implicit notebook
+display. `return_fig=True` returns the single Plotly sweep, not a Matplotlib Figure;
+`output_file` still saves every table in that mode. Optional `periods_per_year` and `impact`
+make the annualization scale and hypothetical coefficient explicit. The original fixed-capital,
+five-market-row liquidation and closing-NAV impact conventions remain different from the native
+result. These capacity routes do not certify all Pyfolio reports or the combined full sheet.
+Retain Pyfolio for unqualified report choices until installed-artifact and supported-platform
+evidence covers the workflow you need.
+
 Selected unreleased Diagnostic workflows above implement dated stress/live
-analysis, training-only cones, actual FIFO and supplied-holdings attribution.
-Capacity has its own owning implementation. Their existence does not establish
-one-call equivalence for Pyfolio's full collection. Retain Pyfolio for any
-unqualified combined report, option or notebook route, and compare annualization,
-benchmark alignment, cash and cost conventions before comparing metrics.
+analysis, training-only cones, actual FIFO, supplied-market capacity and
+supplied-holdings attribution. Their existence does not establish one-call
+equivalence for Pyfolio's full collection. Retain Pyfolio for any unqualified
+combined report, option or notebook route, and compare annualization, benchmark
+alignment, cash and cost conventions before comparing metrics.
