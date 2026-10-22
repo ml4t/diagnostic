@@ -218,6 +218,190 @@ def test_return_report_cannot_fit_on_dates_hidden_from_its_requested_return_grid
         analyze_signal_returns(panel, annualization_factors={"1D": 2, "3D": 2 / 3}, date_grid=clock)
 
 
+def test_prepared_sparse_bucket_spread_selects_actual_extremes_not_bucket_count():
+    pytest.importorskip("plotly")
+    from ml4t.diagnostic import analyze_prepared_signal
+    from ml4t.diagnostic.visualization.signal import plot_spread_timeseries
+
+    data = _panel().data.with_columns(pl.col("quantile").replace_strict({1: 2, 2: 9}))
+    model = analyze_prepared_signal(
+        data, return_columns=["1D", "3D"], min_assets=2
+    ).to_quantile_result()
+    figure = plot_spread_timeseries(model, period="1D")
+    np.testing.assert_allclose(figure.data[0].y, [1 / 16, 1 / 16, 1 / 32])
+    with pytest.raises(ValueError, match="quantile|bucket"):
+        plot_spread_timeseries(model, period="1D", lower_quantile=1)
+
+
+def test_owned_return_chart_bridge_retains_date_counts_display_errors_and_missing_inference():
+    from ml4t.diagnostic.signal import analyze_signal_returns
+
+    result = analyze_signal_returns(
+        _panel(),
+        annualization_factors={"1D": 2, "3D": 2 / 3},
+        rate_conversion_factors={"1D": 1, "3D": 1 / 3},
+    )
+    model = result.to_quantile_result("3D")
+    assert model.count_by_quantile == {"Q1": 3, "Q2": 3}
+    assert model.mean_returns["3D"]["Q2"] == pytest.approx((17343 / 16384) ** (1 / 3) - 1)
+    raw = np.array([663 / 8192, 1279 / 16384, 17 / 1024])
+    assert model.std_returns["3D"]["Q2"] == pytest.approx(np.std(raw, ddof=1) / np.sqrt(3))
+    assert model.get_monotonicity("3D") == (None, "unavailable")
+    assert np.isnan(model.spread_t_stat["3D"])
+    assert model.get_dataframe("observations")["n_obs"].to_list() == [1] * 6
+    with pytest.raises(ValueError, match="return|period|column"):
+        result.to_quantile_result("absent")
+
+
+def test_owned_returns_renderer_exposes_every_selected_horizon_and_never_compounds_display_rates(
+    tmp_path,
+):
+    pytest.importorskip("plotly")
+    from ml4t.diagnostic.signal import analyze_signal_returns
+    from ml4t.diagnostic.visualization.signal import (
+        generate_signal_returns_report,
+        plot_signal_returns,
+    )
+
+    result = analyze_signal_returns(
+        _panel(),
+        annualization_factors={"1D": 2, "3D": 2 / 3},
+        rate_conversion_factors={"1D": 1, "3D": 1 / 3},
+        spread_exposure="unit_gross",
+    )
+    figures = plot_signal_returns(result, rolling_window=2, bandwidth=0.5)
+    assert len(figures) == 10
+    for column in ("1D", "3D"):
+        selected = [figure for figure in figures if figure.layout.meta["return_column"] == column]
+        assert len(selected) == 5
+        paths = result.get_table("quantile_paths").filter(
+            (pl.col("return_column") == column) & (pl.col("quantile") == 2)
+        )
+        cumulative = next(
+            figure
+            for figure in selected
+            if figure.layout.meta["analysis"] == "quantile_cumulative_returns"
+        )
+        np.testing.assert_allclose(cumulative.data[1].y, paths["wealth"] - 1)
+        spread = next(
+            figure for figure in selected if figure.layout.meta["analysis"] == "quantile_spread"
+        )
+        expected = result.get_table("spread_observations").filter(pl.col("return_column") == column)
+        np.testing.assert_allclose(spread.data[0].y, expected["spread"])
+        assert spread.layout.meta["exposure_scale"] == 0.5
+        assert spread.layout.meta["bandwidth"] == 0.5
+    target = tmp_path / "returns.html"
+    assert generate_signal_returns_report(result, output_file=target) == str(target)
+    html = target.read_text()
+    assert html.count('class="plot-container"') == 10
+    assert "annual_alpha" in html and "beta" in html
+    assert "dimensionless" in html and "not self-financing" in html
+    assert "sample standard error" in html
+    target.write_text("retained")
+    with pytest.raises(ValueError, match="rolling_window"):
+        generate_signal_returns_report(result, output_file=target, rolling_window=0)
+    assert target.read_text() == "retained"
+
+
+def test_owned_return_cumulative_charts_retain_nanosecond_keys_and_group_means():
+    pytest.importorskip("plotly")
+    import runpy
+    from pathlib import Path
+
+    from ml4t.diagnostic.signal import analyze_signal_returns
+    from ml4t.diagnostic.visualization.signal import plot_signal_returns
+
+    fixture = (
+        Path(__file__).resolve().parents[1] / "test_compat/test_alphalens_information_sheet.py"
+    )
+    data = runpy.run_path(str(fixture))["_price_panel"]()
+    panel = PreparedSignalPanel.from_prepared(data, return_columns=["1D", "2D"], calendar=None)
+    result = analyze_signal_returns(
+        panel, annualization_factors={"1D": 252, "2D": 126}, by_group=True
+    )
+    figures = plot_signal_returns(result)
+    assert len(figures) == 14
+    cumulative = next(
+        figure
+        for figure in figures
+        if figure.layout.meta["analysis"] == "quantile_cumulative_returns"
+    )
+    expected = data.index.get_level_values("date").unique()
+    assert [pd.Timestamp(value).value for value in cumulative.data[0].x] == expected.asi8.tolist()
+    assert cumulative.layout.xaxis.type == "category"
+    groups = [
+        figure for figure in figures if figure.layout.meta["analysis"] == "group_quantile_mean"
+    ]
+    assert len(groups) == 4
+    for figure in groups:
+        sample = (
+            result.get_table("group_quantile_statistics")
+            .filter(
+                (pl.col("group") == figure.layout.meta["group"])
+                & (pl.col("return_column") == figure.layout.meta["return_column"])
+            )
+            .sort("quantile")
+        )
+        np.testing.assert_allclose(figure.data[0].y, sample["display_mean"])
+
+
+@pytest.mark.parametrize("width", [375, 1200])
+def test_complete_owned_returns_browser_keeps_all_panels_readable_offline(width, tmp_path):
+    playwright = pytest.importorskip("playwright.sync_api")
+    pytest.importorskip("plotly")
+    import importlib.util
+    import shutil
+    from pathlib import Path
+
+    from ml4t.diagnostic.signal import analyze_signal_returns
+    from ml4t.diagnostic.visualization.signal import generate_signal_returns_report
+
+    result = analyze_signal_returns(_panel(), annualization_factors={"1D": 2, "3D": 2 / 3})
+    target = tmp_path / "returns.html"
+    generate_signal_returns_report(result, output_file=target)
+    with playwright.sync_playwright() as runtime:
+        executable = None
+        if importlib.util.find_spec("choreographer"):
+            from choreographer.browsers.chromium import Chromium
+
+            executable = Chromium.find_browser(skip_local=False)
+        executable = executable or shutil.which("google-chrome") or shutil.which("chromium")
+        if executable is None and Path(runtime.chromium.executable_path).is_file():
+            executable = runtime.chromium.executable_path
+        assert executable is not None, "An actual Chrome/Chromium browser must be provisioned"
+        browser = runtime.chromium.launch(executable_path=executable, headless=True)
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 1000})
+            page.route("http://**/*", lambda route: route.abort())
+            page.route("https://**/*", lambda route: route.abort())
+            page.goto(target.as_uri(), timeout=90_000)
+            page.wait_for_function(
+                "document.querySelectorAll('.js-plotly-plot').length===10 && [...document.querySelectorAll('.js-plotly-plot')].every(p=>p._fullLayout)"
+            )
+            measured = page.evaluate("""() => {
+                const prose=getComputedStyle(document.querySelector('.section-text'));
+                return {proseSize:parseFloat(prose.fontSize),proseFamily:prose.fontFamily,
+                    overflow:document.documentElement.scrollWidth>innerWidth,
+                    plots:[...document.querySelectorAll('.js-plotly-plot')].map(plot=>{
+                        const box=plot.getBoundingClientRect();
+                        const labels=[...plot.querySelectorAll('.xtick text,.ytick text,.xtitle,.ytitle,.legendtext')].filter(n=>n.textContent.trim()).map(n=>({size:parseFloat(getComputedStyle(n).fontSize),family:getComputedStyle(n).fontFamily}));
+                        const clipped=[...plot.querySelectorAll('.gtitle,.xtick text,.ytick text,.xtitle,.ytitle,.annotation-text,.legendtext')].filter(n=>{const b=n.getBoundingClientRect();return b.width>0&&b.height>0&&(b.left<box.left-1||b.right>box.right+1||b.top<box.top-1||b.bottom>box.bottom+1)}).map(n=>n.textContent);
+                        return {analysis:plot.layout.meta.analysis,return_column:plot.layout.meta.return_column,labels,clipped};
+                    })};
+            }""")
+        finally:
+            browser.close()
+    assert not measured["overflow"] and len(measured["plots"]) == 10
+    assert {plot["return_column"] for plot in measured["plots"]} == {"1D", "3D"}
+    for plot in measured["plots"]:
+        assert plot["labels"] and not plot["clipped"], plot
+        assert all(
+            14 <= label["size"] <= measured["proseSize"]
+            and label["family"] == measured["proseFamily"]
+            for label in plot["labels"]
+        ), plot
+
+
 @pytest.mark.parametrize("demeaned", [False, True])
 @pytest.mark.parametrize("group_adjust", [False, True])
 @pytest.mark.parametrize("by_group", [False, True])

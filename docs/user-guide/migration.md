@@ -1577,8 +1577,31 @@ half. `date_grid` must retain every observed input date; additional requested
 cells have unknown returns, zero observed counts and `row_present=False` in
 `quantile_output_grid`. Wealth follows the existing explicit NaN-as-flat product
 without relabeling missing returns as observed zeros. These horizon-return paths
-are not self-financing accounts. Complete return/summary/full-sheet rendering
-and original notebook qualification remain separate work in this source change.
+are not self-financing accounts.
+
+Render the retained samples through the existing quantile charts:
+
+```python
+from ml4t.diagnostic.visualization.signal import generate_signal_returns_report, plot_signal_returns
+
+return_figures = plot_signal_returns(return_analysis)
+assert len(return_figures) == 10  # Five actual panels per retained horizon.
+generate_signal_returns_report(return_analysis, output_file="owned_signal_returns.html")
+print("Owned signal returns report: raw wealth, dated distributions and descriptive errors")
+```
+
+The standalone HTML includes Plotly without requiring an external script request.
+Each horizon has mean/error bars, the actual dated-mean distribution, descriptive
+spread bands and any requested factor/quantile paths. Group summaries add mean
+bars without inventing dated group paths. Beta and wealth multiples are
+dimensionless; quantile cumulative returns are wealth minus one. Sparse bucket
+IDs and full timestamp precision survive the chart bridge. Sub-millisecond keys
+use observation-order axes with exact keys retained for inspection, not browser
+date rounding. `to_quantile_result(return_column)` adapts those same owned samples
+for existing charts; uncomputed inference remains unavailable. Native spread
+rolling windows default to 21 observations and bands to one propagated SE.
+Summary/full-sheet compositions, familiar returns-sheet options and original
+notebook qualification remain separate unfinished acceptance.
 
 ### Align observed-clock event paths
 

@@ -25,6 +25,7 @@ from ml4t.diagnostic.signal.quantile import (
 from ml4t.diagnostic.utils.validation import _align_datetime_key_resolution
 
 if TYPE_CHECKING:
+    from ml4t.diagnostic.results.signal_results import QuantileAnalysisResult
     from ml4t.diagnostic.signal.panel import PreparedSignalPanel
 
 _TABLES = (
@@ -65,6 +66,88 @@ class SignalReturnsResult:
     def metadata(self) -> dict:
         """Read independent method, exposure, clock and unit declarations."""
         return json.loads(self._metadata)
+
+    def to_quantile_result(
+        self, return_column: str, *, group: object | None = None
+    ) -> QuantileAnalysisResult:
+        """Adapt one retained horizon to the existing quantile chart model.
+
+        Counts describe dates in the equal-date aggregate; dated observations
+        retain their actual asset counts. Display means/errors never replace
+        the raw returns compounded for paths. Group views contain group means,
+        not invented dated group paths. Uncomputed inference stays unavailable.
+        """
+        from ml4t.diagnostic.results.signal_results import QuantileAnalysisResult
+
+        if return_column not in self.metadata["return_columns"]:
+            raise ValueError(f"unknown return column {return_column!r}")
+        table = "quantile_statistics" if group is None else "group_quantile_statistics"
+        statistics = self.get_table(table).filter(pl.col("return_column") == return_column)
+        if group is not None:
+            statistics = statistics.filter(pl.col("group") == group)
+            if statistics.is_empty():
+                raise ValueError(f"no retained quantile statistics for group {group!r}")
+        statistics = statistics.sort("quantile")
+        buckets = statistics["quantile"].to_list()
+        labels = [f"Q{bucket}" for bucket in buckets]
+
+        def numbers(column: str) -> dict[str, float]:
+            return {
+                label: float("nan") if value is None else float(value)
+                for label, value in zip(labels, statistics[column], strict=True)
+            }
+
+        observations = (
+            self.get_table("quantile_output_grid")
+            .filter(pl.col("return_column") == return_column)
+            .with_columns(
+                pl.col("mean").alias("raw_mean"),
+                pl.col("display_mean").alias("mean"),
+                pl.col("display_std").alias("std"),
+                pl.col("display_standard_error").alias("standard_error"),
+            )
+        )
+        paths = self.get_table("quantile_paths").filter(pl.col("return_column") == return_column)
+        dates, cumulative = None, None
+        if group is None and not paths.is_empty():
+            dates = [
+                value.isoformat()
+                for value in paths.select("date").unique().sort("date")["date"].to_pandas()
+            ]
+            cumulative = {
+                return_column: {
+                    label: (
+                        paths.filter(pl.col("quantile") == bucket).sort("date")["wealth"] - 1
+                    ).to_list()
+                    for label, bucket in zip(labels, buckets, strict=True)
+                }
+            }
+        unavailable = {return_column: float("nan")}
+        return QuantileAnalysisResult(
+            n_quantiles=len(buckets),
+            quantile_labels=labels,
+            quantile_ids=buckets,
+            periods=[return_column],
+            mean_returns={return_column: numbers("display_mean")},
+            std_returns={return_column: numbers("display_std")},
+            count_by_quantile=dict(zip(labels, statistics["n_obs"].to_list(), strict=True)),
+            spread_mean=unavailable,
+            spread_std=unavailable,
+            spread_t_stat=unavailable,
+            spread_p_value=unavailable,
+            spread_ci_lower=unavailable,
+            spread_ci_upper=unavailable,
+            is_monotonic={return_column: False},
+            monotonicity_direction={return_column: "unavailable"},
+            rank_correlation=unavailable,
+            observations_ipc_base64=base64.b64encode(
+                observations.write_ipc(None).getvalue()
+            ).decode("ascii")
+            if group is None
+            else None,
+            cumulative_returns=cumulative,
+            cumulative_dates=dates,
+        )
 
     def to_json(self) -> str:
         """Serialize typed snapshots without rounding or recomputing their samples."""

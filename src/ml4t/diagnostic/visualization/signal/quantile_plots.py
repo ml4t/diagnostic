@@ -9,7 +9,6 @@ This module provides interactive Plotly visualizations for quantile analysis:
 
 from __future__ import annotations
 
-from datetime import datetime
 from html import escape
 from numbers import Real
 from typing import TYPE_CHECKING, Any
@@ -480,12 +479,17 @@ def plot_cumulative_returns(
 
     cum_returns = quantile_result.cumulative_returns[period]
     dates_raw = quantile_result.cumulative_dates
+    precise_keys = False
 
     # Convert dates or create fallback indices
     if dates_raw is not None and len(dates_raw) > 0:
         if isinstance(dates_raw[0], str):
+            import pandas as pd
+
             try:
-                dates: list[Any] = [datetime.fromisoformat(d) for d in dates_raw]
+                timestamps = [pd.Timestamp(value) for value in dates_raw]
+                dates: list[Any] = [value.isoformat() for value in timestamps]
+                precise_keys = any(value.value % 1_000_000 for value in timestamps)
             except ValueError:
                 dates = list(dates_raw)
         else:
@@ -547,6 +551,14 @@ def plot_cumulative_returns(
 
     # Format y-axis
     fig.update_yaxes(tickformat=".0%")
+    if precise_keys:
+        fig.update_xaxes(
+            type="category",
+            tickmode="array",
+            tickvals=dates,
+            ticktext=[str(index + 1) for index in range(len(dates))],
+            title_text="Observed date order",
+        )
 
     fig.update_layout(
         legend={
@@ -571,8 +583,9 @@ def plot_spread_timeseries(
     *,
     observations: pl.DataFrame | pd.DataFrame | None = None,
     upper_quantile: int | None = None,
-    lower_quantile: int = 1,
+    lower_quantile: int | None = None,
     bandwidth: float = 1.0,
+    exposure_scale: float = 1.0,
 ) -> go.Figure:
     """Plot actual dated bucket-mean differences and propagated sample errors.
 
@@ -612,6 +625,9 @@ def plot_spread_timeseries(
         the automatic top/bottom path requires at least two buckets.
     bandwidth : float
         Finite nonnegative multiplier of actual propagated standard errors.
+    exposure_scale : float
+        Explicit positive multiplier applied to both the difference and its SE.
+        The native default remains raw gross-two exposure; 0.5 selects unit gross.
 
     Returns
     -------
@@ -636,6 +652,13 @@ def plot_spread_timeseries(
         or bandwidth < 0
     ):
         raise ValueError("bandwidth must be a finite nonnegative real multiplier")
+    if (
+        isinstance(exposure_scale, bool)
+        or not isinstance(exposure_scale, Real)
+        or not np.isfinite(exposure_scale)
+        or exposure_scale <= 0
+    ):
+        raise ValueError("exposure_scale must be a finite positive real multiplier")
     periods = quantile_result.periods
     if not periods:
         raise ValueError("No return periods are available for empirical spread plotting")
@@ -659,14 +682,15 @@ def plot_spread_timeseries(
     methods = values["return_adjustment"].unique().to_list()
     if len(methods) > 1:
         raise ValueError("selected observations mix return-adjustment methods")
+    bucket_ids = quantile_result.quantile_ids or list(range(1, quantile_result.n_quantiles + 1))
     spread_data = compute_quantile_spread(
         values,
-        upper_quantile=quantile_result.n_quantiles if upper_quantile is None else upper_quantile,
-        lower_quantile=lower_quantile,
+        upper_quantile=max(bucket_ids) if upper_quantile is None else upper_quantile,
+        lower_quantile=min(bucket_ids) if lower_quantile is None else lower_quantile,
         include_standard_error=bool(show_confidence),
     ).sort("date")
-    spread = spread_data["spread"].cast(pl.Float64).to_numpy()
-    errors = spread_data["standard_error"].cast(pl.Float64).to_numpy()
+    spread = spread_data["spread"].cast(pl.Float64).to_numpy() * exposure_scale
+    errors = spread_data["standard_error"].cast(pl.Float64).to_numpy() * exposure_scale
     if spread_data["date"].dtype.is_temporal():
         timestamps = [pd.Timestamp(value) for value in spread_data["date"].to_pandas()]
         dates = [value.isoformat() for value in timestamps]
@@ -743,7 +767,7 @@ def plot_spread_timeseries(
     # Zero line
     fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
 
-    summary_text = f"Raw +1 upper / -1 lower (gross two)<br>Defined observed pairs: {int(np.isfinite(spread).sum())}"
+    summary_text = f"+{exposure_scale:g} upper / -{exposure_scale:g} lower (gross {2 * exposure_scale:g})<br>Defined observed pairs: {int(np.isfinite(spread).sum())}"
     if show_confidence:
         summary_text += f"<br>Band: {bandwidth:g} × independent propagated SE"
         if not np.isfinite(errors).all():
@@ -779,7 +803,10 @@ def plot_spread_timeseries(
         meta={
             "return_unit": "decimal",
             "sample_unit": "date_bucket_mean_difference",
-            "exposure_convention": "long_upper_short_lower_unit_each",
+            "exposure_convention": "long_upper_short_lower_unit_each"
+            if exposure_scale == 1
+            else "long_upper_short_lower_scaled",
+            "exposure_scale": float(exposure_scale),
             "error_method": "independent_propagation" if show_confidence else "unavailable",
             "bandwidth": float(bandwidth),
             "rolling_window_observations": window,

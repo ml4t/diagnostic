@@ -11,6 +11,7 @@ Visualization primitives and report assembly for signals, features, portfolio an
 | `cv_plots.py` | Fold and timeline visualization |
 | `feature_plots.py`, `interaction_plots.py` | Feature importance and interaction charts |
 | `signal/` and `portfolio/` | Signal and portfolio plotting packages |
+| `signal/returns_plots.py` | Owned signal return samples, quantile/chart bridge, explicit raw-wealth and display-return reporting |
 | `portfolio.create_round_trip_dashboard` | Prepared FIFO statistics, lifetimes, Beta(1,1), distributions and asset/sector attribution through the existing `PortfolioTearSheet` renderer |
 | `compat.pyfolio.tears.create_round_trip_tear_sheet` | Familiar gross daily round-trip orchestration and completed-table plots reuse native kernels/renderer; explicit legacy definitions, estimated-denominator provenance and separately flagged terminal closes |
 | Portfolio `intraday=` preparation | Explicit complete intraday snapshots keep their own clock in the same renderer; no return/EOD resampling or continuous-time-peak inference |

@@ -79,6 +79,10 @@ from ml4t.diagnostic.visualization.signal.quantile_plots import (
     plot_quantile_returns_violin,
     plot_spread_timeseries,
 )
+from ml4t.diagnostic.visualization.signal.returns_plots import (
+    generate_signal_returns_report,
+    plot_signal_returns,
+)
 from ml4t.diagnostic.visualization.signal.turnover_plots import (
     generate_signal_turnover_report,
     plot_autocorrelation,
@@ -102,6 +106,8 @@ __all__ = [
     "plot_quantile_returns_violin",
     "plot_cumulative_returns",
     "plot_spread_timeseries",
+    "plot_signal_returns",
+    "generate_signal_returns_report",
     # Turnover plots
     "plot_top_bottom_turnover",
     "plot_autocorrelation",
