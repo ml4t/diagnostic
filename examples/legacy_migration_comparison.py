@@ -961,6 +961,42 @@ def show_signal_information_reports(output: Path) -> None:
     )
 
 
+def show_signal_turnover(output: Path) -> None:
+    from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+    from ml4t.diagnostic.signal import prepare_signal_panel
+    from ml4t.diagnostic.visualization.signal import generate_signal_turnover_report
+
+    dates = pd.bdate_range("2025-03-03", periods=14, tz="UTC")
+    changes = np.array([np.roll([0.01, 0.02, -0.01, -0.02], i) for i in range(13)])
+    prices = pd.DataFrame(
+        np.vstack([np.full(4, 100.0), 100 * np.cumprod(1 + changes, axis=0)]),
+        index=dates,
+        columns=list("ABCD"),
+    )
+    factor = (
+        prices.pct_change(fill_method=None).iloc[1:-1].stack(future_stack=True).rename("factor")
+    )
+    forward = (prices.shift(-1) / prices - 1).stack(future_stack=True).rename("1D").to_frame()
+    factor.index.names = forward.index.names = ["date", "asset"]
+    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0)
+    result = TurnoverAnalysisResult.from_observations(
+        panel.quantile_turnover(lags=(1, 2, 5)),
+        panel.rank_autocorrelation(lags=(1, 2, 5)),
+    )
+    assert panel.data.height == 48
+    means = result.get_dataframe("autocorrelation")
+    np.testing.assert_allclose(means["autocorrelation"], [0, -1, 0], atol=1e-12)
+    assert means["n_dates"].to_list() == [11, 10, 7]
+    path = generate_signal_turnover_report(result, output_file=output)
+    output.with_suffix(".json").write_text(result.model_dump_json(), encoding="utf-8")
+    restored = TurnoverAnalysisResult.model_validate_json(output.with_suffix(".json").read_text())
+    for name in ["turnover", "autocorrelation", "dated_turnover", "dated_autocorrelation"]:
+        assert restored.get_dataframe(name).equals(result.get_dataframe(name))
+    print(f"Complete turnover HTML: {path}")
+    print("6 panels: 3 membership lags and 3 rank lags; typed JSON exported")
+    print("Observed-date clock; defined rank dates at lags 1/2/5: 11/10/7")
+
+
 def show_supplied_transactions(output: Path | None = None) -> None:
     """Actual overnight fills, explicit turnover and extra costs, without a broker."""
     import polars as pl
@@ -1089,6 +1125,7 @@ def main() -> None:
             "events",
             "event-returns",
             "information",
+            "turnover",
             "transactions",
             "transactions-report",
         ),
@@ -1099,7 +1136,7 @@ def main() -> None:
         type=Path,
         help=(
             "HTML path for holdings-report, transactions-report, events, event-returns, "
-            "information or empyrical-tail"
+            "information, turnover or empyrical-tail"
         ),
     )
     arguments = parser.parse_args()
@@ -1113,6 +1150,7 @@ def main() -> None:
         "events",
         "event-returns",
         "information",
+        "turnover",
     ) or (task == "empyrical-tail" and arguments.output is not None):
         packages.append("plotly")
     if task in ("all", "empyrical"):
@@ -1123,6 +1161,9 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
+    if task == "turnover":
+        show_signal_turnover(arguments.output or Path("turnover-report.html"))
+        return
     if task == "empyrical-native":
         show_empyrical_native()
         return

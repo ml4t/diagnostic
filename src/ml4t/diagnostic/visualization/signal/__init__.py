@@ -78,7 +78,9 @@ from ml4t.diagnostic.visualization.signal.quantile_plots import (
     plot_spread_timeseries,
 )
 from ml4t.diagnostic.visualization.signal.turnover_plots import (
+    generate_signal_turnover_report,
     plot_autocorrelation,
+    plot_signal_turnover,
     plot_top_bottom_turnover,
 )
 
@@ -101,6 +103,8 @@ __all__ = [
     # Turnover plots
     "plot_top_bottom_turnover",
     "plot_autocorrelation",
+    "plot_signal_turnover",
+    "generate_signal_turnover_report",
     # Event study plots
     "plot_caar",
     "plot_event_heatmap",
