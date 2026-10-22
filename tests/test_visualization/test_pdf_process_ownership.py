@@ -1,6 +1,7 @@
 """Real rendered pages survive close failures, but not incomplete or crashed rendering."""
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -78,7 +79,7 @@ async def closed(self,*args,**kwargs):
         result=await original_close(self,*args,**kwargs)
         marker.write_text(json.dumps({'entered':True,'finished':True}))
         return result
-    if mode in ('shared_status','permanent_status','profile_sharing'):
+    if mode in ('shared_status','permanent_status'):
         return await original_close(self,*args,**kwargs)
     if mode=='exit7': os._exit(7)
     if mode=='close_hang': await asyncio.sleep(3600)
@@ -136,7 +137,7 @@ else:
                 for handle in read_handles: handle.close()
         _pdf_process._OwnedProcesses.observe=hold_first_progress
         _pdf_process._OwnedProcesses.terminate=terminate_then_release
-    if mode in ('shared_status','permanent_status'):
+    if mode in ('shared_status','permanent_status','profile_sharing'):
         import ctypes,threading
         from ctypes import wintypes
         api=ctypes.WinDLL('kernel32',use_last_error=True)
@@ -196,6 +197,10 @@ else:
                 except PermissionError as error:
                     assert error.winerror==32
                     actual_denials.append(error.winerror)
+                    observed.with_suffix('.fault.json').write_text(json.dumps({
+                        'denials':actual_denials,
+                        'directory':str(Path(self.process.args[-2]).parent),
+                    }))
                 else: raise AssertionError('Profile lock did not prevent deletion')
                 timer=threading.Timer(.2,release_sharing)
                 timer.daemon=True
@@ -377,6 +382,25 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows sharing denial required")
+def test_real_profile_sharing_fails_without_directory_cleanup_recovery(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    baseline = (
+        "import tempfile\nfrom ml4t.diagnostic.visualization import _pdf_process\n"
+        "_pdf_process._renderer_directory=tempfile.TemporaryDirectory\n"
+    )
+    with pytest.raises(AssertionError, match="PermissionError.*|WinError 32"):
+        _run_pdf_probe(baseline + _PROBE, ["profile_sharing", str(tmp_path / "report.pdf"), "0"])
+    from pathlib import Path
+
+    fault = json.loads((tmp_path / "report.processes.fault.json").read_text())
+    assert fault["denials"] == [32]
+    directory = Path(fault["directory"])
+    if directory.exists():
+        shutil.rmtree(directory)
 
 
 def test_owned_worker_preserves_packaged_and_supported_custom_plotlyjs(tmp_path, monkeypatch):
