@@ -37,6 +37,7 @@ PAGES = {
         "Alphalens statistical adapters: IC and explicit spread exposure checked",
         "Familiar factor regression: same-universe beta and compounded annual alpha",
         "Familiar persistence: actual bucket membership and full-date ranks",
+        "Familiar overview charts: supplied samples, bps and explicit Plotly exports",
         "Familiar turnover and event sheets retain native samples and supplied levels",
         "Owned signal returns preserve explicit scales and unavailable per-date errors",
         "Owned signal returns report: raw wealth, dated distributions and descriptive errors",

@@ -653,6 +653,38 @@ Pandas frequency metadata and all-unavailable object dtype follow the legacy
 sparse/full-grid alignment; native typed counts and statuses remain available
 through the separately named panel methods.
 
+The original overview's direct charts use the same analytical tables:
+
+```python
+from ml4t.diagnostic.compat.alphalens import plotting as familiar_plots
+
+adapter_bar = familiar_plots.plot_quantile_returns_bar(
+    performance.mean_return_by_quantile(adapter_clean, demeaned=False)[0],
+)
+assert np.allclose(adapter_bar.data[0].y, [1000, 2000])
+adapter_bar.write_html("familiar_quantile_means.html", include_plotlyjs=True)
+adapter_ic_figures = familiar_plots.plot_ic_ts(adapter_ic)
+assert len(adapter_ic_figures) == 2
+adapter_ic_figures[0].write_html("familiar_ic.html", include_plotlyjs=True)
+print("Familiar overview charts: supplied samples, bps and explicit Plotly exports")
+```
+
+These functions return Plotly figures, or a list for per-horizon/group panels;
+use `.show()` explicitly in notebook cells ending with a semicolon. Matplotlib
+`ax` reuse raises before output. Bar and violin ordinates are bps. Cumulative
+figures compound supplied raw observations into wealth multiples with the shared
+product kernel; their linear display replaces the reference's symmetric-log
+quantile axis. They do not infer daily execution accounts from a return label.
+Unknown group/bucket means remain absent, rather than copying the zero-height
+bars produced by pandas/Matplotlib for missing cells. No sample counts or standard
+errors are invented from supplied means. Native IC histograms use 25 bins, rather
+than the reference's automatic bin selection; the empirical missing-value mask
+is retained. Q-Q, rolling IC and month heatmaps reuse the existing native charts.
+The original `by_time="M"` call translates to an explicit month-end offset on
+pandas 3; it preserves the observation's civil month, not an exchange calendar.
+Other direct table/event plotting helpers and the original four notebook journeys
+still require qualification before a full Alphalens migration claim.
+
 IC preserves legacy per-column NaN propagation. Quantile means instead retain
 each supplied outcome's own available sample and give defined date means equal
 weight. Raw `compute_forward_returns` plus `quantize_factor` tables may retain

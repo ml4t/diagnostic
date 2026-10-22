@@ -43,6 +43,17 @@ def test_public_cleaner_to_ic_preserves_independently_ranked_dates_and_group_opt
     pd.testing.assert_frame_equal(frame, before)
 
 
+def test_original_overview_month_end_alias_survives_pandas_three_without_changing_month_membership():
+    frame, _, _ = _factor_data()
+    actual = al.performance.mean_information_coefficient(frame, by_time="M")
+    assert actual.index.tolist() == [
+        pd.Timestamp("2025-01-31", tz="UTC"),
+        pd.Timestamp("2025-02-28", tz="UTC"),
+    ]
+    np.testing.assert_allclose(actual["1D"], [0.16, -0.8], atol=1e-12)
+    np.testing.assert_allclose(actual["5D"], [-0.16, 0.8], atol=1e-12)
+
+
 def test_public_quantile_means_and_spread_keep_unit_gross_and_frozen_raw_definitions_separate():
     frame, dates, scales = _factor_data()
     means, errors = al.performance.mean_return_by_quantile(frame, by_date=True, demeaned=False)

@@ -581,6 +581,8 @@ def mean_information_coefficient(
     result = factor_information_coefficient(
         factor_data, group_adjust, by_group, reference_version=reference_version
     )
+    if by_time == "M":
+        by_time = pd.offsets.MonthEnd()
     grouping = ([pd.Grouper(freq=by_time)] if by_time is not None else []) + (
         ["group"] if by_group else []
     )

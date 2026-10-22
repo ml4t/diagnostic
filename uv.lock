@@ -1764,6 +1764,7 @@ viz = [
 dev = [
     { name = "hypothesis" },
     { name = "kaleido" },
+    { name = "lxml" },
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
     { name = "packaging" },
@@ -1788,6 +1789,7 @@ dev = [
 test = [
     { name = "hypothesis" },
     { name = "kaleido" },
+    { name = "lxml" },
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
     { name = "playwright" },
@@ -1870,6 +1872,7 @@ provides-extras = ["all", "backtest", "dashboard", "data", "dev", "docs", "facto
 dev = [
     { name = "hypothesis", specifier = ">=6.80.0" },
     { name = "kaleido", specifier = ">=1.5.0" },
+    { name = "lxml", specifier = ">=6.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "ml4t-backtest", specifier = ">=0.1.0b10" },
     { name = "packaging", specifier = "==26.3" },
@@ -1894,6 +1897,7 @@ dev = [
 test = [
     { name = "hypothesis", specifier = ">=6.80.0" },
     { name = "kaleido", specifier = ">=1.5.0" },
+    { name = "lxml", specifier = ">=6.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "ml4t-backtest", specifier = ">=0.1.0b10" },
     { name = "playwright", specifier = ">=1.64.0" },
