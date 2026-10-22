@@ -284,7 +284,78 @@ def plot_slippage_sensitivity(
     )
 
 
+def plot_capacity_sweep(
+    returns: pd.Series,
+    transactions: pd.DataFrame,
+    market_data: pd.DataFrame,
+    bt_starting_capital: float,
+    min_pv: int = 100000,
+    max_pv: int = 300000000,
+    step_size: int = 1000000,
+    ax: Any = None,
+    *,
+    periods_per_year: int = 252,
+    impact: float = 0.1,
+    **kwargs: Any,
+) -> go.Figure:
+    """Familiar fixed-share capital sweep with explicit annualization/model.
+
+    Stop before a ratio below -1, as in Pyfolio. Original missing returns retain
+    metric-specific omission; a newly unavailable active market penalty cannot
+    silently shorten that sample. The returned object is Plotly, not an Axes.
+    """
+    from ml4t.diagnostic.compat import empyrical as ep
+
+    from . import capacity
+
+    minimum = positive_integer(min_pv, "min_pv")
+    maximum = positive_integer(max_pv, "max_pv")
+    step = positive_integer(step_size, "step_size")
+    scale = positive_integer(periods_per_year, "periods_per_year")
+    if maximum <= minimum:
+        raise ValueError("max_pv must exceed min_pv (exclusive)")
+    figure = _figure("Capital Base Performance Sweep", "annualized Sharpe ratio", ax, kwargs)
+    daily = capacity.daily_txns_with_bar_data(transactions, market_data)
+    capitals, ratios, stopped_at = [], [], None
+    for capital in range(minimum, maximum, step):
+        adjusted = capacity.apply_slippage_penalty(
+            returns, daily, capital, bt_starting_capital, impact=impact
+        )
+        unavailable = (adjusted.isna() & returns.notna()).any()
+        ratio = np.nan if unavailable else ep.sharpe_ratio(adjusted, annualization=scale)
+        if ratio < -1:
+            stopped_at = capital
+            break
+        capitals.append(capital / 1e6)
+        ratios.append(float(ratio) if np.isfinite(ratio) else None)
+    figure.add_scatter(x=capitals, y=ratios, mode="lines+markers", name="Extra impact", **kwargs)
+    if not any(value is not None for value in ratios):
+        figure.add_annotation(
+            text="Unavailable: no finite Sharpe under the supplied sample and impact model.",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font_size=14,
+        )
+    figure.update_xaxes(title_text="starting capital (millions)")
+    figure.update_layout(
+        meta={
+            "analysis": "legacy_capacity",
+            "capital_units": "millions of the supplied common account/market currency; no FX",
+            "periods_per_year": scale,
+            "impact_coefficient": impact,
+            "nav_timing": "compounded_closing",
+            "stopped_at_capital": stopped_at,
+            "description": "Retrospective quadratic volume-share scenarios using observed closing marks and volume, not prospective executable liquidity. Net returns lose only extra hypothetical impact. Newly missing active market coverage remains unavailable; Sharpe is dimensionless.",
+        }
+    )
+    return figure
+
+
 __all__ = [
+    "plot_capacity_sweep",
     "plot_round_trip_lifetimes",
     "plot_prob_profit_trade",
     "show_profit_attribution",

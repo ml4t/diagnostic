@@ -18,6 +18,10 @@ from __future__ import annotations
 # Main analysis class
 from ml4t.diagnostic.evaluation.portfolio_analysis.analysis import PortfolioAnalysis
 from ml4t.diagnostic.evaluation.portfolio_analysis.benchmark import benchmark_batting_average
+from ml4t.diagnostic.evaluation.portfolio_analysis.capacity import (
+    CapacityAnalysisResult,
+    analyze_capacity,
+)
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo import RoundTripResult
 from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_statistics import (
     RoundTripStatisticsResult,
@@ -64,6 +68,8 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.results import (
 from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import TransactionAnalysisResult
 
 __all__ = [
+    "CapacityAnalysisResult",
+    "analyze_capacity",
     "analyze_intraday_exposure",
     "estimate_intraday_positions",
     "benchmark_batting_average",

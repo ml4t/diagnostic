@@ -35,6 +35,7 @@ from scipy import stats
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
+from .capacity import CapacityAnalysisResult, analyze_capacity
 from .fifo import RoundTripResult, reconstruct_round_trips
 from .frame_inputs import PortfolioInputData, normalize_portfolio_frames
 from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
@@ -294,6 +295,80 @@ class PortfolioAnalysis:
             turnover_denom=turnover_denom,
             turnover_method=turnover_method,
             incremental_bps=incremental_bps,
+        )
+
+    def compute_capacity(
+        self,
+        market_data: DataFrameLike,
+        *,
+        currency: str,
+        price_basis: str,
+        volume_basis: str,
+        participation: float = 0.1,
+        lookback: int = 5,
+        window_unit: Literal["observation", "session"] = "observation",
+        recent_window: int | None = 126,
+        feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+        timestamp_col: str | None = None,
+        entity_col: str | None = None,
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+        known_at_col: str | None = None,
+        base_capital: float | None = None,
+        scenario_capitals: Sequence[float] = (),
+        impact: float = 0.1,
+    ) -> CapacityAnalysisResult:
+        """Analyze supplied market liquidity without reconstructing account facts.
+
+        Requires complete owned from_frames holdings. Optional actual fills and
+        authoritative net returns reuse that boundary. An explicit market feed
+        supplies its own mappings/calendar metadata; otherwise the account feed
+        supplies temporal declarations and canonical market date/asset/price
+        mappings. Explicit calendar, including None, overrides either source.
+        See analyze_capacity for units, lag, coverage and scenario definitions.
+        """
+        inputs = self._input_data
+        if inputs is None or inputs.positions is None:
+            raise ValueError("capacity requires owned from_frames positions")
+        meta = inputs.metadata
+        if feed_spec is None:
+            feed_spec = replace(
+                FeedSpec.from_any(meta["feed_spec"]),
+                timestamp_col="date",
+                entity_col="asset",
+                price_col="price",
+            )
+            if calendar is UNSET_CALENDAR:
+                calendar = meta["calendar"]
+        positions = inputs.positions
+        if positions.columns == ["date"]:
+            positions = pl.DataFrame(
+                schema={
+                    "date": inputs.returns["date"].dtype,
+                    "asset": pl.String,
+                    "value": pl.Float64,
+                }
+            )
+        return analyze_capacity(
+            positions,
+            market_data,
+            currency=currency,
+            price_basis=price_basis,
+            volume_basis=volume_basis,
+            complete_snapshots=meta["complete_snapshots"],
+            transactions=inputs.transactions,
+            returns=inputs.returns,
+            participation=participation,
+            lookback=lookback,
+            window_unit=window_unit,
+            recent_window=recent_window,
+            feed_spec=feed_spec,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+            calendar=calendar,
+            known_at_col=known_at_col,
+            base_capital=base_capital,
+            scenario_capitals=scenario_capitals,
+            impact=impact,
         )
 
     def compute_intraday_estimate(
@@ -1091,6 +1166,7 @@ class PortfolioAnalysis:
         cost_info: dict[str, str] | None = None,
         *,
         transactions: TransactionAnalysisResult | None = None,
+        capacity: CapacityAnalysisResult | None = None,
         intraday: HoldingsAnalysisResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
@@ -1106,6 +1182,8 @@ class PortfolioAnalysis:
         transactions : TransactionAnalysisResult, optional
             Explicitly prepared actual-fill turnover and incremental cost scenarios.
             Computed results are rendered without selecting financial methods again.
+        capacity : CapacityAnalysisResult, optional
+            Explicitly prepared liquidity, coverage and capital scenarios.
         intraday : HoldingsAnalysisResult, optional
             Prepared complete intraday snapshots on their own independent clock.
 
@@ -1125,7 +1203,12 @@ class PortfolioAnalysis:
         ):
             holdings = self.compute_holdings_analysis()
         return create_portfolio_dashboard(
-            self, theme=theme, holdings=holdings, transactions=transactions, intraday=intraday
+            self,
+            theme=theme,
+            holdings=holdings,
+            transactions=transactions,
+            capacity=capacity,
+            intraday=intraday,
         )
 
 

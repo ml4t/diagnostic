@@ -17,6 +17,7 @@ from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_integer
 
 from . import perf_attrib
+from .capacity_sheet import create_capacity_tear_sheet
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -321,4 +322,8 @@ def create_perf_attrib_tear_sheet(
     return figures if return_fig else html
 
 
-__all__ = ["create_perf_attrib_tear_sheet", "create_round_trip_tear_sheet"]
+__all__ = [
+    "create_capacity_tear_sheet",
+    "create_perf_attrib_tear_sheet",
+    "create_round_trip_tear_sheet",
+]
