@@ -299,6 +299,7 @@ def compute_forward_returns(
         .set_index(["date", "asset"])
     )
     result = keys.restore(result).reindex(keys.original.index)
+    result.index = keys.original.index.copy()
     _set_frequency(result, frequency)
     result.attrs["diagnostic"] = {
         **metadata,
@@ -374,7 +375,9 @@ def get_clean_factor(
         .rename(columns={"quantile": "factor_quantile"})
     )
     result = keys.restore(result)
-    result = result.reindex(keys.original.index[keys.original.index.isin(result.index)])
+    retained_index = keys.original.index[keys.original.index.isin(result.index)]
+    result = result.reindex(retained_index)
+    result.index = retained_index.copy()
     columns = [*forward_returns.columns, "factor"]
     if "group" in result:
         result["group"] = result["group"].astype("category")
