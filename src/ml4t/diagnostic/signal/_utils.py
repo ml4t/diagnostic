@@ -229,8 +229,8 @@ def compute_forward_returns(
 
     Forward returns are computed on the full price universe (per asset) using
     the shared core metrics implementation, then joined back to signal rows.
-    This preserves trading-day semantics when factor dates are a subset of the
-    available price dates.
+    This preserves per-asset observation shifts when factor dates are a subset
+    of price dates; it does not establish sessions or scheduled-bar completeness.
 
     Parameters
     ----------

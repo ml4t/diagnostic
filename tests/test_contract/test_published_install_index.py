@@ -233,16 +233,30 @@ def test_install_still_fails_for_missing_or_corrupt_release(produced_wheels, tmp
     assert absent.returncode != 0, "Failed installation must not claim the target is installed"
 
 
-def test_stalled_real_installer_is_terminated_without_starting_overlapping_attempts(
-    produced_wheels, tmp_path
+@pytest.mark.parametrize("timeout", [0.000001, 2], ids=["before-index", "index-or-startup"])
+def test_bounded_real_installer_is_terminated_without_starting_overlapping_attempts(
+    produced_wheels, tmp_path, timeout
 ):
     python = _python(tmp_path)
     with _index(produced_wheels, "stall") as (origin, state):
-        result = _install(python, origin, attempts=3, timeout=2)
-        assert state["index_requests"] == 1
+        result = _install(python, origin, attempts=3, timeout=timeout)
+        # The deadline includes child startup, before any HTTP request is guaranteed.
+        assert state["index_requests"] in {0, 1}
         assert result.returncode == 124
         assert "timed out" in result.stdout
-        assert "attempt 2/" not in result.stdout
+        assert result.stdout.count("Published package install attempt") == 1
+    absent = subprocess.run(
+        [
+            str(python),
+            "-I",
+            "-c",
+            "import importlib.metadata; importlib.metadata.version('ml4t-diagnostic')",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert absent.returncode != 0, "Timed-out verification must not install the target"
 
 
 @pytest.mark.parametrize(

@@ -197,7 +197,7 @@ def compute_signal_ic(
 
 def extract_signal_ic_series(
     data: pl.DataFrame,
-    period: int,
+    period: int | str,
     method: str = "spearman",
     factor_col: str = "factor",
     date_col: str = "date",
@@ -210,8 +210,8 @@ def extract_signal_ic_series(
     ----------
     data : pl.DataFrame
         Factor data with factor and forward return columns.
-    period : int
-        Forward return period in days.
+    period : int or str
+        Integer-day convenience or exact supplied return-column selector.
     method : str, default "spearman"
         Correlation method ("spearman" or "pearson").
     factor_col : str, default "factor"
@@ -228,7 +228,7 @@ def extract_signal_ic_series(
     tuple[list[Any], list[float]]
         (dates, ic_values) for dates with valid IC.
     """
-    return_col = f"{period}D_fwd_return"
+    return_col = period if isinstance(period, str) else f"{period}D_fwd_return"
 
     ic_df = compute_signal_ic(
         data,

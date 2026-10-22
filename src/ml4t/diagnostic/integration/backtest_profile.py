@@ -8,7 +8,10 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset
 
+from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_integer
+from ml4t.diagnostic.integration._calendar import resolve_result_calendar
 from ml4t.diagnostic.integration.backtest_analytics import (
     compute_activity_metrics,
     compute_attribution_metrics,
@@ -65,7 +68,7 @@ class BacktestProfile:
     """Lazy analytical profile over a backtest result."""
 
     result: BacktestResult
-    calendar: str | None = None
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR
     benchmark: Any = None
     confidence_intervals: bool = False
     quote_coverage_threshold: float = 0.8
@@ -85,18 +88,26 @@ class BacktestProfile:
     _availability_cache: BacktestAvailability | None = field(default=None, init=False, repr=False)
     _summary_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        if self.annualization_factor is not None:
+            self.annualization_factor = positive_integer(
+                self.annualization_factor, "periods_per_year"
+            )
+
     @property
     def resolved_calendar(self) -> str | None:
-        """Return explicit calendar override or the result calendar."""
-        return self.calendar or (
-            self.result.config.resolved_calendar if self.result.config else None
-        )
+        """Resolve the explicit argument, declared feed calendar, then NYSE."""
+        return resolve_result_calendar(self.result, self.calendar)
 
     @property
     def periods_per_year(self) -> int:
         """Return annualization factor for the resolved calendar."""
         if self.annualization_factor is not None:
             return self.annualization_factor
+        if self.resolved_calendar is None:
+            raise ValueError(
+                "periods_per_year is required when calendar=None retains observation returns"
+            )
         return get_annualization_factor(self.resolved_calendar)
 
     @property
@@ -236,7 +247,9 @@ class BacktestProfile:
 
     @property
     def daily_returns(self) -> pl.Series:
-        """Return the session-aware daily return surface."""
+        """Return producer observations with None, otherwise calendar-aggregated returns."""
+        if self.resolved_calendar is None:
+            return self.result.to_returns_series().alias("daily_return")
         return self.result.to_daily_returns(calendar=self.resolved_calendar)
 
     @property
@@ -781,10 +794,12 @@ def _normalize_signal_surface(surface: pl.DataFrame) -> pl.DataFrame:
 
 def analyze_backtest_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     confidence_intervals: bool = False,
     quote_coverage_threshold: float = 0.8,
+    *,
+    periods_per_year: int | None = None,
 ) -> BacktestProfile:
     """Build a lazy analytical profile from a BacktestResult."""
     return BacktestProfile(
@@ -793,4 +808,5 @@ def analyze_backtest_result(
         benchmark=benchmark,
         confidence_intervals=confidence_intervals,
         quote_coverage_threshold=quote_coverage_threshold,
+        annualization_factor=periods_per_year,
     )

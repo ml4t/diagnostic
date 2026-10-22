@@ -6,13 +6,17 @@ import json
 import math
 import sqlite3
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset
 
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_integer
+from ml4t.diagnostic.integration._calendar import resolve_result_calendar
 from ml4t.diagnostic.integration.backtest_profile import (
     BacktestProfile,
 )
@@ -37,8 +41,8 @@ else:
         ) from exc
 
 
-def _resolve_calendar(result: BacktestResult, calendar: str | None) -> str | None:
-    return calendar or (result.config.resolved_calendar if result.config else None)
+def _resolve_calendar(result: BacktestResult, calendar: str | CalendarUnset | None) -> str | None:
+    return resolve_result_calendar(result, calendar)
 
 
 def _compact_rate(value: float | None) -> str | None:
@@ -196,7 +200,7 @@ def _build_report_metadata_from_result(
             if spec_dict.get("library_version") is not None
             else None
         ),
-        calendar=_resolve_calendar(result, None),
+        calendar=profile.resolved_calendar,
         execution_summary=execution_summary,
         cost_summary=cost_summary,
         data_summary=_build_data_summary(profile),
@@ -206,6 +210,11 @@ def _build_report_metadata_from_result(
 
 def _extract_daily_frame(result: BacktestResult, calendar: str | None) -> pl.DataFrame:
     resolved_calendar = _resolve_calendar(result, calendar)
+    if resolved_calendar is None:
+        equity = result.to_equity_dataframe()
+        return equity.select(pl.col("timestamp").alias("date")).with_columns(
+            result.to_returns_series().alias("return_pct"),
+        )
     session_aligned = result._auto_session_aligned(resolved_calendar)
     return result.to_daily_pnl(session_aligned=session_aligned)
 
@@ -268,12 +277,21 @@ def _normalize_tearsheet_metrics(
 
 def portfolio_analysis_from_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
+    *,
+    periods_per_year: int | None = None,
 ) -> PortfolioAnalysis:
     """Create a PortfolioAnalysis from a BacktestResult."""
     resolved_calendar = _resolve_calendar(result, calendar)
-    periods_per_year = get_annualization_factor(resolved_calendar)
+    if periods_per_year is None:
+        if resolved_calendar is None:
+            raise ValueError(
+                "periods_per_year is required when calendar=None retains observation returns"
+            )
+        periods_per_year = get_annualization_factor(resolved_calendar)
+    else:
+        periods_per_year = positive_integer(periods_per_year, "periods_per_year")
     daily_df = _extract_daily_frame(result, resolved_calendar)
 
     if daily_df.is_empty():
@@ -282,21 +300,124 @@ def portfolio_analysis_from_result(
         return PortfolioAnalysis(returns=np.array([]), periods_per_year=periods_per_year)
 
     date_col = "date" if "date" in daily_df.columns else "session_date"
-    dates = daily_df[date_col].to_list()
-    returns = daily_df["return_pct"].to_numpy()
-
-    return PortfolioAnalysis(
-        returns=returns,
-        dates=dates,
+    observations = daily_df.select(
+        pl.col(date_col).alias("date"), pl.col("return_pct").alias("return")
+    )
+    state = _preserve_export_instants(
+        result.to_portfolio_state_dataframe(), [row[0] for row in result.portfolio_state]
+    )
+    valuations = (
+        state.select(pl.col("timestamp").alias("date"), "equity", "cash")
+        if not state.is_empty()
+        else result.to_equity_dataframe().select(pl.col("timestamp").alias("date"), "equity")
+    )
+    positions = None
+    complete = False
+    if (
+        resolved_calendar is None
+        and getattr(result, "holdings_sampling", None) == "bar"
+        and getattr(result, "holdings", None) is not None
+    ):
+        captured = result.to_holdings_dataframe()
+        if not state["holdings_complete"].all():
+            raise ValueError("bar holdings must declare every account observation complete")
+        books = {}
+        for observation_id, asset, value in captured.select(
+            "observation_id", "asset", "liquidation_value"
+        ).iter_rows():
+            book = books.setdefault(observation_id, {})
+            if asset in book:
+                raise ValueError("captured holdings repeat an asset in one observation")
+            book[asset] = value
+        identifiers = state["observation_id"].to_list()
+        if set(books).difference(identifiers):
+            raise ValueError("captured holdings refer to unknown account observations")
+        if any(
+            len(books.get(identifier, {})) != count
+            for identifier, count in state.select("observation_id", "open_positions").iter_rows()
+        ):
+            raise ValueError("complete captured holdings must match observed open-position counts")
+        assets = sorted({asset for book in books.values() for asset in book})
+        if assets:
+            if (
+                captured["signed_notional"].null_count()
+                or not captured["signed_notional"].is_finite().all()
+            ):
+                raise ValueError("captured holdings require finite reported signed notional")
+            grid = state.select(pl.col("timestamp").alias("date"), "observation_id").join(
+                captured.select("asset").unique(), how="cross"
+            )
+            positions = grid.join(
+                captured.drop("timestamp"), on=["observation_id", "asset"], how="left"
+            ).with_columns(
+                pl.col("signed_notional").fill_null(0.0).alias("value"),
+                pl.col("quantity").fill_null(0.0),
+            )
+        else:
+            positions = state.select(pl.col("timestamp").alias("date"))
+        complete = True
+    config = getattr(result, "config", None)
+    analysis = PortfolioAnalysis.from_frames(
+        observations,
+        return_col="return",
         benchmark=benchmark,
+        valuations=valuations,
+        transactions=_preserve_export_instants(
+            result.to_fills_dataframe(), [fill.timestamp for fill in result.fills]
+        ),
+        positions=positions,
+        complete_snapshots=complete,
+        feed_spec=getattr(config, "resolved_feed_spec", None),
+        timestamp_col="date",
+        entity_col="asset",
+        transaction_timestamp_col="timestamp",
+        calendar=resolved_calendar,
         periods_per_year=periods_per_year,
     )
+    inputs = analysis.input_data
+    assert inputs is not None
+    metadata = inputs.metadata
+    metadata["source"] = {
+        "format": "BacktestResult public DataFrame exports",
+        "holdings_sampling": getattr(result, "holdings_sampling", "unavailable"),
+        "positions_selected": complete,
+        "positions_value": "reported signed_notional exposure; liquidation_value and original quantities/marks/multipliers retained separately",
+        "positions_reason": "complete observed bar capture"
+        if complete
+        else "not supplied or not converted to aggregated return clock; no positions inferred",
+        "account_method": getattr(result, "account_method", None),
+        "returns_include_commissions": getattr(result, "returns_include_commissions", None),
+    }
+    analysis._input_data = replace(inputs, _metadata=json.dumps(metadata, allow_nan=False))
+    return analysis
+
+
+def _preserve_export_instants(frame: pl.DataFrame, recorded: list[Any]) -> pl.DataFrame:
+    """Recover legacy export timezone loss only from actual public source records."""
+    import pandas as pd
+
+    if frame.is_empty() or not isinstance(frame["timestamp"].dtype, pl.Datetime):
+        return frame
+    original = pd.DatetimeIndex(recorded)
+    if original.tz is None or frame["timestamp"].dtype.time_zone is not None:
+        return frame
+    if (
+        len(original) != frame.height
+        or not (
+            original.tz_convert("UTC").tz_localize(None)
+            == pd.DatetimeIndex(frame["timestamp"].to_pandas())
+        ).all()
+    ):
+        raise ValueError("legacy exported timestamps disagree with recorded source instants")
+    return frame.with_columns(pl.from_pandas(original).rename("timestamp"))
 
 
 def compute_metrics_from_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     confidence_intervals: bool = False,
+    *,
+    periods_per_year: int | None = None,
 ) -> dict[str, Any]:
     """Compute portfolio and trade metrics from a BacktestResult.
 
@@ -309,6 +430,7 @@ def compute_metrics_from_result(
         result=result,
         calendar=calendar,
         confidence_intervals=confidence_intervals,
+        periods_per_year=periods_per_year,
     )
     metrics = dict(profile.summary)
     if result.trade_analyzer is not None:
@@ -327,9 +449,11 @@ def compute_metrics_from_result(
 
 def analyze_backtest_result(
     result: BacktestResult,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     confidence_intervals: bool = False,
+    *,
+    periods_per_year: int | None = None,
 ) -> BacktestProfile:
     """Create a lazy BacktestProfile from a BacktestResult."""
     return _analyze_backtest_result(
@@ -337,6 +461,7 @@ def analyze_backtest_result(
         calendar=calendar,
         benchmark=benchmark,
         confidence_intervals=confidence_intervals,
+        periods_per_year=periods_per_year,
     )
 
 
@@ -345,9 +470,10 @@ def profile_from_run_artifacts(
     *,
     predictions_path: str | Path | None = None,
     signals_path: str | Path | None = None,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     confidence_intervals: bool = False,
+    periods_per_year: int | None = None,
 ) -> BacktestProfile:
     """Build a BacktestProfile from backtest run artifacts."""
     artifact_dir = Path(backtest_dir)
@@ -398,16 +524,16 @@ def profile_from_run_artifacts(
         portfolio_state = _portfolio_state_from_parquet(portfolio_state_path)
         data_sources["portfolio_state"] = "artifact"
     else:
-        portfolio_state = _portfolio_state_from_weights(weights_df, equity_curve)
-        data_sources["portfolio_state"] = "reconstructed from weights"
+        portfolio_state = []
+        data_sources["portfolio_state"] = "unavailable (no account-state artifact)"
 
     fills_path = artifact_dir / "fills.parquet"
     if fills_path.exists():
         fills = _fills_from_parquet(fills_path)
         data_sources["fills"] = "artifact"
     else:
-        fills = _fills_from_weights(weights_df, equity_curve)
-        data_sources["fills"] = "reconstructed from weights (no real execution data)"
+        fills = []
+        data_sources["fills"] = "unavailable (no execution artifact)"
 
     result = BacktestResult(
         trades=_trades_from_dataframe(trades_df),
@@ -455,6 +581,7 @@ def profile_from_run_artifacts(
         signals_override=signals_df,
         strategy_metadata_override=_build_strategy_metadata(spec, predictions_df, artifact_dir),
         data_sources=data_sources,
+        annualization_factor=periods_per_year,
     )
 
 
@@ -465,7 +592,7 @@ def generate_tearsheet_from_result(
     title: str | None = None,
     output_path: str | Path | None = None,
     include_statistical: bool = True,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
@@ -475,7 +602,15 @@ def generate_tearsheet_from_result(
     """Generate an HTML tearsheet, optionally excluding statistical inference."""
     from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
-    profile = analyze_backtest_result(result, calendar=calendar, benchmark=benchmark)
+    profile = analyze_backtest_result(
+        result, calendar=calendar, benchmark=benchmark, periods_per_year=periods_per_year
+    )
+    if (
+        report_metadata is not None
+        and report_metadata.calendar is not None
+        and report_metadata.calendar != profile.resolved_calendar
+    ):
+        raise ValueError("report metadata calendar conflicts with the resolved analysis calendar")
     effective_metadata = _build_report_metadata_from_result(
         result,
         profile,
@@ -483,8 +618,9 @@ def generate_tearsheet_from_result(
     )
     if report_metadata is not None:
         effective_metadata = report_metadata.merged_with(effective_metadata)
+    effective_metadata = replace(effective_metadata, calendar=profile.resolved_calendar)
     trades_df = result.to_trades_dataframe()
-    returns = result.to_daily_returns(calendar=calendar).to_numpy()
+    returns = profile.daily_returns.to_numpy()
     tearsheet_metrics = (
         _normalize_tearsheet_metrics(result, calendar=calendar) if periods_per_year is None else {}
     )
@@ -526,7 +662,7 @@ def generate_tearsheet_from_run_artifacts(
     template: Literal["quant_trader", "hedge_fund", "risk_manager", "full"] = "full",
     theme: Literal["default", "dark", "print", "presentation"] = "default",
     output_path: str | Path | None = None,
-    calendar: str | None = None,
+    calendar: str | CalendarUnset | None = UNSET_CALENDAR,
     benchmark: Any = None,
     benchmark_name: str = "Benchmark",
     report_metadata: BacktestReportMetadata | None = None,
@@ -541,7 +677,14 @@ def generate_tearsheet_from_run_artifacts(
         signals_path=signals_path,
         calendar=calendar,
         benchmark=benchmark,
+        periods_per_year=periods_per_year,
     )
+    if (
+        report_metadata is not None
+        and report_metadata.calendar is not None
+        and report_metadata.calendar != profile.resolved_calendar
+    ):
+        raise ValueError("report metadata calendar conflicts with the resolved analysis calendar")
     effective_metadata = _build_report_metadata_from_result(
         profile.result,
         profile,
@@ -553,6 +696,7 @@ def generate_tearsheet_from_run_artifacts(
     ).merged_with(effective_metadata)
     if report_metadata is not None:
         effective_metadata = report_metadata.merged_with(effective_metadata)
+    effective_metadata = replace(effective_metadata, calendar=profile.resolved_calendar)
 
     html = generate_backtest_tearsheet(
         profile=profile,
@@ -853,6 +997,10 @@ def _infer_active_start_timestamp(
             if not active_weights.is_empty():
                 candidates.append(_to_datetime(active_weights[weight_ts_col].min()))
 
+    if len({value.tzinfo is None for value in candidates}) > 1:
+        # Session/date labels and event instants have no common undeclared zone.
+        # Retain observations rather than guessing a trimming boundary.
+        return None
     return min(candidates) if candidates else None
 
 
@@ -906,121 +1054,6 @@ def _align_timestamp_precision(*dfs: pl.DataFrame) -> tuple[pl.DataFrame, ...]:
             df = df.with_columns(pl.col("timestamp").cast(target))
         out.append(df)
     return tuple(out)
-
-
-def _portfolio_state_from_weights(
-    weights_df: pl.DataFrame,
-    equity_curve: list[tuple[datetime, float]],
-) -> list[tuple[datetime, float, float, float, float, int]]:
-    if weights_df.is_empty() or not equity_curve:
-        return []
-
-    weights = (
-        weights_df.rename(
-            {
-                "symbol": "asset",
-                "weight": "signal_value",
-            }
-        )
-        if "symbol" in weights_df.columns
-        else weights_df.rename({"weight": "signal_value"})
-    )
-    summary = (
-        weights.group_by("timestamp")
-        .agg(
-            [
-                pl.col("signal_value").abs().sum().alias("gross_weight"),
-                pl.col("signal_value").sum().alias("net_weight"),
-                (pl.col("signal_value").abs() > 1e-9).sum().cast(pl.Int32).alias("open_positions"),
-            ]
-        )
-        .sort("timestamp")
-    )
-    equity_df = pl.DataFrame(
-        {
-            "timestamp": [timestamp for timestamp, _ in equity_curve],
-            "equity": [float(value) for _, value in equity_curve],
-        }
-    )
-    equity_df, summary = _align_timestamp_precision(equity_df, summary)
-    timeline = (
-        equity_df.join(summary, on="timestamp", how="left")
-        .with_columns(
-            [
-                pl.col("gross_weight").fill_null(0.0),
-                pl.col("net_weight").fill_null(0.0),
-                pl.col("open_positions").fill_null(0).cast(pl.Int32),
-            ]
-        )
-        .with_columns(
-            [
-                (pl.col("equity") * pl.col("gross_weight")).alias("gross_exposure"),
-                (pl.col("equity") * pl.col("net_weight")).alias("net_exposure"),
-                (pl.col("equity") * (1.0 - pl.col("gross_weight"))).alias("cash"),
-            ]
-        )
-        .select(
-            [
-                "timestamp",
-                "equity",
-                "cash",
-                "gross_exposure",
-                "net_exposure",
-                "open_positions",
-            ]
-        )
-    )
-    return [tuple(row) for row in timeline.iter_rows()]
-
-
-def _fills_from_weights(
-    weights_df: pl.DataFrame,
-    equity_curve: list[tuple[datetime, float]],
-) -> list[Fill]:
-    if weights_df.is_empty() or not equity_curve or "symbol" not in weights_df.columns:
-        return []
-
-    weights = (
-        weights_df.sort(["symbol", "timestamp"])
-        .with_columns(
-            (pl.col("weight") - pl.col("weight").shift(1).fill_null(0.0).over("symbol")).alias(
-                "weight_delta"
-            )
-        )
-        .filter(pl.col("weight_delta").abs() > 1e-6)
-    )
-    if weights.is_empty():
-        return []
-
-    equity_df = pl.DataFrame(
-        {
-            "timestamp": [timestamp for timestamp, _ in equity_curve],
-            "equity": [float(value) for _, value in equity_curve],
-        }
-    )
-    weights, equity_df = _align_timestamp_precision(weights, equity_df)
-    enriched = weights.join(equity_df, on="timestamp", how="left").with_columns(
-        pl.col("equity").fill_null(strategy="forward").fill_null(strategy="backward")
-    )
-
-    fills: list[Fill] = []
-    for index, row in enumerate(enriched.iter_rows(named=True)):
-        delta = float(row["weight_delta"])
-        timestamp = _to_datetime(row["timestamp"])
-        fills.append(
-            Fill(
-                order_id=f"weights-{index}",
-                rebalance_id=timestamp.isoformat(),
-                asset=str(row["symbol"]),
-                side=OrderSide.BUY if delta > 0 else OrderSide.SELL,
-                quantity=abs(delta) * float(row["equity"] or 0.0),
-                price=1.0,
-                timestamp=timestamp,
-                commission=0.0,
-                slippage=0.0,
-            )
-        )
-    return fills
 
 
 def _build_strategy_metadata(

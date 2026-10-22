@@ -19,22 +19,31 @@ Example:
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from dataclasses import replace
 from inspect import signature
 from numbers import Integral, Real
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
 
 import numpy as np
 import polars as pl
+from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 from scipy import stats
 
 from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
+from .capacity import CapacityAnalysisResult, analyze_capacity
+from .fifo import RoundTripResult, reconstruct_round_trips
+from .frame_inputs import PortfolioInputData, normalize_portfolio_frames
 from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
 from .holdings_sectors import SectorMapping, analyze_sector_exposures
 from .inputs import (
     annual_risk_free,
+    date_index,
+    date_snapshot,
     initial_valuation_time,
     normalize_observations,
     positive_integer,
@@ -62,11 +71,15 @@ from .results import (
     PortfolioMetrics,
     RollingMetricsResult,
 )
+from .rolling import _row_windows
+from .transactions import TransactionAnalysisResult, analyze_transactions
 
 if TYPE_CHECKING:
-    from datetime import date, datetime
+    from datetime import date, datetime, timedelta
 
     import pandas as pd
+
+    from ..factor.holdings_attribution import HoldingsAttributionResult
 
 # Type aliases - use Union for Python 3.9 compatibility
 ArrayLike = Union[np.ndarray, pl.Series, "pd.Series", "list[float]"]
@@ -162,6 +175,7 @@ class PortfolioAnalysis:
         self._benchmark = owned_benchmark
         self._dates = owned_dates
         self._initial_timestamp = initial_valuation_time(initial_timestamp, owned_dates)
+        self._input_data: PortfolioInputData | None = None
         self._positions = position_snapshot(positions) if positions is not None else None
         self._transactions = self._to_polars_df(transactions) if transactions is not None else None
 
@@ -172,6 +186,253 @@ class PortfolioAnalysis:
         self._metrics_cache: PortfolioMetrics | None = None
         self._rolling_cache: dict[tuple, RollingMetricsResult] = {}
         self._drawdown_cache: dict[tuple[int, float], DrawdownResult] = {}
+
+    @classmethod
+    def from_frames(
+        cls,
+        returns: DataFrameLike | pd.Series,
+        *,
+        benchmark: DataFrameLike | pd.Series | None = None,
+        positions: DataFrameLike | None = None,
+        valuations: DataFrameLike | None = None,
+        transactions: DataFrameLike | None = None,
+        complete_snapshots: bool = False,
+        snapshot_kind: Literal["observed", "end_of_day", "intraday"] = "observed",
+        positions_format: Literal["auto", "long", "wide"] = "auto",
+        feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+        timestamp_col: str | None = None,
+        entity_col: str | None = None,
+        return_col: str = "return",
+        benchmark_col: str = "return",
+        transaction_timestamp_col: str | None = None,
+        transaction_multiplier: float = 1.0,
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+        periods_per_year: int = 252,
+        risk_free: float = 0.0,
+        initial_timestamp: date | datetime | None = None,
+    ) -> PortfolioAnalysis:
+        """Normalize dated supplied account frames without a producer dependency.
+
+        Returns are authoritative net simple returns, not inferred from NAV.
+        Pandas Series dates and benchmark labels are retained/aligned by key.
+        Positions are signed cash values, long or wide; the wide cash column is
+        reported cash, never an asset or inferred NAV. Missing optional records
+        stay absent and incomplete holdings are not filled. Commission/slippage
+        absence means unknown. Quantity is signed; an optional buy/sell side is
+        reconciled before accounting. Multiplier defaults to one cash-price unit
+        per quantity unit; futures must supply their actual multiplier.
+
+        Calendar declarations are preserved, not used to resample input returns
+        or infer schedule completeness. Explicit None disables schedules. Use
+        transaction_timestamp_col when fills and snapshots have different keys.
+        Existing constructor annualization/risk-free defaults remain unchanged.
+        """
+        periods_per_year = positive_integer(periods_per_year, "periods_per_year")
+        risk_free = annual_risk_free(risk_free)
+        inputs = normalize_portfolio_frames(
+            returns,
+            benchmark=benchmark,
+            positions=positions,
+            valuations=valuations,
+            transactions=transactions,
+            feed_spec=feed_spec,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+            return_col=return_col,
+            benchmark_col=benchmark_col,
+            transaction_timestamp_col=transaction_timestamp_col,
+            transaction_multiplier=transaction_multiplier,
+            calendar=calendar,
+            complete_snapshots=complete_snapshots,
+            snapshot_kind=snapshot_kind,
+            positions_format=positions_format,
+        )
+        observed, relative = inputs.returns, inputs.benchmark
+        instance = cls(
+            returns=observed["return"],
+            dates=observed["date"],
+            benchmark=(
+                relative.to_pandas().set_index("date")["return"]
+                if "date" in relative.columns
+                else relative["return"]
+            )
+            if relative is not None
+            else None,
+            positions=inputs.positions,
+            transactions=inputs.transactions,
+            risk_free=risk_free,
+            periods_per_year=periods_per_year,
+            initial_timestamp=initial_timestamp,
+        )
+        metadata = inputs.metadata
+        metadata.update(periods_per_year=periods_per_year, risk_free_annual=risk_free)
+        instance._input_data = replace(inputs, _metadata=json.dumps(metadata, allow_nan=False))
+        return instance
+
+    @property
+    def input_data(self) -> PortfolioInputData | None:
+        """Return immutable supplied-frame provenance, or None for the array constructor."""
+        return self._input_data
+
+    def compute_transaction_analysis(
+        self,
+        *,
+        turnover_denom: str = "beginning_nav",
+        turnover_method: str = "gross",
+        incremental_bps: Sequence[float] = (0.0, 10.0),
+    ) -> TransactionAnalysisResult:
+        """Analyze actual supplied fills, explicit turnover and extra cash-bps costs.
+
+        Requires from_frames inputs. Named calendars use the declared FeedSpec
+        timestamp semantics and aggregate to exchange sessions; calendar=None
+        matches exact observation keys without calendar resampling. Missing NAV
+        retains raw notional/cost dollars but cannot define a nonzero cost return.
+        """
+        if self._input_data is None:
+            raise ValueError("transaction analysis requires owned from_frames inputs")
+        return analyze_transactions(
+            self._input_data,
+            turnover_denom=turnover_denom,
+            turnover_method=turnover_method,
+            incremental_bps=incremental_bps,
+        )
+
+    def compute_capacity(
+        self,
+        market_data: DataFrameLike,
+        *,
+        currency: str,
+        price_basis: str,
+        volume_basis: str,
+        participation: float = 0.1,
+        lookback: int = 5,
+        window_unit: Literal["observation", "session"] = "observation",
+        recent_window: int | None = 126,
+        feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+        timestamp_col: str | None = None,
+        entity_col: str | None = None,
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+        known_at_col: str | None = None,
+        base_capital: float | None = None,
+        scenario_capitals: Sequence[float] = (),
+        impact: float = 0.1,
+    ) -> CapacityAnalysisResult:
+        """Analyze supplied market liquidity without reconstructing account facts.
+
+        Requires complete owned from_frames holdings. Optional actual fills and
+        authoritative net returns reuse that boundary. An explicit market feed
+        supplies its own mappings/calendar metadata; otherwise the account feed
+        supplies temporal declarations and canonical market date/asset/price
+        mappings. Explicit calendar, including None, overrides either source.
+        See analyze_capacity for units, lag, coverage and scenario definitions.
+        """
+        inputs = self._input_data
+        if inputs is None or inputs.positions is None:
+            raise ValueError("capacity requires owned from_frames positions")
+        meta = inputs.metadata
+        if feed_spec is None:
+            feed_spec = replace(
+                FeedSpec.from_any(meta["feed_spec"]),
+                timestamp_col="date",
+                entity_col="asset",
+                price_col="price",
+            )
+            if calendar is UNSET_CALENDAR:
+                calendar = meta["calendar"]
+        positions = inputs.positions
+        if positions.columns == ["date"]:
+            positions = pl.DataFrame(
+                schema={
+                    "date": inputs.returns["date"].dtype,
+                    "asset": pl.String,
+                    "value": pl.Float64,
+                }
+            )
+        return analyze_capacity(
+            positions,
+            market_data,
+            currency=currency,
+            price_basis=price_basis,
+            volume_basis=volume_basis,
+            complete_snapshots=meta["complete_snapshots"],
+            transactions=inputs.transactions,
+            returns=inputs.returns,
+            participation=participation,
+            lookback=lookback,
+            window_unit=window_unit,
+            recent_window=recent_window,
+            feed_spec=feed_spec,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+            calendar=calendar,
+            known_at_col=known_at_col,
+            base_capital=base_capital,
+            scenario_capitals=scenario_capitals,
+            impact=impact,
+        )
+
+    def compute_intraday_estimate(
+        self,
+        *,
+        method: Literal["legacy_peak_notional"],
+        capital_method: Literal["defined_only", "legacy_zero_fill"] = "defined_only",
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    ) -> HoldingsAnalysisResult:
+        """Explicit daily transaction-notional estimate, not observed intraday holdings."""
+        from .intraday_estimate import _estimate_from_inputs
+
+        if self._input_data is None:
+            raise ValueError("intraday estimate requires owned from_frames account inputs")
+        return _estimate_from_inputs(
+            self._input_data, method=method, calendar=calendar, capital_method=capital_method
+        )
+
+    def compute_round_trips(
+        self,
+        *,
+        initial_state: Literal["flat", "supplied"] | None = None,
+        opening_lots: DataFrameLike | None = None,
+        opening_as_of: date | datetime | str | None = None,
+        marks: DataFrameLike | None = None,
+        as_of: date | datetime | str | None = None,
+        synthetic_close: bool = False,
+        matching: Literal["actual_fifo", "consecutive_vwap"] = "actual_fifo",
+        max_gap: str | timedelta | None = None,
+    ) -> RoundTripResult:
+        """Match actual fractional FIFO lots from an explicitly complete opening book.
+
+        Supplied opening rows require asset/quantity and opening_as_of; optional
+        lot_id/entry_timestamp/entry_price/multiplier/remaining_commission retain
+        known cost/time, never guessed zero basis. Supplied row order is FIFO.
+        Marks require timestamp/asset/price and an explicit as_of, which also cuts
+        future executions. Only quotes known at/before as_of are used, with age.
+        Optional synthetic closes are separate hypothetical segments, not actual
+        realizations or changes to open inventory. Supplied returns stay unchanged.
+        The default actual_fifo uses original fills. Explicit consecutive_vwap
+        groups same-direction adjacent fills within max_gap (default8h) before
+        the same matcher. Group prices are retrospective analytical projections,
+        known only at the last member; original executions and membership remain
+        available. This profile is not an intraday execution-state reconstruction.
+        """
+        if self._input_data is None:
+            raise ValueError("FIFO requires owned from_frames execution inputs")
+        result = reconstruct_round_trips(
+            self._input_data.transactions,
+            initial_state=initial_state,
+            opening_lots=opening_lots,
+            opening_as_of=opening_as_of,
+            marks=marks,
+            as_of=as_of,
+            synthetic_close=synthetic_close,
+            timezone=self._input_data.metadata["feed_spec"].get("timezone"),
+            matching=matching,
+            max_gap=max_gap,
+        )
+        declarations = self._input_data.metadata
+        for name in ("feed_spec", "calendar", "calendar_source", "calendar_argument"):
+            if name in declarations:
+                result.metadata[name] = declarations[name]
+        return result
 
     @staticmethod
     def _to_polars_df(df: DataFrameLike | None) -> pl.DataFrame | None:
@@ -227,10 +488,10 @@ class PortfolioAnalysis:
 
     def compute_holdings_analysis(
         self,
-        valuations: DataFrameLike,
+        valuations: DataFrameLike | None = None,
         *,
-        complete_snapshots: bool,
-        snapshot_kind: Literal["observed", "end_of_day", "intraday"] = "observed",
+        complete_snapshots: bool | None = None,
+        snapshot_kind: Literal["observed", "end_of_day", "intraday"] | None = None,
         sector_mapping: SectorMapping | None = None,
     ) -> HoldingsAnalysisResult:
         """Analyze complete holdings on exact supplied return observation keys.
@@ -255,6 +516,22 @@ class PortfolioAnalysis:
         self.require_dates()
         if self._positions is None:
             raise ValueError("positions are required for holdings analysis")
+        metadata = self._input_data.metadata if self._input_data is not None else {}
+        if complete_snapshots is None:
+            complete_snapshots = metadata.get("complete_snapshots", False)
+        if snapshot_kind is None:
+            snapshot_kind = metadata.get("snapshot_kind", "observed")
+        if valuations is None:
+            valuations = self._input_data.valuations if self._input_data is not None else None
+            if valuations is not None:
+                from ml4t.diagnostic.utils.validation import _align_datetime_key_resolution
+
+                valuations, keys = _align_datetime_key_resolution(
+                    valuations, pl.DataFrame({"date": self._dates}), "date"
+                )
+                valuations = valuations.join(keys, on="date", how="semi").sort("date")
+            else:
+                valuations = pl.DataFrame({"date": self._dates})
         result = analyze_holdings(
             self._positions,
             valuations,
@@ -465,8 +742,6 @@ class PortfolioAnalysis:
         periods_per_year: int,
     ) -> np.ndarray:
         """Compute rolling Sharpe ratio using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -476,7 +751,7 @@ class PortfolioAnalysis:
         daily_rf = (1 + risk_free) ** (1 / periods_per_year) - 1
 
         # Vectorized: create all windows at once
-        windows = sliding_window_view(returns, window)
+        windows = _row_windows(returns, window)
         excess = windows - daily_rf
 
         # Compute mean and std across each window (axis=1)
@@ -498,8 +773,6 @@ class PortfolioAnalysis:
         periods_per_year: int,
     ) -> np.ndarray:
         """Compute rolling annualized volatility using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -507,7 +780,7 @@ class PortfolioAnalysis:
             return result
 
         # Vectorized: create all windows at once
-        windows = sliding_window_view(returns, window)
+        windows = _row_windows(returns, window)
         sd = np.std(windows, axis=1, ddof=1)
         result[window - 1 :] = sd * np.sqrt(periods_per_year)
 
@@ -545,8 +818,6 @@ class PortfolioAnalysis:
         window: int,
     ) -> np.ndarray:
         """Compute rolling beta using vectorized sliding_window_view."""
-        from numpy.lib.stride_tricks import sliding_window_view
-
         n = len(returns)
         result = np.full(n, np.nan)
 
@@ -554,8 +825,8 @@ class PortfolioAnalysis:
             return result
 
         # Vectorized: create all windows at once
-        ret_windows = sliding_window_view(returns, window)
-        bench_windows = sliding_window_view(benchmark, window)
+        ret_windows = _row_windows(returns, window)
+        bench_windows = _row_windows(benchmark, window)
 
         # Compute means
         ret_mean = np.mean(ret_windows, axis=1, keepdims=True)
@@ -713,6 +984,57 @@ class PortfolioAnalysis:
 
         return periods
 
+    def compute_holdings_attribution(
+        self,
+        weights: DataFrameLike,
+        factor_returns: DataFrameLike,
+        factor_loadings: DataFrameLike,
+        *,
+        period_starts: pl.Series | pd.DatetimeIndex | None = None,
+        factor_names: Sequence[str] | None = None,
+        complete_snapshots: bool = False,
+        cash_contributions: DataFrameLike | None = None,
+        observed_snapshot_dates: pl.Series | pd.DatetimeIndex | None = None,
+        cumulative_method: Literal["wealth_linked", "arithmetic"] = "wealth_linked",
+        timestamp_col: str = "timestamp",
+        entity_col: str = "asset",
+    ) -> HoldingsAttributionResult:
+        """Analyze supplied beginning-period weights/loadings without fitting betas.
+
+        Explicit interval starts take precedence. Otherwise an observed initial
+        valuation time and preceding return timestamps define interval starts.
+        The first interval is never guessed from a calendar or row frequency.
+        End-period holdings are not automatically reinterpreted as beginning
+        weights. Inputs and existing portfolio caches remain unchanged on error.
+        """
+        import pandas as pd
+
+        from ..factor.holdings_attribution import compute_holdings_attribution
+
+        self.require_dates()
+        if period_starts is None:
+            if self._initial_timestamp is None:
+                raise ValueError("period_starts or initial_timestamp is required for attribution")
+            period_starts = pd.DatetimeIndex([self._initial_timestamp]).append(
+                date_index(self._dates)[:-1]
+            )
+        starts = date_snapshot(period_starts, len(self._returns), "period_starts")
+        return compute_holdings_attribution(
+            pl.DataFrame(
+                {"timestamp": self._dates, "period_start": starts, "return": self._returns}
+            ),
+            weights,
+            factor_returns,
+            factor_loadings,
+            factor_names=factor_names,
+            complete_snapshots=complete_snapshots,
+            cash_contributions=cash_contributions,
+            observed_snapshot_dates=observed_snapshot_dates,
+            cumulative_method=cumulative_method,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+        )
+
     def compute_returns_distribution(self) -> DistributionResult:
         """Compute returns distribution analysis.
 
@@ -842,6 +1164,10 @@ class PortfolioAnalysis:
         self,
         theme: str | None = None,
         cost_info: dict[str, str] | None = None,
+        *,
+        transactions: TransactionAnalysisResult | None = None,
+        capacity: CapacityAnalysisResult | None = None,
+        intraday: HoldingsAnalysisResult | None = None,
     ):
         """Create comprehensive portfolio tear sheet.
 
@@ -853,6 +1179,13 @@ class PortfolioAnalysis:
             Plot theme ("default", "dark", "print", "presentation")
         cost_info : dict[str, str] | None
             Deprecated legacy parameter. Retained for backward compatibility.
+        transactions : TransactionAnalysisResult, optional
+            Explicitly prepared actual-fill turnover and incremental cost scenarios.
+            Computed results are rendered without selecting financial methods again.
+        capacity : CapacityAnalysisResult, optional
+            Explicitly prepared liquidity, coverage and capital scenarios.
+        intraday : HoldingsAnalysisResult, optional
+            Prepared complete intraday snapshots on their own independent clock.
 
         Returns
         -------
@@ -862,7 +1195,21 @@ class PortfolioAnalysis:
         from ml4t.diagnostic.visualization.portfolio import create_portfolio_dashboard
 
         _ = cost_info
-        return create_portfolio_dashboard(self, theme=theme)
+        holdings = None
+        if (
+            self._input_data is not None
+            and self._input_data.positions is not None
+            and self._input_data.metadata["complete_snapshots"]
+        ):
+            holdings = self.compute_holdings_analysis()
+        return create_portfolio_dashboard(
+            self,
+            theme=theme,
+            holdings=holdings,
+            transactions=transactions,
+            capacity=capacity,
+            intraday=intraday,
+        )
 
 
 __all__ = ["PortfolioAnalysis"]

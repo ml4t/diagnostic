@@ -9,6 +9,10 @@ HTML tearsheet generation, statistical-validity visuals, trade plots, and worksp
 - `get_template`
 - `export_workspaces`
 
+Supply `metrics={"holdings_attribution": result}` with a `HoldingsAttributionResult` to
+render supplied exposures, cumulative attribution and loading coverage in the factors workspace.
+The result must describe the report's actual return observations. This route does not fit a model.
+
 ## Core Files
 
 - `tearsheet.py` - main orchestrator and object-oriented API
