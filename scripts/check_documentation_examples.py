@@ -34,6 +34,7 @@ PAGES = {
         "Event-returns report: global view and per-quantile sample deviations",
         "Supplied account preserves net returns and unknown fees",
         "Familiar performance table: metric-specific missingness and Gaussian periodic VaR",
+        "Familiar return panels: full-clock wealth and training-only live forecasts",
         "200 actual notional / 1000 beginning NAV; extra 10bps costs .0002 return",
         "Zipline input preserves sid, reported cash/NAV and unknown fill costs",
         "Stress/live/cones: 4 selected, 8 training, 4 live; steps count observations",

@@ -22,6 +22,7 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import (
 
 from . import txn
 from .cone_plotting import plot_cones
+from .return_plotting import plot_returns, plot_rolling_returns, show_perf_stats
 from .round_trip_plotting import (
     plot_prob_profit_trade,
     plot_round_trip_lifetimes,
@@ -356,6 +357,9 @@ def plot_capacity_sweep(
 
 
 __all__ = [
+    "plot_returns",
+    "plot_rolling_returns",
+    "show_perf_stats",
     "plot_cones",
     "plot_capacity_sweep",
     "plot_round_trip_lifetimes",

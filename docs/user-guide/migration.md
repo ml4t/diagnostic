@@ -1706,6 +1706,46 @@ original function's silently ignored kwargs, explicit sample count, seed and sca
 are honored. Full report composition and original notebook qualification remain
 separate acceptance work.
 
+The `compat.pyfolio.plotting` return panels accept the same raw dated Series.
+They return Plotly figures, not reusable Matplotlib axes. For example:
+
+```python
+from ml4t.diagnostic.compat.pyfolio import plotting as familiar_return_plots
+
+wealth_panel = familiar_return_plots.plot_rolling_returns(
+    performance_returns, live_start_date=performance_returns.index[-1],
+    cone_std=(1, 2), num_samples=16, random_seed=42,
+)
+assert np.isclose(wealth_panel.data[0].y[-1], 0.99)
+assert np.isclose(wealth_panel.data[1].y[-1], 1.0395)
+assert wealth_panel.layout.meta["training_observations"] == 2
+split_performance = familiar_return_plots.show_perf_stats(
+    performance_returns, live_start_date=performance_returns.index[-1], return_df=True,
+)
+assert split_performance.loc["Cumulative returns", "All"] == "3.95%"
+print("Familiar return panels: full-clock wealth and training-only live forecasts")
+```
+
+The historical name `plot_rolling_returns` denotes cumulative wealth starting at
+one, not rolling CAGR. Benchmark matching uses sample volatility; logarithmic
+scale changes presentation, not returns. Raw `plot_returns` keeps NaNs as gaps,
+while wealth compounding treats them as neutral product factors. Date spacing
+counts observed rows; exact timestamps, including nanoseconds, remain on hover.
+`cone_std=None` is the direct plotting default. Explicit cones receive only the
+pre-live observations and their final wealth. A custom cone callback receives a
+copy and owns its own random seed. Native layout options are `theme`, `height`
+and `width`; arbitrary Matplotlib style keywords and `ax` are not accepted.
+
+`show_perf_stats` returns a pandas table with `return_df=True`, or escaped HTML
+otherwise. Percentage display applies only to the named return/volatility/
+drawdown/turnover rows; alpha and ratios retain their original numeric display.
+Bootstrap summaries keep mean, median and 5/95 columns. Actual Pyfolio 0.10.0
+instead reindexes the no-live bootstrap table to a nonexistent `Backtest`
+column and displays `nan%` even for known positive CAGR. Diagnostic retains the
+computed values. Live bootstrap samples pair the benchmark on each split's
+actual dates. Neither correction changes native inference defaults or claims
+complete portfolio-report coverage.
+
 ### Normalize a supplied account without a backtest engine
 
 Unreleased after 0.1.9, `PortfolioAnalysis.from_frames()` accepts dated returns,

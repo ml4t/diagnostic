@@ -413,6 +413,8 @@ jobs:
             tests/test_compat/test_pyfolio_wealth_cones.py \
             tests/test_compat/test_pyfolio_cone_plotting.py \
             tests/test_compat/test_pyfolio_stress_sheet.py \
+            tests/test_compat/test_pyfolio_performance.py \
+            tests/test_compat/test_pyfolio_return_plotting.py \
             tests/test_visualization/test_portfolio_regime_report.py
           mkdir -p artifacts/regimes
           uv run --isolated --no-project \
