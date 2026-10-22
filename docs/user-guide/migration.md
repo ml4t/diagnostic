@@ -1356,6 +1356,10 @@ raw prepared events, equal-date quantile statistics and empirical dated return
 samples. Optional event paths reuse the preceding event-returns workflow.
 This is not Diagnostic's abnormal-return/CAR model.
 
+Reference comparisons use corrected Alphalens Reloaded 0.5.0 and a separate
+frozen 0.4.6 profile on pandas 2.3.3. Diagnostic-only workflows also run without
+Alphalens; the legacy package is a comparison dependency, not a report runtime.
+
 ```python
 from ml4t.diagnostic.signal import analyze_signal_event_study, prepare_signal_panel
 from ml4t.diagnostic.visualization.signal import generate_signal_event_study_report
