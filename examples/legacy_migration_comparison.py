@@ -997,6 +997,75 @@ def show_signal_turnover(output: Path) -> None:
     print("Observed-date clock; defined rank dates at lags 1/2/5: 11/10/7")
 
 
+def _signal_event_study_inputs():
+    dates = pd.bdate_range("2025-01-02", periods=24, tz="UTC")
+    prices = pd.DataFrame(
+        {
+            "A": [31, 29, 32, 28, 31, 27, 30, 29, 33, 28, *np.linspace(35, 48, 14)],
+            "B": [28, 31, 29, 33, 27, 32, 28, 34, 26, 35, *np.linspace(36, 49, 14)],
+            "C": np.linspace(40, 63, 24),
+        },
+        index=dates,
+    )
+    events = prices.where((prices < 30) & (prices.shift(1) >= 30)).stack().dropna().rename("factor")
+    events.index.names = ["date", "asset"]
+    pricing = prices.iloc[1:]
+    forward = pd.concat(
+        {
+            f"{period}D": (pricing.shift(-period) / pricing - 1).stack()
+            for period in [1, 2, 3, 4, 5, 6, 10]
+        },
+        axis=1,
+    )
+    forward.index.names = ["date", "asset"]
+    return pricing, events, forward.reindex(events.index)
+
+
+def show_signal_event_study(output: Path) -> None:
+    """Execute the original event notebook's positive/negative threshold workflow offline."""
+    from ml4t.diagnostic.signal import (
+        SignalEventStudyResult,
+        analyze_signal_event_study,
+        prepare_signal_panel,
+    )
+    from ml4t.diagnostic.visualization.signal import generate_signal_event_study_report
+
+    pricing, events, forward = _signal_event_study_inputs()
+    factors = {f"{period}D": 1 / period for period in [1, 2, 3, 4, 5, 6, 10]}
+    for direction in [1, -1]:
+        panel = prepare_signal_panel(
+            events * direction, forward, quantiles=None, bins=1, max_loss=0
+        )
+        result = analyze_signal_event_study(
+            panel,
+            pricing,
+            input_kind="levels",
+            event_window=(5, 10),
+            rate_conversion_factors=factors,
+        )
+        assert panel.data.height == 9 and result.factor_statistics["count"].to_list() == [9]
+        assert result.event_distribution["n_events"].sum() == 9
+        assert result.event_membership.height == 9
+        assert result.event_returns is not None
+        assert result.event_returns.overall.paths.height == 144
+        assert len(result.metadata["return_columns"]) == 7
+        restored = SignalEventStudyResult.from_json(result.to_json())
+        assert restored.prepared_events.equals(result.prepared_events)
+        assert restored.event_membership.equals(result.event_membership)
+        target = (
+            output
+            if direction == 1
+            else output.with_name(output.stem + "-negative" + output.suffix)
+        )
+        path = generate_signal_event_study_report(result, output_file=target)
+        target.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+        print(f"{'Positive' if direction == 1 else 'Negative'} event-study HTML: {path}")
+    print(
+        "Threshold-crossing event study: 9 events, 1 bucket, 7 horizons, positive/negative factors"
+    )
+    print("Observed-row horizons/window; elapsed histogram; explicit dimensionless rate powers")
+
+
 def show_supplied_transactions(output: Path | None = None) -> None:
     """Actual overnight fills, explicit turnover and extra costs, without a broker."""
     import polars as pl
@@ -1126,6 +1195,7 @@ def main() -> None:
             "event-returns",
             "information",
             "turnover",
+            "event-study",
             "transactions",
             "transactions-report",
         ),
@@ -1136,7 +1206,7 @@ def main() -> None:
         type=Path,
         help=(
             "HTML path for holdings-report, transactions-report, events, event-returns, "
-            "information, turnover or empyrical-tail"
+            "information, turnover, event-study or empyrical-tail"
         ),
     )
     arguments = parser.parse_args()
@@ -1151,6 +1221,7 @@ def main() -> None:
         "event-returns",
         "information",
         "turnover",
+        "event-study",
     ) or (task == "empyrical-tail" and arguments.output is not None):
         packages.append("plotly")
     if task in ("all", "empyrical"):
@@ -1200,6 +1271,9 @@ def main() -> None:
         return
     if task == "event-returns":
         show_aligned_events(arguments.output or Path("event-returns.html"), complete_report=True)
+        return
+    if task == "event-study":
+        show_signal_event_study(arguments.output or Path("event-study.html"))
         return
     if task in ("all", "holdings"):
         show_prepared_holdings()

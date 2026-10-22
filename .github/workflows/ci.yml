@@ -441,6 +441,8 @@ jobs:
           tests/test_signal/test_signal_turnover_report.py
           tests/test_signal/test_signal_turnover_notebook.py
           tests/test_signal/test_signal_turnover_browser.py
+          tests/test_signal/test_signal_event_study.py
+          tests/test_signal/test_signal_event_study_notebook.py
           tests/test_signal/test_signal_outcome_ingestion.py
           tests/test_signal/test_signal_price_preparation.py
       - name: Run aligned event migration from installed wheel
@@ -491,7 +493,15 @@ jobs:
           --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
           python -I examples/legacy_migration_comparison.py --task turnover
           --output "$RUNNER_TEMP/turnover-report.html"
-      - name: Execute complete information and turnover notebooks from installed wheel
+      - name: Run canonical signal event-study workflow from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task event-study
+          --output "$RUNNER_TEMP/event-study.html"
+      - name: Execute complete signal report notebooks from installed wheel
         shell: bash
         run: >-
           uv run --isolated --no-project
@@ -500,6 +510,7 @@ jobs:
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= -q -s
           tests/test_signal/test_signal_information_notebook.py
           tests/test_signal/test_signal_turnover_notebook.py
+          tests/test_signal/test_signal_event_study_notebook.py
       - name: Verify complete information browser reports from installed wheel
         shell: bash
         run: >-
