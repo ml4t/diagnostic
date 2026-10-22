@@ -2052,11 +2052,54 @@ Run the six-plot, self-contained HTML recipe without Pyfolio:
 uv run python examples/pyfolio_transaction_adapters.py --report transaction-adapters.html
 ```
 
-The optional `--compare` flag also checks the published reference helpers on the
-same inputs. Reference tests additionally inspect real Matplotlib plot payloads
-under matched turnover, bps and timing-bin choices. These observed-input
-transaction routes do not yet qualify the complete `create_txn_tear_sheet`
-intraday-estimation options, round trips or capacity. Those remain accepted work.
+The optional `--compare` flag checks both the published helpers and the complete
+reference transaction sheet on those inputs. The example now calls the same
+report entry point used by migrating callers:
+
+```python
+import pandas as pd
+from ml4t.diagnostic.compat import pyfolio as pf
+
+txn_report_dates = pd.date_range("2025-07-07", periods=3, tz="America/New_York")
+txn_report_returns = pd.Series([.01, -.02, .03], index=txn_report_dates)
+txn_report_positions = pd.DataFrame(
+    {"A": [200.0, 400.0, 600.0], "cash": [800.0, 600.0, 400.0]}, index=txn_report_dates
+)
+txn_report_fills = pd.DataFrame(
+    {"amount": [1.0, -1.0, 2.0], "price": [100.0] * 3},
+    index=pd.to_datetime(["2025-07-07T15:00Z", "2025-07-07T16:00Z", "2025-07-09T15:00Z"]),
+)
+txn_report = pf.create_txn_tear_sheet(
+    txn_report_returns, txn_report_positions, txn_report_fills,
+    unadjusted_returns=txn_report_returns,
+    estimate_intraday=False, return_fig=True, periods_per_year=3,
+)
+assert len(txn_report.figures) == 6
+assert txn_report.availability["transactions"]["n_actual_fills"] == 3
+txn_report.save_html("transaction-report.html", include_plotlyjs=True)
+print("Complete familiar transaction manifest: actual fills and explicit extra-cost scenarios")
+```
+
+Without `unadjusted_returns`, the report includes turnover, activity-date unit
+volume, the finite turnover distribution and selected New York timing. Supplying
+it adds the original seven bps wealth paths and all 99 sensitivity scenarios;
+`periods_per_year` reaches the sensitivity CAGR calculation. Original net fees
+are not subtracted again. An empty actual ledger remains empty, never fills
+inferred from changing positions.
+
+`turnover_denom` selects `AGB` or `portfolio_value` on the whole report. The
+intraday selector uses the same explicit estimator as the positions report;
+estimated positions do not turn transactions into estimates. Plotly histogram
+bins and Matplotlib presentation differ. Full/simple account composition and
+all original portfolio notebooks remain separate unfinished acceptance work.
+
+The report converts owned aware fill timestamps to the supplied position
+clock's timezone before civil-day grouping. Instants, nanoseconds and caller
+frames remain unchanged. This corrects mixed UTC-fill/New-York-book alignment:
+the reference creates five unmatched daily keys with zero turnover for the
+known `[2, 0, .4]` sample. Naive/aware ambiguity requires an explicit timezone;
+the report does not guess UTC or exchange sessions. Standalone numerical
+adapters retain their documented input-clock definitions.
 
 ### Match actual fractional FIFO lots from an explicitly flat book
 

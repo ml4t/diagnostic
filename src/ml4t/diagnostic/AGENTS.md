@@ -43,6 +43,8 @@
 - `compat.pyfolio.create_position_tear_sheet` composes the complete familiar holdings manifest,
   top-table/sector options and explicit intraday estimates in that renderer. Hidden identities
   are anonymized before constructing figures or notebook/export payloads.
+- `compat.pyfolio.create_txn_tear_sheet` composes actual turnover, volume, timing and optional
+  additional-slippage panels; aware fill instants use the supplied book's civil-day timezone.
 - Correlation-adjusted DSR now lives in `evaluation.stats` via
   `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.
 - For book and case-study workflows, set `periods_per_year` from the return

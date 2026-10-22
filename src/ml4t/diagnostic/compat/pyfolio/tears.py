@@ -21,6 +21,7 @@ from .capacity_sheet import create_capacity_tear_sheet
 from .position_sheet import create_position_tear_sheet
 from .return_sheet import create_returns_tear_sheet
 from .stress_sheet import create_interesting_times_tear_sheet
+from .transaction_sheet import create_txn_tear_sheet
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -326,6 +327,7 @@ def create_perf_attrib_tear_sheet(
 
 
 __all__ = [
+    "create_txn_tear_sheet",
     "create_position_tear_sheet",
     "create_returns_tear_sheet",
     "create_capacity_tear_sheet",
