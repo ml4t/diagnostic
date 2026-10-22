@@ -253,12 +253,14 @@ jobs:
           uv run --isolated --no-project --with packaging
           python scripts/verify_release_artifacts.py dist
           --expected-version "$PACKAGE_VERSION"
-      - name: Import installed wheel
+      - name: Import installed core wheel without Plotly
         shell: bash
         run: >-
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)"
-          python -I scripts/import_smoke.py
+          python -I -c "import importlib.util, runpy;
+          assert importlib.util.find_spec('plotly') is None;
+          runpy.run_path('scripts/import_smoke.py', run_name='__main__')"
       - name: Run README quick start from installed wheel
         shell: bash
         run: >-
@@ -290,21 +292,21 @@ jobs:
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/test_empyrical_scalar_metrics.py
           tests/test_compat/test_empyrical_return_paths.py
-      - name: Verify metric and rolling workflows against Empyrical with pandas 3
+      - name: Verify analytical and rendering adapters against Empyrical with pandas 3
         shell: bash
         run: >-
           uv run --isolated --no-project
-          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==3.0.5"
           --with "empyrical-reloaded==0.7.0" --with pytest
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
           tests/test_metrics/test_gpd_tail_risk.py tests/test_metrics/test_gpd_helper_shapes.py
-      - name: Verify published Pyfolio risk workflows with its compatible pandas profile
+      - name: Verify published Pyfolio analytical and rendering workflows with compatible pandas
         shell: bash
         run: >-
           uv run --isolated --no-project
-          --with "$(find dist -name '*.whl' -print -quit)"
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
           --with "empyrical-reloaded==0.7.0" --with "pyfolio-reloaded==0.10.0" --with pytest
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
@@ -397,6 +399,28 @@ jobs:
             --with pytest \
             python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_integration/test_capacity_backtest.py
+      - name: Run complete stress live and cone workflows from installed wheel
+        shell: bash
+        run: |
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_evaluation/test_portfolio_stress_live.py \
+            tests/test_evaluation/test_portfolio_wealth_cones.py \
+            tests/test_compat/test_pyfolio_wealth_cones.py \
+            tests/test_compat/test_pyfolio_cone_plotting.py \
+            tests/test_compat/test_pyfolio_stress_sheet.py \
+            tests/test_visualization/test_portfolio_regime_report.py
+          mkdir -p artifacts/regimes
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" \
+            python -I examples/portfolio_regimes.py --task all --compare-pyfolio \
+            --output artifacts/regimes/native.html \
+            --familiar-output artifacts/regimes/familiar.html
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-

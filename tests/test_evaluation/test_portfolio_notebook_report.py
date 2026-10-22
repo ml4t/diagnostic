@@ -29,11 +29,16 @@ pio.renderers.default = 'plotly_mimetype'
 dates = pd.to_datetime(['2025-01-02','2025-01-03','2025-01-06'])
 positions = pd.DataFrame({'A':[0.,400.,400.],'B':[0.,-300.,-300.]},index=dates)
 valuations = pd.DataFrame({'equity':[1000.]*3,'cash':[1000.,900.,900.]},index=dates)
-analysis = PortfolioAnalysis(pd.Series([0.]*3,index=dates),positions=positions)
+analysis = PortfolioAnalysis.from_frames(pd.Series([0.]*3,index=dates),positions=positions,valuations=valuations,complete_snapshots=True,calendar=None)
 holdings = analysis.compute_holdings_analysis(valuations,complete_snapshots=True,sector_mapping={'A':'Technology'})
-report = create_portfolio_dashboard(analysis,holdings=holdings,include_transactions=False)
+stress = analysis.compute_stress({'selected':(dates[0],dates[1]),'unobserved':('1990','1990')})
+live = analysis.compute_live_split(live_start=dates[2])
+cones = analysis.compute_wealth_cones(live_start=dates[2],horizon=2,n_samples=4,initial_capital=1000)
+market = pd.DataFrame([{'date':when,'asset':asset,'price':10.,'volume':10000.} for when in dates for asset in ('A','B')])
+capacity = analysis.compute_capacity(market,currency='USD',price_basis='raw',volume_basis='raw',lookback=1)
+report = create_portfolio_dashboard(analysis,holdings=holdings,include_transactions=False,stress=stress,live=live,wealth_cones=cones,capacity=capacity)
 report.show()
-print('ML4T_NOTEBOOK:'+json.dumps({'module':diagnostic.__file__,'availability':report.availability,'holdings':report.to_dict()['holdings']},default=str))
+print('ML4T_NOTEBOOK:'+json.dumps({'module':diagnostic.__file__,'availability':report.availability,'holdings':report.to_dict()['holdings'],'stress_counts':report.stress.coverage['n_observations'].to_list(),'n_training':report.wealth_cones.training.height,'n_paths':report.wealth_cones.paths.height},default=str))
 """
     notebook = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell(code)])
 
@@ -74,7 +79,7 @@ print('ML4T_NOTEBOOK:'+json.dumps({'module':diagnostic.__file__,'availability':r
         )
     )
     assert Path(metadata["module"]).resolve() == Path(diagnostic.__file__).resolve()
-    assert len(figures) == 17
+    assert len(figures) == 22
     prepared = [
         fig
         for fig in figures
@@ -100,6 +105,19 @@ print('ML4T_NOTEBOOK:'+json.dumps({'module':diagnostic.__file__,'availability':r
     assert "Missing labels remain unclassified" in html
     assert metadata["availability"]["normal_fit"]["status"] == "unavailable"
     assert "zero dispersion" in html
+    assert "Stress windows" in html and "Live split" in html
+    assert "Worst liquidation: full/recent observations" in html
+    assert "unobserved" in html and "n_observations" in html
+    assert metadata["stress_counts"] == [2, 0]
+    assert metadata["n_training"] == 2 and metadata["n_paths"] == 8
+    cone_figure = next(
+        fig
+        for fig in figures
+        if (fig["layout"].get("meta") or {}).get("analysis") == "wealth_cones"
+    )
+    assert next(
+        trace["y"] for trace in cone_figure["data"] if trace["name"] == "Actual live wealth"
+    ) == [1000]
     distribution = next(
         fig for fig in figures if fig["layout"]["title"]["text"] == "Returns Distribution"
     )
@@ -123,6 +141,8 @@ print('ML4T_NOTEBOOK:'+json.dumps({'module':diagnostic.__file__,'availability':r
                 "mime_figures": len(figures),
                 "prepared_figures": len(prepared),
                 "availability_html": True,
+                "regime_tables_visible": True,
+                "cone_training_observations": metadata["n_training"],
                 "notebook_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "holdings": metadata["holdings"],
             },
