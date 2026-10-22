@@ -10,9 +10,11 @@ This module provides interactive Plotly visualizations for IC analysis:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from numbers import Integral
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 from scipy import stats
 from scipy.stats import jarque_bera as _jarque_bera
@@ -39,6 +41,8 @@ def plot_ic_ts(
     theme: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    *,
+    min_periods: int | None = None,
 ) -> go.Figure:
     """Plot IC time series with rolling mean and significance bands.
 
@@ -50,6 +54,9 @@ def plot_ic_ts(
         Period to plot (e.g., "1D", "5D"). If None, uses first period.
     rolling_window : int, default 21
         Window size for rolling mean calculation
+    min_periods : int | None
+        Required finite ICs in each complete rolling window. None retains the
+        native half-window threshold. Set equal to rolling_window for complete cases.
     show_significance : bool, default True
         Show the zero-centered normal-approximation band, z * sample standard
         deviation / sqrt(finite IC count). Undefined variance displays
@@ -74,6 +81,19 @@ def plot_ic_ts(
     >>> fig = plot_ic_ts(ic_result, period="5D", rolling_window=21)
     >>> fig.show()
     """
+    if (
+        isinstance(rolling_window, bool)
+        or not isinstance(rolling_window, Integral)
+        or rolling_window < 1
+    ):
+        raise ValueError("rolling_window must be a positive integer")
+    threshold = max(1, rolling_window // 2) if min_periods is None else min_periods
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, Integral)
+        or not 1 <= threshold <= rolling_window
+    ):
+        raise ValueError("min_periods must be an integer between one and rolling_window")
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
@@ -90,7 +110,7 @@ def plot_ic_ts(
     # Convert dates to datetime if strings
     if dates and isinstance(dates[0], str):
         try:
-            dates = [datetime.fromisoformat(d) for d in dates]
+            dates = [pd.Timestamp(d) for d in dates]
         except ValueError:
             pass  # Keep as strings if conversion fails
 
@@ -102,7 +122,7 @@ def plot_ic_ts(
     for i in range(rolling_window - 1, len(ic_series)):
         window = ic_series[i - rolling_window + 1 : i + 1]
         window_valid = window[~np.isnan(window)]
-        if len(window_valid) >= rolling_window // 2:
+        if len(window_valid) >= threshold:
             rolling_mean[i] = np.mean(window_valid)
 
     # Create figure
@@ -121,7 +141,7 @@ def plot_ic_ts(
             x=dates,
             y=ic_series,
             mode="markers",
-            name="Daily IC",
+            name="Observed IC",
             marker={
                 "size": 4,
                 "color": theme_config["colorway"][0],
@@ -137,7 +157,7 @@ def plot_ic_ts(
             x=dates,
             y=rolling_mean,
             mode="lines",
-            name=f"{rolling_window}-Day Rolling Mean",
+            name=f"{rolling_window}-Observation Rolling Mean",
             line={
                 "color": theme_config["colorway"][1],
                 "width": 2,
@@ -295,6 +315,16 @@ def plot_ic_histogram(
     )
 
     # Histogram
+    if len(ic_clean) == 0:
+        fig.add_annotation(
+            text="IC distribution unavailable:<br>no defined observations",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        return fig
     fig.add_trace(
         go.Histogram(
             x=ic_clean,
@@ -307,7 +337,8 @@ def plot_ic_histogram(
     )
 
     # KDE overlay
-    if show_kde and len(ic_clean) > 10:
+    varied = len(ic_clean) > 1 and np.std(ic_clean, ddof=1) > 0
+    if show_kde and len(ic_clean) > 10 and varied:
         kde = stats.gaussian_kde(ic_clean)
         x_kde = np.linspace(ic_clean.min(), ic_clean.max(), 200)
         y_kde = kde(x_kde)
@@ -326,6 +357,19 @@ def plot_ic_histogram(
                 line={"color": theme_config["colorway"][1], "width": 2},
             )
         )
+    elif show_kde and not varied:
+        fig.add_annotation(
+            text="KDE unavailable: constant IC",
+            x=0.02,
+            y=-0.24,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            xanchor="left",
+        )
+
+    if show_kde and not varied:
+        fig.update_layout(margin_b=120)
 
     # Mean line
     mean_ic = ic_result.ic_mean.get(period, 0)
@@ -333,7 +377,7 @@ def plot_ic_histogram(
         x=mean_ic,
         line_dash="dash",
         line_color=theme_config["colorway"][2],
-        annotation_text=f"Mean: {format_finite(mean_ic, '.4f')}",
+        **({} if show_stats else {"annotation_text": f"Mean: {format_finite(mean_ic, '.4f')}"}),
     )
 
     # Zero line
@@ -347,8 +391,8 @@ def plot_ic_histogram(
     # Statistics annotation
     if show_stats:
         ic_std = ic_result.ic_std.get(period, 0)
-        skewness = float(stats.skew(ic_clean)) if len(ic_clean) > 2 else 0
-        kurtosis = float(stats.kurtosis(ic_clean)) if len(ic_clean) > 3 else 0
+        skewness = float(stats.skew(ic_clean)) if varied and len(ic_clean) > 2 else np.nan
+        kurtosis = float(stats.kurtosis(ic_clean)) if varied and len(ic_clean) > 3 else np.nan
 
         stats_text = (
             f"<b>Statistics:</b><br>"
@@ -383,8 +427,11 @@ def plot_ic_qq(
     theme: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    *,
+    fitted: bool = False,
+    theoretical_dist: Any = None,
 ) -> go.Figure:
-    """Plot Q-Q plot for IC normality assessment.
+    """Plot IC Q-Q data using native or explicitly selected fitted quantiles.
 
     Parameters
     ----------
@@ -398,12 +445,22 @@ def plot_ic_qq(
         Figure width
     height : int | None
         Figure height
+    fitted : bool, default False
+        False preserves midpoint probabilities and sample-std-scaled normal
+        quantiles. True uses Statsmodels' fitted/standardized Q-Q convention.
+    theoretical_dist : scipy continuous distribution generator, optional
+        Fitted distribution such as scipy.stats.norm or scipy.stats.t.
+        Requires fitted=True. Normal is the fitted default.
 
     Returns
     -------
     go.Figure
         Interactive Plotly Q-Q plot
     """
+    if not isinstance(fitted, bool):
+        raise ValueError("fitted must be boolean")
+    if theoretical_dist is not None and not fitted:
+        raise ValueError("theoretical_dist requires fitted=True")
     theme = validate_theme(theme)
     theme_config = get_theme_config(theme)
 
@@ -418,14 +475,6 @@ def plot_ic_qq(
     ic_clean = ic_series[~np.isnan(ic_series)]
     ic_sorted = np.sort(ic_clean)
 
-    # Theoretical quantiles
-    n = len(ic_sorted)
-    theoretical_quantiles = stats.norm.ppf(
-        (np.arange(1, n + 1) - 0.5) / n,
-        loc=np.mean(ic_clean),
-        scale=np.std(ic_clean, ddof=1),
-    )
-
     # Create figure
     fig = create_base_figure(
         title=f"IC Q-Q Plot ({period})",
@@ -435,6 +484,55 @@ def plot_ic_qq(
         height=height or theme_config["defaults"]["scatter_height"],
         theme=theme,
     )
+
+    n = len(ic_sorted)
+    if n < 2 or np.std(ic_clean, ddof=1) <= 0:
+        if n:
+            fig.add_trace(
+                go.Scatter(
+                    x=np.arange(1, n + 1),
+                    y=ic_sorted,
+                    mode="markers",
+                    name="Observed IC (no fitted quantiles)",
+                )
+            )
+        fig.update_xaxes(title="Observation rank")
+        fig.add_annotation(
+            text=(
+                "Q-Q fit unavailable:<br>"
+                + ("constant IC sample" if n >= 2 else "fewer than two observations")
+            ),
+            x=0.5,
+            y=0.98,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+        return fig
+
+    if fitted:
+        from statsmodels.graphics.gofplots import ProbPlot
+
+        distribution = stats.norm if theoretical_dist is None else theoretical_dist
+        sample = ProbPlot(ic_clean, dist=distribution, fit=True)
+        theoretical_quantiles = sample.theoretical_quantiles
+        ic_sorted = sample.sample_quantiles
+        fig.update_xaxes(title=f"Fitted {getattr(distribution, 'name', 'distribution')} quantiles")
+        fig.update_yaxes(title="Standardized IC quantiles")
+        fig.update_layout(
+            meta={
+                "qq_method": "fitted_distribution",
+                "fit_params": list(sample.fit_params),
+                "distribution": getattr(distribution, "name", "distribution"),
+            }
+        )
+    else:
+        theoretical_quantiles = stats.norm.ppf(
+            (np.arange(1, n + 1) - 0.5) / n,
+            loc=np.mean(ic_clean),
+            scale=np.std(ic_clean, ddof=1),
+        )
+        fig.update_layout(meta={"qq_method": "native_midpoint_sample_std_normal"})
 
     # Q-Q scatter
     fig.add_trace(
@@ -461,7 +559,7 @@ def plot_ic_qq(
             x=[min_val, max_val],
             y=[min_val, max_val],
             mode="lines",
-            name="Normal Reference",
+            name="Fitted Reference" if fitted else "Normal Reference",
             line={"color": theme_config["colorway"][1], "dash": "dash", "width": 2},
         )
     )

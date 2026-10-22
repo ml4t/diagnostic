@@ -206,6 +206,7 @@ Changelog = "https://github.com/ml4t/diagnostic/releases"
 
 [dependency-groups]
 test = [
+    "lxml>=6.0.0",
     "playwright>=1.64.0",
     "pytest>=9.0.3",
     "pytest-cov>=4.1.0",
@@ -272,7 +273,7 @@ fix = true
 # Ruff 0.16+ formats fenced Python in Markdown; prose files are not formatter inputs.
 exclude = ["scripts", "*.md"]
 # Licensed reference cells are hash-checked and executed, not rewritten by Ruff.
-extend-exclude = ["tests/fixtures/pyfolio_original/*.ipynb"]
+extend-exclude = ["tests/fixtures/pyfolio_original/*.ipynb", "tests/fixtures/alphalens_original/*.ipynb"]
 
 [tool.ruff.lint]
 select = [

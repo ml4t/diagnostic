@@ -19,7 +19,7 @@ import polars as pl
 from ml4t.specs import UNSET_CALENDAR, CalendarUnset, FeedSpec
 
 from ml4t.diagnostic.backends.polars_backend import PolarsBackend, _bucket_parameters
-from ml4t.diagnostic.signal._prepared import signal_input_contract
+from ml4t.diagnostic.signal._prepared import prepared_snapshot, signal_input_contract
 from ml4t.diagnostic.utils.validation import (
     _align_datetime_key_resolution,
     _validate_observation_keys,
@@ -47,6 +47,54 @@ class PreparedSignalPanel:
     date_col: str
     asset_col: str
     _outcome_payload: bytes | None = field(default=None, repr=False)
+
+    @classmethod
+    def from_prepared(
+        cls,
+        data: pl.DataFrame | pd.DataFrame,
+        *,
+        return_columns: Sequence[str],
+        factor_col: str = "factor",
+        date_col: str | None = None,
+        asset_col: str | None = None,
+        timestamp_col: str | None = None,
+        entity_col: str | None = None,
+        feed_spec: FeedSpec | Mapping[str, Any] | None = None,
+        calendar: str | CalendarUnset | None = UNSET_CALENDAR,
+    ) -> PreparedSignalPanel:
+        """Own a complete supplied panel without cleaning or assigning buckets.
+
+        The existing strict prepared-input validator preserves positive sparse
+        bucket IDs and explicit outcome selectors. Nonfinite numeric values or
+        ambiguous keys fail rather than silently changing the analytical sample.
+        No price, endpoint, availability or exchange schedule is inferred.
+        """
+        date_col, asset_col, contract = signal_input_contract(
+            feed_spec=feed_spec,
+            timestamp_col=timestamp_col,
+            entity_col=entity_col,
+            date_col=date_col,
+            asset_col=asset_col,
+            calendar=calendar,
+        )
+        if len({date_col, asset_col, factor_col, "quantile"}) != 4:
+            raise ValueError("prepared keys, factor and quantile must have distinct names")
+        frame, payload, metadata = prepared_snapshot(
+            data, (), None, factor_col, date_col, asset_col, return_columns=return_columns
+        )
+        excluded = (
+            frame.select(date_col, asset_col)
+            .head(0)
+            .with_columns(
+                pl.lit(None, dtype=pl.String).alias("exclusion_stage"),
+                pl.lit(None, dtype=pl.String).alias("exclusion_reason"),
+            )
+        )
+        metadata.update(contract)
+        metadata["excluded_data_ipc_base64"] = base64.b64encode(
+            excluded.write_ipc(None).getvalue()
+        ).decode("ascii")
+        return cls(payload, json.dumps(metadata, allow_nan=False), factor_col, date_col, asset_col)
 
     @property
     def data(self) -> pl.DataFrame:

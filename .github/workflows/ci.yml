@@ -348,7 +348,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==3.0.5"
-          --with "empyrical-reloaded==0.7.0" --with pytest
+          --with "empyrical-reloaded==0.7.0" --with pytest --with lxml
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
           tests/test_metrics/test_gpd_tail_risk.py tests/test_metrics/test_gpd_helper_shapes.py
@@ -359,7 +359,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
-          --with "empyrical-reloaded==0.7.0" --with "pyfolio-reloaded==0.10.0" --with pytest
+          --with "empyrical-reloaded==0.7.0" --with "pyfolio-reloaded==0.10.0" --with pytest --with lxml
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
           tests/test_evaluation/test_portfolio_var_definitions.py
@@ -503,25 +503,57 @@ jobs:
       - name: Run signal workflows with minimum Polars from installed wheel
         shell: bash
         run: >-
+          ML4T_REQUIRED_ALPHALENS_REFERENCE=0.4.6
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
-          --with pytest --with pytest-timeout --with pytest-xdist
-          --with "alphalens-reloaded==0.4.6" --with playwright
+          --with pytest --with pytest-timeout --with pytest-xdist --with lxml
+          --with "alphalens-reloaded==0.4.6" --with "empyrical-reloaded==0.7.0" --with playwright
           pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q -n auto --timeout 120 tests/test_signal/
-      - name: Run Alphalens preparation adapters from installed wheel
+          tests/test_compat/test_alphalens_portfolio.py
+          tests/test_compat/test_alphalens_information_sheet.py
+          tests/test_compat/test_alphalens_statistics.py
+          tests/test_compat/test_alphalens_event_turnover_sheets.py
+          tests/test_compat/test_alphalens_returns_sheet.py
+          tests/test_compat/test_alphalens_composed_sheets.py
+          tests/test_compat/test_alphalens_factor_regression.py
+          tests/test_compat/test_alphalens_persistence.py
+          tests/test_compat/test_alphalens_plotting.py
+          tests/test_compat/test_alphalens_event_performance.py
+          tests/test_compat/test_alphalens_tables_events.py
+          tests/test_compat/test_alphalens_direct_browser.py
+      - name: Run corrected Alphalens preparation and report workflows from installed wheel
         shell: bash
         run: >-
+          ML4T_REQUIRED_ALPHALENS_REFERENCE=0.5.0
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
           --with "alphalens-reloaded==0.5.0" --with "empyrical-reloaded==0.7.0"
-          --with pytest
+          --with pytest --with pytest-timeout --with playwright --with nbclient --with ipykernel --with lxml
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q tests/test_compat/test_alphalens_preparation.py
           tests/test_compat/test_alphalens_time_alignment.py
           tests/test_compat/test_alphalens_bucketing.py
+          tests/test_compat/test_alphalens_information_sheet.py
+          tests/test_compat/test_alphalens_statistics.py
+          tests/test_compat/test_alphalens_event_turnover_sheets.py
+          tests/test_compat/test_alphalens_returns_sheet.py
+          tests/test_compat/test_alphalens_composed_sheets.py
+          tests/test_compat/test_alphalens_factor_regression.py
+          tests/test_compat/test_alphalens_persistence.py
+          tests/test_compat/test_alphalens_plotting.py
+          tests/test_compat/test_alphalens_event_performance.py
+          tests/test_compat/test_alphalens_tables_events.py
+          tests/test_compat/test_alphalens_direct_browser.py
+          tests/test_signal/test_signal_turnover_report.py
+          tests/test_signal/test_signal_turnover_notebook.py
+          tests/test_signal/test_signal_turnover_browser.py
+          tests/test_signal/test_signal_event_study.py
+          tests/test_signal/test_signal_event_study_notebook.py
+          tests/test_signal/test_signal_returns_report.py
+          tests/test_signal/test_signal_composed_report.py
           tests/test_compat/test_alphalens_portfolio.py
           tests/test_signal/test_signal_portfolio_interchange.py
           tests/test_signal/test_signal_outcome_ingestion.py
@@ -558,6 +590,66 @@ jobs:
           --with nbclient --with ipykernel --with pytest
           pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
           tests/test_signal/test_event_returns_notebook.py
+      - name: Run complete information migration from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task information
+          --output "$RUNNER_TEMP/information.html"
+      - name: Run complete turnover report from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task turnover
+          --output "$RUNNER_TEMP/turnover-report.html"
+      - name: Run canonical signal event-study workflow from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          python -I examples/legacy_migration_comparison.py --task event-study
+          --output "$RUNNER_TEMP/event-study.html"
+      - name: Execute preserved original Alphalens notebooks without Reloaded
+        shell: bash
+        run: |
+          for pandas_version in 2.3.3 3.0.6; do
+            ML4T_REQUIRED_ORIGINAL_NOTEBOOKS=1 uv run --isolated --no-project \
+              --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+              --with "pandas==$pandas_version" --with nbclient --with ipykernel --with pytest \
+              python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+              -q tests/test_compat/test_alphalens_original_notebooks.py
+          done
+      - name: Execute complete signal report notebooks from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with nbclient --with ipykernel --with pytest
+          pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= -q -s
+          tests/test_signal/test_signal_information_notebook.py
+          tests/test_signal/test_signal_turnover_notebook.py
+          tests/test_signal/test_signal_event_study_notebook.py
+      - name: Verify complete information browser reports from installed wheel
+        shell: bash
+        run: >-
+          uv run --isolated --no-project
+          --with "$(find dist -name '*.whl' -print -quit)[viz]"
+          --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
+          --with pytest --with playwright
+          pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
+          tests/test_signal/test_signal_information.py
+          tests/test_signal/test_signal_information_browser.py
+      - name: Retain complete information report browser evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: information-report-browser
+          path: artifacts/information-reports/
+          if-no-files-found: error
       - name: Retain aligned event report browser evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

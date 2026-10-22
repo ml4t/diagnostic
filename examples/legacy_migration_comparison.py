@@ -876,6 +876,196 @@ def show_aligned_events(output: Path, *, complete_report: bool = False) -> None:
     print("Supplied levels, sample standard deviations and observed-row offsets; not CAR")
 
 
+def _signal_information_inputs() -> tuple[pd.Series, pd.DataFrame, pd.Series]:
+    dates = pd.bdate_range("2025-01-15", periods=45, tz="UTC")
+    assets = list("ABCDEFG")
+    random = np.random.default_rng(90417)
+    prices = pd.DataFrame(
+        100 * np.cumprod(1 + random.normal(0.001, 0.025, (45, 7)), axis=0),
+        index=dates,
+        columns=assets,
+    )
+    factor = prices.pct_change(3, fill_method=None).iloc[3:35].stack().rename("factor")
+    factor.index = factor.index.set_names(["date", "asset"])
+    forward = pd.DataFrame(
+        {f"{period}D": (prices.shift(-period) / prices - 1).stack() for period in [1, 5]}
+    ).reindex(factor.index)
+    groups = pd.Series(
+        [
+            "small" if asset in ("ABC" if day.day % 2 else "AB") else "large"
+            for day, asset in factor.index
+        ],
+        index=factor.index,
+        name="group",
+    )
+    return factor, forward, groups
+
+
+def show_signal_information_reports(output: Path) -> None:
+    import polars as pl
+
+    from ml4t.diagnostic.compat.alphalens import tears
+    from ml4t.diagnostic.metrics.ic_inference import compute_ic_hac_stats
+    from ml4t.diagnostic.signal import (
+        SignalInformationResult,
+        analyze_signal_information,
+        prepare_signal_panel,
+    )
+    from ml4t.diagnostic.visualization.signal import generate_signal_information_report
+
+    factor, forward, groups = _signal_information_inputs()
+    panel = prepare_signal_panel(factor, forward, groups=groups, quantiles=3, max_loss=0)
+    familiar = (
+        panel.data.to_pandas()
+        .set_index(["date", "asset"])
+        .rename(columns={"quantile": "factor_quantile"})
+    )
+    for adjusted in [False, True]:
+        for grouped in [False, True]:
+            result = analyze_signal_information(panel, group_adjust=adjusted, by_group=grouped)
+            restored = SignalInformationResult.from_json(result.to_json())
+            assert restored.get_table("prepared_data").height == 224
+            assert restored.get_table("ic_by_date").height == 64
+            assert restored.get_table("group_ic_by_date").height == (128 if grouped else 0)
+            target = output.with_name(
+                f"{output.stem}-adjusted-{int(adjusted)}-grouped-{int(grouped)}{output.suffix}"
+            )
+            generate_signal_information_report(result, output_file=target)
+            target.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+            assert target.read_text().count('class="plot-container"') == (7 if grouped else 8)
+            print(
+                f"Information report: adjusted={adjusted}, grouped={grouped}, prepared rows=224, dates=32; {target}"
+            )
+            adapted_target = target.with_name(f"{target.stem}-familiar{target.suffix}")
+            figures = tears.create_information_tear_sheet(
+                familiar,
+                group_neutral=adjusted,
+                by_group=grouped,
+                output_file=adapted_target,
+                return_fig=True,
+            )
+            assert len(figures) == (7 if grouped else 8)
+            expected_ic = restored.get_table("ic_by_date").filter(pl.col("return_column") == "1D")
+            np.testing.assert_allclose(figures[0].data[0].y, expected_ic["ic"].to_numpy())
+            assert adapted_target.read_text(encoding="utf-8").count(
+                'class="plot-container"'
+            ) == len(figures)
+            print(f"Familiar information adapter: same global IC/sample; {adapted_target}")
+    observed = (
+        result.get_table("ic_by_date").filter(pl.col("return_column") == "5D")["ic"].to_numpy()
+    )
+    robust = compute_ic_hac_stats(observed, label_horizon=5)
+    assert robust["n_periods"] == 32 and robust["effective_lags"] >= 4
+    print(
+        f"Separate HAC IC: n={robust['n_periods']}; lags={robust['effective_lags']}; not the report's naive inference"
+    )
+
+
+def show_signal_turnover(output: Path) -> None:
+    from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+    from ml4t.diagnostic.signal import prepare_signal_panel
+    from ml4t.diagnostic.visualization.signal import generate_signal_turnover_report
+
+    dates = pd.bdate_range("2025-03-03", periods=14, tz="UTC")
+    changes = np.array([np.roll([0.01, 0.02, -0.01, -0.02], i) for i in range(13)])
+    prices = pd.DataFrame(
+        np.vstack([np.full(4, 100.0), 100 * np.cumprod(1 + changes, axis=0)]),
+        index=dates,
+        columns=list("ABCD"),
+    )
+    factor = (
+        prices.pct_change(fill_method=None).iloc[1:-1].stack(future_stack=True).rename("factor")
+    )
+    forward = (prices.shift(-1) / prices - 1).stack(future_stack=True).rename("1D").to_frame()
+    factor.index.names = forward.index.names = ["date", "asset"]
+    panel = prepare_signal_panel(factor, forward, quantiles=2, max_loss=0)
+    result = TurnoverAnalysisResult.from_observations(
+        panel.quantile_turnover(lags=(1, 2, 5)),
+        panel.rank_autocorrelation(lags=(1, 2, 5)),
+    )
+    assert panel.data.height == 48
+    means = result.get_dataframe("autocorrelation")
+    np.testing.assert_allclose(means["autocorrelation"], [0, -1, 0], atol=1e-12)
+    assert means["n_dates"].to_list() == [11, 10, 7]
+    path = generate_signal_turnover_report(result, output_file=output)
+    output.with_suffix(".json").write_text(result.model_dump_json(), encoding="utf-8")
+    restored = TurnoverAnalysisResult.model_validate_json(output.with_suffix(".json").read_text())
+    for name in ["turnover", "autocorrelation", "dated_turnover", "dated_autocorrelation"]:
+        assert restored.get_dataframe(name).equals(result.get_dataframe(name))
+    print(f"Complete turnover HTML: {path}")
+    print("6 panels: 3 membership lags and 3 rank lags; typed JSON exported")
+    print("Observed-date clock; defined rank dates at lags 1/2/5: 11/10/7")
+
+
+def _signal_event_study_inputs():
+    dates = pd.bdate_range("2025-01-02", periods=24, tz="UTC")
+    prices = pd.DataFrame(
+        {
+            "A": [31, 29, 32, 28, 31, 27, 30, 29, 33, 28, *np.linspace(35, 48, 14)],
+            "B": [28, 31, 29, 33, 27, 32, 28, 34, 26, 35, *np.linspace(36, 49, 14)],
+            "C": np.linspace(40, 63, 24),
+        },
+        index=dates,
+    )
+    events = prices.where((prices < 30) & (prices.shift(1) >= 30)).stack().dropna().rename("factor")
+    events.index.names = ["date", "asset"]
+    pricing = prices.iloc[1:]
+    forward = pd.concat(
+        {
+            f"{period}D": (pricing.shift(-period) / pricing - 1).stack()
+            for period in [1, 2, 3, 4, 5, 6, 10]
+        },
+        axis=1,
+    )
+    forward.index.names = ["date", "asset"]
+    return pricing, events, forward.reindex(events.index)
+
+
+def show_signal_event_study(output: Path) -> None:
+    """Execute the original event notebook's positive/negative threshold workflow offline."""
+    from ml4t.diagnostic.signal import (
+        SignalEventStudyResult,
+        analyze_signal_event_study,
+        prepare_signal_panel,
+    )
+    from ml4t.diagnostic.visualization.signal import generate_signal_event_study_report
+
+    pricing, events, forward = _signal_event_study_inputs()
+    factors = {f"{period}D": 1 / period for period in [1, 2, 3, 4, 5, 6, 10]}
+    for direction in [1, -1]:
+        panel = prepare_signal_panel(
+            events * direction, forward, quantiles=None, bins=1, max_loss=0
+        )
+        result = analyze_signal_event_study(
+            panel,
+            pricing,
+            input_kind="levels",
+            event_window=(5, 10),
+            rate_conversion_factors=factors,
+        )
+        assert panel.data.height == 9 and result.factor_statistics["count"].to_list() == [9]
+        assert result.event_distribution["n_events"].sum() == 9
+        assert result.event_membership.height == 9
+        assert result.event_returns is not None
+        assert result.event_returns.overall.paths.height == 144
+        assert len(result.metadata["return_columns"]) == 7
+        restored = SignalEventStudyResult.from_json(result.to_json())
+        assert restored.prepared_events.equals(result.prepared_events)
+        assert restored.event_membership.equals(result.event_membership)
+        target = (
+            output
+            if direction == 1
+            else output.with_name(output.stem + "-negative" + output.suffix)
+        )
+        path = generate_signal_event_study_report(result, output_file=target)
+        target.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+        print(f"{'Positive' if direction == 1 else 'Negative'} event-study HTML: {path}")
+    print(
+        "Threshold-crossing event study: 9 events, 1 bucket, 7 horizons, positive/negative factors"
+    )
+    print("Observed-row horizons/window; elapsed histogram; explicit dimensionless rate powers")
+
+
 def show_supplied_transactions(output: Path | None = None) -> None:
     """Actual overnight fills, explicit turnover and extra costs, without a broker."""
     import polars as pl
@@ -979,6 +1169,8 @@ def show_empyrical_tail(output: Path | None = None) -> None:
             title="Supplied GPD tail-risk analysis",
         )
         print(f"Portfolio report with supplied GPD fit: {output}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1001,6 +1193,9 @@ def main() -> None:
             "holdings-report",
             "events",
             "event-returns",
+            "information",
+            "turnover",
+            "event-study",
             "transactions",
             "transactions-report",
         ),
@@ -1009,16 +1204,25 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        help="HTML path for holdings-report, transactions-report, events, event-returns or empyrical-tail",
+        help=(
+            "HTML path for holdings-report, transactions-report, events, event-returns, "
+            "information, turnover, event-study or empyrical-tail"
+        ),
     )
     arguments = parser.parse_args()
     task = arguments.task
     packages = ["ml4t-diagnostic", "numpy", "pandas", "scipy", "polars"]
     if task in ("exposure", "activity"):
         packages.extend(["ml4t-backtest", "plotly"])
-    if task in ("holdings-report", "transactions-report", "events", "event-returns") or (
-        task == "empyrical-tail" and arguments.output is not None
-    ):
+    if task in (
+        "holdings-report",
+        "transactions-report",
+        "events",
+        "event-returns",
+        "information",
+        "turnover",
+        "event-study",
+    ) or (task == "empyrical-tail" and arguments.output is not None):
         packages.append("plotly")
     if task in ("all", "empyrical"):
         packages.append("empyrical-reloaded")
@@ -1028,6 +1232,9 @@ def main() -> None:
         packages.append("alphalens-reloaded")
     for package in packages:
         print(f"{package}=={version(package)}")
+    if task == "turnover":
+        show_signal_turnover(arguments.output or Path("turnover-report.html"))
+        return
     if task == "empyrical-native":
         show_empyrical_native()
         return
@@ -1056,11 +1263,17 @@ def main() -> None:
     if task == "holdings-report":
         show_prepared_holdings_report(arguments.output or Path("holdings-report.html"))
         return
+    if task == "information":
+        show_signal_information_reports(arguments.output or Path("signal-information.html"))
+        return
     if task == "events":
         show_aligned_events(arguments.output or Path("aligned-events.html"))
         return
     if task == "event-returns":
         show_aligned_events(arguments.output or Path("event-returns.html"), complete_report=True)
+        return
+    if task == "event-study":
+        show_signal_event_study(arguments.output or Path("event-study.html"))
         return
     if task in ("all", "holdings"):
         show_prepared_holdings()

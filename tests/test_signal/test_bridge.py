@@ -392,8 +392,8 @@ class TestVizRoundtrip:
         assert fig is not None
         assert len(fig.data) > 0
 
-    def test_quantile_plots_handle_single_observation(self):
-        """Unavailable sample deviation does not produce NaN plot data."""
+    def test_single_observation_standard_error_stays_unknown_and_is_not_drawn_as_zero(self):
+        """A real singleton bucket must not acquire a fabricated zero-error cap."""
         from ml4t.diagnostic.visualization.signal.quantile_plots import (
             plot_quantile_returns_bar,
             plot_quantile_returns_violin,
@@ -430,7 +430,9 @@ class TestVizRoundtrip:
         bar = plot_quantile_returns_bar(result, period="1D")
         violin = plot_quantile_returns_violin(result, period="1D")
 
-        assert bar.data[0].error_y.array[0] == 0.0
+        assert bar.data[0].error_y.array[0] is None
+        assert bar.data[0].error_y.visible is False
+        assert bar.data[0].customdata[0][1] == "N/A"
         assert len(violin.data[0].y) == 1
         np.testing.assert_allclose(violin.data[0].y, [0.1], rtol=0, atol=1e-14)
         assert np.isfinite(np.asarray(violin.data[0].y)).all()

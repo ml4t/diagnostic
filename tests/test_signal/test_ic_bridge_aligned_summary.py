@@ -199,7 +199,7 @@ def test_actual_report_browser_mean_line_uses_retained_quote_ic_observations(
             page.goto(path.as_uri(), wait_until="networkidle")
             page.get_by_role("button", name="IC Analysis", exact=True).click()
             measured = page.locator("#ic").evaluate("""element=>{
-                const plot=Array.from(element.querySelectorAll('.js-plotly-plot')).find(plot=>Array.from(plot.data||[]).some(trace=>trace.name==='Daily IC'));
+                const plot=Array.from(element.querySelectorAll('.js-plotly-plot')).find(plot=>Array.from(plot.data||[]).some(trace=>trace.name==='Observed IC'));
                 const rect=plot.getBoundingClientRect();
                 const box=node=>{const rect=node.getBoundingClientRect();return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}};
                 const summary=Array.from(plot.querySelectorAll('.annotation-text')).find(node=>node.textContent.includes('Summary:'));

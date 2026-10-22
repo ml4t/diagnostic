@@ -11,11 +11,14 @@ Factor-style signal analysis with a clean public surface.
 - `_outcomes.py` - one long-outcome normalization with retained endpoint/availability provenance
 - `result.py` - `SignalResult`
 - `signal_ic.py` - per-date/group IC observations and legacy finite-series extraction
+- `information.py` - owned complete information-report samples, inference and month/group means
 - `returns.py` - inspectable finite-pair date/group return demeaning shared with IC
 - `portfolio.py` - shared factor-weight normalization and supplied-return contributions
 - `positions.py` and `portfolio_inputs.py` - explicit-expiry research allocations and owned daily portfolio interchange
 - `factor_regression.py` - same-universe dated OLS, explicit compound alpha and owned samples
+- `returns_report.py` - owned return-analysis orchestration over shared weights, regressions, quantile statistics and wealth products; raw/display units and requested empty cells remain separate
 - `events.py` - observed-clock event paths, explicit level/wealth units and date/group samples
+- `event_study.py` - composed factor statistics, elapsed event bins and raw/rate dated samples
 - `quantile.py` - shared sample reduction, daily/equal-date quantile statistics and pooled returns/spread
 - `turnover.py` - turnover and signal autocorrelation
 - `_report.py` - text/report formatting helpers
@@ -32,6 +35,10 @@ print(result.ic["1D"], result.ic_t_stat["1D"])
 `analyze_prepared_signal` accepts already-complete panels without prices or new bucket assignments.
 Its result retains an owned `prepared_data` snapshot. Supplied horizon labels do not establish a
 calendar or session/bar validation; native pooled quantile/spread definitions still apply.
+`PreparedSignalPanel.from_prepared` uses the same strict validator to own an already-clean
+table and its supplied sparse bucket IDs without recalculation. The familiar
+`compat.alphalens.tears.create_information_tear_sheet` delegates to the native information
+analysis/report; a declared pandas output grid retains missing dates as unknown ICs, not factor rows.
 
 `prepare_signal_panel` cleans one common factor/return/group sample before shared qcut/cut
 bucketing. Its owned panel exposes independent data/audit copies; `analyze()` delegates to the
@@ -71,6 +78,10 @@ snapshots; existing event plots and HTML composition render actual paths without
 group summaries in `EventReturnsResult`. `plot_event_returns` and `generate_event_returns_report`
 compose the global overview, optional per-quantile sample deviations and group overviews. This
 is the event-returns report, not the separate event-study sheet or all seven legacy sheets.
+`analyze_signal_event_study` composes the separate signal event-study report from an owned
+prepared panel. It retains raw inputs, elapsed-bin membership, date-weighted return statistics
+and explicit dimensionless rate powers. Optional paths retain observed-row units. The HTML
+composer and `plot_signal_event_study` expose real table/plot data, not an abnormal-return model.
 
 `panel.quantile_statistics` retains date/group/bucket means, sample errors and asset counts, or
 reduces daily means with equal date weight and explicit date counts. Its adjusted returns reuse
@@ -87,3 +98,8 @@ Spearman averaging remains distinct. Persistence-enabled analyses retain both da
 `SignalResult` and its JSON; `to_turnover_result` and `to_tear_sheet` expose actual dated observations
 and summaries in the existing report. Cumulative paths and complete chart/sheet coverage remain
 separate; no unavailable data or confidence bands are synthesized from scalar means.
+
+`visualization.signal.plot_signal_turnover` and `generate_signal_turnover_report` compose every
+recorded membership/rank lag and owned tables from `TurnoverAnalysisResult`. The dashboard uses the
+same collection. Lags retain their observed/supplied clock, not an inferred calendar or return
+horizon. Other composed sheets and portfolio/interchange workflows remain separate.

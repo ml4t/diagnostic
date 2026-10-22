@@ -1,0 +1,2 @@
+# These pinned upstream originals are verified by their exact byte hashes.
+tests/fixtures/alphalens_original/* -text
