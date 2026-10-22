@@ -79,10 +79,10 @@ def test_serialized_result_is_rejected_before_metrics_or_previous_output_change(
     metrics = {"holdings_attribution": result.to_dict()}
     before = {"holdings_attribution": result.to_dict()}
     output = tmp_path / "report.html"
-    output.write_text("Previous report")
+    output.write_text("Previous report", encoding="utf-8")
     with pytest.raises(TypeError, match="HoldingsAttributionResult"):
         report(route, returns, metrics, output)
-    assert metrics == before and output.read_text() == "Previous report"
+    assert metrics == before and output.read_text(encoding="utf-8") == "Previous report"
 
 
 @pytest.mark.parametrize("route", ["function", "builder", "export"])
@@ -91,10 +91,13 @@ def test_other_account_returns_cannot_be_displayed_with_wrong_attribution(route,
     other = pd.Series([100.0, 104.0, 103.0]).pct_change(fill_method=None).iloc[1:].to_numpy()
     metrics = {"holdings_attribution": result}
     output = tmp_path / "report.html"
-    output.write_text("Previous report")
+    output.write_text("Previous report", encoding="utf-8")
     with pytest.raises(ValueError, match="same returns|match.*return|attribution.*return"):
         report(route, other, metrics, output)
-    assert list(metrics) == ["holdings_attribution"] and output.read_text() == "Previous report"
+    assert (
+        list(metrics) == ["holdings_attribution"]
+        and output.read_text(encoding="utf-8") == "Previous report"
+    )
 
 
 def test_performance_only_export_does_not_leak_auto_enabled_factor_sections():

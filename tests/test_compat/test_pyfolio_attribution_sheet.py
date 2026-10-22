@@ -48,7 +48,7 @@ def test_default_sheet_emits_complete_statistics_and_all_canonical_partition_pan
         *account_inputs(), return_fig=True, output_file=output
     )
     assert len(figures) == 5
-    html = output.read_text()
+    html = output.read_text(encoding="utf-8")
     assert "Annualized Specific Return" in html and "Average Risk Factor Exposure" in html
     assert "252 observations per year" in html
     assert "Cumulative common style returns attribution" in html
@@ -66,9 +66,9 @@ def test_html_return_is_explicit_and_invalid_partitions_cannot_replace_existing_
     assert html.startswith("<!DOCTYPE html>")
     assert "12 observations per year" in html
     path = tmp_path / "previous.html"
-    path.write_text("verified previous report")
+    path.write_text("verified previous report", encoding="utf-8")
     with pytest.raises(TypeError, match="factor_partitions"):
         tears.create_perf_attrib_tear_sheet(
             *account_inputs(), factor_partitions={"style": "market"}, output_file=path
         )
-    assert path.read_text() == "verified previous report"
+    assert path.read_text(encoding="utf-8") == "verified previous report"
