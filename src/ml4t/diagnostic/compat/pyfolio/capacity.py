@@ -71,8 +71,8 @@ def _market(market_data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def _allocations(positions: pd.DataFrame) -> pd.DataFrame:
     _dated(positions, "positions")
-    if not positions.index.is_unique or not positions.index.is_monotonic_increasing:
-        raise ValueError("position dates must be sorted and unique")
+    if not positions.index.is_monotonic_increasing:
+        raise ValueError("position dates must be sorted")
     _, nav = _books(positions)
     return _numeric(positions, "positions").drop(columns="cash").div(nav, axis=0)
 
@@ -150,6 +150,18 @@ def days_to_liquidate_positions(
     mean_volume_window: int = 5,
 ) -> pd.DataFrame:
     """Fixed-capital allocation liquidation with the legacy trimmed row window."""
+    return _liquidation_frames(
+        positions, market_data, max_bar_consumption, capital_base, mean_volume_window
+    )[0]
+
+
+def _liquidation_frames(
+    positions: pd.DataFrame,
+    market_data: pd.DataFrame,
+    max_bar_consumption: float,
+    capital_base: float,
+    mean_volume_window: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     limit = _positive_real(max_bar_consumption, "max_bar_consumption")
     if limit > 1:
         raise ValueError("max_bar_consumption must not exceed one")
@@ -164,7 +176,7 @@ def days_to_liquidate_positions(
         columns=allocation.columns,
     )
     result = result.mask(denominator.isna())
-    return result.iloc[window:]
+    return result.iloc[window:], allocation.iloc[window:]
 
 
 def get_max_days_to_liquidate_by_ticker(
@@ -181,25 +193,30 @@ def get_max_days_to_liquidate_by_ticker(
     returned date/allocation belongs to that row, never columnwise first-nonnull
     fragments from different observations.
     """
-    values = days_to_liquidate_positions(
+    values, allocation = _liquidation_frames(
         positions, market_data, max_bar_consumption, capital_base, mean_volume_window
     )
     if last_n_days is not None:
         days = positive_integer(last_n_days, "last_n_days")
-        values = values.loc[values.index.max() - pd.Timedelta(days=days) :]
-    allocation = _allocations(positions) * 100
+        keep = values.index >= values.index.max() - pd.Timedelta(days=days)
+        values, allocation = values.loc[keep], allocation.loc[keep]
     rows = []
     for asset in values.columns:
-        ordered = values[asset].sort_values(ascending=False, kind="stable", na_position="last")
+        ordered = (
+            values[asset]
+            .reset_index(drop=True)
+            .sort_values(ascending=False, kind="stable", na_position="last")
+        )
         if ordered.empty:
             continue
-        day = ordered.index[0]
+        observation = int(ordered.index[0])
+        day = values.index[observation]
         rows.append(
             {
                 "symbol": asset,
                 "date": day,
                 "days_to_liquidate": ordered.iloc[0],
-                "pos_alloc_pct": allocation[asset].get(day, np.nan)
+                "pos_alloc_pct": allocation.iloc[observation][asset] * 100
                 if asset in allocation
                 else np.nan,
             }

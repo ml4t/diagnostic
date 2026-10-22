@@ -67,11 +67,14 @@ def provider_inputs():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--familiar-report", type=Path)
     parser.add_argument("--compare", action="store_true")
     parser.add_argument("--data-provider", action="store_true")
     args = parser.parse_args()
     print({name: version(name) for name in ("ml4t-diagnostic", "pandas", "polars", "numpy", "ml4t-specs")})
     if args.data_provider:
+        if args.familiar_report:
+            parser.error("--familiar-report uses the supplied-account demo; --data-provider demonstrates the native declared-feed route")
         if args.compare:
             parser.error("--compare uses the shared supplied-account fixture, not the separate provider demonstration")
         analysis, market, feed = provider_inputs()
@@ -98,6 +101,12 @@ def main():
             print("Defined reference workflows match; multi-asset asfreq failure and zero/missing-volume corrections are documented separately")
     print(result.timeline)
     print(result.metadata)
+    if args.familiar_report:
+        from ml4t.diagnostic.compat.pyfolio.tears import create_capacity_tear_sheet
+
+        create_capacity_tear_sheet(returns, positions, fills, legacy_market,
+            output_file=args.familiar_report)
+        print("Wrote complete familiar capacity report", args.familiar_report)
     if args.output:
         analysis.create_tear_sheet(capacity=result).save_html(args.output, include_plotlyjs=True)
         args.output.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")

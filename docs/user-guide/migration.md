@@ -2629,9 +2629,10 @@ defaults to one; supplied execution multipliers must agree. Missing market data 
 Run the complete account-to-report workflow, and optionally compare the actual reference:
 
 ```bash
-uv run python examples/portfolio_capacity.py --output capacity.html
-uv run --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/portfolio_capacity.py --compare --output capacity-reference.html
-uv run --with ml4t-data==0.2.1 python examples/portfolio_capacity.py --data-provider --output provider-capacity.html
+uv run --extra viz python examples/portfolio_capacity.py --output capacity.html
+uv run --extra viz --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/portfolio_capacity.py --compare --output capacity-reference.html
+uv run --extra viz --with ml4t-data==0.2.1 python examples/portfolio_capacity.py --data-provider --output provider-capacity.html
+uv run --extra viz python examples/portfolio_capacity.py --familiar-report familiar-capacity.html
 ```
 
 The provider command uses the actual offline `SyntheticProvider`, not observed exchange liquidity.
@@ -2668,10 +2669,30 @@ being summed into a zero penalty. Native reports name unavailable and unbounded 
 not draw unbounded duration as zero. Defined reference liquidation, daily transaction, summary
 and impact cases are compared separately from these independent corrections.
 
-Complete familiar capacity-sheet intraday estimation remains part of the accepted report work;
-the lower-level calls and native report above do not certify that original full sheet or all
-Pyfolio workflows. Retain Pyfolio for unqualified report choices until their owning workflow
-has installed-artifact and supported-platform evidence.
+The unreleased `compat.pyfolio.tears.create_capacity_tear_sheet` composes all four familiar
+full/recent liquidation/participation tables and the capital-performance sweep. It retains
+`liquidation_daily_vol_limit`, `trade_daily_vol_limit`, `last_n_days`,
+`days_to_liquidate_limit` and the original `estimate_intraday="infer"`, forced and disabled
+choices. It reuses the estimator described above, not a second account-reconstruction engine.
+Tied peak candidates remain separate dated observations; the worst-row allocation comes from
+that same candidate, not a Series of ambiguous duplicate-date values. Such retrospective
+estimates are not observed inventory or causal intraday liquidity.
+
+Both liquidation views honor the caller's threshold. Actual Pyfolio 0.10.0 instead hardcodes
+`> 1` for the recent view and prints a 20% assumption even when a different participation limit
+was requested. The guide tests the actual original full sheet, its four rendered tables and
+Matplotlib curve against the same supplied inputs, and separately verifies those corrections.
+Recent helper windows count civil days from their respective supplied endpoints, not exchange
+sessions. Unknown estimates remain visible as unavailable; unbounded risk is not zero.
+
+The familiar function returns offline HTML or its saved path, replacing implicit notebook
+display. `return_fig=True` returns the single Plotly sweep, not a Matplotlib Figure;
+`output_file` still saves every table in that mode. Optional `periods_per_year` and `impact`
+make the annualization scale and hypothetical coefficient explicit. The original fixed-capital,
+five-market-row liquidation and closing-NAV impact conventions remain different from the native
+result. These capacity routes do not certify all Pyfolio reports or the combined full sheet.
+Retain Pyfolio for unqualified report choices until installed-artifact and supported-platform
+evidence covers the workflow you need.
 
 Pyfolio's full sheet can additionally include return cones, significant
 events, round trips reconstructed from fills, capacity analysis using

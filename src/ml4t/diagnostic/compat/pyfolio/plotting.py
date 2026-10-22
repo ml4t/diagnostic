@@ -329,10 +329,21 @@ def plot_capacity_sweep(
         capitals.append(capital / 1e6)
         ratios.append(float(ratio) if np.isfinite(ratio) else None)
     figure.add_scatter(x=capitals, y=ratios, mode="lines+markers", name="Extra impact", **kwargs)
-    figure.update_xaxes(title_text="starting capital (millions of supplied currency)")
+    if not any(value is not None for value in ratios):
+        figure.add_annotation(
+            text="Unavailable: no finite Sharpe under the supplied sample and impact model.",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font_size=14,
+        )
+    figure.update_xaxes(title_text="starting capital (millions)")
     figure.update_layout(
         meta={
             "analysis": "legacy_capacity",
+            "capital_units": "millions of the supplied common account/market currency; no FX",
             "periods_per_year": scale,
             "impact_coefficient": impact,
             "nav_timing": "compounded_closing",
