@@ -685,6 +685,48 @@ pandas 3; it preserves the observation's civil month, not an exchange calendar.
 Other direct table/event plotting helpers and the original four notebook journeys
 still require qualification before a full Alphalens migration claim.
 
+### Run preserved original Alphalens notebooks
+
+Unreleased source includes `examples/migrate_alphalens_notebooks.py` for the
+original overview, intraday-factor and event-study notebooks. The unmodified
+upstream fixtures and their Apache 2.0 license are retained under
+`tests/fixtures/alphalens_original/`, pinned to Alphalens source
+`1bc181de4aafbe33437ed0e362ff96aa7ce20acd`. The generator checks the original
+hash, records every import/I/O/presentation edit and retains the original
+calculation cells. It replaces the obsolete Yahoo acquisition call, not the
+subsequent date conversion or stack operations. It does not download data.
+
+Supply a captured parquet file with unique date rows and Yahoo-shaped
+`(field, asset)` columns containing `Open` and `Close`. Those input dates have
+the provider's original daily-label convention; the original notebook's explicit
+UTC conversion remains in place. A long Data/Engineer frame must first be
+explicitly reshaped into that source-provider form. This narrow fixture contract
+is not a new requirement on Diagnostic's native long-frame analytical APIs.
+
+From a checkout of this matching source revision, run:
+
+```bash
+uv run --with nbclient --with ipykernel python examples/migrate_alphalens_notebooks.py --source-notebook tests/fixtures/alphalens_original/overview.ipynb --ohlc captured_ohlc.parquet --output migrated_overview.ipynb --execute
+```
+
+Use the corresponding `intraday_factor.ipynb` or `event_study.ipynb` source and
+a new output filename for those journeys. Existing outputs and the original
+notebook are never overwritten. Modified outputs include a visible migration
+notice, the original license and the exact edit record. Optional Jupyter tools
+execute the generated notebook; no Alphalens, Empyrical or Pyfolio installation
+is required by the migrated analyses.
+
+The tested overview preserves eleven independently compared intermediate tables
+and Series against actual Alphalens 0.5.0 on shared captured inputs. Diagnostic
+renders 33 Plotly MIME outputs and six HTML reports instead of the reference's
+24 Matplotlib images. Standalone installed-runtime tests also exercise the
+original intraday and event-study calculations, including their actual forward
+endpoints, retained keys, explicit UTC conversion and unchanged input files.
+Their numerical methods still use the separately tested native kernels; a
+successful notebook alone does not establish every legacy option. The original
+Alphalens/Pyfolio integration notebook awaits the complete Pyfolio full-report
+workflow. No full replacement or availability in published 0.1.9 is claimed.
+
 IC preserves legacy per-column NaN propagation. Quantile means instead retain
 each supplied outcome's own available sample and give defined date means equal
 weight. Raw `compute_forward_returns` plus `quantize_factor` tables may retain

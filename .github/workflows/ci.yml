@@ -544,6 +544,16 @@ jobs:
           --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
           python -I examples/legacy_migration_comparison.py --task event-study
           --output "$RUNNER_TEMP/event-study.html"
+      - name: Execute preserved original Alphalens notebooks without Reloaded
+        shell: bash
+        run: |
+          for pandas_version in 2.3.3 3.0.6; do
+            ML4T_REQUIRED_ORIGINAL_NOTEBOOKS=1 uv run --isolated --no-project \
+              --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+              --with "pandas==$pandas_version" --with nbclient --with ipykernel --with pytest \
+              python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+              -q tests/test_compat/test_alphalens_original_notebooks.py
+          done
       - name: Execute complete signal report notebooks from installed wheel
         shell: bash
         run: >-
