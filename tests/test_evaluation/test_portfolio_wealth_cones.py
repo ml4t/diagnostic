@@ -144,3 +144,9 @@ def test_empty_training_is_not_replaced_by_future_observations():
     analysis, dates = _analysis([0.1, 0.2, 0.3])
     with pytest.raises(ValueError, match="pre-live"):
         analysis.compute_wealth_cones(live_start=dates[0], horizon=3, n_samples=2)
+
+
+def test_none_live_boundary_cannot_silently_use_the_whole_sample_for_forecasting():
+    analysis, _ = _analysis([0.1, 0.2, 0.3])
+    with pytest.raises(ValueError, match="live_start"):
+        analysis.compute_wealth_cones(live_start=None, horizon=3, n_samples=2)

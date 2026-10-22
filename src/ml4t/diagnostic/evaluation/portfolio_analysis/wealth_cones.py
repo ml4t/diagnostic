@@ -164,6 +164,8 @@ def analyze_wealth_cones(
     """
     horizon = positive_integer(horizon, "horizon")
     n_samples = positive_integer(n_samples, "n_samples")
+    if live_start is None:
+        raise ValueError("live_start requires a nonmissing date or instant")
     if horizon_unit != "observations":
         raise ValueError("horizon_unit must be 'observations'; no future session clock is inferred")
     if method not in ("iid", "stationary"):

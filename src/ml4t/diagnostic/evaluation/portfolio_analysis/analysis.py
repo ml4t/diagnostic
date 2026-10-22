@@ -511,6 +511,8 @@ class PortfolioAnalysis:
         """
         from .regimes import analyze_regimes
 
+        if live_start is None:
+            raise ValueError("live_start requires a nonmissing date or instant")
         return analyze_regimes(self, live_start=live_start)
 
     def compute_wealth_cones(

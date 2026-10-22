@@ -133,6 +133,8 @@ def _pack(tables: Mapping[str, pl.DataFrame], metadata: dict[str, Any]) -> Portf
 def _boundary(
     value: date | datetime | str, index: pd.DatetimeIndex, *, end_of_period: bool = False
 ) -> pd.Timestamp:
+    if not isinstance(value, date | str):
+        raise ValueError("period boundaries require dates or explicit datetime instants")
     civil = (
         isinstance(value, date)
         and not isinstance(value, datetime)
@@ -140,7 +142,7 @@ def _boundary(
         and re.fullmatch(r"\d{4}(?:-\d{2})?(?:-\d{2})?", value) is not None
     )
     if civil and end_of_period:
-        period = pd.Period(value)
+        period = pd.Period(value) if isinstance(value, str) else pd.Period(value, freq="D")
         stamp = period.end_time
     else:
         stamp = pd.Timestamp(value)

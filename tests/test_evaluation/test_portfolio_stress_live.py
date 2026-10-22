@@ -94,10 +94,30 @@ def test_live_split_assigns_boundary_once_and_preserves_actual_nanosecond_execut
     assert result.samples.filter(pl.col("regime") == "live")["return"].to_list() == [-0.04, 0.05]
     before = result.transactions.filter(pl.col("regime") == "pre_live")
     live = result.transactions.filter(pl.col("regime") == "live")
+    assert before["timestamp"].to_pandas().iloc[0] == dates[3] - pd.Timedelta(1, unit="ns")
+    assert live["timestamp"].to_pandas().iloc[0] == dates[3]
     assert before["timestamp"].cast(pl.Int64).to_list() == [dates[3].value - 1]
     assert live["timestamp"].cast(pl.Int64).to_list() == [dates[3].value]
     assert before["quantity"].to_list() == [1.0] and live["quantity"].to_list() == [-1.0]
     assert result.metadata["account"]["calendar"] is None
+
+
+def test_none_live_boundary_is_invalid_not_an_implicit_default_stress_request():
+    analysis, _ = _account()
+    with pytest.raises(ValueError, match="live_start"):
+        analysis.compute_live_split(live_start=None)
+
+
+def test_native_python_date_end_covers_its_day_and_default_events_have_explicit_coverage():
+    from datetime import date
+
+    dates = pd.DatetimeIndex(["2008-09-30T12:00Z", "2008-10-01T12:00Z"])
+    analysis = PortfolioAnalysis.from_frames(pd.Series([0.1, -0.2], index=dates), calendar=None)
+    custom = analysis.compute_stress({"civil": (date(2008, 9, 30), date(2008, 10, 1))})
+    assert custom.samples["return"].to_list() == [0.1, -0.2]
+    default = analysis.compute_stress()
+    assert default.coverage.height == 21
+    assert default.samples.filter(pl.col("period") == "Lehman")["return"].to_list() == [0.1, -0.2]
 
 
 def test_common_explicit_scale_reaches_each_regime_without_annualizing_period_returns():
