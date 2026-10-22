@@ -1648,6 +1648,64 @@ Single-series uncertainty retains its finite-value filter; neither route validat
 a calendar grid or records excluded dates in its result. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
 intervals; matching point estimates does not establish interval equivalence.
 
+### Keep familiar performance tables and IID summaries
+
+Unreleased after 0.1.9, `compat.pyfolio.timeseries.perf_stats` uses the existing
+native metric kernels with Pyfolio's thirteen labels and per-metric defaults.
+It does not require Pyfolio or a producer package:
+
+```python
+from ml4t.diagnostic.compat.pyfolio import timeseries as familiar_performance
+
+performance_prices = pd.Series(
+    [100.0, 110.0, 99.0, 103.95],
+    index=pd.date_range("2025-02-03", periods=4, tz="UTC"),
+)
+performance_returns = performance_prices.pct_change(fill_method=None).iloc[1:]
+performance_table = familiar_performance.perf_stats(performance_returns)
+assert np.isclose(performance_table["Cumulative returns"], 0.0395)
+assert np.isclose(performance_table["Max drawdown"], -0.1)
+assert np.isclose(
+    performance_table["Daily value at risk"], 1 / 60 - 2 * np.sqrt(13 / 1200),
+)
+performance_bootstrap = familiar_performance.perf_stats_bootstrap(
+    daily_returns, n_samples=16, random_seed=42,
+)
+assert performance_bootstrap.shape == (13, 4)
+assert performance_bootstrap.attrs["diagnostic"]["method"] == "iid"
+print("Familiar performance table: metric-specific missingness and Gaussian periodic VaR")
+```
+
+Returns, volatility, drawdown and alpha use their declared return scales;
+Sharpe, leverage and beta are dimensionless. The table's Gaussian daily VaR is
+mean minus two sample deviations, not Empyrical's empirical quantile. The fixed
+legacy annualization default is 252; explicit `periods_per_year=12` is an
+extension for a differently declared observation cadence. Native annual-rate,
+linear-alpha and summary defaults are unchanged. Optional benchmark alpha/beta
+reuse the existing paired regression adapter, including compounded annual alpha.
+Supplied positions add original gross leverage, and actual transactions add the
+existing explicit AGB/closing-value turnover. Legacy leverage retains signed
+and zero-NAV division; native positive-NAV holdings ratios remain separate.
+
+Missingness is per statistic, not one global drop or fill. CAGR retains missing
+rows as elapsed observations; means/deviations omit them where their kernels
+define that behavior. The original SciPy skew/kurtosis profile propagates a
+missing return. These raw analytical helpers do not relax the native supplied
+account's finite-return validation.
+
+`calc_bootstrap` resamples paired positional rows and resets labels before calling
+the statistic, as in the reference. Its optional `random_seed` uses a local stream
+without changing global NumPy state. Unseeded draws are not promised to equal a
+reference process's global-RNG draws. `perf_stats_bootstrap` advances the same
+stream across metrics and returns raw draws with `return_stats=False`, or mean,
+median and 5/95 percentiles. These are IID sampling summaries, not stationary/HAC
+inference or calibrated confidence coverage. Degenerate/infinite metric samples
+can leave summaries undefined; they are not zero risk. Holdings and transactions
+are not bootstrapped, matching the original return-only bootstrap. Unlike the
+original function's silently ignored kwargs, explicit sample count, seed and scale
+are honored. Full report composition and original notebook qualification remain
+separate acceptance work.
+
 ### Normalize a supplied account without a backtest engine
 
 Unreleased after 0.1.9, `PortfolioAnalysis.from_frames()` accepts dated returns,

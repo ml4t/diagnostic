@@ -1,4 +1,4 @@
-"""Pyfolio dated-event and IID cone conventions over existing native kernels.
+"""Pyfolio return statistics, dated events and IID cones over shared native kernels.
 
 The familiar IID stream uses RandomState, unlike the native Generator default.
 Missing sampled returns are neutral factors in the existing product kernel.
@@ -8,17 +8,245 @@ Zero starting_value denotes net cumulative return, not a zero-capital account.
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime
+from typing import Any
 
 import numpy as np
 import pandas as pd
+import polars as pl
+from scipy import stats
 
+from ml4t.diagnostic.compat import empyrical as ep
+from ml4t.diagnostic.compat._returns import ReturnInput, as_array
+from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_integer
+from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import gaussian_value_at_risk
 from ml4t.diagnostic.evaluation.portfolio_analysis.regimes import _PERIOD_DATES
 from ml4t.diagnostic.evaluation.portfolio_analysis.wealth_cones import (
+    _iid_indices,
     _sample_indices,
     _wealth_paths,
 )
+
+__all__ = [
+    "value_at_risk",
+    "gross_lev",
+    "perf_stats",
+    "calc_bootstrap",
+    "calc_distribution_stats",
+    "perf_stats_bootstrap",
+    "simulate_paths",
+    "summarize_paths",
+    "forecast_cone_bootstrap",
+    "extract_interesting_date_ranges",
+]
+
+_STAT_NAMES = {
+    "annual_return": "Annual return",
+    "cum_returns_final": "Cumulative returns",
+    "annual_volatility": "Annual volatility",
+    "sharpe_ratio": "Sharpe ratio",
+    "calmar_ratio": "Calmar ratio",
+    "stability_of_timeseries": "Stability",
+    "max_drawdown": "Max drawdown",
+    "omega_ratio": "Omega ratio",
+    "sortino_ratio": "Sortino ratio",
+    "skew": "Skew",
+    "kurtosis": "Kurtosis",
+    "tail_ratio": "Tail ratio",
+    "value_at_risk": "Daily value at risk",
+}
+
+
+def value_at_risk(returns: ReturnInput, period: str | None = None, sigma: float = 2.0) -> float:
+    """Use the shared Gaussian periodic-return estimate, not empirical VaR."""
+    supplied = ep.aggregate_returns(returns, period) if period is not None else returns
+    return gaussian_value_at_risk(supplied, sigma=sigma)
+
+
+def gross_lev(positions: pd.DataFrame) -> pd.Series:
+    """Adapt shared gross books and explicit legacy signed/zero-NAV division."""
+    from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import cash_fraction_expr
+
+    from .txn import _books
+
+    if "cash" not in positions:
+        raise KeyError("cash")
+    gross, nav = _books(positions)
+    values = (
+        pl.DataFrame({"gross": gross.to_numpy(), "nav": nav.to_numpy()})
+        .select(cash_fraction_expr(pl.col("gross"), pl.col("nav"), positive_finite=False))
+        .to_series()
+        .to_numpy()
+    )
+    return pd.Series(values, index=positions.index.copy())
+
+
+def _statistic(name: str, returns: ReturnInput, periods_per_year: int) -> float:
+    if name == "value_at_risk":
+        return value_at_risk(returns)
+    if name in {"skew", "kurtosis"}:
+        return float(getattr(stats, name)(as_array(returns)))
+    function = getattr(ep, name)
+    if name in {
+        "annual_return",
+        "annual_volatility",
+        "sharpe_ratio",
+        "calmar_ratio",
+        "sortino_ratio",
+    }:
+        return float(function(returns, annualization=periods_per_year))
+    return float(function(returns))
+
+
+def perf_stats(
+    returns: ReturnInput,
+    factor_returns: ReturnInput | None = None,
+    positions: pd.DataFrame | None = None,
+    transactions: pd.DataFrame | None = None,
+    turnover_denom: str = "AGB",
+    *,
+    periods_per_year: int = 252,
+) -> pd.Series:
+    """Project the actual Pyfolio table through existing metric/account kernels.
+
+    NaN behavior is per metric: CAGR counts elapsed rows, deviations omit NaNs,
+    while original SciPy skew/kurtosis propagate them. Gaussian daily VaR is
+    mean minus two sample deviations, not Empyrical's quantile. Native summary
+    definitions and annual-rate APIs remain unchanged. An explicit scale is an
+    extension to the legacy table's fixed252default.
+    """
+    scale = positive_integer(periods_per_year, "periods_per_year")
+    if as_array(returns).ndim != 1:
+        raise ValueError("perf_stats requires one return series")
+    output = {label: _statistic(name, returns, scale) for name, label in _STAT_NAMES.items()}
+    if positions is not None and not positions.empty:
+        output["Gross leverage"] = gross_lev(positions).mean()
+        if transactions is not None and not transactions.empty:
+            from .txn import get_turnover
+
+            output["Daily turnover"] = get_turnover(positions, transactions, turnover_denom).mean()
+    if factor_returns is not None:
+        output["Alpha"] = float(ep.alpha(returns, factor_returns, annualization=scale))
+        output["Beta"] = float(ep.beta(returns, factor_returns))
+    return pd.Series(output, dtype=float)
+
+
+def _bootstrap_values(
+    function: Callable,
+    returns: pd.Series,
+    args: tuple,
+    kwargs: dict,
+    factor_returns: pd.Series | None,
+    n_samples: int,
+    rng: np.random.RandomState,
+) -> np.ndarray:
+    if not isinstance(returns, pd.Series) or returns.empty:
+        raise ValueError("bootstrap returns require a nonempty pandas Series")
+    if factor_returns is not None and (
+        not isinstance(factor_returns, pd.Series) or len(factor_returns) != len(returns)
+    ):
+        raise ValueError("bootstrap benchmark must be a same-length pandas Series")
+    output = np.empty(n_samples)
+    for row in range(n_samples):
+        selected = _iid_indices(len(returns), len(returns), 1, rng)[0]
+        sample = returns.iloc[selected].reset_index(drop=True)
+        if factor_returns is None:
+            output[row] = function(sample, *args, **kwargs)
+        else:
+            factor = factor_returns.iloc[selected].reset_index(drop=True)
+            output[row] = function(sample, factor, *args, **kwargs)
+    return output
+
+
+def calc_bootstrap(
+    function: Callable[..., float], returns: pd.Series, *args: Any, **kwargs: Any
+) -> np.ndarray:
+    """Resample paired positional rows with a local IID stream and O(n) storage.
+
+    random_seed is an explicit extension; global NumPy state is never changed.
+    Original date labels reset before the statistic call, as in the reference.
+    This is an IID sampling distribution, not native stationary/HAC inference.
+    """
+    count = positive_integer(kwargs.pop("n_samples", 1000), "n_samples")
+    factor = kwargs.pop("factor_returns", None)
+    rng = np.random.RandomState(kwargs.pop("random_seed", None))
+    return _bootstrap_values(function, returns, args, kwargs, factor, count, rng)
+
+
+def calc_distribution_stats(values: np.ndarray | pd.Series) -> pd.Series:
+    """Preserve the original mixed NumPy/pandas reductions and population deviation."""
+    return pd.Series(
+        {
+            "mean": np.mean(values),
+            "median": np.median(values),
+            "std": np.std(values),
+            "5%": np.percentile(values, 5),
+            "25%": np.percentile(values, 25),
+            "75%": np.percentile(values, 75),
+            "95%": np.percentile(values, 95),
+            "IQR": np.subtract.reduce(np.percentile(values, [75, 25])),
+        }
+    )
+
+
+def perf_stats_bootstrap(
+    returns: pd.Series,
+    factor_returns: pd.Series | None = None,
+    return_stats: bool = True,
+    *,
+    n_samples: int = 1000,
+    random_seed: int | None = None,
+    periods_per_year: int = 252,
+    positions: pd.DataFrame | None = None,
+    transactions: pd.DataFrame | None = None,
+    turnover_denom: str = "AGB",
+) -> pd.DataFrame:
+    """Return actual IID draws or their mean/median/5/95percent sampling summaries.
+
+    As in Pyfolio, this bootstrap covers return/benchmark metrics, not changing
+    positions, fills or turnover. The legacy function silently ignores kwargs;
+    this adapter honors explicit sample count, local seed and annualization.
+    All metrics share one advancing local stream, not repeated reseeding.
+    """
+    count = positive_integer(n_samples, "n_samples")
+    scale = positive_integer(periods_per_year, "periods_per_year")
+    if not isinstance(return_stats, bool | np.bool_):
+        raise TypeError("return_stats must be boolean")
+    _ = positions, transactions, turnover_denom
+    rng = np.random.RandomState(random_seed)
+    draws = {}
+    for name, label in _STAT_NAMES.items():
+        draws[label] = _bootstrap_values(
+            lambda sample, name=name: _statistic(name, sample, scale),
+            returns,
+            (),
+            {},
+            None,
+            count,
+            rng,
+        )
+    if factor_returns is not None:
+        for label, function in [("Alpha", ep.alpha), ("Beta", ep.beta)]:
+            options = {"annualization": scale} if label == "Alpha" else {}
+            draws[label] = _bootstrap_values(
+                function, returns, (), options, factor_returns, count, rng
+            )
+    result = pd.DataFrame(draws)
+    result.attrs["diagnostic"] = {
+        "method": "iid",
+        "n_samples": count,
+        "seed": random_seed,
+        "periods_per_year": scale,
+        "input_rows": len(returns),
+        "pairing": "positional reset labels",
+        "positions_and_transactions": "not bootstrapped",
+    }
+    if return_stats:
+        summary = result.apply(calc_distribution_stats).T[["mean", "median", "5%", "95%"]]
+        summary.attrs = result.attrs.copy()
+        return summary
+    return result
 
 
 def simulate_paths(

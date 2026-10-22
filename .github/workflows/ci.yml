@@ -305,6 +305,7 @@ jobs:
       - name: Verify published Pyfolio analytical and rendering workflows with compatible pandas
         shell: bash
         run: >-
+          ML4T_REQUIRED_PYFOLIO_REFERENCE=0.10.0
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"

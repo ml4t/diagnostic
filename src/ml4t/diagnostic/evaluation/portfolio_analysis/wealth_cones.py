@@ -106,6 +106,11 @@ def _levels(values: Sequence[float], name: str, *, quantile: bool = False) -> li
     return result
 
 
+def _iid_indices(n: int, horizon: int, n_samples: int, rng: np.random.RandomState) -> np.ndarray:
+    """Share the original IID stream between cone and metric workflows."""
+    return rng.choice(n, size=(n_samples, horizon))
+
+
 def _sample_indices(
     n: int,
     horizon: int,
@@ -117,7 +122,7 @@ def _sample_indices(
     legacy_rng: bool = False,
 ) -> np.ndarray:
     if legacy_rng:
-        return np.random.RandomState(seed).choice(n, size=(n_samples, horizon))
+        return _iid_indices(n, horizon, n_samples, np.random.RandomState(seed))
     rng = np.random.default_rng(seed)
     if method == "iid":
         return rng.integers(0, n, size=(n_samples, horizon))
