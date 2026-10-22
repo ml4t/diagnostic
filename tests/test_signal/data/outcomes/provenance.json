@@ -1,0 +1,48 @@
+{
+  "producer_source": "071b87cefeef9f5ef15153810b191eb1d37803c2",
+  "producer_source_url": "https://github.com/ml4t/engineer/commit/071b87cefeef9f5ef15153810b191eb1d37803c2",
+  "endpoint_methods": [
+    "cumulative",
+    "exit_bar"
+  ],
+  "producer_distribution": "ml4t-engineer",
+  "producer_version": "0.1.7.dev35+g071b87cef",
+  "producer_wheel_sha256": "f3ffed7caff3ac77b44096b7925ebc31459f50c849b735f1c60f25e1d6711763",
+  "feed_spec": {
+    "timestamp_col": "timestamp",
+    "entity_col": "asset",
+    "price_col": "close",
+    "open_col": "open",
+    "high_col": "high",
+    "low_col": "low",
+    "close_col": "close",
+    "volume_col": "volume",
+    "vwap_col": null,
+    "bid_col": null,
+    "ask_col": null,
+    "mid_col": null,
+    "bid_size_col": null,
+    "ask_size_col": null,
+    "calendar": null,
+    "timezone": null,
+    "data_frequency": null,
+    "bar_type": null,
+    "timestamp_semantics": null,
+    "session_start_time": null,
+    "time_contract_version": 2,
+    "bar_grid_anchor": null,
+    "bar_label": null,
+    "partial_bar_policy": null
+  },
+  "method": "forward_returns(prices.lazy(), horizons={'1ns':'1ns','2ns':'2ns'}, price_basis='raw', entries=factor keys, window_unit='elapsed', tolerance='0ns', available_at_col='known_at', missing_price_policy='null').collect()",
+  "purpose": "Actual producer capture for standalone Diagnostic outcome-to-panel ingestion; no Engineer runtime dependency for capture consumers.",
+  "sha256": {
+    "prices.arrow": "65b195e30a5aac027baad8b44f6a71c32760913bfc30c0471ef214975391beb0",
+    "factor.arrow": "5ce85833abe0c363270ce06865b878d971cfc6b11b59f058e6a4c529aa297453",
+    "outcomes.arrow": "781895c8d191d2b0493b8c6327a776499c3ec4fb0b9c7cd15c5737c03c05dd0e",
+    "prices-missing.arrow": "4c2e94eace94728382f4ebe85415608bdb8c0df7cc20ada5c8ae09e658642767",
+    "outcomes-missing.arrow": "fca8b64a9717924c8f0306a1b84da18101976dee87cbdef76e2e83278f3e5200",
+    "outcomes-exit-bar.arrow": "4d4aaa08f7fded463f4fc84f2ce3407288b995aa23070c7e7041f9595d26ec20",
+    "outcomes-exit-bar-missing.arrow": "19d7e1ea8b1905da0fea9f828bd7d17b45e16222fc5868b0485d8d02981b43d5"
+  }
+}

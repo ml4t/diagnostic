@@ -14,6 +14,8 @@
 | Package | Purpose |
 |---------|---------|
 | [signal/](signal/AGENTS.md) | Factor signal analysis and IC/quantile workflows |
+| `compat/` | Thin Reloaded migration adapters using the native analytical kernels |
+| [utils/legacy_time.py](utils/legacy_time.py) | Explicit legacy clock conversion and return rekeying, not exchange-grid validation |
 | [metrics/](metrics/AGENTS.md) | Feature, signal, and risk metric functions |
 | [splitters/](splitters/AGENTS.md) | Walk-forward, CPCV, calendars, and fold persistence |
 | [evaluation/](evaluation/AGENTS.md) | Core analysis workflows and statistical validation |

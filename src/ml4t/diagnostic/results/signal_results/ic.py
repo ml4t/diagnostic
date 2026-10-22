@@ -312,22 +312,22 @@ class SignalICResult(BaseResult):
         >>> ic_result.get_ic('21')  # Works
         >>> ic_result.get_ic('21D')  # Works
         """
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.ic_mean)
         return self.ic_mean.get(key)
 
     def get_t_stat(self, period: int | str) -> float | None:
         """Get t-statistic for a period."""
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.ic_mean)
         return self.ic_t_stat.get(key)
 
     def get_p_value(self, period: int | str) -> float | None:
         """Get p-value for a period."""
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.ic_mean)
         return self.ic_p_value.get(key)
 
     def get_ir(self, period: int | str) -> float | None:
         """Get Information Ratio (IC/std) for a period."""
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.ic_mean)
         return self.ic_ir.get(key)
 
     def get_stats(self, period: int | str) -> ICStats | None:
@@ -354,7 +354,7 @@ class SignalICResult(BaseResult):
         ...     if stats.ras_significant:
         ...         print("Significant after RAS adjustment!")
         """
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.ic_mean)
         if key not in self.ic_mean:
             return None
 
@@ -388,7 +388,7 @@ class SignalICResult(BaseResult):
         bool
             True if p-value < alpha.
         """
-        key = _normalize_period(period)
+        key = _normalize_period(period, self.ic_mean)
 
         # Prefer HAC-adjusted p-value if available and requested
         p_val: float | None

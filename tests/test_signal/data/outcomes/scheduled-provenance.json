@@ -1,0 +1,153 @@
+{
+  "producer_source": "071b87cefeef9f5ef15153810b191eb1d37803c2",
+  "producer_version": "0.1.7.dev35+g071b87cef",
+  "producer_wheel_sha256": "f3ffed7caff3ac77b44096b7925ebc31459f50c849b735f1c60f25e1d6711763",
+  "package_versions": {
+    "ml4t-specs": "0.2.0",
+    "polars": "2.0.0",
+    "pandas": "3.0.6",
+    "pandas-market-calendars": "5.5.0"
+  },
+  "cases": {
+    "session-labels": {
+      "feed_spec": {
+        "timestamp_col": "timestamp",
+        "entity_col": "asset",
+        "price_col": "close",
+        "open_col": "open",
+        "high_col": "high",
+        "low_col": "low",
+        "close_col": "close",
+        "volume_col": "volume",
+        "vwap_col": null,
+        "bid_col": null,
+        "ask_col": null,
+        "mid_col": null,
+        "bid_size_col": null,
+        "ask_size_col": null,
+        "calendar": "NYSE",
+        "timezone": null,
+        "data_frequency": "1d",
+        "bar_type": "time",
+        "timestamp_semantics": "session_label",
+        "session_start_time": null,
+        "time_contract_version": 2,
+        "bar_grid_anchor": null,
+        "bar_label": null,
+        "partial_bar_policy": null
+      },
+      "window_unit": "session",
+      "horizon": 1,
+      "sha256": {
+        "session-labels-prices.arrow": "2707b89d5ac4557bc69ae5f55f41a539ef40c57349d80d96900f1ab0111abf62",
+        "session-labels-factor.arrow": "3615d18a1b9f9422e107ae984870bea3c4a75b588a7deb79d0fb3b62410cd2d9",
+        "session-labels-outcomes.arrow": "a2b0c708e930419fa8b43ae96b8b201778b6d203612230f1a88d951661dc062e"
+      }
+    },
+    "expected-bars": {
+      "feed_spec": {
+        "timestamp_col": "timestamp",
+        "entity_col": "asset",
+        "price_col": "close",
+        "open_col": "open",
+        "high_col": "high",
+        "low_col": "low",
+        "close_col": "close",
+        "volume_col": "volume",
+        "vwap_col": null,
+        "bid_col": null,
+        "ask_col": null,
+        "mid_col": null,
+        "bid_size_col": null,
+        "ask_size_col": null,
+        "calendar": "24/7",
+        "timezone": null,
+        "data_frequency": "1h",
+        "bar_type": "time",
+        "timestamp_semantics": "event_time",
+        "session_start_time": null,
+        "time_contract_version": 2,
+        "bar_grid_anchor": "session_open",
+        "bar_label": "left",
+        "partial_bar_policy": "exclude"
+      },
+      "window_unit": "expected_bar",
+      "horizon": 2,
+      "sha256": {
+        "expected-bars-prices.arrow": "0f39d29b93d9ff5d0e04f6220fe3e5764ccde23506be26b41a05c8b9e1d568f5",
+        "expected-bars-factor.arrow": "63c7839c72c25158c1a4370ba143befcc0b65ad0071c0745cf8966a6a6c5f77f",
+        "expected-bars-outcomes.arrow": "c235ff86ceb36037e85583fa759883315cc17e5f1a88ee73c3d1952069e3a4f8"
+      }
+    },
+    "overnight-bars": {
+      "feed_spec": {
+        "timestamp_col": "timestamp",
+        "entity_col": "asset",
+        "price_col": "close",
+        "open_col": "open",
+        "high_col": "high",
+        "low_col": "low",
+        "close_col": "close",
+        "volume_col": "volume",
+        "vwap_col": null,
+        "bid_col": null,
+        "ask_col": null,
+        "mid_col": null,
+        "bid_size_col": null,
+        "ask_size_col": null,
+        "calendar": "CME_Equity",
+        "timezone": null,
+        "data_frequency": "1h",
+        "bar_type": "time",
+        "timestamp_semantics": "event_time",
+        "session_start_time": null,
+        "time_contract_version": 2,
+        "bar_grid_anchor": "session_open",
+        "bar_label": "left",
+        "partial_bar_policy": "exclude"
+      },
+      "window_unit": "expected_bar",
+      "horizon": 2,
+      "sha256": {
+        "overnight-bars-prices.arrow": "af98eebff5dcbe43e1b1527e2fbea9f347274310f142a8eb36304abcefca00c7",
+        "overnight-bars-factor.arrow": "9f6a908d2e2710e8c2e8b9a41e42555ea4590a7b3dbfd92f03603705937ea805",
+        "overnight-bars-outcomes.arrow": "2877f020fc145fd46bf02a7b6a0916a036fbe1679e3f1d3f3f5a22cdb3e99eee"
+      }
+    },
+    "early-close": {
+      "feed_spec": {
+        "timestamp_col": "timestamp",
+        "entity_col": "asset",
+        "price_col": "close",
+        "open_col": "open",
+        "high_col": "high",
+        "low_col": "low",
+        "close_col": "close",
+        "volume_col": "volume",
+        "vwap_col": null,
+        "bid_col": null,
+        "ask_col": null,
+        "mid_col": null,
+        "bid_size_col": null,
+        "ask_size_col": null,
+        "calendar": "NYSE",
+        "timezone": null,
+        "data_frequency": "1h",
+        "bar_type": "time",
+        "timestamp_semantics": "event_time",
+        "session_start_time": null,
+        "time_contract_version": 2,
+        "bar_grid_anchor": "session_open",
+        "bar_label": "left",
+        "partial_bar_policy": "include"
+      },
+      "window_unit": "session",
+      "horizon": 1,
+      "sha256": {
+        "early-close-prices.arrow": "9df147dfc99207ec32f6a233ed3b69d2a92bc9c60d1b0f40d46f1a581764912f",
+        "early-close-factor.arrow": "7ce545dd56efe83d884652d6c0b4466a232d4e681a3a9a3379a05e2abafffd50",
+        "early-close-outcomes.arrow": "c96e525d15534a39c24fcbde518d74c0f4290c58a18e087fa53828e368035ffb"
+      }
+    }
+  }
+}

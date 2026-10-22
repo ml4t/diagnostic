@@ -345,11 +345,224 @@ caller or recovering precision already lost in Float32 inputs.
 
 The [signal API](../api/index.md#signal-analysis) documents static/dated groups,
 probability qcut, cut edges and zero-aware options. Preparing group-relative
-buckets alone does not provide group-neutral inference. The analysis shortcut currently
-requires positive integer `D` selectors and contiguous buckets starting at one.
-Other supplied labels and bucket sets remain inspectable in `panel.data`; the
-shortcut rejects them before writing a report. No calendar grid is inferred or
-validated, and the native pooled/equal-date/report differences below still apply.
+buckets alone does not provide group-neutral inference. Unreleased after 0.1.9,
+`panel.analyze()` retains arbitrary supplied return columns and sparse positive
+bucket IDs without rebucketing. `result.horizon_labels` preserves selector order;
+`result.quantile_ids` preserves the actual IDs in summaries, JSON and quantile
+plots. The strict standalone route accepts `return_columns=("30m", "1ns", "1D1h")`
+instead of integer `periods`; supplying both arguments is an error. Without a
+`quantiles` limit, that route uses the buckets actually present. Existing integer
+`periods` calls retain their five-bucket default and daily-column aliases.
+
+These labels still do not establish durations or validate a calendar grid.
+When persistence is enabled, only positive exact-day labels such as `1D` produce
+automatic turnover lags in observed factor timestamps. Subday/composite selectors
+remain analyzable without invented daily lags. For explicit observation lags use
+`panel.quantile_turnover(lags=(1, 2))`. The executable
+`examples/signal_panel_cleaning.py --plots` includes supplied intraday outcomes,
+sparse cut buckets and actual plotted bucket means. Native pooled/equal-date/report
+differences below still apply; this change does not complete all seven tear sheets.
+
+The installed-artifact comparison with Alphalens 0.5.0 uses shared `30m`, `1ns`
+and `1D1h` outcome columns, nanosecond keys, ordinary/sparse cut buckets and a
+missing-outcome case. Keys, excluded rows, bucket membership and dated ICs agree
+with matched options. Native pooled means remain different from Alphalens'
+equal-date means when date counts differ: in the tested low bucket, seven asset
+outcomes average `-0.02/7`, whereas four date means average `-0.0025`.
+Qualification used Python 3.12.11, pandas 3.0.6, NumPy 2.5.4, Polars 2.0.0 and
+SciPy 1.18.1. This comparison qualifies supplied-panel analysis, not price
+endpoint construction, holding expiry or complete report replacement.
+
+Prepared-input entry points also accept the shared `feed_spec` and canonical
+`timestamp_col`/`entity_col` keywords. Explicit column names override feed mappings;
+existing `date_col`/`asset_col` aliases remain supported and conflicting explicit
+names raise. Calendar precedence is explicit argument, declared feed metadata,
+then NYSE; `calendar=None` always disables calendars. The audit and JSON preserve
+an omitted version-2 calendar separately from explicit null. Recording this
+declaration does not validate supplied outcomes against a schedule or infer their
+endpoints. Version-1 metadata retains its original null-as-unspecified convention.
+
+For supplied long outcomes, set `horizon_col="horizon"` and, if needed,
+`return_col="forward_return"`. `return_columns` then selects horizon names,
+not physical value columns. The cleaner pivots once and still selects one common
+finite sample. `panel.outcome_data` and `result.outcome_data` retain the original
+selected source/end/availability fields and statuses, including excluded outcomes.
+Their derived `duration_ns` and `return_duration_ns` are exact integer nanoseconds
+encoded as Arrow decimal values; session labels and naive keys have no inferred
+physical duration. Analysis JSON retains the owned Arrow snapshot without losing
+nanoseconds. Declared log returns are rejected, not silently compounded as decimal
+returns. Conflicting declared producer/feed calendars raise unless an explicit
+calendar argument chooses the analytical setting; that never recomputes outcomes.
+
+`examples/signal_panel_cleaning.py --plots --engineer-outcomes` optionally runs
+Engineer's native producer and compares its retained keys, buckets and outcomes
+with the standalone supplied-return route. Engineer remains optional. Captured
+producer tests also exercise exact `1ns`/`2ns` elapsed endpoints, missing quotes
+and overlapping input batches without installing Engineer in the consumer.
+
+Standalone captures from the qualified Engineer source also exercise native
+session labels, validated expected bars, CME Sunday-night bars and NYSE's July 3
+early close. Diagnostic retains the producer's exact endpoints and declared
+units; it does not relabel session dates as midnight instants. Session-label
+durations and unknown publications remain unknown. These captures use Engineer
+`0.1.7.dev35+g071b87cef`, Specs 0.2.0 and pandas-market-calendars 5.5.0, not a
+claim that all later producer revisions or every option has been qualified.
+
+### Prepare the same sample directly from prices
+
+Unreleased after 0.1.9, `prepare_signal_panel(factor, prices=prices,
+horizons={"1D": 1, "2D": 2}, price_basis="raw", calendar=None)` feeds the
+same cleaner. Supply prices or realized outcomes, not both. Prices may be keyed
+long quotes or a pandas wide table; the declared basis is retained, not adjusted.
+`examples/signal_panel_cleaning.py --plots` executes both routes and compares
+the retained sample. Neither a provider nor Engineer is required.
+
+The new price route defaults to the union of supplied price timestamps
+(`index_mode="common_grid"`). An absent asset row stays an unavailable endpoint;
+it is not silently compressed into the next observed asset row. Explicit
+`index_mode="per_asset"` retains per-asset observation shifts. A present row with
+a missing quote is distinguished from an absent row. Neither clock establishes
+exchange-session or expected-bar completeness. Supplied long outcomes can carry
+those separately declared producer units without changing their endpoints.
+
+`endpoint_method="cumulative"` computes entry-to-exit change;
+`endpoint_method="exit_bar"` computes the final single-observation return instead.
+For prices `[100, 110, 121]`, a two-observation outcome is respectively `0.21`
+or `0.10`, with different reference timestamps. `fill_method="ffill"` is an
+explicit analytical view, not the native default. Its original row/price flags
+remain false where quotes were imputed. A wide missing cell alone does not
+establish whether an original source row existed before reshaping.
+
+The optional `return_filter_zscore` fits each asset's returns over all factor
+analysis dates before cleaning, including dates without a factor for that asset.
+It retains unfiltered values and exclusion statuses. This lookahead-sensitive
+research filter is not a causal feature or executable-price policy. Counts,
+losses, exact endpoints and these choices survive analysis JSON.
+
+With `available_at_col`, an unfilled, unfiltered outcome is available only when
+both original reference and exit publications are known. Missing publications
+remain unknown. Imputed outcomes and sample-fitted filtering leave
+`outcome_available_at` unknown: a past quote's publication does not prove that
+the future quote will be missing or that a future-fitted filter will retain it.
+The primitive publication timestamps remain inspectable.
+
+The shared public return kernel now subtracts integer prices before floating
+conversion, so valid one-tick changes above Float64's integer precision are not
+lost. This kernel emits Float64 returns; it cannot recover input quantization.
+
+### Keep Alphalens preparation calls during migration
+
+Unreleased after 0.1.9, change the preparation import while keeping the pandas
+MultiIndex inputs and familiar cleaning arguments:
+
+```python
+# Previously: from alphalens import utils as al
+from ml4t.diagnostic.compat.alphalens import utils as al
+from ml4t.diagnostic import analyze_prepared_signal
+import pandas as pd
+
+adapter_dates = pd.bdate_range("2025-07-07", periods=4, tz="UTC")
+adapter_prices = pd.DataFrame(
+    {"A": [100, 110, 121, 133.1], "B": [100, 120, 144, 172.8]},
+    index=adapter_dates,
+)
+adapter_factor = pd.Series(
+    [-1.0, 1.0] * 2,
+    index=pd.MultiIndex.from_product(
+        [adapter_dates[:2], ["A", "B"]], names=["date", "asset"]
+    ),
+    name="factor",
+)
+adapter_clean = al.get_clean_factor_and_forward_returns(
+    adapter_factor, adapter_prices, periods=(1, 2), quantiles=2, max_loss=0,
+    filter_zscore=None, price_basis="raw", calendar=None,
+)
+adapter_result = analyze_prepared_signal(
+    adapter_clean, return_columns=["1D", "2D"], min_assets=2, calendar=None,
+)
+```
+
+The labels in this example require daily observations. Intraday inputs retain
+labels such as `30m`, `1ns` and composites. The adapter also exposes
+`compute_forward_returns` and `get_clean_factor` for the two-stage workflow or
+supplied returns. Numeric and opaque hashable asset IDs are restored without
+string conversion; static or dated groups, labels, qcut/cut, custom edges,
+zero-aware buckets and the common-sample loss limit use the native cleaner.
+The returned `factor_quantile` column is accepted directly by prepared analysis.
+Direct `al.quantize_factor` uses the same native qcut/cut backend without
+discarding rows for missing future outcomes. Its `no_raise=True` option excludes
+failed date/group buckets only; strict duplicate-edge failures remain actionable
+`ValueError`s at the compatibility boundary.
+The runnable `examples/signal_panel_cleaning.py --plots` compares price,
+supplied-return and adapted samples before executing native diagnostics.
+
+These are explicit legacy preparation defaults, not native defaults:
+
+- Price views forward-fill before computing observation-count returns. The
+  convenience cleaner defaults to `filter_zscore=20`; the standalone return
+  function defaults to no filter. Pass `None` to avoid the lookahead filter.
+  Legacy filtering uses all retained pandas date-index levels before selecting
+  factor rows, including unused levels left after dropping an entire date. The
+  native price route instead fits actual factor dates. The audit records the
+  selected filter clock's count and hash; no scored observations are invented.
+- Inferred weekday/holiday calendars determine legacy duration labels only.
+  They are not an exchange schedule. A nonconforming intraday index retains its
+  observed frequency and emits a warning, as corrected Alphalens 0.5.0 does.
+- Without an explicit basis the adapter records `legacy_unspecified`, not raw
+  or adjusted. Supply `price_basis` when known. Use native `outcome_data` when
+  original quote masks, exact endpoints and publication instants are needed.
+- The pandas result retains cleaning audit metadata in `attrs["diagnostic"]`.
+  Passing the return adapter's table to its cleaner preserves declared calendar
+  metadata, including explicit `None`. A conflicting new feed declaration
+  raises unless an explicit `calendar` argument resolves it.
+- `MaxLossExceededError` and `NonMatchingTimezoneError` are available in this
+  namespace. The adapter does not print legacy progress messages. Ambiguous
+  inferred labels raise instead of silently overwriting a horizon; explicit
+  native selectors avoid that inference.
+
+Preparation comparisons use corrected Alphalens 0.5.0, including retained keys,
+missingness, bucket/group membership, cumulative versus terminal-bar returns and
+filter options. Integer-tick/Float32 accuracy is checked against independent
+fractions rather than reproducing legacy cancellation. These preparation calls
+do not yet provide every performance function or all seven legacy report routes.
+The keyword-only `reference_version` defaults to `"0.5.0"`; `"0.4.6"` explicitly
+selects the frozen profile without global state. Actual 0.4.6 comparisons match
+daily price returns, retained keys and buckets for cumulative and terminal-bar
+outcomes. Historical intraday labels are corrected, not copied: on the shared
+regular 30-minute input, 0.4.6 calls one observation `1D30m` and two `2D1h`.
+The independently measured endpoints are 30 minutes and one hour, so Diagnostic
+retains `30m` and `1h`. Nanosecond, overnight and DST-fold cases likewise retain
+their actual subday lengths rather than adding one fictitious day per observation.
+Return values and sample/bucket membership match after reconciling those labels.
+The historical intraday frequency-assignment failure is not reproduced either.
+The installed preparation profile uses Python 3.12.11, pandas 3.0.6, NumPy 2.5.4,
+Polars 2.0.0, SciPy 1.18.1 and Plotly 7.1.0. A separate consumer/reference profile
+uses pandas 2.3.3, NumPy 2.2.6, Polars 1.36.1 and SciPy 1.17.0. The pinned Engineer
+wheel requires Polars 2, so its live regeneration is not claimed at that floor;
+standalone ingestion of its frozen captures needs no Engineer installation.
+
+The same namespace also provides explicit legacy clock/selector conversions:
+`backshift_returns_series`, `get_forward_returns_columns`,
+`turnover_periods_from_columns`, `timedelta_to_string`,
+`timedelta_strings_to_integers`, `make_naive_ts`, `infer_trading_calendar`, and
+the custom-calendar timedelta add/difference helpers. Their shared implementation
+is `ml4t.diagnostic.utils.legacy_time`, not another label or execution engine.
+Backward-return rekeying follows the common date-level clock, preserving missing
+asset rows and session-date labels rather than compressing per asset. Zero shift
+is an identity and an overlong clock gives an empty result; valid sparse input
+does not reproduce the reference helper's first-row assertion failure.
+
+Legacy business-day offset addition preserves local wall-clock time. Pandas
+changed `Day` from a 24-hour tick to a calendar day in
+[version 3](https://pandas.pydata.org/docs/whatsnew/v3.0.0.html); this explicit
+legacy helper follows the supplied pandas offset, not a version-independent
+physical-duration contract. Both dependency profiles are tested. The legacy duration
+difference counts UTC-naive dates and retains a physical subday remainder.
+They are not inverses across DST and are not authoritative session arithmetic.
+Negative duration formatting uses an exact global sign: the independent `-1ns`
+round trip corrects Alphalens 0.5.0's mixed-sign component string. Floored day
+components are a separate utility; automatic turnover selects only positive
+exact-day labels, never a zero lag inferred from `30m` or `1ns`.
 
 ### Inspect grouped IC and adjusted outcomes
 
@@ -392,8 +605,8 @@ already has one common finite sample across all selected horizons.
 IC observations retain undefined dates with null IC, actual `n_obs` and a
 reason such as `no_pairs`, `insufficient_pairs`, `constant_factor` or
 `constant_outcome`. The minimum is applied within each output group.
-`ic_by_date` accepts arbitrary supplied return selectors; the integer-D and
-contiguous-bucket restrictions apply to the separate `analyze()` shortcut.
+Both `ic_by_date` and `analyze()` accept arbitrary supplied return selectors;
+the former additionally exposes grouped/adjusted observations and statuses.
 Output dimensions are canonical `date` and, when requested, `group`, even with
 custom physical input names.
 
