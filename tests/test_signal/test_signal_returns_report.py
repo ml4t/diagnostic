@@ -65,9 +65,12 @@ def test_mixed_quantile_bar_draws_only_defined_errors_without_losing_unknown_buc
         clean, return_columns=["1D"], min_assets=2
     ).to_quantile_result()
     figure = plot_quantile_returns_bar(result, show_error_bars=True)
+    membership_counts = clean.groupby("factor_quantile", observed=True).size()
+    assert sorted(membership_counts) == [1, 1, 2]
+    known = [f"Q{bucket}" for bucket in membership_counts[membership_counts == 2].index]
     assert list(figure.data[0].x) == ["Q1", "Q2", "Q3"]
     assert len(figure.data) == 2 and not figure.data[0].error_y.visible
-    assert list(figure.data[1].x) == ["Q1"]
+    assert list(figure.data[1].x) == known
     assert list(figure.data[1].error_y.array) == pytest.approx([0.05])
     assert figure.data[1].legendgroup == figure.data[0].legendgroup
     assert figure.layout.meta["defined_error_count"] == 1
@@ -514,6 +517,7 @@ def test_quantile_report_browser_distinguishes_unknown_zero_and_mixed_errors_wit
     if profile == "unknown":
         result = _panel(singleton=True).analyze(min_assets=2).to_quantile_result()
         expected_bars, expected_errors = 2, 0
+        mixed_counts = None
     else:
         dates = pd.bdate_range("2025-01-02", periods=2, tz="UTC")
         rates = [110.0, 120.0, 130.0, 140.0] if profile == "mixed" else [110.0, 110.0, 120.0, 120.0]
@@ -528,6 +532,7 @@ def test_quantile_report_browser_distinguishes_unknown_zero_and_mixed_errors_wit
         clean = utils.get_clean_factor_and_forward_returns(
             factor, prices, periods=(1,), quantiles=quantiles, max_loss=0, filter_zscore=None
         )
+        mixed_counts = clean.groupby("factor_quantile", observed=True).size()
         result = analyze_prepared_signal(
             clean, return_columns=["1D"], min_assets=2
         ).to_quantile_result()
@@ -599,4 +604,9 @@ def test_quantile_report_browser_distinguishes_unknown_zero_and_mixed_errors_wit
     elif profile == "known_zero":
         assert measured["arrays"] == [[0, 0]]
     else:
-        assert measured["arrays"][0][1:] == [None, None]
+        assert sorted(mixed_counts) == [1, 1, 2]
+        for index, bucket in enumerate([1, 2, 3]):
+            if mixed_counts[bucket] == 2:
+                assert measured["arrays"][0][index] == pytest.approx(0.05)
+            else:
+                assert measured["arrays"][0][index] is None

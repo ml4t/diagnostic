@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "create_information_tear_sheet",
+    "create_returns_tear_sheet",
     "create_turnover_tear_sheet",
     "create_event_returns_tear_sheet",
     "create_event_study_tear_sheet",
@@ -121,6 +122,73 @@ def create_information_tear_sheet(
         report = generate_signal_information_report(result, output_file=output_file, theme=theme)
     if return_fig:
         return plot_signal_information(result, theme=theme)
+    _display_report(report, output_file)
+    return None
+
+
+def create_returns_tear_sheet(
+    factor_data: pd.DataFrame,
+    long_short: bool = True,
+    group_neutral: bool = False,
+    by_group: bool = False,
+    *,
+    reference_version: str = "0.5.0",
+    annualization_factors: Mapping[str, float] | None = None,
+    output_file: str | Path | None = None,
+    return_fig: bool = False,
+    theme: str | None = None,
+    set_context: bool = True,
+) -> list[go.Figure] | None:
+    """Render familiar returns options through the owned native return analysis.
+
+    Legacy horizon durations establish the explicit 252-day alpha scales and
+    first-horizon rate powers here, not in native defaults. Corrected0.5 uses
+    unit-gross spread/errors; frozen0.4.6 retains raw gross-two differences.
+    Only the supplied1D horizon creates familiar cumulative panels. Native
+    callers can request arbitrary supplied-horizon mathematical wealth paths.
+    """
+    from ml4t.diagnostic.signal import analyze_signal_returns
+    from ml4t.diagnostic.visualization.signal import (
+        generate_signal_returns_report,
+        plot_signal_returns,
+    )
+
+    profile = _profile(reference_version)
+    _flags(
+        long_short=long_short,
+        group_neutral=group_neutral,
+        by_group=by_group,
+        return_fig=return_fig,
+        set_context=set_context,
+    )
+    panel, _ = _prepared(factor_data)
+    columns = panel.metadata["return_columns"]
+    durations = {column: pd.Timedelta(column).value for column in columns}
+    if any(value <= 0 for value in durations.values()):
+        raise ValueError("return-sheet horizons must be positive durations")
+    factors = (
+        {column: pd.Timedelta("252D").value / duration for column, duration in durations.items()}
+        if annualization_factors is None
+        else annualization_factors
+    )
+    result = analyze_signal_returns(
+        panel,
+        annualization_factors=factors,
+        demeaned=bool(long_short),
+        group_adjust=bool(group_neutral),
+        by_group=bool(by_group),
+        rate_conversion_factors={
+            column: durations[columns[0]] / duration for column, duration in durations.items()
+        },
+        date_grid=_reference_grid(factor_data, profile),
+        cumulative_columns=["1D"] if "1D" in columns else [],
+        spread_exposure="unit_gross" if profile == "0.5.0" else "raw_difference",
+    )
+    options = {"theme": theme, "rolling_window": 22, "bandwidth": 0.5, "ylim_percentiles": (1, 99)}
+    if output_file is not None or not return_fig:
+        report = generate_signal_returns_report(result, output_file=output_file, **options)
+    if return_fig:
+        return plot_signal_returns(result, **options)
     _display_report(report, output_file)
     return None
 

@@ -1600,7 +1600,34 @@ use observation-order axes with exact keys retained for inspection, not browser
 date rounding. `to_quantile_result(return_column)` adapts those same owned samples
 for existing charts; uncomputed inference remains unavailable. Native spread
 rolling windows default to 21 observations and bands to one propagated SE.
-Summary/full-sheet compositions, familiar returns-sheet options and original
+For the familiar returns-sheet entry point, retain the prepared pandas table:
+
+```python
+from ml4t.diagnostic.compat.alphalens import tears
+
+familiar_return_figures = tears.create_returns_tear_sheet(
+    adapter_clean, long_short=True, group_neutral=False, by_group=False,
+    reference_version="0.5.0", return_fig=True, set_context=False,
+    output_file="familiar_signal_returns.html",
+)
+assert len(familiar_return_figures) == 8
+print("Familiar returns sheet: retained samples and explicit corrected spread exposure")
+```
+
+The adapter retains Alphalens's first-horizon rate powers and 252-day horizon
+alpha scales; `annualization_factors=` overrides those scales explicitly.
+These duration ratios do not validate an exchange calendar. Corrected 0.5.0
+uses unit-gross spreads and errors; `reference_version="0.4.6"` keeps the raw
+gross-two convention. Both use complete 22-observation rolling means and
+half-SE descriptive bands. Familiar cumulative panels require a supplied `1D`
+column, unlike the native explicit arbitrary-horizon selection.
+
+Plotly/HTML replaces Matplotlib. Horizons have separate panels and distribution
+axis percentiles, and native mean bars additionally display the retained sample
+errors. Actual samples and counts are not changed by these presentation choices.
+Group mean bars supplement the global analysis. As with the other adapters,
+default notebook calls display the report and return `None`; `return_fig=True`
+returns native Plotly figures. Summary/full-sheet compositions and original
 notebook qualification remain separate unfinished acceptance.
 
 ### Align observed-clock event paths
