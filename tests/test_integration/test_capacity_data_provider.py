@@ -12,10 +12,16 @@ from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioAnalysis
 def test_actual_offline_data_provider_preserves_market_keys_lag_and_future_invariance():
     provider_module = pytest.importorskip("ml4t.data.providers")
     provider = provider_module.SyntheticProvider(seed=42)
+    requested_symbol = "SYNTH"
     try:
-        market = provider.fetch_ohlcv("SYNTH", "2025-01-13", "2025-01-24", "daily")
+        market = provider.fetch_ohlcv(requested_symbol, "2025-01-13", "2025-01-24", "daily")
     finally:
         provider.close()
+    if "symbol" not in market.columns:
+        market = market.with_columns(pl.lit(requested_symbol).alias("symbol"))
+    else:
+        assert market["symbol"].null_count() == 0
+        assert set(market["symbol"].unique()) == {requested_symbol}
     before = market.clone()
     positions = market.select(
         pl.col("timestamp").alias("date"),

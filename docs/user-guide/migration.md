@@ -2660,6 +2660,9 @@ uv run --extra viz python examples/portfolio_capacity.py --familiar-report famil
 ```
 
 The provider command uses the actual offline `SyntheticProvider`, not observed exchange liquidity.
+If an older single-symbol provider omits its identity column, the example carries the explicit
+requested symbol alongside those bars. It never infers an asset from prices or row positions,
+and it rejects a contradictory returned identity. Published Data 0.2.1 supplies that column itself.
 No Data or Reloaded installation is required for the supplied-input command. The example prints
 installed package versions. These new APIs belong to an unreleased source/wheel candidate, not
 the immutable published Diagnostic 0.1.9 distribution.
