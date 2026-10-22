@@ -720,13 +720,13 @@ timestamps with labelled observation-order axes and exact timestamps on hover.
 Distinct nanosecond keys are not passed through JavaScript's date conversion.
 Group titles wrap, horizons/quantiles remain visible in legends, and supplied
 mean/std event figures keep unknown deviations separate from known zero deviations.
-These checks do not yet qualify the fourth original Alphalens/Pyfolio notebook or
-all reference options as a full Alphalens migration.
+These checks cover the declared report options; qualification of every original
+journey also requires the installed-package notebook checks below.
 
 ### Run preserved original Alphalens notebooks
 
 Unreleased source includes `scripts/migrate_alphalens_notebooks.py` for the
-original overview, intraday-factor and event-study notebooks. The unmodified
+original overview, intraday-factor, event-study and Pyfolio-integration notebooks. The unmodified
 upstream fixtures and their Apache 2.0 license are retained under
 `tests/fixtures/alphalens_original/`, pinned to Alphalens source
 `1bc181de4aafbe33437ed0e362ff96aa7ce20acd`. The generator checks the original
@@ -747,7 +747,8 @@ From a checkout of this matching source revision, run:
 uv run --with nbclient --with ipykernel python scripts/migrate_alphalens_notebooks.py --source-notebook tests/fixtures/alphalens_original/overview.ipynb --ohlc captured_ohlc.parquet --output migrated_overview.ipynb --execute
 ```
 
-Use the corresponding `intraday_factor.ipynb` or `event_study.ipynb` source and
+Use the corresponding `intraday_factor.ipynb`, `event_study.ipynb` or
+`pyfolio_integration.ipynb` source and
 a new output filename for those journeys. Existing outputs and the original
 notebook are never overwritten. Modified outputs include a visible migration
 notice, the original license and the exact edit record. Optional Jupyter tools
@@ -769,8 +770,13 @@ original intraday and event-study calculations, including their actual forward
 endpoints, retained keys, explicit UTC conversion and unchanged input files.
 Their numerical methods still use the separately tested native kernels; a
 successful notebook alone does not establish every legacy option. The original
-Alphalens/Pyfolio integration notebook awaits the complete Pyfolio full-report
-workflow. No full replacement or availability in published 0.1.9 is claimed.
+Alphalens/Pyfolio integration notebook uses the same native-backed complete
+Pyfolio reports for its daily and Monday-only factor selections. Its synthetic
+research allocations are labelled separately from execution-account facts.
+The legacy five-day offset on the Monday-only sample retains its original
+multiple: positions can extend beyond the return clock. It does not declare
+five NYSE sessions or justify clipping trailing unknown marks.
+Availability in published 0.1.9 is not claimed.
 
 IC preserves legacy per-column NaN propagation. Quantile means instead retain
 each supplied outcome's own available sample and give defined date means equal

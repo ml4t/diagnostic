@@ -21,6 +21,7 @@ NOTEBOOK_HASHES = {
     "overview.ipynb": "f18b00e4c0cf8d1496bf8fd56942c2dda50b83edc774672931222ed40eb130ae",
     "intraday_factor.ipynb": "e62616677251e7e83364373109b7ae362c464b03b91c1e071642d87b89111edd",
     "event_study.ipynb": "18efb5472ea0be379dec1a6a19f86813b4c6bedddffd084ee5a137a3f4544d4f",
+    "pyfolio_integration.ipynb": "c0cec834efaf204732aa9a3035847006ad3ece200e1fb893d40eed62cc5ed4ae",
 }
 
 
@@ -159,6 +160,7 @@ def migrate_notebook(original: Path, ohlc: Path) -> dict[str, Any]:
         else:
             for before, after in [
                 ("import alphalens", "from ml4t.diagnostic.compat import alphalens"),
+                ("import pyfolio", "from ml4t.diagnostic.compat import pyfolio"),
                 ("%matplotlib inline", ""),
                 ("sns.set_style('white')", ""),
                 ("sns.despine();", ""),
@@ -170,7 +172,7 @@ def migrate_notebook(original: Path, ohlc: Path) -> dict[str, Any]:
                         {
                             "cell": number,
                             "category": "import"
-                            if before == "import alphalens"
+                            if before in {"import alphalens", "import pyfolio"}
                             else "presentation",
                             "original": before,
                             "replacement": after,

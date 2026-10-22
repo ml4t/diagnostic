@@ -64,7 +64,9 @@ def test_real_long_market_frame_is_rejected_before_original_yahoo_wide_stack_can
         migrate(original, supplied)
 
 
-@pytest.mark.parametrize("name", ["overview", "intraday_factor", "event_study"])
+@pytest.mark.parametrize(
+    "name", ["overview", "intraday_factor", "event_study", "pyfolio_integration"]
+)
 def test_preserved_original_calculations_execute_native_reports_with_actual_keys_and_notebook_outputs(
     name, tmp_path
 ):
@@ -90,6 +92,30 @@ def test_preserved_original_calculations_execute_native_reports_with_actual_keys
     ohlc.to_parquet(input_file)
     input_digest = hashlib.sha256(input_file.read_bytes()).hexdigest()
     notebook = nbformat.reads(json.dumps(migrate(original, input_file)), as_version=4)
+    if name == "pyfolio_integration":
+        notebook.cells.insert(
+            0,
+            nbformat.v4.new_code_cell(
+                "import plotly.io as pio\npio.renderers.default='plotly_mimetype'"
+            ),
+        )
+        captured = []
+        number = 0
+        for cell in notebook.cells:
+            captured.append(cell)
+            if (
+                cell.cell_type == "code"
+                and "alphalens.performance.create_pyfolio_input" in cell.source
+            ):
+                number += 1
+                captured.append(
+                    nbformat.v4.new_code_cell(
+                        f"pf_returns.to_frame('returns').to_parquet({str(tmp_path / f'returns-{number}.parquet')!r})\n"
+                        f"pf_positions.to_parquet({str(tmp_path / f'positions-{number}.parquet')!r})\n"
+                        f"pf_benchmark.to_frame('benchmark').to_parquet({str(tmp_path / f'benchmark-{number}.parquet')!r})"
+                    )
+                )
+        notebook.cells = captured
     capture = tmp_path / "capture.parquet"
     metadata = tmp_path / "capture.json"
     captured_name = "non_predictive_factor_data" if name == "intraday_factor" else "factor_data"
@@ -137,10 +163,39 @@ pathlib.Path({str(metadata)!r}).write_text(json.dumps({{'module': ml4t.diagnosti
         assert actual.index.get_level_values("date")[0] == dates[1].tz_localize(
             "UTC"
         ) + pd.Timedelta("9h30m")
-    else:
+    elif name == "event_study":
         expected = sum((day + offset) % 8 == 4 for day in range(1, 54) for offset in range(assets))
         assert len(actual) == expected and len(reports) == 2
         assert list(actual.columns[:7]) == ["1D", "2D", "3D", "4D", "5D", "6D", "10D"]
         np.testing.assert_array_equal(actual["factor"], -29)
         np.testing.assert_array_equal(actual["factor_quantile"], 1)
+    else:
+        assert len(actual) == 54 * assets
+        assert len(reports) == 1 and len(mime) == 54
+        assert list(actual.columns[:3]) == ["1D", "3D", "5D"]
+        edits = notebook.metadata.diagnostic_migration.edits
+        assert any(edit["original"] == "import pyfolio" for edit in edits)
+        wealth_plots = [
+            item["data"]["application/vnd.plotly.v1+json"]
+            for item in mime
+            if item["data"]["application/vnd.plotly.v1+json"]["layout"].get("title", {}).get("text")
+            == "Cumulative wealth"
+        ]
+        assert len(wealth_plots) == 2
+        # Frozen published Alphalens/Pyfolio executions on this shared fixture.
+        for number, counts, terminal_wealth in [
+            (1, (74, 75), 1.001891305921464),
+            (2, (71, 106), 0.9975622427155699),
+        ]:
+            returns = pd.read_parquet(tmp_path / f"returns-{number}.parquet")
+            positions = pd.read_parquet(tmp_path / f"positions-{number}.parquet")
+            benchmark = pd.read_parquet(tmp_path / f"benchmark-{number}.parquet")
+            assert (len(returns), len(positions)) == counts
+            assert returns.index.equals(benchmark.index)
+            assert positions.index[-1] > returns.index[-1]
+            assert float((1 + returns["returns"]).prod()) == pytest.approx(terminal_wealth)
+            strategy = next(
+                trace for trace in wealth_plots[number - 1]["data"] if trace["name"] == "Backtest"
+            )
+            assert strategy["y"][-1] == pytest.approx(terminal_wealth)
     assert hashlib.sha256(input_file.read_bytes()).hexdigest() == input_digest
