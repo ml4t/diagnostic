@@ -709,7 +709,49 @@ complete HTML report and return `None`. The explicit `return_fig=True` extension
 returns Plotly figures, not Matplotlib figures or axes. `output_file` saves the
 complete report atomically. `set_context` accepts the legacy boolean without
 changing global Matplotlib/seaborn state; use `theme` for native presentation.
-This namespace currently exposes the information sheet, not all seven sheets.
+The same namespace also exposes turnover, event-returns and event-study sheets.
+Returns, summary and full-sheet composition remain separate unfinished work;
+these adapters do not establish all-seven-sheet replacement.
+
+Continue from the price-produced `adapter_clean` and `adapter_prices` above:
+
+```python
+from ml4t.diagnostic.compat.alphalens import tears as familiar_sheets
+
+familiar_turnover = familiar_sheets.create_turnover_tear_sheet(
+    adapter_clean, turnover_periods=["1D", "2D"],
+    output_file="adapted-turnover.html", return_fig=True,
+)
+familiar_events = familiar_sheets.create_event_returns_tear_sheet(
+    adapter_clean, adapter_prices, avgretplot=(1, 1), long_short=False,
+    std_bar=False, output_file="adapted-events.html", return_fig=True,
+)
+familiar_study = familiar_sheets.create_event_study_tear_sheet(
+    adapter_clean, adapter_prices, avgretplot=(1, 1), n_bars=2,
+    output_file="adapted-study.html", return_fig=True,
+)
+assert len(familiar_turnover) == 4 and len(familiar_events) == 1
+assert len(familiar_study) == 6
+print("Familiar turnover and event sheets retain native samples and supplied levels")
+```
+
+The historical event argument is named `returns`, but both reference sheets
+pass it to `common_start_returns(cumulative=True)`. These adapters therefore
+preserve supplied levels without compounding or event-zero rebasing. For simple
+returns, use the native `panel.event_returns(..., input_kind="returns")` instead.
+`long_short`, `group_neutral`, `by_group` and `std_bar` retain their analytical
+roles; displayed error bars are sample deviations, not confidence intervals.
+Event study retains unadjusted date/bucket observations, optional level paths
+and elapsed-time event bins. `rate_of_ret=True` converts display means to the
+first supplied horizon using duration labels; the native route still requires
+explicit conversion factors for arbitrary selectors. No path is invented when
+`returns` or `avgretplot` is `None` in the event-study call.
+
+Turnover day labels select observed-grid lags, not exchange-validated durations.
+Both reference profiles preserve a declared pandas frequency. Without one,
+`reference_version="0.5.0"` retains observed dates while `"0.4.6"` selects the
+frozen civil-daily reporting grid. Native methods continue to require an explicit
+grid when a different output clock is wanted.
 
 Both routes require complete finite prepared factors/outcomes and positive bucket
 IDs; they do not silently clean or rebucket a supplied table. The constructor
