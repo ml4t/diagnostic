@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
+        TransactionAnalysisResult,
     )
 
 
@@ -52,6 +53,7 @@ class PortfolioTearSheet:
     _analysis: PortfolioAnalysis | None = None
     holdings: HoldingsAnalysisResult | None = None
     availability: dict[str, dict[str, Any]] = field(default_factory=dict)
+    transactions: TransactionAnalysisResult | None = None
 
     def _availability_html(self) -> str:
         if not self.availability:
@@ -153,6 +155,7 @@ class PortfolioTearSheet:
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(10,22,40,0.08);
+            overflow-wrap: anywhere;
         }}
         .metrics-summary pre {{
             font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
@@ -276,6 +279,23 @@ class PortfolioTearSheet:
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
             "holdings": holdings,
             "availability": deepcopy(self.availability),
+            "transactions": None
+            if self.transactions is None
+            else {
+                "timeline": _holdings_records(self.transactions.timeline),
+                "scenarios": _holdings_records(self.transactions.scenarios),
+                "metrics": deepcopy(self.transactions.metrics),
+                "metadata": deepcopy(self.transactions.metadata),
+                "observations": _holdings_records(self.transactions.observations),
+                "executions": [
+                    {**row, "timestamp": timestamp}
+                    for row, timestamp in zip(
+                        self.transactions.executions.to_dicts(),
+                        self.transactions.executions["timestamp"].cast(pl.String).to_list(),
+                        strict=True,
+                    )
+                ],
+            },
         }
 
 
@@ -289,6 +309,7 @@ def create_portfolio_dashboard(
     width: int | None = None,
     *,
     holdings: HoldingsAnalysisResult | None = None,
+    transactions: TransactionAnalysisResult | None = None,
 ) -> PortfolioTearSheet:
     """Create a return dashboard with optional prepared holdings.
 
@@ -311,7 +332,7 @@ def create_portfolio_dashboard(
     include_positions : bool, default True
         Render explicit holdings, or record why preparation is required
     include_transactions : bool, default True
-        Record the request; transaction reporting here remains unavailable
+        Render explicitly prepared transactions, or explain missing preparation
     include_benchmark : bool, default True
         Include benchmark comparison (if benchmark available)
     height_per_row : int, default 300
@@ -322,6 +343,8 @@ def create_portfolio_dashboard(
         Explicitly prepared complete holdings on this analysis's exact observation
         keys. Computed analytics are rendered without inferring NAV or positions.
         Requested but absent results have an explicit availability reason.
+    transactions : TransactionAnalysisResult, optional
+        Prepared actual execution activity and incremental-cost scenarios.
 
     Returns
     -------
@@ -343,12 +366,23 @@ def create_portfolio_dashboard(
         "positions": {"status": "not_requested", "reason": "Position analysis was not requested."},
         "transactions": {
             "status": "unavailable" if include_transactions else "not_requested",
-            "reason": "Prepared transaction reporting is not implemented in this dashboard."
+            "reason": "Supply transactions=analysis.compute_transaction_analysis(); actual fills and denominator methods are not inferred."
             if include_transactions
             else "Transaction analysis was not requested.",
         },
     }
     prepared = None
+    prepared_transactions = None
+    if include_transactions and transactions is not None:
+        from ml4t.diagnostic.evaluation.portfolio_analysis import TransactionAnalysisResult
+
+        if not isinstance(transactions, TransactionAnalysisResult):
+            raise TypeError("transactions must be a prepared TransactionAnalysisResult")
+        expected = pl.DataFrame({"date": analysis.dates, "return": analysis.returns})
+        if not transactions.observations.equals(expected):
+            raise ValueError("transactions must match the exact analysis return observations")
+        prepared_transactions = deepcopy(transactions)
+        availability["transactions"] = {"status": "available", "reason": None}
     if include_positions:
         if holdings is None:
             availability["positions"] = {
@@ -494,6 +528,14 @@ def create_portfolio_dashboard(
         )
         figures.update(position_figures)
         availability.update(position_availability)
+    if prepared_transactions is not None:
+        from .transaction_plots import _transaction_figures
+
+        transaction_figures, transaction_availability = _transaction_figures(
+            prepared_transactions, theme, height_per_row, width
+        )
+        figures.update(transaction_figures)
+        availability.update(transaction_availability)
     for name, fig in figures.items():
         fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
         fig.update_xaxes(tickfont_size=14, title_font_size=14)
@@ -520,6 +562,7 @@ def create_portfolio_dashboard(
         _analysis=analysis,
         holdings=prepared,
         availability=availability,
+        transactions=prepared_transactions,
     )
 
 
