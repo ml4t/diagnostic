@@ -10,6 +10,7 @@ Lopez de Prado, M. (2018). "Advances in Financial Machine Learning"
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any
 
 
@@ -81,7 +82,7 @@ def _validate_dict_keys_match(
             )
 
 
-def _normalize_period(period: int | str) -> str:
+def _normalize_period(period: int | str, available: Collection[str] = ()) -> str:
     """Normalize period to canonical string format used internally.
 
     Accepts:
@@ -108,12 +109,12 @@ def _normalize_period(period: int | str) -> str:
     >>> _normalize_period('21D')
     '21D'
     """
+    if isinstance(period, str) and period in available:
+        return period
     if isinstance(period, int):
         return f"{period}D"
     period_str = str(period).strip()
-    if period_str.endswith("D"):
-        return period_str
-    return f"{period_str}D"
+    return f"{period_str}D" if period_str.isdecimal() else period_str
 
 
 def _figure_from_data(data: dict | str) -> Any:

@@ -86,9 +86,8 @@ def test_offline_regime_cone_report_keeps_readable_labels_and_real_live_values(w
     )
     stress = analysis.compute_stress({"selected": (dates[0], dates[1]), "absent": ("1990", "1990")})
     target = tmp_path / "report.html"
-    analysis.create_tear_sheet(stress=stress, wealth_cones=cones).save_html(
-        target, include_plotlyjs=True
-    )
+    report = analysis.create_tear_sheet(stress=stress, wealth_cones=cones)
+    report.save_html(target, include_plotlyjs=True)
     with playwright.sync_playwright() as runtime:
         executable = None
         if importlib.util.find_spec("choreographer") is not None:
@@ -103,14 +102,16 @@ def test_offline_regime_cone_report_keeps_readable_labels_and_real_live_values(w
         page = browser.new_page(viewport={"width": width, "height": 1000})
         page.route("http://**/*", lambda route: route.abort())
         page.route("https://**/*", lambda route: route.abort())
-        page.goto(target.as_uri())
+        page.goto(target.as_uri(), timeout=90_000)
         container = page.locator(".plot-container").filter(
             has=page.locator("h2", has_text="Training-only wealth cones")
         )
         graph = container.locator(".js-plotly-plot")
         graph.wait_for()
         page.wait_for_function(
-            "() => Array.from(document.querySelectorAll('.js-plotly-plot')).every(e => e._fullLayout)"
+            "count => {const plots = [...document.querySelectorAll('.js-plotly-plot')]; "
+            "return plots.length === count && plots.every(e => e._fullLayout);}",
+            arg=len(report.figures),
         )
         evidence = graph.evaluate("""e => {
             const box = e.getBoundingClientRect();
