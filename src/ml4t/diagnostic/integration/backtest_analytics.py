@@ -514,7 +514,7 @@ def compute_occupancy_metrics(portfolio_state_df: pl.DataFrame) -> dict[str, Any
     net_fraction = pl.col("net_exposure") / equity
     usable_equity = equity.is_not_null() & equity.is_finite()
     valid = usable_equity & (equity > 0) & gross_fraction.is_finite() & net_fraction.is_finite()
-    timeline = portfolio_state_df.sort("timestamp").with_columns(
+    timeline = portfolio_state_df.sort("timestamp", maintain_order=True).with_columns(
         [
             pl.when(valid).then(gross_fraction).otherwise(None).alias("invested_fraction"),
             pl.when(valid).then(gross_fraction).otherwise(None).alias("gross_exposure_fraction"),

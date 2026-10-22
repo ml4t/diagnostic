@@ -23,6 +23,7 @@ from .executive_summary import (
 if TYPE_CHECKING:
     import polars as pl
 
+    from ml4t.diagnostic.evaluation.factor.holdings_attribution import HoldingsAttributionResult
     from ml4t.diagnostic.evaluation.portfolio_analysis.results import DrawdownPeriod
     from ml4t.diagnostic.metrics.tail_risk import GPDTailRiskResult
 
@@ -88,6 +89,75 @@ def create_gpd_tail_summary_html(fit: GPDTailRiskResult) -> str:
         "Use a fit computed from the same returns. A boundary fit is not evidence of "
         "model precision. Unavailable values are not zero risk; infinite ES denotes "
         "divergence of the fitted model mean.</p></section>"
+    )
+
+
+def _supplied_holdings_attribution(
+    metrics: dict[str, Any] | None,
+    returns: Any = None,
+) -> HoldingsAttributionResult | None:
+    from ml4t.diagnostic.evaluation.factor.holdings_attribution import HoldingsAttributionResult
+
+    result = metrics.get("holdings_attribution") if metrics is not None else None
+    if result is not None and not isinstance(result, HoldingsAttributionResult):
+        raise TypeError("holdings_attribution must be a HoldingsAttributionResult")
+    if result is not None and returns is not None:
+        values = np.asarray(returns.to_numpy() if hasattr(returns, "to_numpy") else returns)
+        actual = result.contributions["total_returns"].to_numpy()
+        if values.shape != actual.shape or not np.array_equal(values, actual, equal_nan=True):
+            raise ValueError(
+                "holdings attribution must match the same returns displayed in the report"
+            )
+    return result
+
+
+def create_holdings_attribution_summary_html(result: HoldingsAttributionResult) -> str:
+    """Display the actual supplied sample, linking definition and uncovered gross weight."""
+    label = "Wealth-linked" if result.cumulative_method == "wealth_linked" else "Arithmetic"
+    last = result.cumulative.row(-1, named=True)
+    rows = [
+        ("Method", f"{label} contributions; not estimated regression"),
+        ("Timing", result.timing),
+        ("Return observations", str(result.contributions.height)),
+        ("Factors", str(len(result.factor_names))),
+        ("Common contribution", f"{last['common_returns']:.4%}"),
+        ("Specific contribution", f"{last['specific_returns']:.4%}"),
+        ("Total return", f"{last['total_returns']:.4%}"),
+        (
+            "Cash",
+            "Attributed separately"
+            if result.cash_attributed
+            else "Not separately supplied; included in specific",
+        ),
+    ]
+    body = "".join(
+        f'<tr><th scope="row">{html_mod.escape(name)}</th><td>{html_mod.escape(value)}</td></tr>'
+        for name, value in rows
+    )
+    coverage_rows = []
+    dates = result.coverage["timestamp"].cast(str).to_list()
+    for index, row in enumerate(result.coverage.iter_rows(named=True)):
+        values = [
+            dates[index],
+            str(row["factor"]),
+            f"{row['gross_weight']:.4f}",
+            f"{row['uncovered_gross_weight']:.4f}",
+        ]
+        coverage_rows.append(
+            "<tr>" + "".join(f"<td>{html_mod.escape(value)}</td>" for value in values) + "</tr>"
+        )
+    return (
+        '<section class="holdings-attribution-summary"><p>Supplied holdings and loadings, '
+        "not estimated regression exposures. Return contributions are not annualized.</p>"
+        '<div class="metrics-table-wrap"><table class="metrics-table"><caption>Attribution method and sample</caption>'
+        f"<tbody>{body}</tbody></table></div>"
+        '<div class="metrics-table-wrap"><table class="metrics-table"><caption>Per-factor loading coverage</caption>'
+        "<thead><tr><th>Interval end</th><th>Factor</th><th>Gross NAV weight</th><th>Uncovered gross weight</th></tr></thead>"
+        f"<tbody>{''.join(coverage_rows)}</tbody></table></div>"
+        "<p>Specific returns are unexplained by the supplied factors, not evidence of skill. "
+        "Full-sample mean exposure defines tilt; that descriptive decomposition is not a forecast. "
+        "Uncovered loadings are unavailable information, not proved zero exposure. "
+        "Scroll the coverage table horizontally on narrow screens.</p></section>"
     )
 
 

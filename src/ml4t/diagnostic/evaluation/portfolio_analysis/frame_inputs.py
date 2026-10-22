@@ -154,6 +154,69 @@ def _execution_numeric(frame: pl.DataFrame, column: str) -> None:
         raise ValueError(f"transaction {column} must be finite and nonmissing")
 
 
+def normalize_executions(
+    transactions: pl.DataFrame | pd.DataFrame,
+    *,
+    timestamp_col: str = "timestamp",
+    entity_col: str = "asset",
+    transaction_multiplier: float = 1.0,
+) -> pl.DataFrame:
+    """Own actual executions independently of any return series or NAV observations."""
+    if (
+        isinstance(transaction_multiplier, bool)
+        or not isinstance(transaction_multiplier, Real)
+        or not np.isfinite(transaction_multiplier)
+        or transaction_multiplier <= 0
+    ):
+        raise ValueError("transaction_multiplier must be finite and positive")
+    executions = _rename(_frame(transactions, timestamp_col, "timestamp"), entity_col, "asset")
+    _validate_observation_keys(executions, ["timestamp", "asset"], "transactions", unique=False)
+    if executions["asset"].dtype != pl.String and not executions["asset"].dtype.is_integer():
+        raise TypeError("transaction asset IDs must be stable strings or integers")
+    if executions["asset"].dtype == pl.String and (executions["asset"] == "").any():
+        raise ValueError("transaction asset IDs must be nonempty")
+    if not isinstance(executions["timestamp"].dtype, pl.Datetime):
+        raise TypeError(
+            "transaction timestamps must be Datetime values, not manufactured date instants"
+        )
+    for column in ("quantity", "price"):
+        _execution_numeric(executions, column)
+    if "side" in executions.columns:
+        side = executions["side"].cast(pl.String).str.to_lowercase()
+        if (
+            not side.is_in(["buy", "sell"]).all()
+            or ((side == "buy") & (executions["quantity"] < 0)).any()
+        ):
+            raise ValueError("transaction side must be buy/sell and agree with signed quantity")
+        quantity = pl.col("quantity")
+        if executions["quantity"].dtype.is_unsigned_integer():
+            quantity = quantity.cast(pl.Int128)
+            negative_quantity = pl.lit(0, dtype=pl.Int128) - quantity
+        else:
+            negative_quantity = -quantity
+        executions = executions.with_columns(
+            pl.when(side == "sell")
+            .then(pl.when(quantity > 0).then(negative_quantity).otherwise(quantity))
+            .otherwise(quantity)
+            .alias("quantity")
+        )
+    if "multiplier" not in executions.columns:
+        executions = executions.with_columns(
+            pl.lit(float(transaction_multiplier)).alias("multiplier")
+        )
+    _execution_numeric(executions, "multiplier")
+    if (executions["multiplier"] <= 0).any():
+        raise ValueError("transaction multipliers must be strictly positive")
+    for column in ("commission", "slippage"):
+        if column not in executions.columns:
+            executions = executions.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
+        executions = _numeric(executions, column, nullable=True)
+    if "record_id" not in executions.columns:
+        executions = executions.with_row_index("record_id")
+    _validate_observation_keys(executions, ["record_id"], "transaction record IDs")
+    return executions
+
+
 def _observations(
     value: Any, timestamp_col: str, value_col: str, *, benchmark: bool = False
 ) -> pl.DataFrame:
@@ -295,6 +358,48 @@ def _merge_cash(valuations: pl.DataFrame | None, cash: pl.DataFrame | None) -> p
     )
 
 
+def _frame_declarations(
+    feed_spec: FeedSpec | Mapping[str, Any] | None,
+    timestamp_col: str | None,
+    entity_col: str | None,
+) -> tuple[FeedSpec, str, str]:
+    feed = (
+        FeedSpec.from_any(feed_spec)
+        if feed_spec is not None
+        else FeedSpec(timestamp_col="date", entity_col="asset", time_contract_version=2)
+    )
+    timestamp = timestamp_col if timestamp_col is not None else feed.timestamp_col
+    entity = entity_col if entity_col is not None else feed.entity_col or "asset"
+    if not isinstance(entity, str) and isinstance(entity, Sequence) and len(entity) == 1:
+        entity = entity[0]
+    if (
+        not isinstance(timestamp, str)
+        or not isinstance(entity, str)
+        or not timestamp
+        or not entity
+        or timestamp == entity
+    ):
+        raise ValueError(
+            "portfolio snapshots require distinct timestamp and single-entity column names"
+        )
+    return feed, timestamp, entity
+
+
+def _valuation_snapshot(
+    valuations: pl.DataFrame | pd.DataFrame | None, timestamp: str
+) -> pl.DataFrame | None:
+    if valuations is None:
+        return None
+    account = _frame(valuations, timestamp)
+    _temporal(account)
+    _validate_observation_keys(account, ["date"], "valuations")
+    for column in ("equity", "cash"):
+        if column not in account.columns:
+            account = account.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
+        account = _numeric(account, column, nullable=True)
+    return account
+
+
 def normalize_portfolio_frames(
     returns: Any,
     *,
@@ -328,25 +433,7 @@ def normalize_portfolio_frames(
         or transaction_multiplier <= 0
     ):
         raise ValueError("transaction_multiplier must be finite and positive")
-    feed = (
-        FeedSpec.from_any(feed_spec)
-        if feed_spec is not None
-        else FeedSpec(timestamp_col="date", entity_col="asset", time_contract_version=2)
-    )
-    timestamp = timestamp_col if timestamp_col is not None else feed.timestamp_col
-    entity = entity_col if entity_col is not None else feed.entity_col or "asset"
-    if not isinstance(entity, str) and isinstance(entity, Sequence) and len(entity) == 1:
-        entity = entity[0]
-    if (
-        not isinstance(timestamp, str)
-        or not isinstance(entity, str)
-        or not timestamp
-        or not entity
-        or timestamp == entity
-    ):
-        raise ValueError(
-            "portfolio snapshots require distinct timestamp and single-entity column names"
-        )
+    feed, timestamp, entity = _frame_declarations(feed_spec, timestamp_col, entity_col)
     for name, column in (("return_col", return_col), ("benchmark_col", benchmark_col)):
         if not isinstance(column, str) or not column.strip():
             raise ValueError(f"{name} must name a nonempty column")
@@ -365,64 +452,19 @@ def normalize_portfolio_frames(
         if positions is not None
         else (None, None)
     )
-    account = _frame(valuations, timestamp) if valuations is not None else None
-    if account is not None:
-        _temporal(account)
-        _validate_observation_keys(account, ["date"], "valuations")
-        for column in ("equity", "cash"):
-            if column not in account.columns:
-                account = account.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
-            account = _numeric(account, column, nullable=True)
+    account = _valuation_snapshot(valuations, timestamp)
     account = _merge_cash(account, cash)
     executions = None
     if transactions is not None:
         tx_timestamp = transaction_timestamp_col or (
             feed.timestamp_col if feed_spec is not None else "timestamp"
         )
-        executions = _frame(transactions, tx_timestamp, "timestamp")
-        executions = _rename(executions, entity, "asset")
-        _validate_observation_keys(executions, ["timestamp", "asset"], "transactions", unique=False)
-        if executions["asset"].dtype != pl.String and not executions["asset"].dtype.is_integer():
-            raise TypeError("transaction asset IDs must be stable strings or integers")
-        if executions["asset"].dtype == pl.String and (executions["asset"] == "").any():
-            raise ValueError("transaction asset IDs must be nonempty")
-        if not isinstance(executions["timestamp"].dtype, pl.Datetime):
-            raise TypeError(
-                "transaction timestamps must be Datetime values, not manufactured date instants"
-            )
-        for column in ("quantity", "price"):
-            _execution_numeric(executions, column)
-        if "side" in executions.columns:
-            side = executions["side"].cast(pl.String).str.to_lowercase()
-            if (
-                not side.is_in(["buy", "sell"]).all()
-                or ((side == "buy") & (executions["quantity"] < 0)).any()
-            ):
-                raise ValueError("transaction side must be buy/sell and agree with signed quantity")
-            executions = executions.with_columns(
-                pl.when(side == "sell")
-                .then(
-                    pl.when(pl.col("quantity") > 0)
-                    .then(-pl.col("quantity"))
-                    .otherwise(pl.col("quantity"))
-                )
-                .otherwise(pl.col("quantity"))
-                .alias("quantity")
-            )
-        if "multiplier" not in executions.columns:
-            executions = executions.with_columns(
-                pl.lit(float(transaction_multiplier)).alias("multiplier")
-            )
-        _execution_numeric(executions, "multiplier")
-        if (executions["multiplier"] <= 0).any():
-            raise ValueError("transaction multipliers must be strictly positive")
-        for column in ("commission", "slippage"):
-            if column not in executions.columns:
-                executions = executions.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
-            executions = _numeric(executions, column, nullable=True)
-        if "record_id" not in executions.columns:
-            executions = executions.with_row_index("record_id")
-        _validate_observation_keys(executions, ["record_id"], "transaction record IDs")
+        executions = normalize_executions(
+            transactions,
+            timestamp_col=tx_timestamp,
+            entity_col=entity,
+            transaction_multiplier=transaction_multiplier,
+        )
     if complete_snapshots and holdings is not None:
         selected_account = account if account is not None else observations.select("date")
         selected_account, keys = _align_datetime_key_resolution(

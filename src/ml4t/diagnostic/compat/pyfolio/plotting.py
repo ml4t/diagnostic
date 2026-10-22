@@ -21,6 +21,11 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import (
 )
 
 from . import txn
+from .round_trip_plotting import (
+    plot_prob_profit_trade,
+    plot_round_trip_lifetimes,
+    show_profit_attribution,
+)
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -340,6 +345,9 @@ def plot_capacity_sweep(
 
 __all__ = [
     "plot_capacity_sweep",
+    "plot_round_trip_lifetimes",
+    "plot_prob_profit_trade",
+    "show_profit_attribution",
     "plot_turnover",
     "plot_daily_turnover_hist",
     "plot_daily_volume",

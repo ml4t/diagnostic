@@ -598,7 +598,30 @@ def get_template(
     if name not in templates:
         raise ValueError(f"Unknown template: {name}. Available: {list(templates.keys())}")
 
-    return templates[name]()
+    template = templates[name]()
+    template.sections.extend(
+        [
+            TearsheetSection(
+                "holdings_factor_exposures",
+                "Supplied holdings exposures",
+                enabled=False,
+                priority=26,
+            ),
+            TearsheetSection(
+                "holdings_factor_attribution",
+                "Supplied holdings attribution",
+                enabled=False,
+                priority=27,
+            ),
+            TearsheetSection(
+                "holdings_factor_coverage",
+                "Supplied holdings coverage and method",
+                enabled=False,
+                priority=28,
+            ),
+        ]
+    )
+    return template
 
 
 # CSS styles for HTML tearsheet
@@ -1047,16 +1070,31 @@ TEARSHEET_CSS = """
         font-weight: 600;
     }
 
+    .holdings-attribution-summary .metrics-table,
+    .holdings-attribution-summary .metrics-table th,
+    .holdings-attribution-summary .metrics-table td {
+        font-family: inherit;
+        font-size: 13px;
+    }
+
     .gpd-tail-fit .metrics-table,
     .gpd-tail-fit .metrics-table thead th {
         font-size: inherit;
         font-family: inherit;
     }
 
+    .holdings-attribution-summary caption,
     .gpd-tail-fit caption {
         text-align: left;
         font-weight: 600;
         padding: 8px 12px;
+    }
+
+    .holdings-attribution-summary tbody th {
+        text-align: left;
+        padding: 5px 12px;
+        font-weight: 500;
+        border-bottom: 1px solid var(--c-border-light);
     }
 
     .gpd-tail-fit tbody th {
@@ -1071,12 +1109,18 @@ TEARSHEET_CSS = """
         overflow-wrap: anywhere;
     }
 
+    .holdings-attribution-summary p,
     .gpd-tail-fit-note {
         font-size: 13px;
         line-height: 1.5;
     }
 
     @media (max-width: 600px) {
+        .holdings-attribution-summary .metrics-table,
+        .holdings-attribution-summary .metrics-table th,
+        .holdings-attribution-summary .metrics-table td {
+            font-size: 14px;
+        }
         .gpd-tail-fit { font-size: 14px; }
     }
 

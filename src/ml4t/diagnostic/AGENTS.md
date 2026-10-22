@@ -17,7 +17,8 @@
 | [metrics/](metrics/AGENTS.md) | Feature, signal, and risk metric functions |
 | [splitters/](splitters/AGENTS.md) | Walk-forward, CPCV, calendars, and fold persistence |
 | [evaluation/](evaluation/AGENTS.md) | Core analysis workflows and statistical validation |
-| `compat.pyfolio.txn`, `compat.pyfolio.utils`, `compat.pyfolio.plotting` | Thin pandas transaction/Zipline-tuple adapters and optional Plotly transaction charts over native calculations/inputs; no legacy runtime dependency |
+| `compat.pyfolio.txn`, `compat.pyfolio.utils`, `compat.pyfolio.round_trips`, `compat.pyfolio.plotting` | Thin pandas transaction/Zipline-tuple, round-trip extraction and five-table statistics adapters, plus optional Plotly transaction charts over native calculations/inputs; no legacy runtime dependency |
+| `compat.pyfolio.perf_attrib` | Supplied dollar/fractional holdings attribution and component statistics over shared native kernels; uncovered assets retain the full account NAV denominator |
 | [selection/](selection/AGENTS.md) | Systematic feature selection pipeline |
 | [integration/](integration/AGENTS.md) | `ml4t-backtest`, `ml4t-data`, and `ml4t-engineer` bridges |
 | [visualization/](visualization/AGENTS.md) | Plotly charts, dashboards, and tearsheets |
@@ -28,6 +29,9 @@
 ## Notes
 
 - Public API is defined by `__all__` exports in package modules.
+- `compat.empyrical` and `compat.pyfolio` adapt legacy analytical signatures over
+  native calculations. Pyfolio attribution figures and `tears.create_perf_attrib_tear_sheet`
+  use optional Plotly/HTML presentation, not a mandatory Reloaded or Matplotlib runtime.
 - Reporting and tearsheet entry points are in `integration/` and `visualization/backtest/`.
 - Correlation-adjusted DSR now lives in `evaluation.stats` via
   `effective_number_of_trials()` plus `deflated_sharpe_ratio(..., correlation_method=...)`.

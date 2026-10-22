@@ -30,8 +30,24 @@ if TYPE_CHECKING:
         HoldingsAnalysisResult,
         PortfolioAnalysis,
         PortfolioMetrics,
+        RoundTripResult,
+        RoundTripStatisticsResult,
         TransactionAnalysisResult,
     )
+
+
+def _display_figure(original: go.Figure) -> go.Figure:
+    """Project categorical display labels without changing typed native payloads."""
+    rendered = go.Figure(original)
+    if (rendered.layout.meta or {}).get("analysis") in {
+        "prepared_holdings",
+        "prepared_intraday",
+        "estimated_intraday",
+    } and rendered.layout.yaxis.type == "category":
+        for trace in rendered.data:
+            if trace.y is not None:
+                trace.y = [None if value is None else str(value) for value in trace.y]
+    return rendered
 
 
 @dataclass
@@ -49,7 +65,7 @@ class PortfolioTearSheet:
         availability: Component statuses and reasons for unavailable/disabled analysis
     """
 
-    metrics: PortfolioMetrics
+    metrics: PortfolioMetrics | None
     figures: dict[str, go.Figure] = field(default_factory=dict)
     html_content: str | None = None
     _analysis: PortfolioAnalysis | None = None
@@ -57,6 +73,10 @@ class PortfolioTearSheet:
     availability: dict[str, dict[str, Any]] = field(default_factory=dict)
     transactions: TransactionAnalysisResult | None = None
     capacity: CapacityAnalysisResult | None = None
+    round_trips: RoundTripResult | None = None
+    round_trip_statistics: RoundTripStatisticsResult | None = None
+    round_trip_attribution: pl.DataFrame | None = None
+    intraday: HoldingsAnalysisResult | None = None
 
     def _availability_html(self) -> str:
         if not self.availability:
@@ -95,21 +115,30 @@ class PortfolioTearSheet:
         try:
             from IPython.display import HTML, display
 
-            display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
+            if self.metrics is not None:
+                display(HTML(f"<pre>{escape(self.metrics.summary())}</pre>"))
             if self.availability:
                 display(HTML(self._availability_html()))
+            if self.round_trip_statistics is not None:
+                from .round_trip_plots import _round_trip_tables_html
+
+                display(HTML(_round_trip_tables_html(self.round_trip_statistics)))
             for fig in self.figures.values():
-                fig.show()
+                _display_figure(fig).show()
         except ImportError:
             # Terminal fallback: print metrics, show each figure
-            print(self.metrics.summary())
+            if self.metrics is not None:
+                print(self.metrics.summary())
+            if self.round_trip_statistics is not None:
+                for name, table in self.round_trip_statistics.tables.items():
+                    print(name, table, sep="\n")
             for name, info in self.availability.items():
                 if info.get("reason") or info["status"] != "available":
                     print(f"{name.replace('_', ' ')}: {info['status']}. {info.get('reason') or ''}")
             print()
             for name, fig in self.figures.items():
                 print(f"\n  {name}")
-                fig.show()
+                _display_figure(fig).show()
 
     def save_html(
         self,
@@ -181,7 +210,7 @@ class PortfolioTearSheet:
             border-bottom: 2px solid {COLORS["amber"]};
             padding-bottom: 10px;
         }}
-        h2 {{
+        h2, h3 {{
             color: {COLORS["slate"]};
             margin-top: 0;
             font-size: 16px;
@@ -197,7 +226,8 @@ class PortfolioTearSheet:
 """)
 
         # Add metrics summary
-        html_parts.append(f"""
+        if self.metrics is not None:
+            html_parts.append(f"""
     <div class="metrics-summary">
         <h2>Performance Summary</h2>
         <pre>{escape(self.metrics.summary())}</pre>
@@ -209,11 +239,15 @@ class PortfolioTearSheet:
             from .capacity_plots import _capacity_tables
 
             html_parts.append(_capacity_tables(self.capacity))
+        if self.round_trip_statistics is not None:
+            from .round_trip_plots import _round_trip_tables_html
+
+            html_parts.append(_round_trip_tables_html(self.round_trip_statistics))
 
         # Add each figure
         for name, fig in self.figures.items():
             description = (fig.layout.meta or {}).get("description", "")
-            fig = go.Figure(fig).update_layout(title=None)
+            fig = _display_figure(fig).update_layout(title=None)
             fig_html = fig.to_html(
                 include_plotlyjs=include_plotlyjs
                 if name == list(self.figures.keys())[0]
@@ -251,6 +285,9 @@ class PortfolioTearSheet:
     def get_figures(self) -> dict[str, go.Figure]:
         """Get dictionary of all figures.
 
+        Raw figure payloads retain native ID types. Report show/save_html applies
+        lossless categorical display labels to a copy before browser rendering.
+
         Returns
         -------
         dict[str, go.Figure]
@@ -267,29 +304,33 @@ class PortfolioTearSheet:
             Contains metrics and figure data
         """
         from .holdings_plots import _holdings_records
+        from .round_trip_plots import _round_trip_export
 
-        holdings = (
-            None
-            if self.holdings is None
-            else {
-                "positions": _holdings_records(self.holdings.positions),
-                "timeline": _holdings_records(self.holdings.timeline),
-                "sectors": _holdings_records(self.holdings.sectors),
-                "metrics": deepcopy(self.holdings.metrics),
-                "coverage": deepcopy(self.holdings.coverage),
-                "snapshot_kind": self.holdings.snapshot_kind,
+        def holdings_dict(prepared: HoldingsAnalysisResult | None) -> dict[str, Any] | None:
+            if prepared is None:
+                return None
+            return {
+                "positions": _holdings_records(prepared.positions),
+                "timeline": _holdings_records(prepared.timeline),
+                "sectors": _holdings_records(prepared.sectors),
+                "metrics": deepcopy(prepared.metrics),
+                "coverage": deepcopy(prepared.coverage),
+                "snapshot_kind": prepared.snapshot_kind,
+                "metadata": deepcopy(prepared.metadata),
                 "top_positions": {
-                    side: self.holdings.top_positions(side=side).to_dicts()
+                    side: prepared.top_positions(side=side).to_dicts()
                     for side in ["long", "short", "absolute"]
                 },
             }
-        )
+
         return {
-            "metrics": self.metrics.to_dict(),
+            "metrics": self.metrics.to_dict() if self.metrics is not None else None,
             "figures": {name: fig.to_dict() for name, fig in self.figures.items()},
-            "holdings": holdings,
+            "holdings": holdings_dict(self.holdings),
+            "intraday": holdings_dict(self.intraday),
             "availability": deepcopy(self.availability),
             "capacity": None if self.capacity is None else json.loads(self.capacity.to_json()),
+            "round_trips": _round_trip_export(self),
             "transactions": None
             if self.transactions is None
             else {
@@ -322,6 +363,7 @@ def create_portfolio_dashboard(
     holdings: HoldingsAnalysisResult | None = None,
     transactions: TransactionAnalysisResult | None = None,
     capacity: CapacityAnalysisResult | None = None,
+    intraday: HoldingsAnalysisResult | None = None,
 ) -> PortfolioTearSheet:
     """Create a return dashboard with optional prepared holdings.
 
@@ -360,6 +402,12 @@ def create_portfolio_dashboard(
     capacity : CapacityAnalysisResult, optional
         Prepared supplied-market liquidity and hypothetical capital scenarios.
         Exact observation keys and any supplied returns must match this analysis.
+    intraday : HoldingsAnalysisResult, optional
+        Explicit complete intraday snapshots on their own observation clock.
+        They are not resampled or joined onto return/EOD observations. Reported
+        maxima describe this supplied sample, not continuous-time peak exposure.
+        Explicit estimated_intraday projections instead use daily labels and
+        distinct estimated panels; they are not promoted to observed account facts.
 
     Returns
     -------
@@ -400,6 +448,29 @@ def create_portfolio_dashboard(
             pl.DataFrame({"date": analysis.dates, "return": analysis.returns})
         ):
             raise ValueError("capacity must match the exact analysis return observations")
+    prepared_intraday = None
+    if intraday is not None:
+        from ml4t.diagnostic.evaluation.portfolio_analysis import HoldingsAnalysisResult
+
+        if not isinstance(intraday, HoldingsAnalysisResult):
+            raise TypeError("intraday must be a prepared HoldingsAnalysisResult")
+        estimated = intraday.snapshot_kind == "estimated_intraday"
+        valid_clock = isinstance(intraday.timeline["date"].dtype, pl.Datetime) or (
+            estimated and intraday.timeline["date"].dtype == pl.Date
+        )
+        if intraday.snapshot_kind not in {"intraday", "estimated_intraday"} or not valid_clock:
+            raise ValueError(
+                "intraday requires actual Datetime instants, or an explicitly labeled estimated_intraday daily projection; EOD/date labels cannot become observed intraday peaks"
+            )
+        prepared_intraday = deepcopy(intraday)
+        availability["intraday"] = {
+            "status": "available" if intraday.timeline.height else "empty",
+            "reason": "Explicit retrospective daily transaction-notional estimate; not observed or reconstructed marked account peaks."
+            if estimated
+            else "Independent supplied intraday clock; no return/EOD resampling. Maximum "
+            "over supplied observations, not a continuous-time maximum. Means/time-in-market "
+            "describe observations, not elapsed-time weighting.",
+        }
     if include_transactions and transactions is not None:
         from ml4t.diagnostic.evaluation.portfolio_analysis import TransactionAnalysisResult
 
@@ -571,6 +642,31 @@ def create_portfolio_dashboard(
         )
         figures.update(capacity_figures)
         availability.update(capacity_availability)
+    if prepared_intraday is not None and prepared_intraday.timeline.height:
+        from .holdings_plots import _holdings_figures
+
+        intraday_figures, intraday_availability = _holdings_figures(
+            prepared_intraday, theme, height_per_row, width, sample_axis=True
+        )
+        for name, fig in intraday_figures.items():
+            estimated = prepared_intraday.snapshot_kind == "estimated_intraday"
+            meta = dict(fig.layout.meta or {})
+            meta.update(
+                analysis="estimated_intraday" if estimated else "prepared_intraday",
+                description=(
+                    "Retrospective daily transaction-notional estimate, not observed positions or continuous marked peaks. Daily labels are not intraday instants; selected execution times and exact sample membership stay in the export. "
+                    if estimated
+                    else "Independent prepared intraday observations; no EOD/return-grid compression. "
+                    "Maxima describe the observed sample, not continuous-time peaks. "
+                    "Time-series axes show observation order, not elapsed spacing; exact instants remain on hover/export. "
+                )
+                + meta.get("description", ""),
+            )
+            fig.update_layout(meta=meta)
+            figures[("Estimated Intraday " if estimated else "Intraday ") + name] = fig
+        availability.update(
+            {"intraday_" + name: value for name, value in intraday_availability.items()}
+        )
     for name, fig in figures.items():
         fig.update_layout(font_size=14, title_font_size=16, legend_font_size=14)
         fig.update_xaxes(tickfont_size=14, title_font_size=14)
@@ -599,6 +695,7 @@ def create_portfolio_dashboard(
         availability=availability,
         transactions=prepared_transactions,
         capacity=capacity,
+        intraday=prepared_intraday,
     )
 
 

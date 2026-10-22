@@ -22,8 +22,17 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.capacity import (
     CapacityAnalysisResult,
     analyze_capacity,
 )
+from ml4t.diagnostic.evaluation.portfolio_analysis.fifo import RoundTripResult
+from ml4t.diagnostic.evaluation.portfolio_analysis.fifo_statistics import (
+    RoundTripStatisticsResult,
+    summarize_round_trips,
+)
 from ml4t.diagnostic.evaluation.portfolio_analysis.frame_inputs import PortfolioInputData
 from ml4t.diagnostic.evaluation.portfolio_analysis.holdings import HoldingsAnalysisResult
+from ml4t.diagnostic.evaluation.portfolio_analysis.intraday import analyze_intraday_exposure
+from ml4t.diagnostic.evaluation.portfolio_analysis.intraday_estimate import (
+    estimate_intraday_positions,
+)
 
 # Core metric functions
 from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
@@ -61,12 +70,17 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.transactions import Transacti
 __all__ = [
     "CapacityAnalysisResult",
     "analyze_capacity",
+    "analyze_intraday_exposure",
+    "estimate_intraday_positions",
     "benchmark_batting_average",
     # Main class
     "PortfolioAnalysis",
     "HoldingsAnalysisResult",
     "PortfolioInputData",
     "TransactionAnalysisResult",
+    "RoundTripResult",
+    "RoundTripStatisticsResult",
+    "summarize_round_trips",
     # Result classes
     "PortfolioMetrics",
     "RollingMetricsResult",

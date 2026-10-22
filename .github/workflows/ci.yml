@@ -318,6 +318,55 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)[viz]" --with pytest
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_visualization/test_gpd_tail_report.py
+      - name: Run supplied-holdings attribution workflow from installed wheel
+        shell: bash
+        run: |
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_evaluation/test_holdings_factor_attribution.py \
+            tests/test_compat/test_empyrical_holdings_attribution.py \
+            tests/test_compat/test_pyfolio_holdings_attribution.py \
+            tests/test_compat/test_pyfolio_attribution_plots.py \
+            tests/test_compat/test_pyfolio_attribution_sheet.py \
+            tests/test_visualization/test_holdings_attribution_report.py \
+            tests/test_visualization/test_pyfolio_attribution_browser.py \
+            tests/test_visualization/test_report_output_integrity.py
+          mkdir -p artifacts/attribution
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" \
+            python -I examples/holdings_factor_attribution.py --compare --compare-pyfolio \
+            --report artifacts/attribution/native.html \
+            --pyfolio-report artifacts/attribution/pyfolio.html
+      - name: Run FIFO and intraday workflows from installed wheel
+        shell: bash
+        run: |
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
+            --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --tb=short tests/test_evaluation/test_portfolio_fifo.py \
+            tests/test_evaluation/test_intraday_estimate.py \
+            tests/test_compat/test_pyfolio_round_trips.py \
+            tests/test_compat/test_pyfolio_round_trip_helpers.py \
+            tests/test_compat/test_pyfolio_closing_transactions.py \
+            tests/test_compat/test_pyfolio_round_trip_report.py \
+            tests/test_visualization/test_round_trip_dashboard.py \
+            tests/test_visualization/test_intraday_clock_export.py
+          mkdir -p artifacts/fifo
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            python -I examples/portfolio_fifo.py \
+            --familiar-report artifacts/fifo/familiar.html
+          uv run --isolated --no-project \
+            --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+            python -I examples/portfolio_intraday.py --estimate \
+            --report artifacts/fifo/estimated-intraday.html
       - name: Run prepared holdings with minimum Polars from installed wheel
         shell: bash
         run: >-
