@@ -94,9 +94,15 @@ These Diagnostic calendar-intake changes are unreleased after 0.1.9. They
 require published `ml4t-specs>=0.2.0`, which provides the v2 interface; Specs
 0.1.5 does not. See the
 [shared time contract](https://github.com/ml4t/specs/blob/e1a05a8065c1988a6bac414e50f8f0474e3b6ad4/docs/contracts.md).
-This does not establish schedule-grid, expected-bar or elapsed-unit conformance
-for every Diagnostic workflow. Backtest metadata adoption and full CPCV
-session/expected-bar window semantics remain separate parts of the audit.
+Backtest report bridges also inherit the producer's declared calendar metadata;
+an explicit `calendar=None` retains the original observation keys and requires
+an explicit `periods_per_year` when computing annualized metrics. The selected
+scale reaches metrics and report charts without changing the producer's config.
+See [actual Backtest account capture](migration.md#consume-actual-backtest-account-capture).
+
+Calendar intake does not establish that a feed contains every expected bar.
+CPCV's integer windows count supplied observations, as described below; selecting
+a named calendar does not change those windows into session or expected-bar counts.
 
 ## Pass calendar intent to CPCV
 
