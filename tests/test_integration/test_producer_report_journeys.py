@@ -82,8 +82,14 @@ def test_actual_backtest_flows_and_first_fill_fee_reach_the_final_report(tmp_pat
     assert restored.input_data.metadata["initial_nav"] == 1000
     assert restored.input_data.metadata["source"]["capital_flows"] == capital["events"]
     playwright = pytest.importorskip("playwright.sync_api")
+    from choreographer.browsers.chromium import Chromium
+
     with playwright.sync_playwright() as runtime:
-        chrome = shutil.which("google-chrome") or shutil.which("chromium")
+        chrome = (
+            Chromium.find_browser(skip_local=False)
+            or shutil.which("google-chrome")
+            or shutil.which("chromium")
+        )
         browser = runtime.chromium.launch(
             executable_path=chrome or runtime.chromium.executable_path, args=["--no-sandbox"]
         )

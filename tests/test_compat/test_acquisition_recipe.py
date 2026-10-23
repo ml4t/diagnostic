@@ -111,7 +111,7 @@ def test_captured_cli_writes_standalone_report_without_optional_producer(tmp_pat
         cwd=tmp_path,
     )
     assert "captured provider-derived CSVs; no network" in completed.stdout
-    assert "plotly" in target.read_text().lower()
+    assert "plotly" in target.read_text(encoding="utf-8").lower()
     payload = completed.stdout.split("\nWrote acquired-input", 1)[0]
     assert json.loads(payload)["return_observations"] == 3
 
@@ -158,8 +158,10 @@ def test_fetch_recipe_uses_actual_data_parsers_caches_and_explicit_fred_requests
         if os.environ.get("ML4T_REQUIRED_ACQUISITION_RECIPE"):
             pytest.fail("Required published Data producer is absent")
         pytest.skip("The Data producer is an optional example dependency")
+    from datetime import timedelta
+
     import httpx
-    from ml4t.data.core.exceptions import NetworkError
+    from ml4t.data.core.exceptions import DataNotAvailableError, NetworkError
     from ml4t.data.providers import FamaFrenchProvider, yahoo
 
     capture_directory = Path(captures)
@@ -211,6 +213,18 @@ def test_fetch_recipe_uses_actual_data_parsers_caches_and_explicit_fred_requests
         os.utime(path, (0, 0))
     recipe.fetch_acquired_inputs("SPY", "2024-01-02", "2024-01-06", cache)
     assert len(calls) == 9
+    native_cache = tmp_path / "native-factor-cache"
+    with FamaFrenchProvider(cache_path=native_cache) as provider:
+        native = provider.fetch("ff3_mom", "daily", "2024-01-02", "2024-01-05")
+        assert len(calls) == 11
+        assert native.equals(
+            provider.fetch("ff3_mom", "daily", "2024-01-02", "2024-01-05", offline=True)
+        )
+        assert len(calls) == 11
+        assert native.equals(
+            provider.fetch("ff3_mom", "daily", "2024-01-02", "2024-01-05", refresh=True)
+        )
+        assert len(calls) == 13
 
     def offline(*args, **kwargs):
         raise httpx.ConnectError(
@@ -221,5 +235,45 @@ def test_fetch_recipe_uses_actual_data_parsers_caches_and_explicit_fred_requests
     monkeypatch.setattr(yahoo.yf, "download", offline)
     with pytest.raises(NetworkError, match="offline transport"):
         recipe.fetch_acquired_inputs("SPY", "2024-01-02", "2024-01-06", cache)
+    for path in native_cache.glob("*.parquet"):
+        os.utime(path, (0, 0))
+    with FamaFrenchProvider(cache_path=native_cache) as provider:
+        with pytest.raises(DataNotAvailableError):
+            provider.fetch(
+                "ff3_mom",
+                "daily",
+                "2024-01-02",
+                "2024-01-05",
+                offline=True,
+                max_age=timedelta(days=1),
+            )
+        offline = provider.fetch(
+            "ff3_mom",
+            "daily",
+            "2024-01-02",
+            "2024-01-05",
+            offline=True,
+            max_age=timedelta(days=1),
+            allow_stale=True,
+        )
+        assert offline.equals(native)
+    factors = offline.to_pandas().set_index("timestamp").rename(columns={"MOM": "Mom"})
+    factors.index = factors.index.tz_localize("UTC")
+    result = recipe.analyze_acquired_inputs(hit[0], factors, hit[2])
+    np.testing.assert_allclose(result["analysis"].benchmark, [-0.0099, -0.0031, 0.0017])
+    assert result["dated_rf_sharpe"] == pytest.approx(-11.7810178587, abs=1e-9)
+    wealth = next(
+        trace
+        for trace in result["report"].figures["Returns/Cumulative wealth"].data
+        if trace.name == "Backtest"
+    )
+    assert wealth.y[-1] == pytest.approx(453.09259033203125 / 457.67266845703125)
+    benchmark = next(
+        trace
+        for trace in result["report"].figures["Returns/Cumulative wealth"].data
+        if trace.name == "Market total return"
+    )
+    np.testing.assert_allclose(benchmark.y, np.cumprod([0.9901, 0.9969, 1.0017]))
+    result["report"].save_html(tmp_path / "native-cache-report.html", include_plotlyjs=True)
     # Offline replay is the bundled/caller-supplied input route, not hidden FRED caching.
     recipe.analyze_acquired_inputs(*recipe.load_captured_inputs())

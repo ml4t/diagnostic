@@ -92,6 +92,12 @@ mtime contract, not historical publication time. FRED is fetched explicitly on
 each `--fetch` call; it is not part of those CSV caches. For reproducible offline
 analysis, retain acquired inputs or use the bundled captured-input route.
 
+Data's native Parquet factor cache is separate from the legacy CSV helper.
+The producer regressions consume its actual returned factor frames through
+the same full report after miss, hit, refresh and offline stale-policy checks.
+`FamaFrenchProvider.fetch` requires explicit `allow_stale=True` to accept an
+offline cache older than the requested `max_age`.
+
 Fama-French `Mkt-RF`, `RF` and factor columns are decimal periodic returns.
 The total-market benchmark is `Mkt-RF + RF`, not market excess alone. The separate
 FRED `DGS3MO` column is an annual-percent quoted yield. A quote of `5.46` is not
