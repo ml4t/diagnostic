@@ -18,7 +18,7 @@ _MODULE = "tests/test_visualization/test_pdf_process_ownership.py"
 _SELECTION = (
     "exit7 or render_error or close_error or close_command_hang or cancel or "
     "profile_sharing or slow_shutdown or completed_page or previous_blank_page or "
-    "context_burst or unresponsive_startup or pipe_close_evidence or delete_pending"
+    "context_burst or unresponsive_startup or pipe_close_evidence or readonly_browser_profile or profile_cleanup_deadline"
 )
 
 
