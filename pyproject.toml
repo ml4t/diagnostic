@@ -29,6 +29,9 @@ include = [
 ]
 exclude = ["**/AGENTS.md"]
 
+[tool.hatch.build.targets.sdist.force-include]
+"docs/images/ml4t_ecosystem_workflow_color.png" = "docs/images/ml4t_ecosystem_workflow_color.png"
+
 [project]
 name = "ml4t-diagnostic"
 dynamic = ["version"]
