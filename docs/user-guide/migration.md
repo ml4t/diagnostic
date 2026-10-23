@@ -252,7 +252,7 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
 | Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | Unreleased after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
-| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` for selected components; `generate_signal_report(...)` for owned composition | Unreleased after 0.1.9. The owned composer renders actual returns, information and dated persistence results, including requested mathematical quantile paths. Familiar report routes and their remaining qualification are described below. |
+| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` for selected components; `generate_signal_report(...)` for owned composition | Unreleased after 0.1.9. The owned composer renders actual returns, information and dated persistence results, including requested mathematical quantile paths. Familiar report routes and their option/sample differences are described below. |
 | Expiring allocations and daily portfolio interchange | `panel.positions(...)`, `panel.to_portfolio_inputs(...)`, `compat.alphalens.performance.create_pyfolio_input(...)` | Unreleased after 0.1.9. Explicit expiry, capital and daily conventions remain distinct from executed holdings/account P&L. Native end-of-day and familiar event-sum definitions are named separately. |
 
 </div>
@@ -3537,9 +3537,10 @@ default pivot mean turns two same-instant one-unit buys at 100 into 100 of
 exposure rather than the independently calculated 200. The same two fills at
 distinct instants give the correct 200 in that reference. Diagnostic preserves
 both actual quantities and returns 200 in both cases; it does not copy that
-reference error. The explicit daily projection below is a different method;
-full familiar report options still require separate qualification. This native
-route is not a full-replacement claim.
+reference error. The explicit daily projection below is a different method.
+The familiar intraday helpers and
+[complete account report](#compose-a-familiar-simple-or-full-account-report)
+select that daily estimate explicitly, without treating it as observed account state.
 
 ### Keep the daily intraday estimate separate from account facts
 
@@ -3799,8 +3800,9 @@ now accepts same-instant closures, explicit point multipliers, actual zero/negat
 prices and signed cash-fee rebates. Producer-to-consumer tests pass these real
 FIFO rows through `TradeRecord` and `TradeAnalysis` without altering the execution
 quantity, prices or fees. Undefined price/duration ratios remain undefined;
-nanosecond instants survive metric tables and JSON. Full multi-report portfolio
-composition remains separate from the round-trip and intraday routes above.
+nanosecond instants survive metric tables and JSON. Use the
+[complete account report](#compose-a-familiar-simple-or-full-account-report)
+to combine those results with the other requested portfolio sections.
 ### Consume a Zipline performance result without a legacy analytics dependency
 
 The familiar extraction call is also available as
@@ -4189,10 +4191,12 @@ independent input values, not treated as parity targets. Cash-only complete
 snapshots have an empty requested sector table and unchanged cash in timeline.
 
 The [prepared holdings dashboard](#render-prepared-holdings-in-the-portfolio-dashboard)
-renders these sector tables. This route does not provide intraday reconstruction, automatic
-per-asset Backtest holdings exports, calendar/session-aware `from_pyfolio()` or
-`from_zipline()`, transaction costs/scenarios or complete portfolio reports.
-Those remain accepted coverage requirements. No full replacement is claimed.
+renders these sector tables. It consumes owned holdings rather than simulating an account.
+Use [captured Backtest holdings](#consume-actual-backtest-account-capture) for producer
+snapshots, the [supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine)
+for declared clocks and external inputs, and the
+[complete account report](#compose-a-familiar-simple-or-full-account-report) for
+requested transactions, cost scenarios and other portfolio sections.
 
 #### Render prepared holdings in the portfolio dashboard
 
@@ -4430,17 +4434,15 @@ The existing migration example runs a real short order through the Backtest
 engine, verifies the actual fill, and checks marks of 150, 200 and 250 after
 shorting 10 shares at 100 from initial equity 1000:
 
-Current Diagnostic source requires Specs 0.2.0 or newer, while published
-Backtest 0.1.12 requires Specs below 0.2. These versions cannot be installed
-together. The following source examples pin the compatible immutable Backtest
-revision qualified as `0.1.13.dev32+gc6feb2408`, with Specs 0.2.0. This is an
-unpublished producer qualification, not a claim that PyPI Backtest 0.1.13 is
-available. A compatible published producer remains necessary for a new
-published-package workflow. The supplied-frame examples above do not require it.
+The exposure and activity recipes below work with published Backtest 0.2.0 and
+Specs 0.2.0. Upgrade older Backtest versions whose Specs bounds are incompatible;
+do not override their dependency bounds. Earlier captured qualification against
+`c6feb24084ec89c3342f5703cc47ea2524b521f4` remains historical producer evidence.
+The supplied-frame examples above do not require a Backtest installation.
 
 ```bash
 uv run --isolated --no-dev --python 3.12 --with plotly \
-  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
+  --with 'ml4t-backtest==0.2.0' \
   python examples/legacy_migration_comparison.py --task exposure
 ```
 
@@ -4488,7 +4490,7 @@ Run the existing migration example with actual next-bar short and cover fills:
 
 ```bash
 uv run --isolated --no-dev --python 3.12 --with plotly \
-  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
+  --with 'ml4t-backtest==0.2.0' \
   python examples/legacy_migration_comparison.py --task activity
 ```
 
@@ -4643,13 +4645,13 @@ display. `return_fig=True` returns the single Plotly sweep, not a Matplotlib Fig
 `output_file` still saves every table in that mode. Optional `periods_per_year` and `impact`
 make the annualization scale and hypothetical coefficient explicit. The original fixed-capital,
 five-market-row liquidation and closing-NAV impact conventions remain different from the native
-result. These capacity routes do not certify all Pyfolio reports or the combined full sheet.
-Retain Pyfolio for unqualified report choices until installed-artifact and supported-platform
-evidence covers the workflow you need.
+result. Use the [complete account report](#compose-a-familiar-simple-or-full-account-report)
+to combine capacity with supplied returns, holdings, transactions and attribution.
 
-Selected unreleased Diagnostic workflows above implement dated stress/live
-analysis, training-only cones, actual FIFO, supplied-market capacity and
-supplied-holdings attribution. Their existence does not establish one-call
-equivalence for Pyfolio's full collection. Retain Pyfolio for any unqualified
-combined report, option or notebook route, and compare annualization, benchmark
-alignment, cash and cost conventions before comparing metrics.
+The development routes in this guide provide the seven Alphalens and nine Pyfolio
+analytical sheet families, with preserved original-notebook recipes and explicit
+native/legacy method choices. They are not part of the published 0.1.9 wheel.
+Keep the installed legacy workflow until a successor distribution containing the
+required route has been published and verified in your environment. Compare
+annualization, benchmark alignment, cash, costs and the stated sample conventions
+when migrating; matching API names alone does not establish equivalent inputs or results.
