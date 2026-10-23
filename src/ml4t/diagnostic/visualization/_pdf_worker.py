@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import sys
 import tempfile
 from collections.abc import Iterable
@@ -42,15 +43,27 @@ class _PageEventsKaleido(kaleido.Kaleido):
             "typeof kaleido_scopes !== 'undefined' && "
             "typeof kaleido_scopes.plotly === 'function'"
         )
+        observation = (
+            "JSON.stringify({"
+            f"ready: Boolean({expression}), "
+            "href: location.href, "
+            f"expected_href: new URL({json.dumps(self._index)}).href, "
+            "document_state: document.readyState, plotly_type: typeof Plotly, "
+            "plotly_function_type: typeof Plotly === 'undefined' ? 'undefined' : "
+            "typeof Plotly.newPlot, scopes_type: typeof kaleido_scopes, "
+            "scopes_function_type: typeof kaleido_scopes === 'undefined' ? 'undefined' : "
+            "typeof kaleido_scopes.plotly})"
+        )
         while True:
             response = await target.send_command(
-                "Runtime.evaluate", params={"expression": expression, "returnByValue": True}
+                "Runtime.evaluate", params={"expression": observation, "returnByValue": True}
             )
-            if (
-                isinstance(response, dict)
-                and response.get("result", {}).get("result", {}).get("value") is True
-            ):
-                break
+            if isinstance(response, dict):
+                value = response.get("result", {}).get("result", {}).get("value")
+                if isinstance(value, str):
+                    self._document_readiness = json.loads(value)
+                    if self._document_readiness["ready"]:
+                        break
             await asyncio.sleep(0.05)
 
         frame = await target.send_command("Page.getFrameTree")
@@ -92,6 +105,11 @@ class _PageEventsKaleido(kaleido.Kaleido):
 
 async def _render(request_path: Path, status_path: Path) -> None:
     request = json.loads(request_path.read_text(encoding="utf-8"))
+    browser_logger = logging.getLogger("browser_proc")
+    browser_logger.setLevel(logging.DEBUG)
+    browser_output = logging.StreamHandler()
+    browser_output.setFormatter(logging.Formatter("PDF browser: %(message)s"))
+    browser_logger.addHandler(browser_output)
     # The parent removes both the Chromium profile and Kaleido page after OS termination,
     # even when the worker cannot complete its own close cleanup.
     tempfile.tempdir = str(request_path.parent)
@@ -138,6 +156,9 @@ async def _render(request_path: Path, status_path: Path) -> None:
         cancellation.cancel()
         with suppress(asyncio.CancelledError):
             await cancellation
+    readiness = getattr(renderer, "_document_readiness", None)
+    if render_error is not None and readiness is not None:
+        render_error.add_note(f"PDF document readiness: {json.dumps(readiness)}")
     details = (
         {"error": f"{type(render_error).__name__}: {render_error}"}
         if render_error is not None

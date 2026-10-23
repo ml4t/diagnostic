@@ -200,7 +200,16 @@ class _WindowsJob:
                         if self.api.IsProcessInJob(handle, self.handle, ctypes.byref(member))
                         else None
                     )
-                    handles.append((process.pid, handle, membership))
+                    identity = {}
+                    try:
+                        identity["name"] = process.name()
+                        identity["role"] = next(
+                            (arg for arg in process.cmdline() if arg.startswith("--type=")),
+                            "main",
+                        )
+                    except psutil.Error:
+                        pass
+                    handles.append((process.pid, handle, membership, identity))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
             self._check(self.api.TerminateJobObject(self.handle, 120))
@@ -222,7 +231,7 @@ class _WindowsJob:
                     )
                 time.sleep(0.05)
             # Accounting can reach zero before process teardown releases file handles.
-            for pid, handle, membership in handles:
+            for pid, handle, membership, identity in handles:
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
@@ -234,12 +243,13 @@ class _WindowsJob:
                     )
                     raise RuntimeError(
                         f"Owned PDF process {pid} not terminal: wait result {result}; "
+                        f"identity={identity}, "
                         f"member_before_termination={membership}, exit_code={observed_exit}, "
                         f"job_active={accounting.active}, job_zero_elapsed={job_zero_elapsed:.6f}, "
                         f"cleanup_elapsed={time.monotonic() - started:.6f}, wait_budget_ms={remaining_ms}"
                     )
         finally:
-            for _, handle, _ in handles:
+            for _, handle, _, _ in handles:
                 self.api.CloseHandle(handle)
             self.api.CloseHandle(self.handle)
 

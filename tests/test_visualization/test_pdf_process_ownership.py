@@ -328,8 +328,30 @@ else:
                 release_sharing()
                 for timer in sharing_timers: timer.join(timeout=1)
         if mode=='profile_sharing':
+            original_rmtree=_pdf_process.shutil.rmtree
+            profile_directory=None
+            cleanup_denials=[]
+            def observe_actual_cleanup(directory,*args,**kwargs):
+                try: return original_rmtree(directory,*args,**kwargs)
+                except PermissionError as error:
+                    if Path(directory)==profile_directory and sharing_handles:
+                        cleanup_denials.append(getattr(error,'winerror',None))
+                        observed.with_suffix('.fault.json').write_text(json.dumps({
+                            'denials':actual_denials,
+                            'cleanup_denials':cleanup_denials,
+                            'directory':str(profile_directory),
+                        }))
+                        if not sharing_timers:
+                            timer=threading.Timer(.2,release_sharing)
+                            timer.daemon=True
+                            sharing_timers.append(timer)
+                            timer.start()
+                    raise
+            _pdf_process.shutil.rmtree=observe_actual_cleanup
             def terminate_then_lock_profile(self):
+                global profile_directory
                 original_terminate(self)
+                profile_directory=Path(self.process.args[-2]).parent
                 profile=Path(json.loads(observed.with_suffix('.profiles.json').read_text())[0])
                 candidate=next(path for path in profile.rglob('*') if path.is_file())
                 handle=api.CreateFileW(str(candidate),0x80000000,0x00000003,None,3,0x80,None)
@@ -345,10 +367,6 @@ else:
                         'directory':str(Path(self.process.args[-2]).parent),
                     }))
                 else: raise AssertionError('Profile lock did not prevent deletion')
-                timer=threading.Timer(.2,release_sharing)
-                timer.daemon=True
-                sharing_timers.append(timer)
-                timer.start()
             _pdf_process._OwnedProcesses.terminate=terminate_then_lock_profile
         else:
             Path.read_text=read_with_real_share_lock
@@ -417,6 +435,7 @@ try:
         assert not sharing_handles and all(not timer.is_alive() for timer in sharing_timers)
     if mode=='profile_sharing':
         assert actual_denials==[32] and not sharing_handles
+        assert 32 in cleanup_denials,'No actual directory cleanup encountered the sharing denial'
         for timer in sharing_timers: timer.join(timeout=1)
         assert all(not timer.is_alive() for timer in sharing_timers)
     assert neighbor.poll() is None, 'Unrelated process was killed by renderer cleanup'
@@ -564,6 +583,9 @@ def test_real_profile_sharing_fails_without_directory_cleanup_recovery(tmp_path)
 
     fault = json.loads((tmp_path / "report.processes.fault.json").read_text())
     assert fault["denials"] == [32]
+    assert 32 in fault["cleanup_denials"], (
+        "The faulty directory cleanup never encountered the sharing denial"
+    )
     directory = Path(fault["directory"])
     if directory.exists():
         shutil.rmtree(directory)
@@ -811,6 +833,53 @@ kaleido.Kaleido.__init__=init
     assert len(pages) == 2
     assert all("Renderer document is ready" in page.extract_text() for page in pages)
     assert figure.to_json() == original
+
+
+def test_browser_startup_failure_retains_the_actual_process_stderr(tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    import plotly.graph_objects as go
+
+    from ml4t.diagnostic.visualization import export_figures_to_pdf
+
+    monkeypatch.setenv("BROWSER_PATH", sys.executable)
+    output = tmp_path / "report.pdf"
+    output.write_bytes(b"previous verified report")
+    with pytest.raises(RuntimeError) as failed:
+        export_figures_to_pdf([go.Figure(go.Bar(x=[1, 2], y=[1, 3]))], output, scale=1)
+    assert "PDF browser:" in str(failed.value)
+    assert "unknown option" in str(failed.value).lower()
+    assert "--disable-gpu" in str(failed.value)
+    assert output.read_bytes() == b"previous verified report"
+    assert not getattr(failed.value, "__notes__", [])
+
+
+def test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly(tmp_path, monkeypatch):
+    import re
+
+    pytest.importorskip("kaleido")
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    wrong_bundle = tmp_path / "not-plotly.js"
+    wrong_bundle.write_text("window.nonPlotlyAssetLoaded = true;", encoding="utf-8")
+    monkeypatch.setattr(pio.defaults, "plotlyjs", wrong_bundle.as_uri(), raising=False)
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
+    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 30)
+    output = tmp_path / "report.pdf"
+    output.write_bytes(b"previous verified report")
+    with pytest.raises(RuntimeError) as failed:
+        export_figures_to_pdf([go.Figure(go.Bar(x=[1, 2], y=[1, 3]))], output, scale=1)
+    assert "phase='rendering', completed=0, expected=1" in str(failed.value)
+    assert output.read_bytes() == b"previous verified report"
+    assert not getattr(failed.value, "__notes__", [])
+    observations = re.findall(r"PDF document readiness: (\{[^\r\n]+\})", str(failed.value))
+    assert observations, "The timeout discarded the actual browser readiness failure"
+    observed = json.loads(observations[-1])
+    assert observed["ready"] is False and observed["document_state"] == "complete"
+    assert observed["href"] == observed["expected_href"]
+    assert observed["plotly_type"] == "undefined"
 
 
 def test_context_burst_cannot_drop_ready_main_world_after_a_child_frame(tmp_path, monkeypatch):
