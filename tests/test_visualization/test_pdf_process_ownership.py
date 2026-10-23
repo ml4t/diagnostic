@@ -673,8 +673,17 @@ choreographer.Tab.send_command=command
     with ThreadingHTTPServer(("127.0.0.1", 0), DelayedBundle) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
+        delayed_bundle = f"http://127.0.0.1:{server.server_port}/plotly.min.js"
+        renderer_patch = r"""
+import kaleido
+original_init=kaleido.Kaleido.__init__
+def init(self,*args,**kwargs):
+    kwargs['plotlyjs']=DELAYED_BUNDLE
+    original_init(self,*args,**kwargs)
+kaleido.Kaleido.__init__=init
+""".replace("DELAYED_BUNDLE", repr(delayed_bundle))
         monkeypatch.setattr(
-            pio.defaults, "plotlyjs", f"http://127.0.0.1:{server.server_port}/plotly.min.js"
+            _pdf_process, "_BOOTSTRAP", renderer_patch + "\n" + _pdf_process._BOOTSTRAP
         )
         try:
             output = export_figures_to_pdf([figure], tmp_path / "ready-document.pdf", scale=1)
