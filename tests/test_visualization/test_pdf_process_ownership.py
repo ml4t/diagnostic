@@ -63,7 +63,24 @@ if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown
     Path.write_text=observe_terminal_status
 async def command(self,command,*args,**kwargs):
     if command=='Browser.close' and mode=='close_command_hang_slow_shutdown':
-        await asyncio.sleep(3600)
+        browser=psutil.Process(self.subprocess.pid)
+        browser.suspend()
+        original_write_json=self._channel.write_json
+        sent=[]
+        def record_real_close_request(message):
+            result=original_write_json(message)
+            if message.get('method')=='Browser.close': sent.append(True)
+            return result
+        self._channel.write_json=record_real_close_request
+        pending=asyncio.create_task(original_command(self,command,*args,**kwargs))
+        try:
+            while not sent: await asyncio.sleep(.01)
+            observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close_sent':True}))
+            await asyncio.sleep(3600)
+        finally:
+            pending.cancel()
+            try: await pending
+            except (Exception,asyncio.CancelledError): pass
     result=await original_command(self,command,*args,**kwargs)
     if command=='Browser.close':
         observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
@@ -135,7 +152,6 @@ async def closed(self,*args,**kwargs):
             if pipe_closed: return original_pipe_close()
             pipe_closed.append(True)
             browser=psutil.Process(self.subprocess.pid)
-            browser.suspend()
             original_pipe_close()
             def resume():
                 try: browser.resume()
@@ -355,6 +371,8 @@ try:
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
         assert all(abs(float(page.mediabox.width)-450)<0.1 for page in pages)
         assert all(abs(float(page.mediabox.height)-337.5)<1 for page in pages)
+        if mode=='close_command_hang_slow_shutdown':
+            assert json.loads(observed.with_suffix('.graceful.json').read_text())=={'browser_close_sent':True}
     assert originals==[figure.to_json() for figure in figures]
     if mode=='unresponsive_startup':
         assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}

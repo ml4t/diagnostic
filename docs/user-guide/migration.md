@@ -20,6 +20,10 @@ pattern, or use the native result when you need its samples, validation and
 serialization. The adapters share native calculations; they do not install a
 second analytical engine or require a Reloaded package at runtime.
 
+`from ml4t.diagnostic import compat` exposes `compat.alphalens`,
+`compat.empyrical` and `compat.pyfolio`. Pyfolio loads when requested;
+its numerical calls do not require Plotly or a visualization extra.
+
 | Existing workflow | Diagnostic route | Runnable migration |
 |---|---|---|
 | Alphalens returns, summary, full, information, turnover, event-returns and event-study sheets | `ml4t.diagnostic.compat.alphalens.tears` | [Original Alphalens notebooks](#run-preserved-original-alphalens-notebooks), including the factor-to-Pyfolio journey |
@@ -40,6 +44,23 @@ grouped IC is separate from group-neutral weights, an observation lag is not an
 exchange-session lag, and periodic risk-free returns are not annual yield quotes.
 Use the adapter's named reference profile or the native explicit method described
 in the relevant section. The published 0.1.9 wheel does not include these new routes.
+
+### Replace presentation and error helpers
+
+These supporting helpers do not require another analytical implementation.
+Preserve the calculations and change the surrounding presentation or error handling:
+
+| Legacy helper | Migration |
+|---|---|
+| `plotting.customize`, `plotting_context`, `axes_style` | Remove the Matplotlib/seaborn decorator or context manager. Select `theme=` on the report, or update the returned Plotly figure's layout. No global Matplotlib style is changed. |
+| `tears.GridFigure` | Use the complete report composer or the returned Plotly figures. The Matplotlib subplot-allocation class is not reproduced. |
+| `utils.print_table` | For terminal output use `table.to_string()`. For notebooks use `IPython.display.HTML(table.to_html(escape=True))`; select numeric display formatting explicitly. This changes presentation, not the table's values or units. |
+| `utils.rethrow` | Inside the original exception handler call `error.add_note(context)` and use a bare `raise`. This preserves the exception's type and cause instead of wrapping or suppressing it; the contextual note is separate from its original message. |
+
+The preparation adapter retains `MaxLossExceededError`, `NonMatchingTimezoneError`
+and `non_unique_bin_edges_error`. Internal reference helpers for NaN reductions,
+IC column selection and frequency padding are implementation details of the
+native calculations and adapters, not additional public services to migrate.
 
 One reason to evaluate Diagnostic beyond these matching values is its
 [purged cross-validation workflow](cross-validation.md), which combines
@@ -641,6 +662,16 @@ Polars 2.0.0, SciPy 1.18.1 and Plotly 7.1.0. A separate consumer/reference profi
 uses pandas 2.3.3, NumPy 2.2.6, Polars 1.36.1 and SciPy 1.17.0. The pinned Engineer
 wheel requires Polars 2, so its live regeneration is not claimed at that floor;
 standalone ingestion of its frozen captures needs no Engineer installation.
+
+Published Engineer 0.2.0 also regenerates the retained nanosecond, missing-price,
+cumulative/exit-bar, session-label, expected-bar, overnight and early-close
+captures. Their original fields, keys, endpoints and values match exactly.
+That producer adds six Boolean row/price-observation flags. Diagnostic preserves
+them in `outcome_data` and JSON rather than dropping them or treating them as
+additional return horizons. The historical capture metadata continues to name
+its original development producer; it is not relabelled as a 0.2.0 capture.
+The dedicated published-producer checks require all twelve actual cases, with
+no optional-producer skips accepted in that profile.
 
 The same namespace also provides explicit legacy clock/selector conversions:
 `backshift_returns_series`, `get_forward_returns_columns`,

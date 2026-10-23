@@ -159,6 +159,18 @@ jobs:
             python -I -c "from importlib.metadata import version; import pytest; assert version('ml4t-backtest')=='0.2.0' and version('ml4t-engineer')=='0.2.0' and version('ml4t-data')=='0.3.0'; raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--junitxml=artifacts/producers/results.xml', '--basetemp=artifacts/producers/reports', 'tests/test_integration/test_producer_report_journeys.py', 'tests/test_compat/test_acquisition_recipe.py', '-k', 'not dated_rf_recipe_matches_actual_published_empyrical']))"
       - name: Require every actual producer journey
         run: uv run --no-project --python 3.12 python -c "import xml.etree.ElementTree as E; cases=list(E.parse('artifacts/producers/results.xml').iter('testcase')); assert len(cases)==17 and not any(c.find('skipped') is not None for c in cases)"
+      - name: Regenerate elapsed and scheduled outcomes with published Engineer
+        shell: bash
+        env:
+          ML4T_REQUIRED_OUTCOME_PRODUCER: "0.2.0"
+        run: |
+          uv run --isolated --no-project --python 3.12 \
+            --with "$(find artifacts/producers -name '*.whl' -print -quit)" \
+            --with ml4t-engineer==0.2.0 --with pytest \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            -q --junitxml=artifacts/producers/outcomes.xml \
+            tests/test_signal/test_signal_outcome_ingestion.py -k published_engineer
+          uv run --no-project --python 3.12 python -c "import xml.etree.ElementTree as E; cases=list(E.parse('artifacts/producers/outcomes.xml').iter('testcase')); assert len(cases)==12 and not any(c.find('skipped') is not None for c in cases)"
       - name: Require the published acquisition reference on its supported pandas profile
         shell: bash
         env:
