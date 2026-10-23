@@ -85,23 +85,22 @@ async def _render(request_path: Path, status_path: Path) -> None:
 
         # A failed vendor close can leave a healthy browser owning its profile.
         # Request normal browser shutdown before the parent resorts to OS termination.
-        async def close_browser() -> None:
+        try:
             try:
-                await renderer.send_command("Browser.close")
-            except Exception:
-                pass
+                await asyncio.wait_for(
+                    renderer.send_command("Browser.close"),
+                    timeout=max(0, close_deadline - asyncio.get_running_loop().time()),
+                )
             finally:
                 renderer._channel.close()
-            while renderer.subprocess.poll() is None:
-                await asyncio.sleep(0.05)
-
-        try:
-            await asyncio.wait_for(
-                close_browser(),
-                timeout=max(0, close_deadline - asyncio.get_running_loop().time()),
-            )
         except Exception:
             pass
+        while (
+            browser is not None
+            and browser.poll() is None
+            and asyncio.get_running_loop().time() < close_deadline
+        ):
+            await asyncio.sleep(0.05)
     if render_error is not None:
         if close_error is not None:
             details["close_error"] = f"{type(close_error).__name__}: {close_error}"
