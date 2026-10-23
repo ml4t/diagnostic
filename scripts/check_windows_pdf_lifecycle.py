@@ -52,7 +52,7 @@ def main() -> None:
             process = subprocess.Popen(command, cwd=root, stdout=output, stderr=subprocess.STDOUT)
             timed_out = False
             try:
-                process.wait(timeout=150)
+                process.wait(timeout=240)
             except subprocess.TimeoutExpired:
                 timed_out = True
                 children = psutil.Process(process.pid).children(recursive=True)

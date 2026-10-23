@@ -51,9 +51,13 @@ jobs:
     uses: ./.github/workflows/test-matrix.yml
 
   windows-pdf-lifecycle:
-    name: Windows PDF crash lifecycle
+    name: Windows PDF crash lifecycle / batch ${{ matrix.batch }}
     runs-on: windows-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [1, 2, 3, 4]
     env:
       UV_PYTHON: "3.13"
     steps:
@@ -69,12 +73,12 @@ jobs:
         shell: bash
         run: >-
           uv run --no-sync python scripts/check_windows_pdf_lifecycle.py
-          --repetitions 12 --output "$RUNNER_TEMP/pdf-crash-lifecycle"
+          --repetitions 3 --output "$RUNNER_TEMP/pdf-crash-lifecycle"
       - name: Retain all crash-cleanup outcomes
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: windows-pdf-crash-lifecycle
+          name: windows-pdf-crash-lifecycle-${{ matrix.batch }}
           path: ${{ runner.temp }}/pdf-crash-lifecycle/
           if-no-files-found: warn
 
