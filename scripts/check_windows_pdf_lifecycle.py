@@ -18,7 +18,8 @@ _MODULE = "tests/test_visualization/test_pdf_process_ownership.py"
 _SELECTION = (
     "exit7 or render_error or close_error or close_command_hang or cancel or "
     "profile_sharing or slow_shutdown or completed_page or previous_blank_page or "
-    "context_burst or unresponsive_startup or pipe_close_evidence or readonly_browser_profile or profile_cleanup_deadline"
+    "context_burst or unresponsive_startup or pipe_close_evidence or readonly_browser_profile or "
+    "profile_cleanup_deadline or unresponsive_browser_after_closed_channel"
 )
 
 
@@ -44,8 +45,8 @@ def _collect_cases(root: Path, output: Path) -> list[str]:
     )
     (output / "collection.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     cases = [line.strip() for line in result.stdout.splitlines() if line.startswith(_MODULE + "::")]
-    if result.returncode or len(cases) != 16 or len(set(cases)) != 16:
-        raise SystemExit("The real Windows lifecycle corpus must collect all 16 distinct cases")
+    if result.returncode or len(cases) != 17 or len(set(cases)) != 17:
+        raise SystemExit("The real Windows lifecycle corpus must collect all 17 distinct cases")
     return cases
 
 
@@ -150,7 +151,7 @@ def main() -> None:
             "exit_code": 0 if all(check["passed"] for check in checks) else 1,
             "timed_out": any(check["timed_out"] for check in checks),
             "collected_cases": sum(check["collected_cases"] for check in checks),
-            "passed": len(checks) == 16 and all(check["passed"] for check in checks),
+            "passed": len(checks) == 17 and all(check["passed"] for check in checks),
             "elapsed_seconds": time.monotonic() - started,
             "log": log.name,
             "junit": report.name,

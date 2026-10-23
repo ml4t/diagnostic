@@ -248,7 +248,9 @@ except ImportError:
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
     if mode=='unresponsive_startup': _pdf_process._RENDER_TIMEOUT=30
-    if mode in ('slow_shutdown','close_command_hang_slow_shutdown'):
+    # Closing the command channel before resuming Chrome can require OS cleanup.
+    # The independent bounded pause still verifies cooperative exit.
+    if mode=='slow_shutdown':
         original_terminate=_pdf_process._OwnedProcesses.terminate
         def verify_graceful_before_escalation(self):
             browser_pid=int(next(iter(json.loads(observed.read_text()))))
@@ -504,7 +506,7 @@ try:
         try:
             if process.status()!=psutil.STATUS_ZOMBIE: running.append(process.pid)
         except psutil.NoSuchProcess: pass
-    assert not running, running
+    assert not running, {'reason':'Owned browser processes remain after export','running':running}
     try: psutil.Process(neighbor.pid).wait(timeout=0)
     except psutil.TimeoutExpired: pass
     else: raise AssertionError('Process-wait control accepted a live unrelated child')
@@ -696,6 +698,39 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+def test_unresponsive_browser_after_closed_channel_requires_verified_os_cleanup(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    psutil = pytest.importorskip("psutil")
+    target = tmp_path / "report.pdf"
+    probe = _PROBE.replace(
+        "threading.Timer(1,resume).start()",
+        "observed.with_suffix('.unresponsive-peer.json').write_text(json.dumps({"
+        "'pid':browser.pid,'created':browser.create_time(),'status':browser.status()}))",
+    ).replace(
+        "print('PDF close control: resume timer started',time.monotonic(),file=sys.stderr,flush=True)",
+        "print('PDF close control: browser stays suspended after channel close',file=sys.stderr,flush=True)",
+    )
+    original = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    observation = r"""
+    actual_termination_for_unresponsive_control=_pdf_process._OwnedProcesses.terminate
+    def record_unresponsive_before_cleanup(self):
+        browser_pid=int(next(iter(json.loads(observed.read_text()))))
+        browser=psutil.Process(browser_pid)
+        observed.with_suffix('.os-cleanup.json').write_text(json.dumps({
+            'pid':browser.pid,'created':browser.create_time(),'status':browser.status()}))
+        return actual_termination_for_unresponsive_control(self)
+    _pdf_process._OwnedProcesses.terminate=record_unresponsive_before_cleanup
+"""
+    probe = probe.replace(original, original + observation)
+    result = _run_pdf_probe(probe, ["close_command_hang_slow_shutdown", str(target), "0"])
+    fault = json.loads(target.with_suffix(".processes.unresponsive-peer.json").read_text())
+    cleanup = json.loads(target.with_suffix(".processes.os-cleanup.json").read_text())
+    assert fault == cleanup
+    assert fault["status"] == psutil.STATUS_STOPPED
+    assert result["running"] == [] and result["neighbor_alive"]
 
 
 def test_browser_fault_setup_waits_for_actual_script_entry_instead_of_elapsed_sleep(tmp_path):
