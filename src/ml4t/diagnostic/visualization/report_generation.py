@@ -30,6 +30,7 @@ Example workflow:
 
 from datetime import datetime
 from pathlib import Path
+from stat import S_IMODE
 from tempfile import NamedTemporaryFile
 from typing import Any
 
@@ -1408,11 +1409,46 @@ def _export_figures_multipage(
 
         # Merge all PDFs into single file
         writer = pdf_writer_class()
-        for pdf_path in temp_pdfs:
-            writer.append(str(pdf_path))
-
-        # Write merged PDF
-        with open(output_path, "wb") as output_file:
-            writer.write(output_file)
+        temporary = None
+        primary_error = None
+        closed = False
+        try:
+            for pdf_path in temp_pdfs:
+                writer.append(str(pdf_path))
+            with NamedTemporaryFile(
+                mode="wb",
+                dir=output_path.parent,
+                prefix=f".{output_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as output_file:
+                temporary = TempPath(output_file.name)
+                writer.write(output_file)
+            close = getattr(writer, "close", None)
+            if callable(close):
+                close()
+            closed = True
+            if output_path.exists():
+                temporary.chmod(S_IMODE(output_path.stat().st_mode))
+            temporary.replace(output_path)
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            try:
+                if not closed and callable(close := getattr(writer, "close", None)):
+                    close()
+            except Exception as error:
+                if primary_error is None:
+                    raise
+                primary_error.add_note(f"PDF merger close failed: {error!r}")
+            finally:
+                if temporary is not None:
+                    try:
+                        temporary.unlink(missing_ok=True)
+                    except OSError as error:
+                        if primary_error is None:
+                            raise
+                        primary_error.add_note(f"PDF partial output cleanup failed: {error!r}")
 
     return str(output_path.absolute())

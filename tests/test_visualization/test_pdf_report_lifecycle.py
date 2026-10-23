@@ -2,12 +2,32 @@
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 
 import pytest
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file mode contract")
+def test_atomic_pdf_replacement_retains_existing_report_permissions(tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import export_figures_to_pdf
+
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
+    target = tmp_path / "report.pdf"
+    target.write_bytes(b"previous verified report")
+    target.chmod(0o640)
+    export_figures_to_pdf([go.Figure(go.Bar(y=[1, 2]))], target, scale=1)
+    assert len(pypdf.PdfReader(target).pages) == 1
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+    assert list(tmp_path.iterdir()) == [target]
 
 
 def test_pandas_timestamp_return_coordinates_produce_a_real_dated_pdf(tmp_path, caplog):
@@ -239,3 +259,40 @@ def test_real_pdf_process_exit_does_not_wait_for_unrelated_inherited_stdout(tmp_
             while not finished.exists() and time.monotonic() < deadline:
                 time.sleep(0.05)
             assert finished.exists(), "Controlled stdout owner did not terminate"
+
+
+def test_real_filesystem_interruption_during_pdf_merge_preserves_the_previous_report(tmp_path):
+    pytest.importorskip("resource", reason="POSIX file-size limit required")
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    target.write_bytes(b"previous verified report")
+    probe = r"""
+import errno,resource,signal,sys
+import plotly.graph_objects as go
+import plotly.io as pio
+from pypdf import PdfWriter
+from ml4t.diagnostic.visualization import export_figures_to_pdf
+pio.defaults.mathjax=False
+original=PdfWriter.write
+def limited(self,*args,**kwargs):
+    signal.signal(signal.SIGXFSZ,signal.SIG_IGN)
+    resource.setrlimit(resource.RLIMIT_FSIZE,(4096,4096))
+    return original(self,*args,**kwargs)
+PdfWriter.write=limited
+figures=[go.Figure(go.Scatter(x=list(range(512)),y=[i%7 for i in range(512)])) for _ in range(2)]
+try:
+    export_figures_to_pdf(figures,sys.argv[1],scale=1)
+except OSError as error:
+    assert error.errno==errno.EFBIG,repr(error)
+    print('Actual PDF merge write interrupted')
+else:
+    raise AssertionError('Filesystem limit did not interrupt the actual PDF write')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(target)], capture_output=True, text=True, timeout=120
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Actual PDF merge write interrupted" in result.stdout
+    assert target.read_bytes() == b"previous verified report"
+    assert list(tmp_path.iterdir()) == [target]
