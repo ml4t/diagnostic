@@ -1,6 +1,7 @@
 """Real rendered pages survive close failures, but not incomplete or crashed rendering."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -284,7 +285,7 @@ else:
                 for handle in read_handles: handle.close()
         _pdf_process._OwnedProcesses.observe=hold_first_progress
         _pdf_process._OwnedProcesses.terminate=terminate_then_release
-    if mode in ('shared_status','permanent_status','profile_sharing'):
+    if mode in ('shared_status','permanent_status','profile_sharing','profile_delete_pending'):
         import ctypes,threading
         from ctypes import wintypes
         api=ctypes.WinDLL('kernel32',use_last_error=True)
@@ -293,6 +294,13 @@ else:
         api.CreateFileW.restype=wintypes.HANDLE
         api.CloseHandle.argtypes=[wintypes.HANDLE]
         api.CloseHandle.restype=wintypes.BOOL
+        api.GetFileInformationByHandleEx.argtypes=[wintypes.HANDLE,ctypes.c_int,
+                                                   ctypes.c_void_p,wintypes.DWORD]
+        api.GetFileInformationByHandleEx.restype=wintypes.BOOL
+        class FileStandardInfo(ctypes.Structure):
+            _fields_=[('allocation_size',ctypes.c_int64),('end_of_file',ctypes.c_int64),
+                      ('links',wintypes.DWORD),('delete_pending',ctypes.c_ubyte),
+                      ('directory',ctypes.c_ubyte)]
         original_read=Path.read_text
         original_terminate=_pdf_process._OwnedProcesses.terminate
         sharing_started=[]
@@ -331,18 +339,26 @@ else:
             finally:
                 release_sharing()
                 for timer in sharing_timers: timer.join(timeout=1)
-        if mode=='profile_sharing':
+        if mode in ('profile_sharing','profile_delete_pending'):
             original_rmtree=_pdf_process.shutil.rmtree
             profile_directory=None
             cleanup_denials=[]
+            pending_states=[]
             def observe_actual_cleanup(directory,*args,**kwargs):
                 try: return original_rmtree(directory,*args,**kwargs)
-                except PermissionError as error:
+                except OSError as error:
                     if Path(directory)==profile_directory and sharing_handles:
                         cleanup_denials.append(getattr(error,'winerror',None))
+                        if mode=='profile_delete_pending':
+                            info=FileStandardInfo()
+                            assert api.GetFileInformationByHandleEx(sharing_handles[0],1,
+                                ctypes.byref(info),ctypes.sizeof(info)),ctypes.get_last_error()
+                            pending_states.append(bool(info.delete_pending))
+                            assert info.directory and info.delete_pending,'No actual pending directory deletion'
                         observed.with_suffix('.fault.json').write_text(json.dumps({
                             'denials':actual_denials,
                             'cleanup_denials':cleanup_denials,
+                            'pending_states':pending_states,
                             'directory':str(profile_directory),
                         }))
                         if not sharing_timers:
@@ -357,11 +373,15 @@ else:
                 original_terminate(self)
                 profile_directory=Path(self.process.args[-2]).parent
                 profile=Path(json.loads(observed.with_suffix('.profiles.json').read_text())[0])
-                candidate=next(path for path in profile.rglob('*') if path.is_file())
-                handle=api.CreateFileW(str(candidate),0x80000000,0x00000003,None,3,0x80,None)
+                candidate=profile if mode=='profile_delete_pending' else next(
+                    path for path in profile.rglob('*') if path.is_file())
+                sharing=7 if mode=='profile_delete_pending' else 3
+                flags=0x02000000 if mode=='profile_delete_pending' else 0x80
+                handle=api.CreateFileW(str(candidate),0x80000000,sharing,None,3,flags,None)
                 if handle==ctypes.c_void_p(-1).value:
                     raise ctypes.WinError(ctypes.get_last_error())
                 sharing_handles.append(handle)
+                if mode=='profile_delete_pending': return
                 try: candidate.unlink()
                 except PermissionError as error:
                     assert error.winerror==32
@@ -380,6 +400,7 @@ neighbor=subprocess.Popen([sys.executable,'-c','import time;time.sleep(180)'])
 server=None
 requests=[]
 success=False
+expected_render_error=None
 try:
     figures=[go.Figure(go.Scatter(x=[1,2,3],y=[1,3,2])) for _ in range(2)]
     if mode.startswith('resource_error'):
@@ -400,7 +421,10 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except BaseException as error:
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'): raise
+        expected_render_error={'type':type(error).__name__,'message':str(error),
+                               'notes':list(getattr(error,'__notes__',[]))}
+        observed.with_suffix('.error.json').write_text(json.dumps(expected_render_error))
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','profile_delete_pending','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
@@ -427,7 +451,7 @@ try:
             assert "'phase': 'closed'" in notes and "'completed': 2" in notes,notes
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','profile_delete_pending','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -442,9 +466,14 @@ try:
     if mode in ('shared_status','permanent_status'):
         assert sharing_started and actual_denials, 'No real Windows sharing denial was exercised'
         assert not sharing_handles and all(not timer.is_alive() for timer in sharing_timers)
-    if mode=='profile_sharing':
-        assert actual_denials==[32] and not sharing_handles
-        assert 32 in cleanup_denials,'No actual directory cleanup encountered the sharing denial'
+    if mode in ('profile_sharing','profile_delete_pending'):
+        assert not sharing_handles
+        if mode=='profile_sharing':
+            assert actual_denials==[32]
+            assert 32 in cleanup_denials,'No actual directory cleanup encountered the sharing denial'
+        else:
+            assert 145 in cleanup_denials,'No actual directory-not-empty error observed'
+            assert pending_states and all(pending_states)
         for timer in sharing_timers: timer.join(timeout=1)
         assert all(not timer.is_alive() for timer in sharing_timers)
     assert neighbor.poll() is None, 'Unrelated process was killed by renderer cleanup'
@@ -468,7 +497,8 @@ try:
     except psutil.TimeoutExpired: pass
     else: raise AssertionError('Process-wait control accepted a live unrelated child')
     profiles=json.loads(observed.with_suffix('.profiles.json').read_text())
-    assert all(not Path(profile).exists() for profile in profiles), profiles
+    assert all(not Path(profile).exists() for profile in profiles), {
+        'profiles':profiles,'expected_render_error':expected_render_error}
     if mode in ('close_error','close_command_hang','render_error','render_hang','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
     if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse'):
@@ -490,10 +520,15 @@ finally:
         except psutil.NoSuchProcess: pass
     psutil.wait_procs(descendants,timeout=5)
     neighbor.wait(timeout=5)
+    if mode=='profile_delete_pending':
+        release_sharing()
+        for timer in sharing_timers: timer.join(timeout=1)
+        if profile_directory.exists(): original_rmtree(profile_directory)
     pipe_proof.close()
     pipe_proof_file.close()
     if not success:
         import traceback
+        print(json.dumps({'expected_render_error':expected_render_error}),flush=True)
         traceback.print_exc()
         sys.stdout.flush();sys.stderr.flush()
         os._exit(1)
@@ -523,6 +558,69 @@ def _run_pdf_probe(code, arguments):
         text = output.read()
     assert process.returncode == 0, text
     return json.loads(text.splitlines()[-1])
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual Windows delete-pending directory required"
+)
+@pytest.mark.parametrize("release_delay", [0.2, 3], ids=["released", "past_deadline"])
+def test_delete_pending_browser_profile_cleanup_obeys_existing_deadline(tmp_path, release_delay):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    probe = _PROBE.replace(
+        "threading.Timer(.2,release_sharing)", f"threading.Timer({release_delay},release_sharing)"
+    )
+    if release_delay == 3:
+        target.write_bytes(b"Existing report must survive failed profile cleanup")
+        with pytest.raises(AssertionError) as failure:
+            _run_pdf_probe(probe, ["profile_delete_pending", str(target), "0"])
+        assert "WinError 145" in str(failure.value)
+        assert target.read_bytes() == b"Existing report must survive failed profile cleanup"
+    else:
+        result = _run_pdf_probe(probe, ["profile_delete_pending", str(target), "0"])
+        assert result["running"] == [] and result["neighbor_alive"]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="Actual unprivileged POSIX directory denial required",
+)
+def test_crashed_worker_profile_failure_retains_original_error_and_cleanup_notes(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    original = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    denial = r"""
+    blocked_profile_roots=[]
+    original_termination=_pdf_process._OwnedProcesses.terminate
+    def deny_profile_after_actual_termination(self):
+        original_termination(self)
+        directory=Path(self.process.args[-2]).parent
+        blocked_profile_roots.append(directory)
+        directory.chmod(0)
+        try: list(directory.iterdir())
+        except PermissionError: pass
+        else: raise AssertionError('Actual directory access was not denied')
+    _pdf_process._OwnedProcesses.terminate=deny_profile_after_actual_termination
+"""
+    probe = _PROBE.replace(original, original + denial)
+    probe = probe.replace(
+        "    profiles=json.loads(observed.with_suffix('.profiles.json').read_text())",
+        "    assert len(blocked_profile_roots)==1\n"
+        "    for directory in blocked_profile_roots: directory.chmod(0o700)\n"
+        "    profiles=json.loads(observed.with_suffix('.profiles.json').read_text())",
+    )
+    probe = probe.replace(
+        "    neighbor.wait(timeout=5)",
+        "    neighbor.wait(timeout=5)\n"
+        "    for directory in blocked_profile_roots:\n"
+        "        directory.chmod(0o700)\n"
+        "        _pdf_process.shutil.rmtree(directory)",
+    )
+    with pytest.raises(AssertionError) as failure:
+        _run_pdf_probe(probe, ["exit7", str(tmp_path / "report.pdf"), "0"])
+    assert "PDF profile cleanup failed" in str(failure.value)
+    assert "code 7" in str(failure.value)
 
 
 @pytest.mark.parametrize(
