@@ -59,7 +59,7 @@ def record_actual_descriptor_close(fd):
     return result
 Pipe.__init__=record_pipe_init
 os.close=record_actual_descriptor_close
-if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
+if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse','slow_shutdown'):
     if os.name!='nt':
         from choreographer.browsers.chromium import Chromium
         original_cli=Chromium.get_cli
@@ -202,9 +202,24 @@ async def closed(self,*args,**kwargs):
         import threading
         process=psutil.Process(self.subprocess.pid)
         process.suspend()
+        resume_lock=threading.Lock()
+        resumed=[]
+        pipe_closed=[]
+        original_pipe_close=self._channel.close
+        def observe_pipe_close():
+            with resume_lock:
+                if not pipe_closed:
+                    pipe_closed.append(True)
+                    observed.with_suffix('.slow-close.json').write_text(json.dumps({
+                        'resumed_before_pipe_close':bool(resumed),
+                    }))
+            return original_pipe_close()
+        self._channel.close=observe_pipe_close
         def resume():
-            try: process.resume()
-            except psutil.NoSuchProcess: pass
+            with resume_lock:
+                try: process.resume()
+                except psutil.NoSuchProcess: pass
+                else: resumed.append(True)
         timer=threading.Timer(4,resume)
         timer.daemon=True
         timer.start()
@@ -458,6 +473,9 @@ try:
         assert all(abs(float(page.mediabox.height)-337.5)<1 for page in pages)
         if mode=='close_command_hang_slow_shutdown':
             assert json.loads(observed.with_suffix('.graceful.json').read_text())=={'browser_close_sent':True}
+    if mode=='slow_shutdown':
+        observation=json.loads(observed.with_suffix('.slow-close.json').read_text())
+        assert observation['resumed_before_pipe_close'],'Recovering browser lost its command channel before resume'
     assert originals==[figure.to_json() for figure in figures]
     if mode=='unresponsive_startup':
         assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}
