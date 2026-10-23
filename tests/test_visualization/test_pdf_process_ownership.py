@@ -37,7 +37,7 @@ original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
 failed_channel=None
-if mode in ('close_error','close_command_hang'):
+if mode in ('close_error','close_command_hang','render_hang'):
     if os.name!='nt':
         from choreographer.browsers.chromium import Chromium
         original_cli=Chromium.get_cli
@@ -50,7 +50,7 @@ if mode in ('close_error','close_command_hang'):
     original_status_write=Path.write_text
     def observe_terminal_status(self,text,*args,**kwargs):
         if self.name.startswith('status-') and self.suffix=='.new' and failed_channel is not None:
-            if json.loads(text).get('phase')=='close_failed':
+            if json.loads(text).get('phase') in ('close_failed','render_failed'):
                 closed=[]
                 for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser'):
                     try: os.fstat(getattr(failed_channel,name))
@@ -98,7 +98,7 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     global failed_channel
-    if mode in ('close_error','close_command_hang'): failed_channel=self._channel
+    if mode in ('close_error','close_command_hang','render_hang'): failed_channel=self._channel
     snapshot(self)
     if mode=='slow_shutdown':
         import threading
@@ -342,9 +342,9 @@ try:
     else: raise AssertionError('Process-wait control accepted a live unrelated child')
     profiles=json.loads(observed.with_suffix('.profiles.json').read_text())
     assert all(not Path(profile).exists() for profile in profiles), profiles
-    if mode in ('close_error','close_command_hang','render_error','cancel'):
+    if mode in ('close_error','close_command_hang','render_error','render_hang','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
-    if mode in ('close_error','close_command_hang'):
+    if mode in ('close_error','close_command_hang','render_hang'):
         channel=json.loads(observed.with_suffix('.channel.json').read_text())
         assert all(channel['closed']), 'Graceful fallback retained owned browser pipe descriptors'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
@@ -610,6 +610,81 @@ choreographer.Tab.send_command=command
     assert json.loads(marker.read_text())["ready_before_page_enable"]
     pages = pypdf.PdfReader(output).pages
     assert len(pages) == 1 and "Actual completed document" in pages[0].extract_text()
+    assert figure.to_json() == original
+
+
+def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_path, monkeypatch):
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    bundle = (Path(plotly.__file__).parent / "package_data/plotly.min.js").read_bytes()
+    requested = []
+
+    class DelayedBundle(BaseHTTPRequestHandler):
+        def do_GET(self):
+            requested.append(self.path)
+            time.sleep(1)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", str(len(bundle)))
+            self.end_headers()
+            try:
+                self.wfile.write(bundle)
+            except BrokenPipeError:
+                pass
+
+        def log_message(self, *_args):
+            pass
+
+    marker = tmp_path / "actual-previous-load.json"
+    patch = r"""
+import asyncio,json,choreographer
+from pathlib import Path
+marker=Path(MARKER)
+original_command=choreographer.Tab.send_command
+first_navigation=True
+async def command(self,method,*args,**kwargs):
+    global first_navigation
+    if method=='Page.navigate' and first_navigation:
+        first_navigation=False
+        loaded=self.subscribe_once('Page.loadEventFired')
+        await original_command(self,'Page.navigate',params={'url':'about:blank#previous-document'})
+        await asyncio.wait_for(loaded,10)
+        marker.write_text(json.dumps({'previous_document_load_delivered':True}))
+    return await original_command(self,method,*args,**kwargs)
+choreographer.Tab.send_command=command
+""".replace("MARKER", repr(str(marker)))
+    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
+    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 30)
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
+    figure = go.Figure(go.Bar(x=["A", "B"], y=[1, 3]))
+    figure.update_layout(title="Renderer document is ready")
+    original = figure.to_json()
+    with ThreadingHTTPServer(("127.0.0.1", 0), DelayedBundle) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        monkeypatch.setattr(
+            pio.defaults, "plotlyjs", f"http://127.0.0.1:{server.server_port}/plotly.min.js"
+        )
+        try:
+            output = export_figures_to_pdf([figure], tmp_path / "ready-document.pdf", scale=1)
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+    assert json.loads(marker.read_text())["previous_document_load_delivered"]
+    assert requested and set(requested) == {"/plotly.min.js"}
+    pages = pypdf.PdfReader(output).pages
+    assert len(pages) == 1 and "Renderer document is ready" in pages[0].extract_text()
     assert figure.to_json() == original
 
 

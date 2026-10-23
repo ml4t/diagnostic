@@ -10,6 +10,7 @@ from pathlib import Path
 
 import kaleido
 from choreographer import Tab
+from kaleido._kaleido_tab import _KaleidoTab
 
 
 class _PageEventsKaleido(kaleido.Kaleido):
@@ -19,6 +20,50 @@ class _PageEventsKaleido(kaleido.Kaleido):
         for tab in selected:
             await tab.send_command("Page.enable")
         await super()._conform_tabs(selected)
+        ready = [self.tabs_ready.get_nowait() for _ in range(self.tabs_ready.qsize())]
+        try:
+            for wrapped in ready:
+                if wrapped.tab in selected:
+                    await self._renderer_document_ready(wrapped)
+        finally:
+            for wrapped in ready:
+                self.tabs_ready.put_nowait(wrapped)
+
+    async def _renderer_document_ready(self, wrapped: _KaleidoTab) -> None:
+        target = wrapped.tab
+        expression = (
+            f"location.href === new URL({json.dumps(self._index)}).href && "
+            "document.readyState === 'complete' && "
+            "typeof kaleido_scopes !== 'undefined' && "
+            "typeof kaleido_scopes.plotly === 'function'"
+        )
+        while True:
+            response = await target.send_command(
+                "Runtime.evaluate", params={"expression": expression, "returnByValue": True}
+            )
+            if (
+                isinstance(response, dict)
+                and response.get("result", {}).get("result", {}).get("value") is True
+            ):
+                break
+            await asyncio.sleep(0.05)
+
+        frame = await target.send_command("Page.getFrameTree")
+        if not isinstance(frame, dict) or "error" in frame:
+            raise RuntimeError(f"PDF renderer frame query failed: {frame!r}")
+        frame_id = frame["result"]["frameTree"]["frame"]["id"]
+        await target.send_command("Runtime.disable")
+        context = target.subscribe_once("Runtime.executionContextCreated")
+        while context.done():
+            context = target.subscribe_once("Runtime.executionContextCreated")
+        await target.send_command("Runtime.enable")
+        while True:
+            current = (await context)["params"]["context"]
+            auxiliary = current.get("auxData", {})
+            if auxiliary.get("isDefault") and auxiliary.get("frameId") == frame_id:
+                wrapped._current_js_id = current["id"]
+                return
+            context = target.subscribe_once("Runtime.executionContextCreated")
 
 
 async def _render(request_path: Path, status_path: Path) -> None:

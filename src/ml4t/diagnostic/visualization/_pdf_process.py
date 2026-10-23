@@ -401,6 +401,8 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                 time.sleep(0.05)
             if status.get("completed") != len(paths) or status.get("phase") == "render_failed":
                 failure = failure or f"PDF rendering failed: {status.get('error', status)}"
+            if failure:
+                raise RuntimeError(failure)
         except BaseException as error:
             primary_error = error
             if owner is not None and process.poll() is None:
@@ -432,9 +434,12 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                         process.stdin.close()
         if failure:
             output.seek(0)
+            notes = getattr(primary_error, "__notes__", ())
             primary_error = RuntimeError(
                 f"{failure}\n{output.read().decode('utf-8', errors='replace')}"
             )
+            for note in notes:
+                primary_error.add_note(note)
         if primary_error is not None:
             if cleanup_error is not None:
                 primary_error.add_note(f"PDF process cleanup failed: {cleanup_error!r}")
