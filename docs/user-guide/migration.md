@@ -52,6 +52,68 @@ uv run --with 'pyfolio-reloaded==0.9.9' --with 'alphalens-reloaded==0.4.6' \
   python examples/legacy_migration_comparison.py --task all
 ```
 
+## Acquire inputs with Data, then analyze them in Diagnostic
+
+Use this route when migrating an Empyrical/Pyfolio notebook that downloaded
+prices or Fama-French factors before analyzing returns. Acquisition and caching
+remain in Data. Diagnostic consumes the returned frames through
+`PortfolioAnalysis.from_frames` and the familiar complete report adapter; it
+does not implement another provider, cache, broker or returns engine.
+
+The recipe uses Data 0.3.0, yfinance 1.7.0 and pandas 3.0.6. Its tests replay
+pinned authentic source responses through Data's actual providers and caches,
+then consume those outputs through Diagnostic's complete reports. Captured
+responses do not establish live service availability or historical publication
+instants.
+
+From a source checkout containing this example, replay the bundled,
+provider-derived CSVs without Data, Reloaded packages or network access:
+
+```bash
+uv run python examples/acquisition_to_portfolio_report.py --output acquisition-report.html
+```
+
+For an explicit live request, install Data's optional Yahoo dependency and run:
+
+```bash
+uv run --with 'ml4t-data[yahoo]==0.3.0' python examples/acquisition_to_portfolio_report.py --fetch --symbol SPY --start 2024-01-02 --end 2024-01-06 --output acquisition-report.html
+```
+
+The original acquisition names live in `ml4t.data.compat.empyrical`:
+`get_symbol_returns_from_yahoo`, `get_fama_french`, `get_treasury_yield` and
+`get_returns_cached`. The example delegates to them, then calls Diagnostic's
+`create_full_tear_sheet` with the supplied returns and benchmark. It also
+returns a native `PortfolioAnalysis` for further analysis without a report.
+
+Yahoo's request end is exclusive; the Fama-French and FRED bounds are inclusive.
+Yahoo uses adjusted closes and preserves missing observations. The CSV cache
+names include symbol and requested bounds. Its freshness follows Data's file
+mtime contract, not historical publication time. FRED is fetched explicitly on
+each `--fetch` call; it is not part of those CSV caches. For reproducible offline
+analysis, retain acquired inputs or use the bundled captured-input route.
+
+Fama-French `Mkt-RF`, `RF` and factor columns are decimal periodic returns.
+The total-market benchmark is `Mkt-RF + RF`, not market excess alone. The separate
+FRED `DGS3MO` column is an annual-percent quoted yield. A quote of `5.46` is not
+a daily return of `0.0546`, and the recipe does not automatically turn it into a
+periodic risk-free series. The report retains the familiar zero-RF statistics;
+an additional labelled Sharpe uses the actual dated periodic `RF` observations.
+Conflicting declared units raise rather than silently relabelling the input.
+
+The captured example produces three return observations, four factor rows and
+three Treasury quotes. It does not create a Treasury observation on January 5.
+Ending wealth is independently determined by adjusted prices:
+`453.09259033203125 / 457.67266845703125 = 0.9899926772108962`.
+The dated-RF Sharpe is approximately `-11.7810178587`, dimensionless at 252
+observations per year. Missing positions and transactions remain not requested;
+no portfolio holdings or executed fills are inferred from a price series.
+
+This route adds native dated-input validation and a reusable native analysis
+object to the familiar report workflow. See the existing dated portfolio-input
+and complete-account sections for the independently exercised input validation,
+annualization and export contracts. It is not a claim of live-provider fidelity,
+historical availability or complete Reloaded replacement.
+
 ## Alphalens factor analysis
 
 [Alphalens](https://github.com/quantopian/alphalens/blob/77084f1e4c2c0be407e032d444fb19e4be4b0f37/README.rst) accepts

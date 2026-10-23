@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, develop]
   pull_request:
@@ -130,6 +131,9 @@ jobs:
     name: Installed producer reports
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      ML4T_ACQUISITION_CAPTURE_DIRECTORY: ${{ github.workspace }}/tests/fixtures/acquisition
+      ML4T_REQUIRED_ACQUISITION_RECIPE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,11 +150,22 @@ jobs:
         run: |
           uv run --isolated --no-project --python 3.12 \
             --with "$(find artifacts/producers -name '*.whl' -print -quit)[viz]" \
-            --with ml4t-backtest==0.2.0 --with ml4t-engineer==0.2.0 \
+            --with ml4t-backtest==0.2.0 --with ml4t-engineer==0.2.0 --with 'ml4t-data[yahoo]==0.3.0' \
             --with pytest --with playwright \
-            python -I -c "from importlib.metadata import version; import pytest; assert version('ml4t-backtest')=='0.2.0' and version('ml4t-engineer')=='0.2.0'; raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--junitxml=artifacts/producers/results.xml', '--basetemp=artifacts/producers/reports', 'tests/test_integration/test_producer_report_journeys.py']))"
+            python -I -c "from importlib.metadata import version; import pytest; assert version('ml4t-backtest')=='0.2.0' and version('ml4t-engineer')=='0.2.0' and version('ml4t-data')=='0.3.0'; raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--junitxml=artifacts/producers/results.xml', '--basetemp=artifacts/producers/reports', 'tests/test_integration/test_producer_report_journeys.py', 'tests/test_compat/test_acquisition_recipe.py', '-k', 'not dated_rf_recipe_matches_actual_published_empyrical']))"
       - name: Require every actual producer journey
-        run: uv run --no-project --python 3.12 python -c "import xml.etree.ElementTree as E; cases=list(E.parse('artifacts/producers/results.xml').iter('testcase')); assert len(cases)==5 and not any(c.find('skipped') is not None for c in cases)"
+        run: uv run --no-project --python 3.12 python -c "import xml.etree.ElementTree as E; cases=list(E.parse('artifacts/producers/results.xml').iter('testcase')); assert len(cases)==17 and not any(c.find('skipped') is not None for c in cases)"
+      - name: Require the published acquisition reference on its supported pandas profile
+        shell: bash
+        env:
+          ML4T_REQUIRED_ACQUISITION_REFERENCE: "1"
+        run: |
+          uv run --isolated --no-project --python 3.12 \
+            --with "$(find artifacts/producers -name '*.whl' -print -quit)[viz]" \
+            --with 'ml4t-data[yahoo]==0.3.0' --with empyrical-reloaded==0.7.0 \
+            --with pandas==2.3.3 --with pytest \
+            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= -q \
+            --basetemp=artifacts/producers/reference-reports tests/test_compat/test_acquisition_recipe.py
       - name: Retain actual reports and installed artifacts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

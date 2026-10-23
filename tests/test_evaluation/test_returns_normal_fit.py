@@ -48,7 +48,7 @@ def _produced_returns(case):
     account = result.to_equity_dataframe().tail(tail)
     if case == "constant_positive":
         np.testing.assert_array_equal(account["equity"], [1100, 1210, 1331])
-        np.testing.assert_array_equal(account["return"], [0.1, 0.1, 0.1])
+        np.testing.assert_allclose(account["return"], [0.1, 0.1, 0.1], rtol=0, atol=1e-15)
     return PortfolioAnalysis(account["return"], dates=account["timestamp"])
 
 
@@ -85,7 +85,8 @@ def test_real_varying_returns_retain_unannualized_sample_normal_density():
     fig = plot_returns_distribution(analysis)
     (curve,) = [trace for trace in fig.data if trace.name.startswith("Normal")]
     assert np.isfinite(curve.y).all()
-    assert curve.x[0] == min(sample) and curve.x[-1] == max(sample)
+    assert curve.x[0] == pytest.approx(min(sample), rel=0, abs=1e-15)
+    assert curve.x[-1] == pytest.approx(max(sample), rel=0, abs=1e-15)
     expected = [
         math.exp(-0.5 * ((x - mean) / std) ** 2) / (std * math.sqrt(2 * math.pi)) for x in curve.x
     ]

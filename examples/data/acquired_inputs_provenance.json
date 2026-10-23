@@ -1,0 +1,32 @@
+{
+  "producer": "ml4t-data==0.3.0",
+  "producer_revision": "db9cda776b5b346f536b0e8ceb855b9fd60b6ec8",
+  "producer_source": "https://github.com/ml4t/data/tree/db9cda776b5b346f536b0e8ceb855b9fd60b6ec8/tests/fixtures/acquisition",
+  "kind": "Actual installed provider/helper output from captured responses; not live acquisition",
+  "request": {
+    "symbol": "SPY",
+    "start": "2024-01-02",
+    "end": "2024-01-06",
+    "yahoo_end": "exclusive",
+    "factor_and_fred_bounds": "inclusive"
+  },
+  "source_capture_sha256": {
+    "yahoo-adjustment-provider.json": "5ea30605795e522f3d1f8f6b744259227780eacc19f5845f8bd875516218db10",
+    "fred-dgs3mo.csv": "922b008684895c936e997c3713c05bef68ce412b423510d723553dd5b37ed0f2",
+    "F-F_Research_Data_Factors_daily_CSV.zip": "2f29e22546069914890a712680a6f81f3680ebc3543b52864484d209ca13a7db",
+    "F-F_Momentum_Factor_daily_CSV.zip": "ecf82b116e6ec56d2b79a2f27bd1d1598c217b5c6c25caa55b945bdd8a2c0b78"
+  },
+  "outputs": {
+    "acquired_returns.csv": "SPY adjusted-close fractional returns; first price-only observation is dropped, no filling; UTC dates",
+    "acquired_factors.csv": "Dated decimal returns; Mkt-RF is market excess, RF is periodic risk-free, total market benchmark is Mkt-RF+RF",
+    "acquired_treasury_yields.csv": "DGS3MO annual-percent quoted yield, not periodic returns; no new date rows are fabricated"
+  },
+  "independent_expected_values": {
+    "initial_adjusted_price": 457.67266845703125,
+    "final_adjusted_price": 453.09259033203125,
+    "ending_wealth": 0.9899926772108962,
+    "daily_rf": 0.0002,
+    "treasury_quotes_percent": [5.46, 5.48, 5.48]
+  },
+  "availability": "No historical publication instants established. Cache file mtime is not known-at. No holdings, fills or account returns are inferred."
+}

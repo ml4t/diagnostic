@@ -41,7 +41,10 @@ def _aligned_pair(
         else pd.DataFrame(value)
         for value in (returns, factor_returns)
     ]
-    aligned = pd.concat(frames, axis=1)
+    sort_dates = all(isinstance(value.index, pd.DatetimeIndex) for value in frames) and not frames[
+        0
+    ].index.equals(frames[1].index)
+    aligned = pd.concat(frames, axis=1, sort=sort_dates)
     if aligned.shape[1] != 2:
         raise ValueError(
             "unaligned benchmark functions need two series; use aligned arrays or apply per column"
