@@ -26,14 +26,17 @@ output=Path(sys.argv[2])
 startup_delay=float(sys.argv[3])
 fault_delay=float(sys.argv[4]) if len(sys.argv)>4 else .1
 observed=output.with_suffix('.processes.json')
+observed.with_suffix('.channel.bin').write_bytes(bytes(5))
 patch=r"""
-import asyncio,json,os,psutil,kaleido
+import asyncio,json,mmap,os,psutil,kaleido
 from pathlib import Path
 from pypdf import PdfReader
 mode=MODE
 startup_delay=STARTUP_DELAY
 fault_delay=FAULT_DELAY
 observed=Path(OBSERVED)
+pipe_proof_file=observed.with_suffix('.channel.bin').open('r+b')
+pipe_proof=mmap.mmap(pipe_proof_file.fileno(),5,access=mmap.ACCESS_WRITE)
 original_open=kaleido.Kaleido.open
 original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
@@ -45,13 +48,13 @@ original_os_close=os.close
 owned_pipe_descriptors={}
 def record_pipe_init(self):
     original_pipe_init(self)
-    self.observed_closed_descriptors=set()
-    for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser'):
-        owned_pipe_descriptors[getattr(self,name)]=self
+    pipe_proof[4]+=1
+    for slot,name in enumerate(('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser')):
+        owned_pipe_descriptors[getattr(self,name)]=slot
 def record_actual_descriptor_close(fd):
     result=original_os_close(fd)
-    channel=owned_pipe_descriptors.pop(fd,None)
-    if channel is not None: channel.observed_closed_descriptors.add(fd)
+    slot=owned_pipe_descriptors.pop(fd,None)
+    if slot is not None: pipe_proof[slot]=1
     return result
 Pipe.__init__=record_pipe_init
 os.close=record_actual_descriptor_close
@@ -65,16 +68,6 @@ if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown
             direct="import os,sys;os.dup2(0,3);os.dup2(1,4);os.set_inheritable(3,True);os.set_inheritable(4,True);os.execv(sys.argv[1],sys.argv[1:])"
             return [cli[0],'-c',direct,*cli[2:]]
         Chromium.get_cli=direct_browser_cli
-    original_status_write=Path.write_text
-    def observe_terminal_status(self,text,*args,**kwargs):
-        if self.name.startswith('status-') and self.suffix=='.new' and failed_channel is not None:
-            if json.loads(text).get('phase') in ('close_failed','render_failed'):
-                closed=[]
-                for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser'):
-                    closed.append(getattr(failed_channel,name) in failed_channel.observed_closed_descriptors)
-                original_status_write(observed.with_suffix('.channel.json'),json.dumps({'closed':closed}))
-        return original_status_write(self,text,*args,**kwargs)
-    Path.write_text=observe_terminal_status
 async def command(self,command,*args,**kwargs):
     if command=='Browser.close' and mode=='close_command_hang_slow_shutdown':
         browser=psutil.Process(self.subprocess.pid)
@@ -463,9 +456,10 @@ try:
     if mode in ('close_error','close_command_hang','render_error','render_hang','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
     if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse'):
-        channel=json.loads(observed.with_suffix('.channel.json').read_text())
-        assert all(channel['closed']), 'Graceful fallback retained owned browser pipe descriptors'
+        assert pipe_proof[4]==1,'The resource control requires one observed renderer pipe'
+        assert list(pipe_proof[:4])==[1,1,1,1], 'Graceful fallback retained owned browser pipe descriptors'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
+                      'observed_pipe_channels':pipe_proof[4],'successful_owned_pipe_closes':list(pipe_proof[:4]),
                       'waited_exit_codes':[process.returncode for process in gone],
                       'neighbor_alive':True,'input_figures_unchanged':True}),flush=True)
     success=True
@@ -480,6 +474,8 @@ finally:
         except psutil.NoSuchProcess: pass
     psutil.wait_procs(descendants,timeout=5)
     neighbor.wait(timeout=5)
+    pipe_proof.close()
+    pipe_proof_file.close()
     if not success:
         import traceback
         traceback.print_exc()
@@ -566,6 +562,35 @@ def test_browser_fault_setup_waits_for_actual_script_entry_instead_of_elapsed_sl
         _PROBE, ["unresponsive_startup", str(tmp_path / "report.pdf"), "0", "2"]
     )
     assert result["observed_browser_processes"] > 0
+    assert result["running"] == [] and result["neighbor_alive"]
+
+
+def test_pipe_close_evidence_survives_interrupted_terminal_status_notification(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    delayed_notification = r"""
+import time
+original_notification_write=Path.write_text
+def delay_terminal_notification(self,text,*args,**kwargs):
+    if self.name.startswith('status-') and self.suffix=='.new':
+        if json.loads(text).get('phase') in ('close_failed','render_failed'):
+            observed.with_suffix('.terminal-stall').write_bytes(b'1')
+            time.sleep(20)
+    return original_notification_write(self,text,*args,**kwargs)
+Path.write_text=delay_terminal_notification
+"""
+    original = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    assert original in _PROBE
+    delayed = _PROBE.replace(
+        original,
+        "_pdf_process._BOOTSTRAP=patch+chr(10)+"
+        + repr(delayed_notification)
+        + "+chr(10)+_pdf_process._BOOTSTRAP",
+    )
+    try:
+        result = _run_pdf_probe(delayed, ["close_command_hang", str(tmp_path / "report.pdf"), "0"])
+    finally:
+        assert (tmp_path / "report.processes.terminal-stall").read_bytes() == b"1"
     assert result["running"] == [] and result["neighbor_alive"]
 
 
