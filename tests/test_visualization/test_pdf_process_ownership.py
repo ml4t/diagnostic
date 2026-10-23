@@ -24,6 +24,7 @@ pio.defaults.mathjax=False
 mode=sys.argv[1]
 output=Path(sys.argv[2])
 startup_delay=float(sys.argv[3])
+fault_delay=float(sys.argv[4]) if len(sys.argv)>4 else .1
 observed=output.with_suffix('.processes.json')
 patch=r"""
 import asyncio,json,os,psutil,kaleido
@@ -31,6 +32,7 @@ from pathlib import Path
 from pypdf import PdfReader
 mode=MODE
 startup_delay=STARTUP_DELAY
+fault_delay=FAULT_DELAY
 observed=Path(OBSERVED)
 original_open=kaleido.Kaleido.open
 original_write=kaleido.Kaleido.write_fig_from_object
@@ -121,10 +123,23 @@ if mode=='unresponsive_startup':
             startup_armed=True
             target=next(iter(self.tabs.values()))
             snapshot(self)
-            await target.send_command('Runtime.evaluate',params={
-                'expression':'setTimeout(()=>{while(true){}},100);true',
-            })
-            await asyncio.sleep(.25)
+            await target.send_command('Runtime.enable')
+            await target.send_command('Runtime.addBinding',params={'name':'diagnosticStartupBlocked'})
+            entered=asyncio.Queue()
+            async def observed_entry(message):
+                if message.get('params',{}).get('name')=='diagnosticStartupBlocked':
+                    entered.put_nowait(message)
+            target.subscribe('Runtime.bindingCalled',observed_entry)
+            evaluate=asyncio.create_task(target.send_command('Runtime.evaluate',params={
+                'expression':f"setTimeout(()=>{{diagnosticStartupBlocked('entered');while(true){{}}}},{int(fault_delay*1000)});true",
+            }))
+            try:
+                await entered.get()
+            finally:
+                target.unsubscribe('Runtime.bindingCalled')
+                evaluate.cancel()
+                try: await evaluate
+                except (Exception,asyncio.CancelledError): pass
             probe=asyncio.create_task(target.send_command('Page.enable'))
             done,_=await asyncio.wait([probe],timeout=.5)
             assert not done,'Initial renderer did not actually stop answering Page.enable'
@@ -203,7 +218,7 @@ async def closed(self,*args,**kwargs):
 kaleido.Kaleido.open=opened
 kaleido.Kaleido.write_fig_from_object=written
 kaleido.Kaleido.close=closed
-""".replace('MODE',repr(mode)).replace('STARTUP_DELAY',repr(startup_delay)).replace('OBSERVED',repr(str(observed)))
+""".replace('MODE',repr(mode)).replace('STARTUP_DELAY',repr(startup_delay)).replace('FAULT_DELAY',repr(fault_delay)).replace('OBSERVED',repr(str(observed)))
 exec(patch)
 read_handles=[]
 try:
@@ -523,6 +538,16 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+def test_browser_fault_setup_waits_for_actual_script_entry_instead_of_elapsed_sleep(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    result = _run_pdf_probe(
+        _PROBE, ["unresponsive_startup", str(tmp_path / "report.pdf"), "0", "2"]
+    )
+    assert result["observed_browser_processes"] > 0
+    assert result["running"] == [] and result["neighbor_alive"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows sharing denial required")
