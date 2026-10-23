@@ -1,0 +1,37 @@
+{
+  "reference_revision": "185eaa1657a845a5e1c8c82809248eac7ce99340",
+  "repository": "https://github.com/stefan-jansen/pyfolio-reloaded",
+  "license": "Apache-2.0; original Pyfolio examples Copyright Quantopian, Inc.",
+  "modifications": "Notebook outputs, execution counts and metadata removed; every original markdown/code cell source and order retained. CSV gzip bytes are unmodified. Diagnostic migration is recorded separately by scripts/migrate_pyfolio_notebooks.py.",
+  "files": {
+    "round_trip_tear_sheet_example.ipynb": {
+      "sha256": "a82b317fb3753cefc05ceca6697181f9c9a8a64cd8bcdb9a00f97b1bf55e83b0",
+      "cells_sha256": "3015ba5dc8c6eeb6093d3bb9c10c97eecb116825039a2cdfc0b98d3a223f1e4e"
+    },
+    "sector_mappings_example.ipynb": {
+      "sha256": "589414fec60595b0be4e8141428e31acf6ebf1aef16603df084e6c4e8b656aab",
+      "cells_sha256": "47c0265935356a7dbb3044f4e97f78baf2fefc5718e22f08afb7f6537e8b8d58"
+    },
+    "slippage_example.ipynb": {
+      "sha256": "fcb194be89d4efa675c7e12af65b55e722eff44097434cfcce7ca4458b47acaf",
+      "cells_sha256": "d1f08f0efb9124085f4e7953a0d57051e73eadcae1ef58ac217961a72237762d"
+    },
+    "single_stock_example.ipynb": {
+      "sha256": "2b166ebd235b061c7b00e88147f27aa2a34c5c08d65237bab4a7fee98e72cdb8",
+      "cells_sha256": "1aeacaa08949470aa2dd355f49c7077277fdcd2829169342ba8b44590a193fa2"
+    },
+    "zipline_algo_example.ipynb": {
+      "sha256": "ba68e3fd4580c6fc83ed93d0eab14f8a1978bdd4a4f42b8d7b7f713555af0a49",
+      "cells_sha256": "0ebc356f7119095b40cf9e109a074200c61beb18cee1d5f8e32ef17798c1176c"
+    },
+    "test_returns.csv.gz": {
+      "sha256": "1ef97a992ad9a1ca21af2c615f48dd046c39c631e021aed1313ffecd507bfa11"
+    },
+    "test_pos.csv.gz": {
+      "sha256": "6463ec530869f231b4da9125ae005acd254aede738f324e33525deeaed95335b"
+    },
+    "test_txn.csv.gz": {
+      "sha256": "bb8725c641ff33955ca2afaf3e6372f952bc10451ecba86dbb7fbc3f2c101b42"
+    }
+  }
+}

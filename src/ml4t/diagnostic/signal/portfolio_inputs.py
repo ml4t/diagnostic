@@ -141,7 +141,18 @@ class SyntheticPortfolioInputs:
         )
         if benchmark is not None:
             benchmark.index.freq = "D"
-        return returns["return"].rename(None), positions, benchmark
+        supplied_returns = returns["return"].rename(None)
+        provenance = {
+            "representation": "synthetic_daily_portfolio_inputs",
+            "snapshot_kind": "synthetic",
+            "position_unit": self.metadata["position_unit"],
+            "return_definition": "compounded supplied forward outcomes, not executed account P&L",
+            "transactions": "not_created",
+        }
+        for frame in (supplied_returns, positions, benchmark):
+            if frame is not None:
+                frame.attrs["diagnostic"] = provenance.copy()
+        return supplied_returns, positions, benchmark
 
     def analyze(self, *, periods_per_year: int, risk_free: float = 0.0) -> PortfolioAnalysis:
         """Analyze daily returns at the caller's explicit annualization scale.

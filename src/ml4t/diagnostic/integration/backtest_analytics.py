@@ -31,15 +31,31 @@ def _fill_cash_units(fills: pl.DataFrame, trades: pl.DataFrame | None) -> pl.Dat
     """Use declared fill units or unambiguous producer trade point values."""
     if fills.is_empty():
         return fills.clone()
-    if "multiplier" not in fills.columns:
-        if trades is not None and "multiplier" in trades.columns:
-            units = trades.select(pl.col("symbol").alias("asset"), "multiplier").unique()
-            units = units.join(fills.select("asset").unique(), on="asset", how="inner")
-            if units["asset"].is_duplicated().any():
-                raise ValueError("trade multipliers must be unambiguous for each fill asset")
-            fills = fills.join(units, on="asset", how="left")
+    if trades is not None and "multiplier" in trades.columns:
+        units = trades.select(pl.col("symbol").alias("asset"), "multiplier").unique()
+        units = units.join(fills.select("asset").unique(), on="asset", how="inner")
+        if units["asset"].is_duplicated().any():
+            raise ValueError("trade multipliers must be unambiguous for each fill asset")
+        if "multiplier" in fills.columns:
+            fills = fills.join(
+                units.rename({"multiplier": "trade_multiplier"}),
+                on="asset",
+                how="left",
+                maintain_order="left",
+            )
+            if fills.filter(
+                pl.col("multiplier").is_not_null()
+                & pl.col("trade_multiplier").is_not_null()
+                & (pl.col("multiplier") != pl.col("trade_multiplier"))
+            ).height:
+                raise ValueError("fill and trade multipliers must be unambiguous for each asset")
+            fills = fills.with_columns(
+                pl.col("multiplier").fill_null(pl.col("trade_multiplier"))
+            ).drop("trade_multiplier")
         else:
-            fills = fills.with_columns(pl.lit(1.0).alias("multiplier"))
+            fills = fills.join(units, on="asset", how="left", maintain_order="left")
+    elif "multiplier" not in fills.columns:
+        fills = fills.with_columns(pl.lit(1.0).alias("multiplier"))
     values = fills["multiplier"]
     if not values.dtype.is_numeric():
         raise TypeError("fill multipliers must be real numeric values")

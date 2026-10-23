@@ -724,19 +724,6 @@ wheels = [
 ]
 
 [[package]]
-name = "html5lib"
-version = "1.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-    { name = "webencodings" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/b6/b55c3f49042f1df3dcd422b7f224f939892ee94f22abcf503a9b7339eaf2/html5lib-1.1.tar.gz", hash = "sha256:b2e5b40261e20f354d198eae92afc10d750afb487ed5e50f9c4eaf07c184146f", size = 272215, upload-time = "2020-06-22T23:32:38.834Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6c/dd/a834df6482147d48e225a49515aabc28974ad5a4ca3215c18a882565b028/html5lib-1.1-py2.py3-none-any.whl", hash = "sha256:0d78f8fde1c230e99fe37986a60526d7049ed4bf8a9fadbad5f00e22e58e041d", size = 112173, upload-time = "2020-06-22T23:32:36.781Z" },
-]
-
-[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1620,7 +1607,7 @@ wheels = [
 
 [[package]]
 name = "ml4t-backtest"
-version = "0.1.0b22"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ml4t-specs" },
@@ -1629,25 +1616,24 @@ dependencies = [
     { name = "pandas" },
     { name = "pandas-market-calendars" },
     { name = "polars" },
-    { name = "pyarrow" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/33/f9/8b3ad40722b4b468f9a9ce0d9ea88cff6526526083d5ca75cce8ca1b6fdc/ml4t_backtest-0.1.0b22.tar.gz", hash = "sha256:b28211f53c6a32d84608c9d195530ffbf4cb7f21a7f7dafeb4bf40c77b07d44c", size = 324501, upload-time = "2026-07-25T16:56:40.781Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/d0/3faa433e0c06267def27d3698056ff431917756e0e35b712f7855b88d807/ml4t_backtest-0.2.0.tar.gz", hash = "sha256:0ccd265cf85796d1e6cf3e4717317feb68eb93cc7efb44e941092cf91edf11d6", size = 1260028, upload-time = "2026-10-22T19:55:08.446Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/6d/210504feda3ae9b63322d969bd6bfa914908687a1ff81d8635e6d6d14d56/ml4t_backtest-0.1.0b22-py3-none-any.whl", hash = "sha256:94ec0680b59233d1bf99bdab22e9bb20b1c7d214c1ed77303d79652c5db981ef", size = 185496, upload-time = "2026-07-25T16:56:39.133Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/d7/6dab7643af1f43152cbe0e046ea722b0eb41c8ff5bcc34c09a152f0f5cff/ml4t_backtest-0.2.0-py3-none-any.whl", hash = "sha256:64ae01c91c98a349b23b0fca50d75ade9d3d1a3fb8641f95799870e979e0c08e", size = 392374, upload-time = "2026-10-22T19:55:06.312Z" },
 ]
 
 [[package]]
 name = "ml4t-data"
-version = "0.1.0b19"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
+    { name = "certifi" },
     { name = "click" },
     { name = "filelock" },
-    { name = "html5lib" },
     { name = "httpx" },
-    { name = "lxml" },
+    { name = "ml4t-specs" },
     { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "openpyxl" },
@@ -1655,8 +1641,9 @@ dependencies = [
     { name = "pandas-market-calendars" },
     { name = "platformdirs" },
     { name = "polars" },
-    { name = "pyarrow" },
     { name = "pybreaker" },
+    { name = "pydantic", version = "2.13.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
+    { name = "pydantic", version = "2.14.0b1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
@@ -1664,9 +1651,9 @@ dependencies = [
     { name = "structlog" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/04/08/0216821194a2ed4669c2c2f05b54dc85eaac1f614ca5331cd0779d8dea04/ml4t_data-0.1.0b19.tar.gz", hash = "sha256:b16b8982aaa035ad3dceaf3a2a3568b1f9b4b7a6bbf626c1031c777eef220486", size = 683844, upload-time = "2026-07-31T22:02:38.511Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/7c/ce18e2c71fc378de853bb9794ceedb5b662700073752fcf1a70f62a59503/ml4t_data-0.3.0.tar.gz", hash = "sha256:135bd11c0cecbc58043e6a22413d42ae425421490d9d6ba884619831ec85713d", size = 1391614, upload-time = "2026-10-22T04:11:16.838Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/72/7dd67501914af614fea25bbaa5d58dd38d61a3aa4db48dabe47f943c91ff/ml4t_data-0.1.0b19-py3-none-any.whl", hash = "sha256:3af2cccade45f7d7799afa36b8b58285c8e90d24beb9c280c13c4e3fac7efa13", size = 448648, upload-time = "2026-07-31T22:02:36.711Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/5c/7f940c8b50fd8c91bb05dff05b57550c26b8e4e740a5412f42d1087786b4/ml4t_data-0.3.0-py3-none-any.whl", hash = "sha256:46e2b305e9c06d6183e5eba460c3e234bbd2ddf00eabeebe474315131e73129d", size = 574221, upload-time = "2026-10-22T04:11:14.95Z" },
 ]
 
 [[package]]
@@ -1764,6 +1751,7 @@ viz = [
 dev = [
     { name = "hypothesis" },
     { name = "kaleido" },
+    { name = "lxml" },
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
     { name = "packaging" },
@@ -1788,6 +1776,7 @@ dev = [
 test = [
     { name = "hypothesis" },
     { name = "kaleido" },
+    { name = "lxml" },
     { name = "matplotlib" },
     { name = "ml4t-backtest" },
     { name = "playwright" },
@@ -1821,11 +1810,11 @@ requires-dist = [
     { name = "mkdocs-literate-nav", marker = "extra == 'docs'", specifier = ">=0.6.0" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
-    { name = "ml4t-backtest", marker = "extra == 'all'", specifier = ">=0.1.0b10" },
-    { name = "ml4t-backtest", marker = "extra == 'backtest'", specifier = ">=0.1.0b10" },
-    { name = "ml4t-data", marker = "extra == 'all'", specifier = ">=0.1.0b7" },
-    { name = "ml4t-data", marker = "extra == 'data'", specifier = ">=0.1.0b7" },
-    { name = "ml4t-data", marker = "extra == 'factors'", specifier = ">=0.1.0b7" },
+    { name = "ml4t-backtest", marker = "extra == 'all'", specifier = ">=0.2.0" },
+    { name = "ml4t-backtest", marker = "extra == 'backtest'", specifier = ">=0.2.0" },
+    { name = "ml4t-data", marker = "extra == 'all'", specifier = ">=0.3.0" },
+    { name = "ml4t-data", marker = "extra == 'data'", specifier = ">=0.3.0" },
+    { name = "ml4t-data", marker = "extra == 'factors'", specifier = ">=0.3.0" },
     { name = "ml4t-specs", specifier = ">=0.2.0" },
     { name = "numba", marker = "(python_full_version < '3.14' and extra == 'all') or (platform_machine != 'x86_64' and extra == 'all') or (sys_platform != 'darwin' and extra == 'all')", specifier = ">=0.62.0" },
     { name = "numba", marker = "(python_full_version < '3.14' and extra == 'perf') or (platform_machine != 'x86_64' and extra == 'perf') or (sys_platform != 'darwin' and extra == 'perf')", specifier = ">=0.62.0" },
@@ -1870,8 +1859,9 @@ provides-extras = ["all", "backtest", "dashboard", "data", "dev", "docs", "facto
 dev = [
     { name = "hypothesis", specifier = ">=6.80.0" },
     { name = "kaleido", specifier = ">=1.5.0" },
+    { name = "lxml", specifier = ">=6.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
-    { name = "ml4t-backtest", specifier = ">=0.1.0b10" },
+    { name = "ml4t-backtest", specifier = ">=0.2.0" },
     { name = "packaging", specifier = "==26.3" },
     { name = "pip-audit", specifier = ">=2.10.1" },
     { name = "playwright", specifier = ">=1.64.0" },
@@ -1894,8 +1884,9 @@ dev = [
 test = [
     { name = "hypothesis", specifier = ">=6.80.0" },
     { name = "kaleido", specifier = ">=1.5.0" },
+    { name = "lxml", specifier = ">=6.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
-    { name = "ml4t-backtest", specifier = ">=0.1.0b10" },
+    { name = "ml4t-backtest", specifier = ">=0.2.0" },
     { name = "playwright", specifier = ">=1.64.0" },
     { name = "plotly", specifier = ">=6.1.2" },
     { name = "psutil", specifier = ">=7.2.2" },
@@ -3924,15 +3915,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/34/74/c6428f875774288bec1396f5bfcbc2d925700a4dad61727fd5f2b12f249d/wcwidth-0.8.2.tar.gz", hash = "sha256:91fbef97204b96a3d4d421609b80340b760cf33e26da123ff243d76b1fda8dda", size = 1466253, upload-time = "2026-06-29T18:11:11.601Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/96/42/3e5985a0a7e57de470b320c6d6a1a67c844f6737a587f3d44dd13d1819e7/wcwidth-0.8.2-py3-none-any.whl", hash = "sha256:d63947694a0539a1d51e01eda7caf800c291020e6cdd7e28ad7b14dd33ad4f85", size = 323166, upload-time = "2026-06-29T18:11:09.888Z" },
-]
-
-[[package]]
-name = "webencodings"
-version = "0.5.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0b/02/ae6ceac1baeda530866a85075641cec12989bd8d31af6d5ab4a3e8c92f47/webencodings-0.5.1.tar.gz", hash = "sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923", size = 9721, upload-time = "2017-04-05T20:21:34.189Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/24/2a3e3df732393fed8b3ebf2ec078f05546de641fe1b667ee316ec1dcf3b7/webencodings-0.5.1-py2.py3-none-any.whl", hash = "sha256:a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78", size = 11774, upload-time = "2017-04-05T20:21:32.581Z" },
 ]
 
 [[package]]

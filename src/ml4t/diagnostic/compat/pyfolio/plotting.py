@@ -22,6 +22,28 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.transaction_metrics import (
 
 from . import txn
 from .cone_plotting import plot_cones
+from .position_plotting import (
+    plot_exposures,
+    plot_gross_leverage,
+    plot_holdings,
+    plot_long_short_holdings,
+    plot_max_median_position_concentration,
+    plot_sector_allocations,
+    show_and_plot_top_positions,
+)
+from .return_panels import (
+    plot_annual_returns,
+    plot_drawdown_periods,
+    plot_drawdown_underwater,
+    plot_monthly_returns_dist,
+    plot_monthly_returns_heatmap,
+    plot_perf_stats,
+    plot_return_quantiles,
+    plot_rolling_beta,
+    plot_rolling_sharpe,
+    plot_rolling_volatility,
+)
+from .return_plotting import plot_returns, plot_rolling_returns, show_perf_stats
 from .round_trip_plotting import (
     plot_prob_profit_trade,
     plot_round_trip_lifetimes,
@@ -356,6 +378,26 @@ def plot_capacity_sweep(
 
 
 __all__ = [
+    "plot_exposures",
+    "plot_gross_leverage",
+    "plot_holdings",
+    "plot_long_short_holdings",
+    "plot_max_median_position_concentration",
+    "plot_sector_allocations",
+    "show_and_plot_top_positions",
+    "plot_annual_returns",
+    "plot_drawdown_periods",
+    "plot_drawdown_underwater",
+    "plot_monthly_returns_dist",
+    "plot_monthly_returns_heatmap",
+    "plot_perf_stats",
+    "plot_return_quantiles",
+    "plot_rolling_beta",
+    "plot_rolling_sharpe",
+    "plot_rolling_volatility",
+    "plot_returns",
+    "plot_rolling_returns",
+    "show_perf_stats",
     "plot_cones",
     "plot_capacity_sweep",
     "plot_round_trip_lifetimes",

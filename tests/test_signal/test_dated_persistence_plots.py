@@ -229,13 +229,19 @@ def test_actual_dated_report_contains_visible_plot_values_counts_and_exact_clock
                 const plots=Array.from(e.querySelectorAll('.js-plotly-plot')).map(p=>{
                     const r=p.getBoundingClientRect(),title=p.querySelector('.gtitle'),t=title.getBoundingClientRect();
                     const notice=Array.from(p.querySelectorAll('.annotation-text')).find(n=>n.textContent==='CI unavailable'),n=notice?.getBoundingClientRect();
-                    return {title:p._fullLayout.title.text,width:r.width,plot_top:p._fullLayout._size.t,notice_bottom:n?n.bottom-r.top:null,y_range:p._fullLayout.yaxis.range,legend:Array.from(p.querySelectorAll('.legendtext')).map(n=>n.textContent),title_bounds:{left:t.left-r.left,right:t.right-r.left,bottom:t.bottom-r.top},traces:p._fullData.map(d=>({name:d.name,x:d.x,y:d.y,custom:d.customdata})),text:Array.from(p.querySelectorAll('text')).filter(n=>n.getBoundingClientRect().width>0).map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)}))};
+                    return {title:p._fullLayout.title.text,lag:p._fullLayout.meta.lag,width:r.width,plot_top:p._fullLayout._size.t,notice_bottom:n?n.bottom-r.top:null,y_range:p._fullLayout.yaxis.range,legend:Array.from(p.querySelectorAll('.legendtext')).map(n=>n.textContent),title_bounds:{left:t.left-r.left,right:t.right-r.left,bottom:t.bottom-r.top},traces:p._fullData.map(d=>({name:d.name,x:d.x,y:d.y,custom:d.customdata})),text:Array.from(p.querySelectorAll('text')).filter(n=>n.getBoundingClientRect().width>0).map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)}))};
                 });return {width:innerWidth,body_font:parseFloat(getComputedStyle(e.querySelector('p')).fontSize),plots};
             }""")
         finally:
             browser.close()
     assert not errors and measured["width"] == width
-    assert len(measured["plots"]) == 2
+    assert [
+        (plot["title"].startswith("Dated Rank"), plot["lag"]) for plot in measured["plots"]
+    ] == [
+        (False, 1),
+        (True, 1),
+        (True, 2),
+    ]
     expected_dates = dates[[1]] if profile == "single_date" else dates[[1, 3]]
     for plot in measured["plots"]:
         assert 0 <= plot["title_bounds"]["left"] < plot["title_bounds"]["right"] <= plot["width"]
@@ -257,7 +263,9 @@ def test_actual_dated_report_contains_visible_plot_values_counts_and_exact_clock
                 day.value for day in expected_dates
             ]
             expected = (
-                [None]
+                [None] * len(expected_dates)
+                if plot["title"].startswith("Dated Rank") and plot["lag"] == 2
+                else [None]
                 if profile == "single_date"
                 else [
                     None,
@@ -268,6 +276,8 @@ def test_actual_dated_report_contains_visible_plot_values_counts_and_exact_clock
                     else 0.0,
                 ]
             )
+            if plot["title"].startswith("Dated Rank") and plot["lag"] == 2:
+                assert all(row[1] == 0 for row in trace["custom"])
             np.testing.assert_allclose(
                 np.asarray(trace["y"], dtype=float),
                 np.asarray(expected, dtype=float),

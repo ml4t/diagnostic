@@ -1,0 +1,203 @@
+"""The familiar information sheet must retain the prepared price-produced sample."""
+
+from fractions import Fraction
+from importlib.metadata import version
+
+import numpy as np
+import pandas as pd
+import polars as pl
+import pytest
+from scipy.stats import rankdata
+
+
+def _price_panel(*, missing_factor_date=False, preparer=None):
+    from ml4t.diagnostic.compat.alphalens import utils
+
+    dates = pd.date_range("2025-01-02T00:00:00.000000001", periods=30, tz="UTC", unit="ns")
+    assets = list("ABCDEF")
+    prices = pd.DataFrame(
+        {asset: [100 + 10 * i + (i + 1) * j for j in range(30)] for i, asset in enumerate(assets)},
+        index=dates,
+    )
+    factor = pd.Series(
+        np.concatenate([np.roll(np.arange(1.0, 7.0), j % 6) for j in range(28)]),
+        index=pd.MultiIndex.from_product([dates[:28], assets], names=["date", "asset"]),
+        name="factor",
+    )
+    groups = {asset: "first" if i < 2 else "second" for i, asset in enumerate(assets)}
+    if missing_factor_date:
+        factor = factor.drop(dates[10], level="date")
+    prepare = utils.get_clean_factor_and_forward_returns if preparer is None else preparer
+    return prepare(
+        factor,
+        prices,
+        periods=(1, 2),
+        groupby=groups,
+        quantiles=3,
+        filter_zscore=None,
+        max_loss=0,
+    )
+
+
+@pytest.mark.parametrize("group_neutral", [False, True])
+@pytest.mark.parametrize("by_group", [False, True])
+def test_familiar_price_to_information_sheet_preserves_global_ic_and_all_group_options(
+    group_neutral, by_group, tmp_path
+):
+    from ml4t.diagnostic.compat.alphalens import tears
+
+    panel = _price_panel()
+    before = panel.copy(deep=True)
+    target = tmp_path / "information.html"
+    figures = tears.create_information_tear_sheet(
+        panel,
+        group_neutral=group_neutral,
+        by_group=by_group,
+        output_file=target,
+        return_fig=True,
+        set_context=False,
+    )
+    assert len(figures) == (7 if by_group else 8)
+    expected = []
+    for _, sample in panel.groupby(level="date", observed=True):
+        outcomes = sample["1D"]
+        if group_neutral:
+            outcomes = outcomes - outcomes.groupby(sample["group"], observed=True).transform("mean")
+        x, y = rankdata(sample["factor"]), rankdata(outcomes)
+        x, y = x - x.mean(), y - y.mean()
+        expected.append(float(np.sum(x * y) / np.sqrt(np.sum(x * x) * np.sum(y * y))))
+    np.testing.assert_allclose(figures[0].data[0].y, expected, atol=1e-14, rtol=0)
+    pd.testing.assert_frame_equal(panel, before)
+    assert panel.iloc[0]["1D"] == pytest.approx(float(Fraction(1, 100)), rel=3e-16)
+    html = target.read_text(encoding="utf-8")
+    assert html.count('class="plot-container"') == (7 if by_group else 8)
+    assert "Defined ICs" in html and "dimensionless" in html
+    assert "Mean IC by group" in html if by_group else "Monthly" in html
+
+
+def test_owned_prepared_constructor_preserves_sparse_buckets_groups_keys_and_calendar_null():
+    from ml4t.diagnostic.signal import PreparedSignalPanel
+
+    original = _price_panel()
+    original["factor_quantile"] = original["factor_quantile"].map({1: 2, 2: 5, 3: 9})
+    panel = PreparedSignalPanel.from_prepared(original, return_columns=["1D", "2D"], calendar=None)
+    assert panel.metadata["bucket_source"] == "supplied, not recomputed"
+    assert panel.metadata["bucket_ids"] == [2, 5, 9]
+    assert panel.metadata["calendar"] is None
+    assert panel.metadata["calendar_source"] == "argument"
+    assert panel.excluded_data.is_empty() and panel.outcome_data is None
+    assert panel.data.height == original.shape[0]
+    assert set(panel.data["group"]) == {"first", "second"}
+    owned = panel.data
+    original.iloc[0, original.columns.get_loc("factor")] = 999
+    owned[0, "factor"] = -999
+    assert panel.data["factor"][0] == 1
+    assert panel.ic_by_date()["n_obs"].to_list() == [6] * 56
+    assert panel.data["date"].dtype == pl.Datetime("ns", "UTC")
+
+
+def test_information_adapter_does_not_replace_a_report_for_invalid_prepared_input(tmp_path):
+    from ml4t.diagnostic.compat.alphalens import tears
+
+    panel = _price_panel()
+    panel.iloc[0, panel.columns.get_loc("1D")] = np.nan
+    target = tmp_path / "information.html"
+    target.write_text("retained report", encoding="utf-8")
+    with pytest.raises(ValueError, match="complete and finite"):
+        tears.create_information_tear_sheet(panel, output_file=target)
+    assert target.read_text(encoding="utf-8") == "retained report"
+
+
+def test_familiar_information_sheet_keeps_a_missing_declared_date_unknown_not_observation_compressed():
+    from ml4t.diagnostic.compat.alphalens import tears
+
+    panel = _price_panel(missing_factor_date=True)
+    dates = pd.date_range("2025-01-02T00:00:00.000000001", periods=28, tz="UTC", unit="ns")
+    assert len(panel.index.get_level_values("date").unique()) == 27
+    assert panel.index.levels[0].freq is not None
+    figures = tears.create_information_tear_sheet(panel, return_fig=True)
+    trace = figures[0].data[0]
+    actual_dates = pd.DatetimeIndex(trace.x)
+    pd.testing.assert_index_equal(actual_dates, dates, check_names=False)
+    assert pd.isna(trace.y[10])
+    rolling = figures[0].data[1]
+    assert all(pd.isna(value) for value in rolling.y), (
+        "The missing IC invalidates every22-date window"
+    )
+
+
+@pytest.mark.parametrize("group_neutral", [False, True])
+@pytest.mark.parametrize("by_group", [False, True])
+def test_actual_reference_information_sheet_and_native_adapter_plot_the_same_price_samples(
+    group_neutral, by_group, monkeypatch
+):
+    reference = pytest.importorskip("alphalens.tears")
+    performance = pytest.importorskip("alphalens.performance")
+    reference_utils = pytest.importorskip("alphalens.utils")
+    profile = version("alphalens-reloaded")
+    if profile not in ("0.5.0", "0.4.6"):
+        pytest.skip("the corrected and frozen reference distributions are pinned separately")
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    from ml4t.diagnostic.compat.alphalens import tears
+
+    panel = _price_panel(preparer=reference_utils.get_clean_factor_and_forward_returns)
+    expected = performance.factor_information_coefficient(panel, group_adjust=group_neutral)
+    plotted_lines = []
+    original_show = plt.show
+
+    def observe_actual_render(*args, **kwargs):
+        for number in plt.get_fignums():
+            figure = plt.figure(number)
+            figure.canvas.draw()
+            plotted_lines.extend(
+                np.array(line.get_ydata(), copy=True) for axis in figure.axes for line in axis.lines
+            )
+        return original_show(*args, **kwargs)
+
+    monkeypatch.setattr(plt, "show", observe_actual_render)
+    try:
+        reference.create_information_tear_sheet(
+            panel, group_neutral=group_neutral, by_group=by_group, set_context=False
+        )
+    finally:
+        plt.close("all")
+    assert plotted_lines, "The actual whole reference sheet must render, not just its IC helper"
+    figures = tears.create_information_tear_sheet(
+        panel,
+        group_neutral=group_neutral,
+        by_group=by_group,
+        return_fig=True,
+        reference_version=profile,
+    )
+    for index, column in enumerate(expected.columns):
+        values = expected[column].to_numpy()
+        np.testing.assert_allclose(figures[3 * index].data[0].y, values, atol=1e-14, rtol=0)
+        np.testing.assert_allclose(
+            np.sort(figures[3 * index + 1].data[0].x),
+            np.sort(values[np.isfinite(values)]),
+            atol=1e-14,
+            rtol=0,
+        )
+        assert any(
+            line.shape == values.shape
+            and np.allclose(line, values, atol=1e-14, rtol=0, equal_nan=True)
+            for line in plotted_lines
+        ), "The original Matplotlib sheet must actually plot the compared IC observations"
+    means = performance.mean_information_coefficient(
+        panel,
+        group_adjust=group_neutral,
+        by_group=by_group,
+        **({} if by_group else {"by_time": pd.offsets.MonthEnd()}),
+    )
+    if by_group:
+        for trace in figures[-1].data:
+            np.testing.assert_allclose(trace.y, means.loc[list(trace.x), trace.name], atol=1e-14)
+    else:
+        for index, column in enumerate(expected.columns):
+            assert float(figures[-len(expected.columns) + index].data[0].z[0][0]) == pytest.approx(
+                means[column].iloc[0], abs=1e-14
+            )

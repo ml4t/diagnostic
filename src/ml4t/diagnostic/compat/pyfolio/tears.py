@@ -18,7 +18,10 @@ from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_intege
 
 from . import perf_attrib
 from .capacity_sheet import create_capacity_tear_sheet
+from .position_sheet import create_position_tear_sheet
+from .return_sheet import create_returns_tear_sheet
 from .stress_sheet import create_interesting_times_tear_sheet
+from .transaction_sheet import create_txn_tear_sheet
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -214,7 +217,7 @@ FACTOR_PARTITIONS = MappingProxyType(
 )
 
 
-def create_perf_attrib_tear_sheet(
+def _prepare_perf_attrib_tear_sheet(
     returns: pd.Series,
     positions: pd.DataFrame,
     factor_returns: pd.DataFrame,
@@ -222,26 +225,12 @@ def create_perf_attrib_tear_sheet(
     transactions: pd.DataFrame | None = None,
     pos_in_dollars: bool = True,
     factor_partitions: Mapping[str, Iterable[str]] | None = FACTOR_PARTITIONS,
-    return_fig: bool = False,
     *,
-    output_file: str | Path | None = None,
     theme: str | None = None,
     periods_per_year: int = 252,
-) -> str | list[go.Figure]:
-    """Render all attribution tables and partitioned component/exposure panels.
-
-    The default returns offline HTML, or a saved path when output_file is set,
-    instead of triggering a notebook display. return_fig=True returns the
-    ordered list of Plotly figures, not one Matplotlib Figure. Tables remain
-    in HTML output. An explicit output_file is honored in either return mode.
-    None selects all factors; an empty partition mapping selects no factor
-    panels. Unknown factors yield a visibly empty panel, not invented exposure.
-    """
-    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
-
+) -> tuple[list[go.Figure], list[dict[str, Any]], dict[str, pd.DataFrame]]:
+    """Prepare attribution tables/partitions once for standalone and account views."""
     scale = positive_integer(periods_per_year, "periods_per_year")
-    if not isinstance(return_fig, bool):
-        raise TypeError("return_fig must be a boolean")
     partitions = None
     if factor_partitions is not None:
         if not isinstance(factor_partitions, Mapping):
@@ -312,6 +301,49 @@ def create_perf_attrib_tear_sheet(
                 )
             sections.append({"title": escape(title), "figure_index": len(figures)})
             figures.append(figure)
+    return (
+        figures,
+        sections,
+        {"Attribution statistics": summary.to_frame("Value"), "Factor statistics": factors},
+    )
+
+
+def create_perf_attrib_tear_sheet(
+    returns: pd.Series,
+    positions: pd.DataFrame,
+    factor_returns: pd.DataFrame,
+    factor_loadings: pd.DataFrame,
+    transactions: pd.DataFrame | None = None,
+    pos_in_dollars: bool = True,
+    factor_partitions: Mapping[str, Iterable[str]] | None = FACTOR_PARTITIONS,
+    return_fig: bool = False,
+    *,
+    output_file: str | Path | None = None,
+    theme: str | None = None,
+    periods_per_year: int = 252,
+) -> str | list[go.Figure]:
+    """Render complete supplied-factor statistics and partitioned analytical panels.
+
+    Returns offline HTML, or ordered Plotly figures when return_fig=True.
+    output_file retains every table in either mode. None selects all factors;
+    an empty partition mapping selects no factor panels. Native methods stay
+    unchanged and missing requested factors have an explicit empty panel.
+    """
+    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
+
+    if not isinstance(return_fig, bool):
+        raise TypeError("return_fig must be a boolean")
+    figures, sections, _ = _prepare_perf_attrib_tear_sheet(
+        returns,
+        positions,
+        factor_returns,
+        factor_loadings,
+        transactions,
+        pos_in_dollars,
+        factor_partitions,
+        theme=theme,
+        periods_per_year=periods_per_year,
+    )
     html = combine_figures_to_html(
         figures,
         title="Supplied holdings factor attribution",
@@ -323,7 +355,125 @@ def create_perf_attrib_tear_sheet(
     return figures if return_fig else html
 
 
+def create_simple_tear_sheet(
+    returns: pd.Series,
+    positions: pd.DataFrame | None = None,
+    transactions: pd.DataFrame | None = None,
+    benchmark_rets: pd.Series | None = None,
+    slippage: float | None = None,
+    estimate_intraday: bool | np.bool_ | str | None = "infer",
+    live_start_date: Any = None,
+    turnover_denom: str = "AGB",
+    header_rows: dict[str, Any] | None = None,
+    *,
+    set_context: bool = True,
+    return_fig: bool = False,
+    periods_per_year: int = 252,
+    num_samples: int = 1000,
+    random_seed: int | None = None,
+) -> PortfolioTearSheet | None:
+    """Compose the original simple account manifest through the native renderer.
+
+    Return the owned report with return_fig=True, otherwise display and return
+    None. Supplied returns, closing holdings and actual fills stay distinct.
+    Additional slippage follows the original post-intraday-selection order.
+    """
+    from .account_sheet import _create_account_tear_sheet
+
+    return _create_account_tear_sheet(
+        simple=True,
+        returns=returns,
+        positions=positions,
+        transactions=transactions,
+        benchmark_rets=benchmark_rets,
+        slippage=slippage,
+        estimate_intraday=estimate_intraday,
+        live_start_date=live_start_date,
+        turnover_denom=turnover_denom,
+        header_rows=header_rows,
+        set_context=set_context,
+        return_fig=return_fig,
+        periods_per_year=periods_per_year,
+        num_samples=num_samples,
+        random_seed=random_seed,
+    )
+
+
+def create_full_tear_sheet(
+    returns: pd.Series,
+    positions: pd.DataFrame | None = None,
+    transactions: pd.DataFrame | None = None,
+    market_data: pd.DataFrame | None = None,
+    benchmark_rets: pd.Series | None = None,
+    slippage: float | None = None,
+    live_start_date: Any = None,
+    sector_mappings: Mapping[Any, Any] | pd.Series | None = None,
+    round_trips: bool = False,
+    estimate_intraday: bool | np.bool_ | str | None = "infer",
+    hide_positions: bool = False,
+    cone_std: float | tuple[float, ...] | None = (1.0, 1.5, 2.0),
+    bootstrap: bool = False,
+    unadjusted_returns: pd.Series | None = None,
+    turnover_denom: str = "AGB",
+    set_context: bool = True,
+    factor_returns: pd.DataFrame | None = None,
+    factor_loadings: pd.DataFrame | None = None,
+    pos_in_dollars: bool = True,
+    header_rows: dict[str, Any] | None = None,
+    factor_partitions: Mapping[str, Iterable[str]] | None = FACTOR_PARTITIONS,
+    *,
+    return_fig: bool = False,
+    periods_per_year: int = 252,
+    num_samples: int = 1000,
+    n_samples: int = 1000,
+    random_seed: int | None = None,
+) -> PortfolioTearSheet | None:
+    """Compose complete supplied-account reports without a broker or provider.
+
+    Return the owned report with return_fig=True, otherwise display and return
+    None. Optional capacity, supplied-factor attribution and flat-opening FIFO
+    workflows retain their tables as well as figures. Missing inputs are not
+    fabricated. Scale and turnover choices reach all selected components.
+    """
+    from .account_sheet import _create_account_tear_sheet
+
+    return _create_account_tear_sheet(
+        simple=False,
+        returns=returns,
+        positions=positions,
+        transactions=transactions,
+        market_data=market_data,
+        benchmark_rets=benchmark_rets,
+        slippage=slippage,
+        live_start_date=live_start_date,
+        sector_mappings=sector_mappings,
+        round_trips=round_trips,
+        estimate_intraday=estimate_intraday,
+        hide_positions=hide_positions,
+        cone_std=cone_std,
+        bootstrap=bootstrap,
+        unadjusted_returns=unadjusted_returns,
+        turnover_denom=turnover_denom,
+        set_context=set_context,
+        factor_returns=factor_returns,
+        factor_loadings=factor_loadings,
+        pos_in_dollars=pos_in_dollars,
+        header_rows=header_rows,
+        factor_partitions=factor_partitions,
+        return_fig=return_fig,
+        periods_per_year=periods_per_year,
+        num_samples=num_samples,
+        n_samples=n_samples,
+        random_seed=random_seed,
+    )
+
+
 __all__ = [
+    "create_full_tear_sheet",
+    "create_simple_tear_sheet",
+    "create_txn_tear_sheet",
+    "create_position_tear_sheet",
+    "create_returns_tear_sheet",
     "create_capacity_tear_sheet",
     "create_perf_attrib_tear_sheet",
     "create_round_trip_tear_sheet",

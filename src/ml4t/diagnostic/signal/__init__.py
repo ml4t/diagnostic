@@ -33,6 +33,7 @@ from ml4t.diagnostic.signal._utils import (
     quantize_factor,
 )
 from ml4t.diagnostic.signal.core import analyze_prepared_signal, analyze_signal, prepare_data
+from ml4t.diagnostic.signal.event_study import SignalEventStudyResult, analyze_signal_event_study
 from ml4t.diagnostic.signal.events import (
     AlignedEventResult,
     EventReturnsResult,
@@ -44,6 +45,7 @@ from ml4t.diagnostic.signal.factor_regression import (
     FactorAlphaBetaResult,
     compute_factor_alpha_beta,
 )
+from ml4t.diagnostic.signal.information import SignalInformationResult, analyze_signal_information
 from ml4t.diagnostic.signal.panel import (
     MaxLossExceededError,
     PreparedSignalPanel,
@@ -68,6 +70,7 @@ from ml4t.diagnostic.signal.quantile import (
 )
 from ml4t.diagnostic.signal.result import SignalResult
 from ml4t.diagnostic.signal.returns import demean_signal_returns
+from ml4t.diagnostic.signal.returns_report import SignalReturnsResult, analyze_signal_returns
 from ml4t.diagnostic.signal.signal_ic import (
     compute_ic_summary,
     compute_signal_ic,
@@ -86,9 +89,15 @@ __all__ = [
     "analyze_signal",
     "analyze_prepared_signal",
     "SignalResult",
+    "SignalInformationResult",
+    "analyze_signal_information",
+    "SignalReturnsResult",
+    "analyze_signal_returns",
     "AlignedEventResult",
     "EventReturnsResult",
     "analyze_event_returns",
+    "SignalEventStudyResult",
+    "analyze_signal_event_study",
     "align_event_paths",
     "analyze_signal_events",
     # Data preparation

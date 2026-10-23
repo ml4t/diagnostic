@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from html import escape
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -33,31 +33,19 @@ _LOCATIONS = [
 ]
 
 
-def create_interesting_times_tear_sheet(
+def _prepare_interesting_times_tear_sheet(
     returns: pd.Series,
     benchmark_rets: pd.Series | None = None,
     periods: Mapping[str, tuple[date | datetime | str, date | datetime | str]] | None = None,
     legend_loc: str | int = "best",
-    return_fig: bool = False,
     *,
-    output_file: str | Path | None = None,
     theme: str | None = None,
-) -> str | list[go.Figure] | None:
-    """Render original event mean/min/max and net return paths without a Pyfolio runtime.
-
-    Returns offline HTML by default, or a list of per-event Plotly figures when
-    return_fig=True, rather than an implicitly displayed Matplotlib subplot grid.
-    output_file saves the complete tables/figures in either mode. NaNs remain in
-    event membership and are omitted only by the per-statistic reduction; the
-    shared cumulative-product kernel treats a sampled NaN as a neutral factor.
-    """
+) -> tuple[list[go.Figure], list[dict[str, Any]], dict[str, pd.DataFrame]] | None:
+    """Prepare original stress membership, tables and paths once for both views."""
     from ml4t.diagnostic.visualization.portfolio.regime_plots import _style
-    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
 
     from . import plotting, timeseries
 
-    if not isinstance(return_fig, bool | np.bool_):
-        raise TypeError("return_fig must be a boolean")
     location = (
         _LOCATIONS[legend_loc]
         if isinstance(legend_loc, int) and 0 <= legend_loc < len(_LOCATIONS)
@@ -163,6 +151,35 @@ def create_interesting_times_tear_sheet(
             }
         )
         figures.append(figure)
+    return figures, sections, {"Stress events (%)": statistics, "Stress coverage": coverage}
+
+
+def create_interesting_times_tear_sheet(
+    returns: pd.Series,
+    benchmark_rets: pd.Series | None = None,
+    periods: Mapping[str, tuple[date | datetime | str, date | datetime | str]] | None = None,
+    legend_loc: str | int = "best",
+    return_fig: bool = False,
+    *,
+    output_file: str | Path | None = None,
+    theme: str | None = None,
+) -> str | list[go.Figure] | None:
+    """Render original percent statistics and event paths through the existing renderer.
+
+    return_fig=True returns per-event Plotly figures. Explicit output_file saves
+    all tables in either mode. Metric-specific missingness and neutral missing
+    compounding remain unchanged; absent windows are not observed zero returns.
+    """
+    from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
+
+    if not isinstance(return_fig, bool | np.bool_):
+        raise TypeError("return_fig must be a boolean")
+    prepared = _prepare_interesting_times_tear_sheet(
+        returns, benchmark_rets, periods, legend_loc, theme=theme
+    )
+    if prepared is None:
+        return None
+    figures, sections, _ = prepared
     html = combine_figures_to_html(
         figures,
         title="Interesting times stress analysis",

@@ -144,3 +144,7 @@ repomix-output.xml
 
 # MkDocs build output
 site/
+
+# Captured public acquisition inputs and provider responses
+!examples/data/acquired_*.csv
+!tests/fixtures/acquisition/fred-dgs3mo.csv

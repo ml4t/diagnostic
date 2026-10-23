@@ -219,7 +219,7 @@ class PortfolioTearSheet:
             white-space: pre-wrap;
             overflow-wrap: anywhere;
         }}
-        .plot-container {{
+        body > .plot-container {{
             background: white;
             border-radius: 8px;
             padding: 15px;
@@ -457,6 +457,18 @@ def create_portfolio_dashboard(
             else "Transaction analysis was not requested.",
         },
     }
+    if analysis.input_data is not None:
+        flows = analysis.input_data.metadata.get("source", {}).get("capital_flows")
+        if flows is not None:
+            total = sum(event["cash_delta"] for event in flows)
+            availability["external_capital_flows"] = {
+                "status": "available",
+                "reason": f"{len(flows)} supplied external capital events; net cash flow {total:g} "
+                "in account currency. Reported NAV includes these flows; investment wealth "
+                "uses the producer's flow-adjusted net returns without subtracting fees again.",
+                "events": deepcopy(flows),
+                "net_cash_flow": total,
+            }
     prepared = None
     prepared_transactions = None
     if capacity is not None:

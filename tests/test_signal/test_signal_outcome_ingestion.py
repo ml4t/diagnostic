@@ -1,6 +1,7 @@
 """Actual native outcome captures feed one cleaner without a producer dependency."""
 
 import json
+import os
 from fractions import Fraction
 from pathlib import Path
 
@@ -13,6 +14,72 @@ from ml4t.specs import FeedSpec
 from ml4t.diagnostic.signal import SignalResult, prepare_signal_panel
 
 DATA = Path(__file__).parent / "data/outcomes"
+OBSERVATION_MASKS = {
+    "entry_row_observed",
+    "entry_price_observed",
+    "exit_row_observed",
+    "exit_price_observed",
+    "reference_row_observed",
+    "reference_price_observed",
+}
+
+
+@pytest.fixture(scope="module")
+def published_engineer():
+    from importlib.metadata import version
+
+    required = os.environ.get("ML4T_REQUIRED_OUTCOME_PRODUCER")
+    try:
+        from ml4t.engineer import labeling
+    except ImportError:
+        if required:
+            pytest.fail("Required published Engineer outcome producer is absent")
+        pytest.skip("Published Engineer is an optional producer qualification dependency")
+    selected = required or "0.2.0"
+    if version("ml4t-engineer") != selected:
+        if required:
+            pytest.fail(f"Expected published Engineer{selected}")
+        pytest.skip("This comparison qualifies published Engineer0.2.0")
+    return labeling
+
+
+def _produce_elapsed(labeling, missing, exit_bar):
+    factor, _, provenance = _capture(missing, exit_bar)
+    return labeling.forward_returns(
+        pl.read_ipc(DATA / ("prices-missing.arrow" if missing else "prices.arrow")).lazy(),
+        horizons={"1ns": "1ns", "2ns": "2ns"},
+        price_basis="raw",
+        entries=factor.select("timestamp", "asset"),
+        feed_spec=FeedSpec.from_mapping(provenance["feed_spec"]),
+        window_unit="elapsed",
+        available_at_col="known_at",
+        missing_price_policy="null",
+        tolerance="0ns",
+        endpoint_method="exit_bar" if exit_bar else "cumulative",
+    ).collect()
+
+
+def _produce_scheduled(labeling, name, lazy):
+    provenance = json.loads((DATA / "scheduled-provenance.json").read_text())
+    case = provenance["cases"][name]
+    prices = pl.read_ipc(DATA / f"{name}-prices.arrow")
+    factor = pl.read_ipc(DATA / f"{name}-factor.arrow")
+    actual = labeling.forward_returns(
+        prices.lazy() if lazy else prices,
+        horizons={name: case["horizon"]},
+        entries=factor.select("timestamp", "asset"),
+        window_unit=case["window_unit"],
+        feed_spec=FeedSpec.from_mapping(case["feed_spec"]),
+        price_basis="raw",
+    )
+    return actual.collect() if lazy else actual
+
+
+def _compare_published_observation_masks(actual, expected):
+    assert set(actual.columns) - set(expected.columns) == OBSERVATION_MASKS
+    assert all(actual.schema[name] == pl.Boolean for name in OBSERVATION_MASKS)
+    assert actual.select(list(OBSERVATION_MASKS)).null_count().row(0) == (0,) * 6
+    assert actual.select(expected.columns).equals(expected)
 
 
 def _capture(missing=False, exit_bar=False):
@@ -200,18 +267,7 @@ def test_optional_actual_pinned_producer_recreates_captured_samples(missing, exi
     factor, expected, provenance = _capture(missing, exit_bar)
     if version("ml4t-engineer") != provenance["producer_version"]:
         pytest.skip("this fixture pins its exact qualified native producer")
-    actual = labeling.forward_returns(
-        pl.read_ipc(DATA / ("prices-missing.arrow" if missing else "prices.arrow")).lazy(),
-        horizons={"1ns": "1ns", "2ns": "2ns"},
-        price_basis="raw",
-        entries=factor.select("timestamp", "asset"),
-        feed_spec=FeedSpec.from_mapping(provenance["feed_spec"]),
-        window_unit="elapsed",
-        available_at_col="known_at",
-        missing_price_policy="null",
-        tolerance="0ns",
-        endpoint_method="exit_bar" if exit_bar else "cumulative",
-    ).collect()
+    actual = _produce_elapsed(labeling, missing, exit_bar)
     assert actual.equals(expected)
     panel = prepare_signal_panel(
         factor,
@@ -300,20 +356,53 @@ def test_optional_installed_producer_recreates_actual_scheduled_captures(name, l
     if version("ml4t-engineer") != provenance["producer_version"]:
         pytest.skip("this fixture pins its exact qualified native producer")
     case = provenance["cases"][name]
-    prices = pl.read_ipc(DATA / f"{name}-prices.arrow")
     factor = pl.read_ipc(DATA / f"{name}-factor.arrow")
-    actual = labeling.forward_returns(
-        prices.lazy() if lazy else prices,
-        horizons={name: case["horizon"]},
-        entries=factor.select("timestamp", "asset"),
-        window_unit=case["window_unit"],
-        feed_spec=FeedSpec.from_mapping(case["feed_spec"]),
-        price_basis="raw",
-    )
-    if lazy:
-        actual = actual.collect()
+    actual = _produce_scheduled(labeling, name, lazy)
     assert actual.equals(pl.read_ipc(DATA / f"{name}-outcomes.arrow"))
     panel = prepare_signal_panel(
         factor, actual, horizon_col="horizon", feed_spec=case["feed_spec"], quantiles=2, max_loss=0
     )
     assert panel.analyze(min_assets=4).ic[name] == pytest.approx(-1.0)
+
+
+@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize("exit_bar", [False, True])
+def test_published_engineer_elapsed_outcomes_preserve_new_masks_without_extra_return_columns(
+    published_engineer, missing, exit_bar
+):
+    factor, expected, provenance = _capture(missing, exit_bar)
+    actual = _produce_elapsed(published_engineer, missing, exit_bar)
+    _compare_published_observation_masks(actual, expected)
+    original = actual.clone()
+    panel = prepare_signal_panel(
+        factor,
+        actual,
+        horizon_col="horizon",
+        feed_spec=provenance["feed_spec"],
+        quantiles=2,
+        max_loss=1 / 6,
+    )
+    result = panel.analyze(min_assets=2)
+    assert result.ic == pytest.approx({"1ns": 1.0, "2ns": 1.0})
+    assert result.outcome_data.select(actual.columns).equals(original)
+    assert actual.equals(original)
+
+
+@pytest.mark.parametrize("name", SCHEDULED_CASES)
+@pytest.mark.parametrize("lazy", [False, True])
+def test_published_engineer_scheduled_outcomes_preserve_new_masks_and_exact_endpoint_clocks(
+    published_engineer, name, lazy
+):
+    provenance = json.loads((DATA / "scheduled-provenance.json").read_text())
+    case = provenance["cases"][name]
+    factor = pl.read_ipc(DATA / f"{name}-factor.arrow")
+    actual = _produce_scheduled(published_engineer, name, lazy)
+    _compare_published_observation_masks(actual, pl.read_ipc(DATA / f"{name}-outcomes.arrow"))
+    original = actual.clone()
+    panel = prepare_signal_panel(
+        factor, actual, horizon_col="horizon", feed_spec=case["feed_spec"], quantiles=2, max_loss=0
+    )
+    result = panel.analyze(min_assets=4)
+    assert result.ic == pytest.approx({name: -1.0})
+    assert result.outcome_data.select(actual.columns).equals(original)
+    assert actual.equals(original)

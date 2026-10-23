@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/stefan-jansen/alphalens-reloaded",
+  "revision": "1bc181de4aafbe33437ed0e362ff96aa7ce20acd",
+  "source_directory": "src/alphalens/examples",
+  "license": "LICENSE",
+  "purpose": "Unmodified canonical notebook fixtures. Migrated execution retains original calculation cells; copied outputs do not establish Diagnostic qualification.",
+  "sha256": {
+    "overview.ipynb": "f18b00e4c0cf8d1496bf8fd56942c2dda50b83edc774672931222ed40eb130ae",
+    "intraday_factor.ipynb": "e62616677251e7e83364373109b7ae362c464b03b91c1e071642d87b89111edd",
+    "event_study.ipynb": "18efb5472ea0be379dec1a6a19f86813b4c6bedddffd084ee5a137a3f4544d4f",
+    "pyfolio_integration.ipynb": "c0cec834efaf204732aa9a3035847006ad3ece200e1fb893d40eed62cc5ed4ae"
+  }
+}

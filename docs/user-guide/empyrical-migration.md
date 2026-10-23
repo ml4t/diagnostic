@@ -586,8 +586,11 @@ existing [backtest report](backtest-tearsheets.md) function, builder or workspac
 export. It produces separate supplied-exposure, attribution, and loading-coverage
 sections. The report rejects a different return path or a serialized dictionary
 in place of the typed result before changing output. This supplied-holdings
-workflow remains distinct from the existing fitted factor regression and does
-not yet establish complete Pyfolio performance-attribution tear-sheet coverage.
+workflow remains distinct from the existing fitted factor regression. For the
+complete familiar performance-attribution sheet, use
+`compat.pyfolio.create_perf_attrib_tear_sheet` with supplied holdings and factors;
+the native and familiar routes retain their separately documented timing and
+missing-loading policies.
 
 The same native calculation also backs
 `ml4t.diagnostic.compat.pyfolio.perf_attrib.perf_attrib` and `compute_exposures`.
@@ -718,9 +721,9 @@ nonpositive scales and invalid probability domains are rejected. Expected
 shortfall is positive infinity for fitted shape at least one, as in the
 corrected Empyrical 0.7.0 workflow, not zero or a negative loss.
 
-This source implementation is still undergoing reference, artifact and report
-qualification. It does not yet replace the retained-Empyrical recommendation
-below or describe the published 0.1.9 distribution.
+These source APIs implement the named GPD methods and explicit failure statuses.
+They do not describe the published 0.1.9 distribution. Select and compare the
+tail definition before replacing an existing Empyrical calculation.
 
 ## Inspect benchmark fragility (unreleased)
 
@@ -784,9 +787,55 @@ input, Empyrical `stability_of_timeseries` returned `0.252783` and Diagnostic
 `.stability` returned `0.247302`. Empyrical fits cumulative log returns;
 Diagnostic fits cumulative simple wealth. Do not relabel one as the other.
 
-This assessment does not yet qualify Empyrical's `gpd_risk_estimates`,
-the complete `perf_attrib` report workflow or a general multi-asset matrix rolling contract as drop-in
-replacements. Diagnostic has other portfolio and factor analyses, but their
-inputs and result definitions must be checked separately. Keep Empyrical for
-those tasks until a specific migration is verified. All sections marked
+The GPD and supplied-holdings attribution routes above have explicit native
+and familiar methods. They do not define a general multi-asset matrix rolling
+contract: apply a documented one-portfolio helper separately to each column.
+Compare input alignment, tail definitions and attribution timing when migrating.
+All sections marked
 unreleased describe source work, not the published 0.1.9 distribution.
+
+## Replace path, UTC and warning utilities
+
+The small Empyrical/Pyfolio utilities need no new Diagnostic service. Use
+`pathlib` for directory creation and paths, pandas for the existing timestamp
+conversion, and `warnings` in a caller-owned deprecated wrapper.
+
+| Legacy helper | Replacement and retained behavior |
+|---|---|
+| `cache_dir()` | Honor `EMPYRICAL_CACHE_DIR`, otherwise `XDG_CACHE_HOME/empyrical`, otherwise `~/.cache/empyrical` if retaining the old cache location. A new application may choose its own explicit path. |
+| `data_path(name)` | Join the chosen cache root with `name` using `Path`. This chooses a path; it does not fetch or validate data. |
+| `ensure_directory(path)` | `Path(path).mkdir(parents=True, exist_ok=True)`. An existing regular file remains an error. |
+| `get_utc_timestamp(value)` | Localize a naive pandas timestamp/index to UTC; convert an aware value to UTC. Localizing a naive daily label is a declared convention, not a recovered exchange instant. |
+| `deprecated(...)` | Emit `warnings.warn(message, DeprecationWarning, stacklevel=2)` from the caller-owned compatibility wrapper. Warning filters still control visibility. |
+
+```python
+import os
+import tempfile
+import warnings
+from pathlib import Path
+
+import pandas as pd
+
+cache_root = Path(os.environ.get(
+    "EMPYRICAL_CACHE_DIR",
+    str(Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "empyrical"),
+))
+cache_file = cache_root / "returns.csv"
+with tempfile.TemporaryDirectory(prefix="migration-utils-") as scratch:
+    directory = Path(scratch) / "nested" / "reports"
+    directory.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "report.txt").write_text("supplied report", encoding="utf-8")
+
+naive_utc = pd.Timestamp("2025-01-02 12:00").tz_localize("UTC")
+aware_utc = pd.Timestamp("2025-01-02 07:00", tz="America/New_York").tz_convert("UTC")
+assert naive_utc == aware_utc
+with warnings.catch_warnings(record=True) as recorded:
+    warnings.simplefilter("always", DeprecationWarning)
+    warnings.warn("Use the named replacement", DeprecationWarning, stacklevel=2)
+    assert len(recorded) == 1 and recorded[0].category is DeprecationWarning
+print("Utility migration: explicit paths, UTC convention and caller warnings")
+```
+
+These operations neither reinterpret a trading calendar nor annualize returns.
+Acquisition and cache freshness remain the producer's responsibility.

@@ -110,7 +110,6 @@ def get_txn_vol(transactions: pd.DataFrame) -> pd.DataFrame:
 
 
 def _books(positions: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
-    _dated(positions, "positions")
     if positions.columns.has_duplicates:
         raise ValueError("position columns must identify distinct assets")
     totals = []
@@ -151,6 +150,7 @@ def get_turnover(
         raise ValueError("denominator must be AGB or portfolio_value")
     if denominator == "AGB" and "cash" not in positions.columns:
         raise KeyError("cash")
+    _dated(positions, "positions")
     gross, nav = _books(positions)
     if denominator == "AGB":
         nav = pd.Series(
@@ -183,7 +183,16 @@ def adjust_returns_for_slippage(
         or not np.isfinite(slippage_bps)
     ):
         raise ValueError("slippage_bps must be a finite real value")
+    _dated(positions, "positions")
     _, nav = _books(positions)
+    if nav.index.has_duplicates:
+        grouped = nav.groupby(level=0, sort=False)
+        if (grouped.nunique(dropna=False) > 1).any():
+            raise ValueError(
+                "duplicate position dates disagree on the closing NAV cost denominator"
+            )
+        # Tied exposure candidates are not additional return periods or duplicate costs.
+        nav = grouped.agg(lambda values: values.iloc[0])
     costs = get_txn_vol(transactions)["txn_volume"] * (0.0001 * slippage_bps)
     index = returns.index.union(nav.index).union(costs.index)
     frame = pl.DataFrame(

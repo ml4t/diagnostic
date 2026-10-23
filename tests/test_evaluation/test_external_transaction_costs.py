@@ -8,6 +8,41 @@ import pytest
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
 
 
+def test_supplied_initial_nav_survives_json_without_filling_later_missing_account_values():
+    from ml4t.diagnostic.evaluation.portfolio_analysis import PortfolioInputData
+
+    dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
+    analysis = PortfolioAnalysis.from_frames(
+        pd.Series([-0.001, 0.01, 0.01], index=dates),
+        valuations=pd.DataFrame({"date": dates, "equity": [999.0, None, 1019.0]}),
+        transactions=pd.DataFrame(
+            {
+                "timestamp": dates,
+                "asset": ["A"] * 3,
+                "quantity": [1.0] * 3,
+                "price": [100.0] * 3,
+                "commission": [1.0] * 3,
+                "slippage": [0.0] * 3,
+            }
+        ),
+        calendar=None,
+        initial_nav=1000,
+    )
+    timeline = analysis.compute_transaction_analysis().timeline
+    assert timeline["beginning_nav"].to_list() == [1000.0, 999.0, None]
+    assert timeline["observed_cost_return"].to_list() == [0.001, 1 / 999, None]
+    restored = PortfolioInputData.from_json(analysis.input_data.to_json())
+    assert restored.metadata["initial_nav"] == 1000
+
+
+@pytest.mark.parametrize("initial_nav", [-1.0, float("nan"), float("inf"), True])
+def test_invalid_initial_nav_is_rejected_before_account_analysis(initial_nav):
+    returns = pd.Series([0.01], index=pd.date_range("2025-07-07", periods=1))
+    with pytest.raises(ValueError, match="initial_nav"):
+        PortfolioAnalysis.from_frames(returns, initial_nav=initial_nav)
+    assert returns.iloc[0] == 0.01
+
+
 def _account(*, unknown_cost=False, missing_nav=False, calendar="CME_Equity"):
     dates = pd.date_range("2025-07-07", periods=3, tz="UTC")
     returns = pd.Series([0.01, -0.02, 0.03], index=dates)

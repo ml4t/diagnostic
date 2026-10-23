@@ -105,6 +105,7 @@ def main() -> None:
         "/LICENSE",
         "/pyproject.toml",
         "/docs/getting-started/quickstart.md",
+        "/docs/images/ml4t_ecosystem_workflow_color.png",
         "/examples/volatility_example.py",
         "/scripts/run_readme_quickstart.py",
         "/tests/test_documentation_examples.py",

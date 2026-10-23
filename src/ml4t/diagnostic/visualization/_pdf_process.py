@@ -4,26 +4,45 @@ import ctypes
 import json
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import psutil
 
 _BOOTSTRAP = """
-import os,sys,runpy,threading,traceback
+import asyncio,os,sys,runpy,threading,traceback
 assert sys.stdin.buffer.read(1)==b'1'
 diagnostic_stop=threading.Event()
 def snapshot_threads():
     while not diagnostic_stop.wait(20):
         lines=['PDF worker thread snapshot\\n']
+        loops=set()
         for identifier,frame in sys._current_frames().items():
             lines.append(f'Thread {identifier}:\\n')
             lines.extend(traceback.format_stack(frame))
+            cursor=frame
+            while cursor is not None:
+                candidate=cursor.f_locals.get('self')
+                if isinstance(candidate,asyncio.AbstractEventLoop): loops.add(candidate)
+                cursor=cursor.f_back
+        for loop in loops:
+            try:
+                for task in asyncio.all_tasks(loop):
+                    lines.append(f'Async task {task.get_name()}:\\n')
+                    awaiting=task.get_coro()
+                    while awaiting is not None:
+                        frame=getattr(awaiting,'cr_frame',getattr(awaiting,'gi_frame',None))
+                        if frame is not None: lines.extend(traceback.format_stack(frame,limit=1))
+                        awaiting=getattr(awaiting,'cr_await',getattr(awaiting,'gi_yieldfrom',None))
+            except Exception as error:
+                lines.append(f'Async task snapshot failed: {error!r}\\n')
         os.write(2,''.join(lines).encode('utf-8',errors='backslashreplace'))
 watcher=threading.Thread(target=snapshot_threads,daemon=True)
 watcher.start()
@@ -38,6 +57,35 @@ _RENDER_TIMEOUT = 90
 _CLOSE_TIMEOUT = 15
 _STATUS_READ_TIMEOUT = 2.0
 _logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _renderer_directory():
+    directory = Path(tempfile.mkdtemp())
+    primary = None
+    try:
+        yield directory
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                shutil.rmtree(directory)
+                break
+            except OSError as error:
+                if (
+                    isinstance(error, PermissionError)
+                    and sys.platform == "win32"
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.02)
+                    continue
+                if primary is None:
+                    raise
+                primary.add_note(f"PDF profile cleanup failed; retained {directory}: {error!r}")
+                break
 
 
 class _WindowsJob:
@@ -152,7 +200,16 @@ class _WindowsJob:
                         if self.api.IsProcessInJob(handle, self.handle, ctypes.byref(member))
                         else None
                     )
-                    handles.append((process.pid, handle, membership))
+                    identity = {}
+                    try:
+                        identity["name"] = process.name()
+                        identity["role"] = next(
+                            (arg for arg in process.cmdline() if arg.startswith("--type=")),
+                            "main",
+                        )
+                    except psutil.Error:
+                        pass
+                    handles.append((process.pid, handle, membership, identity))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
             self._check(self.api.TerminateJobObject(self.handle, 120))
@@ -174,7 +231,7 @@ class _WindowsJob:
                     )
                 time.sleep(0.05)
             # Accounting can reach zero before process teardown releases file handles.
-            for pid, handle, membership in handles:
+            for pid, handle, membership, identity in handles:
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
@@ -186,12 +243,13 @@ class _WindowsJob:
                     )
                     raise RuntimeError(
                         f"Owned PDF process {pid} not terminal: wait result {result}; "
+                        f"identity={identity}, "
                         f"member_before_termination={membership}, exit_code={observed_exit}, "
                         f"job_active={accounting.active}, job_zero_elapsed={job_zero_elapsed:.6f}, "
                         f"cleanup_elapsed={time.monotonic() - started:.6f}, wait_budget_ms={remaining_ms}"
                     )
         finally:
-            for _, handle, _ in handles:
+            for _, handle, _, _ in handles:
                 self.api.CloseHandle(handle)
             self.api.CloseHandle(self.handle)
 
@@ -287,7 +345,7 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
             for figure, path in zip(figures, paths, strict=True)
         ],
     }
-    with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryFile(mode="w+b") as output:
+    with _renderer_directory() as directory, tempfile.TemporaryFile(mode="w+b") as output:
         request_path = Path(directory) / "request.json"
         status_path = Path(directory) / "status.json"
         request_path.write_text(json.dumps(request, cls=PlotlyJSONEncoder), encoding="utf-8")
@@ -309,6 +367,8 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
         owner = None
         status: dict[str, Any] = {}
         failure = None
+        primary_error = None
+        cleanup_error = None
         sequence = 0
 
         def read_progress() -> None:
@@ -368,18 +428,50 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                 time.sleep(0.05)
             if status.get("completed") != len(paths) or status.get("phase") == "render_failed":
                 failure = failure or f"PDF rendering failed: {status.get('error', status)}"
+            if failure:
+                raise RuntimeError(failure)
+        except BaseException as error:
+            primary_error = error
+            if owner is not None and process.poll() is None:
+                try:
+                    request_path.with_suffix(".cancel").touch()
+                    process.wait(timeout=_CLOSE_TIMEOUT)
+                except subprocess.TimeoutExpired:
+                    pass
+                except Exception as cancel_error:
+                    primary_error.add_note(f"PDF graceful cancellation failed: {cancel_error!r}")
         finally:
             try:
                 if owner is not None:
                     owner.terminate()
+            except BaseException as error:
+                cleanup_error = error
             finally:
-                if process.poll() is None:
-                    process.kill()
-                process.wait(timeout=5)
-                if process.stdin is not None and not process.stdin.closed:
-                    process.stdin.close()
+                try:
+                    if process.poll() is None:
+                        process.kill()
+                    process.wait(timeout=5)
+                except BaseException as error:
+                    if cleanup_error is None:
+                        cleanup_error = error
+                    else:
+                        cleanup_error.add_note(f"PDF worker reap failed: {error!r}")
+                finally:
+                    if process.stdin is not None and not process.stdin.closed:
+                        process.stdin.close()
         if failure:
             output.seek(0)
-            raise RuntimeError(f"{failure}\n{output.read().decode('utf-8', errors='replace')}")
+            notes = getattr(primary_error, "__notes__", ())
+            primary_error = RuntimeError(
+                f"{failure}\n{output.read().decode('utf-8', errors='replace')}"
+            )
+            for note in notes:
+                primary_error.add_note(note)
+        if primary_error is not None:
+            if cleanup_error is not None:
+                primary_error.add_note(f"PDF process cleanup failed: {cleanup_error!r}")
+            raise primary_error from cleanup_error
+        if cleanup_error is not None:
+            raise cleanup_error
         if status.get("phase") != "closed":
             _logger.warning("Terminated owned PDF renderer after browser close failure: %s", status)

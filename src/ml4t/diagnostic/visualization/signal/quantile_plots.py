@@ -9,7 +9,7 @@ This module provides interactive Plotly visualizations for quantile analysis:
 
 from __future__ import annotations
 
-from datetime import datetime
+from html import escape
 from numbers import Real
 from typing import TYPE_CHECKING, Any
 
@@ -54,7 +54,7 @@ def plot_quantile_returns_bar(
     period : str | None
         Period to plot (e.g., "1D", "5D"). If None, uses first period.
     show_error_bars : bool, default True
-        Show standard error bars
+        Show defined standard errors. Missing errors have no cap; known zeros remain defined.
     show_spread : bool, default True
         Show top-bottom spread annotation
     theme : str | None
@@ -95,14 +95,25 @@ def plot_quantile_returns_bar(
     colors = _get_quantile_colors(n_quantiles, theme_config)
 
     # Create figure
+    period_lines = [escape(period[index : index + 24]) for index in range(0, len(period), 24)]
     fig = create_base_figure(
-        title=f"Mean Returns by Quantile ({period})",
+        title="Mean Returns by Quantile<br>(" + "<br>".join(period_lines) + ")",
         xaxis_title="Quantile",
         yaxis_title="Mean Forward Return",
         width=width or theme_config["defaults"]["bar_height"],
         height=height or theme_config["defaults"]["bar_height"],
         theme=theme,
     )
+    label_size = max(14, fig.layout.font.size or 14)
+    fig.update_layout(font_size=label_size)
+    fig.update_layout(
+        margin_t=max(
+            fig.layout.margin.t or 0,
+            (len(period_lines) + 1) * (fig.layout.title.font.size or 16) * 1.3 + 24,
+        )
+    )
+    fig.update_xaxes(tickfont_size=label_size, title_font_size=label_size)
+    fig.update_yaxes(tickfont_size=label_size, title_font_size=label_size)
 
     # Prepare data
     x_labels = quantile_labels
@@ -113,8 +124,9 @@ def plot_quantile_returns_bar(
     y_stderr = []
     for q, std in zip(quantile_labels, y_std, strict=False):
         count = counts.get(q, 1)
-        finite_std = std if np.isfinite(std) else 0.0
-        y_stderr.append(finite_std / np.sqrt(count) if count > 0 else 0)
+        y_stderr.append(std / np.sqrt(count) if count > 0 and np.isfinite(std) else None)
+    defined = [index for index, error in enumerate(y_stderr) if error is not None]
+    mixed = 0 < len(defined) < len(y_stderr)
 
     # Bar chart
     fig.add_trace(
@@ -125,14 +137,50 @@ def plot_quantile_returns_bar(
             error_y={
                 "type": "data",
                 "array": y_stderr,
-                "visible": show_error_bars,
+                "visible": bool(defined) and not mixed,
                 "color": "gray",
             }
             if show_error_bars
             else None,
-            hovertemplate=("Quantile: %{x}<br>Mean Return: %{y:.4f}<br><extra></extra>"),
+            customdata=[
+                [counts[q], format_finite(error, ".4%")]
+                for q, error in zip(quantile_labels, y_stderr, strict=True)
+            ],
+            hovertemplate=(
+                "Quantile: %{x}<br>Mean Return: %{y:.4f}<br>"
+                "Observations: %{customdata[0]}<br>SE: %{customdata[1]}<extra></extra>"
+            ),
             name="Mean Return",
+            legendgroup="quantile_means",
         )
+    )
+    if show_error_bars and mixed:
+        # Plotly draws a zero-length cap even for null bar errors. Draw only defined SEs.
+        fig.add_trace(
+            go.Scatter(
+                x=[x_labels[index] for index in defined],
+                y=[y_values[index] for index in defined],
+                mode="markers",
+                marker={"size": 0, "opacity": 0},
+                error_y={
+                    "type": "data",
+                    "array": [y_stderr[index] for index in defined],
+                    "visible": True,
+                    "color": "gray",
+                },
+                name="Defined standard errors",
+                legendgroup="quantile_means",
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+    fig.update_layout(
+        meta={
+            "uncertainty": "sample_standard_error",
+            "return_column": period,
+            "defined_error_count": len(defined),
+            "missing_error_count": len(y_stderr) - len(defined),
+        }
     )
 
     # Zero line
@@ -160,16 +208,18 @@ def plot_quantile_returns_bar(
             text=spread_text,
             xref="paper",
             yref="paper",
-            x=0.98,
-            y=0.98,
+            x=0,
+            y=-0.25,
             showarrow=False,
             bgcolor="rgba(255,255,255,0.8)" if theme != "dark" else "rgba(50,50,50,0.8)",
             bordercolor="gray",
             borderwidth=1,
             align="left",
-            xanchor="right",
+            xanchor="left",
             yanchor="top",
+            font={"size": 14},
         )
+        fig.update_layout(margin_b=max(180, fig.layout.margin.b or 0))
 
     # Format y-axis as percentage
     fig.update_yaxes(tickformat=".2%")
@@ -429,12 +479,17 @@ def plot_cumulative_returns(
 
     cum_returns = quantile_result.cumulative_returns[period]
     dates_raw = quantile_result.cumulative_dates
+    precise_keys = False
 
     # Convert dates or create fallback indices
     if dates_raw is not None and len(dates_raw) > 0:
         if isinstance(dates_raw[0], str):
+            import pandas as pd
+
             try:
-                dates: list[Any] = [datetime.fromisoformat(d) for d in dates_raw]
+                timestamps = [pd.Timestamp(value) for value in dates_raw]
+                dates: list[Any] = [value.isoformat() for value in timestamps]
+                precise_keys = any(value.value % 1_000_000 for value in timestamps)
             except ValueError:
                 dates = list(dates_raw)
         else:
@@ -496,6 +551,14 @@ def plot_cumulative_returns(
 
     # Format y-axis
     fig.update_yaxes(tickformat=".0%")
+    if precise_keys:
+        fig.update_xaxes(
+            type="category",
+            tickmode="array",
+            tickvals=dates,
+            ticktext=[str(index + 1) for index in range(len(dates))],
+            title_text="Observed date order",
+        )
 
     fig.update_layout(
         legend={
@@ -520,8 +583,9 @@ def plot_spread_timeseries(
     *,
     observations: pl.DataFrame | pd.DataFrame | None = None,
     upper_quantile: int | None = None,
-    lower_quantile: int = 1,
+    lower_quantile: int | None = None,
     bandwidth: float = 1.0,
+    exposure_scale: float = 1.0,
 ) -> go.Figure:
     """Plot actual dated bucket-mean differences and propagated sample errors.
 
@@ -561,6 +625,9 @@ def plot_spread_timeseries(
         the automatic top/bottom path requires at least two buckets.
     bandwidth : float
         Finite nonnegative multiplier of actual propagated standard errors.
+    exposure_scale : float
+        Explicit positive multiplier applied to both the difference and its SE.
+        The native default remains raw gross-two exposure; 0.5 selects unit gross.
 
     Returns
     -------
@@ -585,6 +652,13 @@ def plot_spread_timeseries(
         or bandwidth < 0
     ):
         raise ValueError("bandwidth must be a finite nonnegative real multiplier")
+    if (
+        isinstance(exposure_scale, bool)
+        or not isinstance(exposure_scale, Real)
+        or not np.isfinite(exposure_scale)
+        or exposure_scale <= 0
+    ):
+        raise ValueError("exposure_scale must be a finite positive real multiplier")
     periods = quantile_result.periods
     if not periods:
         raise ValueError("No return periods are available for empirical spread plotting")
@@ -608,14 +682,15 @@ def plot_spread_timeseries(
     methods = values["return_adjustment"].unique().to_list()
     if len(methods) > 1:
         raise ValueError("selected observations mix return-adjustment methods")
+    bucket_ids = quantile_result.quantile_ids or list(range(1, quantile_result.n_quantiles + 1))
     spread_data = compute_quantile_spread(
         values,
-        upper_quantile=quantile_result.n_quantiles if upper_quantile is None else upper_quantile,
-        lower_quantile=lower_quantile,
+        upper_quantile=max(bucket_ids) if upper_quantile is None else upper_quantile,
+        lower_quantile=min(bucket_ids) if lower_quantile is None else lower_quantile,
         include_standard_error=bool(show_confidence),
     ).sort("date")
-    spread = spread_data["spread"].cast(pl.Float64).to_numpy()
-    errors = spread_data["standard_error"].cast(pl.Float64).to_numpy()
+    spread = spread_data["spread"].cast(pl.Float64).to_numpy() * exposure_scale
+    errors = spread_data["standard_error"].cast(pl.Float64).to_numpy() * exposure_scale
     if spread_data["date"].dtype.is_temporal():
         timestamps = [pd.Timestamp(value) for value in spread_data["date"].to_pandas()]
         dates = [value.isoformat() for value in timestamps]
@@ -692,7 +767,7 @@ def plot_spread_timeseries(
     # Zero line
     fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
 
-    summary_text = f"Raw +1 upper / -1 lower (gross two)<br>Defined observed pairs: {int(np.isfinite(spread).sum())}"
+    summary_text = f"+{exposure_scale:g} upper / -{exposure_scale:g} lower (gross {2 * exposure_scale:g})<br>Defined observed pairs: {int(np.isfinite(spread).sum())}"
     if show_confidence:
         summary_text += f"<br>Band: {bandwidth:g} × independent propagated SE"
         if not np.isfinite(errors).all():
@@ -728,7 +803,10 @@ def plot_spread_timeseries(
         meta={
             "return_unit": "decimal",
             "sample_unit": "date_bucket_mean_difference",
-            "exposure_convention": "long_upper_short_lower_unit_each",
+            "exposure_convention": "long_upper_short_lower_unit_each"
+            if exposure_scale == 1
+            else "long_upper_short_lower_scaled",
+            "exposure_scale": float(exposure_scale),
             "error_method": "independent_propagation" if show_confidence else "unavailable",
             "bandwidth": float(bandwidth),
             "rolling_window_observations": window,

@@ -157,7 +157,7 @@ def test_portfolio_analysis_from_result_uses_feed_semantics_for_auto_alignment()
     assert [equity for _, equity in result.equity_curve] == [1000.0, 1000.0, 1040.0]
     assert result.to_daily_returns(session_aligned=False).to_list() == pytest.approx([0.0, 0.04])
     analysis = portfolio_analysis_from_result(result)
-    assert analysis.returns.tolist() == [0.0]
+    assert analysis.returns.tolist() == pytest.approx([40 / 1000])
 
 
 def test_compute_metrics_from_result_handles_empty_inputs():

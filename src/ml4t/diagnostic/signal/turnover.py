@@ -50,9 +50,10 @@ def _turnover_entries(
     for lag in lags:
         for bucket in quantiles:
             for index, day in enumerate(dates):
-                previous_day = dates[index - lag] if index >= lag else None
+                has_previous = 0 <= index - lag < len(dates)
+                previous_day = dates[index - lag] if has_previous else None
                 current = memberships.get((day, bucket), set())
-                previous = memberships.get((previous_day, bucket), set()) if index >= lag else None
+                previous = memberships.get((previous_day, bucket), set()) if has_previous else None
                 overlap = entered = rate = None
                 if current and previous:
                     overlap = len(current & previous)
@@ -171,7 +172,28 @@ def compute_rank_autocorrelation(
     from compute_autocorrelation's paired-sample Spearman and scalar averaging;
     that existing route and its default minimum of ten remain unchanged.
     """
-    selected_lags = _positive_selection(lags, "lags")
+    return _rank_autocorrelation(
+        data,
+        lags=_positive_selection(lags, "lags"),
+        min_obs=min_obs,
+        date_grid=date_grid,
+        date_col=date_col,
+        asset_col=asset_col,
+        factor_col=factor_col,
+    )
+
+
+def _rank_autocorrelation(
+    data: pl.DataFrame | pd.DataFrame,
+    *,
+    lags: Sequence[int],
+    min_obs: int = 2,
+    date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    date_col: str = "date",
+    asset_col: str = "asset",
+    factor_col: str = "factor",
+) -> pl.DataFrame:
+    selected_lags = list(lags)
     minimum = positive_count(min_obs, "min_obs")
     if minimum < 2:
         raise ValueError("min_obs must be at least two")
@@ -198,12 +220,13 @@ def compute_rank_autocorrelation(
     entries = []
     for lag in selected_lags:
         for index, day in enumerate(dates):
-            previous_day = dates[index - lag] if index >= lag else None
+            has_previous = 0 <= index - lag < len(dates)
+            previous_day = dates[index - lag] if has_previous else None
             current = cache.get(day, empty)
             previous = cache.get(previous_day, empty)
             paired = _pair_factors(current, previous)
             rho = None
-            if index < lag:
+            if not has_previous:
                 status = "insufficient_history"
             elif paired.height < minimum:
                 status = "insufficient_observations"
@@ -219,10 +242,10 @@ def compute_rank_autocorrelation(
                     "autocorrelation": rho,
                     "n_obs": paired.height,
                     "n_current": current.height,
-                    "n_previous": previous.height if index >= lag else None,
+                    "n_previous": previous.height if has_previous else None,
                     "current_universe_size": universe.get(day, 0),
                     "previous_universe_size": universe.get(previous_day, 0)
-                    if index >= lag
+                    if has_previous
                     else None,
                     "status": status,
                 }
@@ -287,7 +310,28 @@ def compute_quantile_turnover(
     Returns canonical date, quantile, lag, turnover, per-leg membership/universe
     counts, overlap/entrants, status, method and explicit clock/lag-unit metadata.
     """
-    selected_lags = _positive_selection(lags, "lags")
+    return _quantile_turnover(
+        data,
+        lags=_positive_selection(lags, "lags"),
+        quantiles=quantiles,
+        date_grid=date_grid,
+        date_col=date_col,
+        asset_col=asset_col,
+        quantile_col=quantile_col,
+    )
+
+
+def _quantile_turnover(
+    data: pl.DataFrame | pd.DataFrame,
+    *,
+    lags: Sequence[int],
+    quantiles: Sequence[int] | None = None,
+    date_grid: pl.DataFrame | pd.DataFrame | None = None,
+    date_col: str = "date",
+    asset_col: str = "asset",
+    quantile_col: str = "quantile",
+) -> pl.DataFrame:
+    selected_lags = list(lags)
     values = _signal_frame(data)
     _validate_observation_keys(values, [date_col, asset_col], "turnover observations")
     if quantile_col not in values.columns:

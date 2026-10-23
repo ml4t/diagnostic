@@ -87,6 +87,8 @@ def _rolling_ols_vectorized(
     y: np.ndarray,
     X: np.ndarray,
     window: int,
+    *,
+    minimum_norm: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Vectorized rolling OLS using cumulative sum trick.
 
@@ -97,6 +99,10 @@ def _rolling_ols_vectorized(
     ----------
     y : (T,) array
     X : (T, K) array of factor returns (no intercept)
+    minimum_norm : bool
+        Use centered least squares for coefficient-only compatibility fits,
+        including rank-deficient windows. The native default retains undefined
+        singular windows and its existing normal-equation calculation.
     window : int
 
     Returns
@@ -141,7 +147,19 @@ def _rolling_ols_vectorized(
         Xty_win = Xty_cum[e] - Xty_cum[s]
 
         try:
-            params = np.linalg.solve(XtX_win, Xty_win)
+            if minimum_norm:
+                from scipy.linalg import lstsq
+
+                sample_x, sample_y = X[s:e], y[s:e]
+                mean_x, mean_y = sample_x.mean(axis=0), sample_y.mean()
+                coefficients = lstsq(
+                    sample_x - mean_x,
+                    sample_y - mean_y,
+                    cond=max(sample_x.shape) * np.finfo(float).eps,
+                )[0]
+                params = np.r_[mean_y - mean_x @ coefficients, coefficients]
+            else:
+                params = np.linalg.solve(XtX_win, Xty_win)
         except np.linalg.LinAlgError:
             continue
 

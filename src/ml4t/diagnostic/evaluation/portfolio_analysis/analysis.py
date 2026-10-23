@@ -36,6 +36,7 @@ from ml4t.diagnostic.metrics import sharpe_ratio, sortino_ratio
 from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
 
 from .capacity import CapacityAnalysisResult, analyze_capacity
+from .drawdowns import _identify_drawdown_periods
 from .fifo import RoundTripResult, reconstruct_round_trips
 from .frame_inputs import PortfolioInputData, normalize_portfolio_frames
 from .holdings import HoldingsAnalysisResult, analyze_holdings, position_snapshot
@@ -212,6 +213,7 @@ class PortfolioAnalysis:
         periods_per_year: int = 252,
         risk_free: float = 0.0,
         initial_timestamp: date | datetime | None = None,
+        initial_nav: float | None = None,
     ) -> PortfolioAnalysis:
         """Normalize dated supplied account frames without a producer dependency.
 
@@ -228,6 +230,9 @@ class PortfolioAnalysis:
         or infer schedule completeness. Explicit None disables schedules. Use
         transaction_timestamp_col when fills and snapshots have different keys.
         Existing constructor annualization/risk-free defaults remain unchanged.
+        initial_nav supplies only the known capital before the first return for
+        transaction normalization; it does not create a timestamp or fill later
+        missing valuations. An explicit initial valuation must agree with it.
         """
         periods_per_year = positive_integer(periods_per_year, "periods_per_year")
         risk_free = annual_risk_free(risk_free)
@@ -248,6 +253,7 @@ class PortfolioAnalysis:
             complete_snapshots=complete_snapshots,
             snapshot_kind=snapshot_kind,
             positions_format=positions_format,
+            initial_nav=initial_nav,
         )
         observed, relative = inputs.returns, inputs.benchmark
         instance = cls(
@@ -1004,53 +1010,7 @@ class PortfolioAnalysis:
         threshold: float,
     ) -> list[DrawdownPeriod]:
         """Identify individual drawdown periods."""
-        periods = []
-
-        in_drawdown = False
-        peak_idx = -1
-        valley_idx = 0
-        valley_depth = 0.0
-
-        for i, dd in enumerate(underwater):
-            if not in_drawdown and dd >= 0:
-                peak_idx = i
-            elif dd < -threshold and not in_drawdown:
-                # Start of drawdown
-                in_drawdown = True
-                valley_idx = i
-                valley_depth = dd
-            elif in_drawdown:
-                if dd < valley_depth:
-                    # New valley
-                    valley_idx = i
-                    valley_depth = dd
-                elif dd >= 0:
-                    # Recovery
-                    period = DrawdownPeriod(
-                        peak_date=(self._initial_timestamp if peak_idx < 0 else dates[peak_idx]),
-                        valley_date=dates[valley_idx],
-                        recovery_date=dates[i],
-                        depth=valley_depth,
-                        duration_days=valley_idx - peak_idx,
-                        recovery_days=i - valley_idx,
-                    )
-                    periods.append(period)
-                    in_drawdown = False
-                    peak_idx = i
-
-        # Handle ongoing drawdown
-        if in_drawdown:
-            period = DrawdownPeriod(
-                peak_date=(self._initial_timestamp if peak_idx < 0 else dates[peak_idx]),
-                valley_date=dates[valley_idx],
-                recovery_date=None,
-                depth=valley_depth,
-                duration_days=valley_idx - peak_idx,
-                recovery_days=None,
-            )
-            periods.append(period)
-
-        return periods
+        return _identify_drawdown_periods(underwater, dates, threshold, self._initial_timestamp)
 
     def compute_holdings_attribution(
         self,

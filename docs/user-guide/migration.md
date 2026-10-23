@@ -12,6 +12,102 @@ tasks name their optional dependencies below.
 For selected performance metrics, see the separate
 [Empyrical migration assessment](empyrical-migration.md).
 
+## Choose a migration route
+
+The development source after 0.1.9 provides the following complete analytical
+report families. Start with the familiar adapter to retain a notebook's calling
+pattern, or use the native result when you need its samples, validation and
+serialization. The adapters share native calculations; they do not install a
+second analytical engine or require a Reloaded package at runtime.
+
+`from ml4t.diagnostic import compat` exposes `compat.alphalens`,
+`compat.empyrical` and `compat.pyfolio`. Pyfolio loads when requested;
+its numerical calls do not require Plotly or a visualization extra.
+
+| Existing workflow | Diagnostic route | Runnable migration |
+|---|---|---|
+| Alphalens returns, summary, full, information, turnover, event-returns and event-study sheets | `ml4t.diagnostic.compat.alphalens.tears` | [Original Alphalens notebooks](#run-preserved-original-alphalens-notebooks), including the factor-to-Pyfolio journey |
+| Pyfolio returns, positions, transactions, simple/full accounts, attribution, capacity, round trips and historical-event sheets | `ml4t.diagnostic.compat.pyfolio` | [Complete account reports](#compose-a-familiar-simple-or-full-account-report) and [original Pyfolio notebooks](#replay-the-original-pyfolio-analytical-notebooks) |
+| Empyrical metrics, benchmarks, rolling windows, attribution and tail risk | `ml4t.diagnostic.compat.empyrical` | [Metric methods, units and shape contracts](empyrical-migration.md) |
+| Acquisition, factor preparation and execution outputs | Existing Data providers, Engineer outcomes and Backtest account captures | [Acquisition-to-report recipe](#acquire-inputs-with-data-then-analyze-them-in-diagnostic), [price preparation](#prepare-the-same-sample-directly-from-prices) and [actual Backtest capture](#consume-actual-backtest-account-capture) |
+
+Compatibility is analytical, not identical presentation. Figures are Plotly;
+reports use HTML/notebook display and explicit export methods instead of mutable
+Matplotlib axes, seaborn global styles or printed terminal tables. Requested
+panels still require their real inputs: returns alone cannot supply holdings,
+executed fills, factor loadings or market volume. Synthetic factor portfolios
+remain research outcomes, not executed account P&L. Each recipe below names
+its reference definitions, required inputs and reconciled numerical differences.
+
+Native defaults are not silently changed to match legacy definitions. For example,
+grouped IC is separate from group-neutral weights, an observation lag is not an
+exchange-session lag, and periodic risk-free returns are not annual yield quotes.
+Use the adapter's named reference profile or the native explicit method described
+in the relevant section. The published 0.1.9 wheel does not include these new routes.
+
+### Continue joint rolling-factor regression
+
+For Pyfolio's `timeseries.rolling_regression`, change the import to
+`ml4t.diagnostic.compat.pyfolio.timeseries`. This fits all factors jointly;
+separate rolling beta calls do not remove confounding between factors.
+Run the supplied example without a Reloaded dependency:
+
+```bash
+uv run python examples/pyfolio_rolling_regression.py
+```
+
+The recipe has seven fitted windows with final coefficients `alpha=0.001`,
+`market=1.5`, `style=-0.75`. Alpha is a periodic decimal return and betas are
+dimensionless. The executable reference cases compare Pyfolio 0.10.0 and
+Empyrical 0.7.0 on pandas 2.3.3, including nonconstant fitted coefficients,
+missing returns, reversed factor input order and rank-deficient designs.
+
+The familiar `rolling_window=3` selects four observations, including both
+endpoints. Missing returns are removed before selecting each interval. The
+adapter checks each factor's missing fraction against `nan_threshold`, then
+fits only rows complete across all factors in that interval. Missing factor
+date labels raise; they do not silently compress the clock. Warmup remains
+undefined on the surviving return index. Constant or collinear factor fits use
+centered minimum-norm coefficients; a single complete row has zero slopes and
+its return as intercept. These are estimates, not evidence of identified risk
+exposures. Output coefficients are numeric Float64, rather than the reference's
+initially object-typed table. Invalid thresholds and ambiguous duplicate keys
+raise before caller inputs change.
+
+Native `evaluation.factor.compute_rolling_exposures` remains available for
+its explicit `FactorData` inputs, expanding windows, R-squared and stability
+diagnostics. Its default window counts the complete rows after native input
+filtering, and singular windows remain unavailable. Neither route changes
+native annualization or silently subtracts a risk-free series. Supply the
+intended raw or excess response and factors explicitly.
+
+The same `timeseries` adapter exposes the original scalar metrics, alpha/beta,
+`cum_returns` and `aggregate_returns` through the existing Empyrical adapters.
+`omega_ratio` retains the original `annual_return_threshhold` spelling and its
+annual threshold convention. `common_sense_ratio` follows the original code,
+`tail_ratio * (1 + annual_return)`, despite its old gain-to-pain description.
+`normalize` divides a supplied path by its first row; it does not compound
+periodic returns. `var_cov_var_normal` delegates to the native Gaussian cash
+VaR definition and validates its nondegenerate confidence/scale inputs. These
+routes do not alter the native defaults described in the metric guide.
+
+### Replace presentation and error helpers
+
+These supporting helpers do not require another analytical implementation.
+Preserve the calculations and change the surrounding presentation or error handling:
+
+| Legacy helper | Migration |
+|---|---|
+| `plotting.customize`, `plotting_context`, `axes_style` | Remove the Matplotlib/seaborn decorator or context manager. Select `theme=` on the report, or update the returned Plotly figure's layout. No global Matplotlib style is changed. |
+| `tears.GridFigure` | Use the complete report composer or the returned Plotly figures. The Matplotlib subplot-allocation class is not reproduced. |
+| `utils.print_table` | For terminal output use `table.to_string()`. For notebooks use `IPython.display.HTML(table.to_html(escape=True))`; select numeric display formatting explicitly. This changes presentation, not the table's values or units. |
+| `utils.rethrow` | Inside the original exception handler call `error.add_note(context)` and use a bare `raise`. This preserves the exception's type and cause instead of wrapping or suppressing it; the contextual note is separate from its original message. |
+
+The preparation adapter retains `MaxLossExceededError`, `NonMatchingTimezoneError`
+and `non_unique_bin_edges_error`. Internal reference helpers for NaN reductions,
+IC column selection and frequency padding are implementation details of the
+native calculations and adapters, not additional public services to migrate.
+
 One reason to evaluate Diagnostic beyond these matching values is its
 [purged cross-validation workflow](cross-validation.md), which combines
 chronological folds with multiple-trial Sharpe assessment. For portfolio
@@ -52,6 +148,74 @@ uv run --with 'pyfolio-reloaded==0.9.9' --with 'alphalens-reloaded==0.4.6' \
   python examples/legacy_migration_comparison.py --task all
 ```
 
+## Acquire inputs with Data, then analyze them in Diagnostic
+
+Use this route when migrating an Empyrical/Pyfolio notebook that downloaded
+prices or Fama-French factors before analyzing returns. Acquisition and caching
+remain in Data. Diagnostic consumes the returned frames through
+`PortfolioAnalysis.from_frames` and the familiar complete report adapter; it
+does not implement another provider, cache, broker or returns engine.
+
+The recipe uses Data 0.3.0, yfinance 1.7.0 and pandas 3.0.6. Its tests replay
+pinned authentic source responses through Data's actual providers and caches,
+then consume those outputs through Diagnostic's complete reports. Captured
+responses do not establish live service availability or historical publication
+instants.
+
+From a source checkout containing this example, replay the bundled,
+provider-derived CSVs without Data, Reloaded packages or network access:
+
+```bash
+uv run python examples/acquisition_to_portfolio_report.py --output acquisition-report.html
+```
+
+For an explicit live request, install Data's optional Yahoo dependency and run:
+
+```bash
+uv run --with 'ml4t-data[yahoo]==0.3.0' python examples/acquisition_to_portfolio_report.py --fetch --symbol SPY --start 2024-01-02 --end 2024-01-06 --output acquisition-report.html
+```
+
+The original acquisition names live in `ml4t.data.compat.empyrical`:
+`get_symbol_returns_from_yahoo`, `get_fama_french`, `get_treasury_yield` and
+`get_returns_cached`. The example delegates to them, then calls Diagnostic's
+`create_full_tear_sheet` with the supplied returns and benchmark. It also
+returns a native `PortfolioAnalysis` for further analysis without a report.
+
+Yahoo's request end is exclusive; the Fama-French and FRED bounds are inclusive.
+Yahoo uses adjusted closes and preserves missing observations. The CSV cache
+names include symbol and requested bounds. Its freshness follows Data's file
+mtime contract, not historical publication time. FRED is fetched explicitly on
+each `--fetch` call; it is not part of those CSV caches. For reproducible offline
+analysis, retain acquired inputs or use the bundled captured-input route.
+
+Data's native Parquet factor cache is separate from the legacy CSV helper.
+The producer regressions consume its actual returned factor frames through
+the same full report after miss, hit, refresh and offline stale-policy checks.
+`FamaFrenchProvider.fetch` requires explicit `allow_stale=True` to accept an
+offline cache older than the requested `max_age`.
+
+Fama-French `Mkt-RF`, `RF` and factor columns are decimal periodic returns.
+The total-market benchmark is `Mkt-RF + RF`, not market excess alone. The separate
+FRED `DGS3MO` column is an annual-percent quoted yield. A quote of `5.46` is not
+a daily return of `0.0546`, and the recipe does not automatically turn it into a
+periodic risk-free series. The report retains the familiar zero-RF statistics;
+an additional labelled Sharpe uses the actual dated periodic `RF` observations.
+Conflicting declared units raise rather than silently relabelling the input.
+
+The captured example produces three return observations, four factor rows and
+three Treasury quotes. It does not create a Treasury observation on January 5.
+Ending wealth is independently determined by adjusted prices:
+`453.09259033203125 / 457.67266845703125 = 0.9899926772108962`.
+The dated-RF Sharpe is approximately `-11.7810178587`, dimensionless at 252
+observations per year. Missing positions and transactions remain not requested;
+no portfolio holdings or executed fills are inferred from a price series.
+
+This route adds native dated-input validation and a reusable native analysis
+object to the familiar report workflow. See the existing dated portfolio-input
+and complete-account sections for the independently exercised input validation,
+annualization and export contracts. It is not a claim of live-provider fidelity,
+historical availability or complete Reloaded replacement.
+
 ## Alphalens factor analysis
 
 [Alphalens](https://github.com/quantopian/alphalens/blob/77084f1e4c2c0be407e032d444fb19e4be4b0f37/README.rst) accepts
@@ -83,13 +247,13 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 | Dated spread/error chart | `plot_spread_timeseries(result.to_quantile_result(), observations=...)` | Unreleased after 0.1.9. Uses actual dated bucket means and independent propagated errors, with explicit pair, bandwidth and observation-window controls. No cumulative-increment reconstruction or inferred confidence coverage. |
 | Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
 | Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
-| Factor alpha and beta | `panel.factor_alpha_beta(annualization_factors=...)` | Unreleased after 0.1.9. Reuses factor returns and OLS against the same universe's equal-asset mean. Retains dated joint samples/counts and explicitly compounded annual alpha; constant benchmarks and unavailable dates remain explicit. Does not add a complete returns table or tear sheet. |
+| Factor alpha and beta | `panel.factor_alpha_beta(annualization_factors=...)` | Unreleased after 0.1.9. Reuses factor returns and OLS against the same universe's equal-asset mean. Retains dated joint samples/counts and explicitly compounded annual alpha; constant benchmarks and unavailable dates remain explicit. The owned returns/report composition below includes these samples and tables. |
 | Selected-factor cumulative wealth | `panel.factor_cumulative_returns(return_column=..., quantiles=..., groups=...)` | Unreleased after 0.1.9. Selects rows before shared weighting, then compounds one supplied horizon in observation order. Retains actual returns/counts and a labelled flat-wealth policy for unavailable returns. Not self-financing daily holdings or an inferred calendar. |
 | Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
 | Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
 | Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | Unreleased after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
-| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` | Unreleased after 0.1.9, persistence-enabled analyses also retain dated turnover/rank tables and explicit method/count summaries. Quantile cumulative paths and complete reference chart/report composition remain unavailable. |
-| Dated holdings and the complete Alphalens tear sheet | No complete equivalent | Analytical factor weights and supplied-return contributions do not establish capital/expiry accounting, event paths or the complete tear sheet. |
+| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` for selected components; `generate_signal_report(...)` for owned composition | Unreleased after 0.1.9. The owned composer renders actual returns, information and dated persistence results, including requested mathematical quantile paths. Familiar report routes and their option/sample differences are described below. |
+| Expiring allocations and daily portfolio interchange | `panel.positions(...)`, `panel.to_portfolio_inputs(...)`, `compat.alphalens.performance.create_pyfolio_input(...)` | Unreleased after 0.1.9. Explicit expiry, capital and daily conventions remain distinct from executed holdings/account P&L. Native end-of-day and familiar event-sum definitions are named separately. |
 
 </div>
 
@@ -217,8 +381,9 @@ statistics without changing those native defaults. Turnover is disabled by
 default on this prepared route; enabling it uses the existing observed-date
 lag method. Grouped IC, adjusted quantile statistics and factor weights require
 the explicit owned-panel methods below; they are not enabled by this shortcut.
-Complete reports remain unsupported by this route. No full-replacement claim follows from retaining a
-prepared panel.
+This shortcut does not itself compose a complete report. For that workflow use
+the [owned result composition](#compose-owned-return-information-and-turnover-results)
+or the familiar tear-sheet adapters listed above.
 
 Timestamp grouping can also differ. On a prepared sample containing three
 distinct nanosecond instants, Alphalens 0.4.6 regularizes IC to its inferred
@@ -272,8 +437,9 @@ displays `CI unavailable` without a band; `show_significance=False` omits both.
 Alphalens Reloaded 0.4.6 retains per-date undefined IC values in its table.
 The native facade still extracts finite IC dates before this bridge. Compare
 the same explicitly selected dates and finite observations; the bridge is not
-a complete dated-status/count export or a union-clock report. Calendar/bar
-semantics and full report composition remain separate accepted work. The
+a complete dated-status/count export or a union-clock report. Use the
+[complete information analysis](#complete-information-analysis-report) for its
+owned samples and the [shared time contract](cv-configuration.md) for calendar selection. The
 [runnable supplied-panel example](https://github.com/ml4t/diagnostic/blob/0ef65182e33fb661cb9cb8ccaf3aa0d01d123a63/examples/signal_panel_cleaning.py)
 checks report means against their actual series and prints the report summaries.
 
@@ -361,7 +527,8 @@ remain analyzable without invented daily lags. For explicit observation lags use
 `panel.quantile_turnover(lags=(1, 2))`. The executable
 `examples/signal_panel_cleaning.py --plots` includes supplied intraday outcomes,
 sparse cut buckets and actual plotted bucket means. Native pooled/equal-date/report
-differences below still apply; this change does not complete all seven tear sheets.
+differences below still apply. Complete sheets use the explicitly selected
+methods in the [owned report composition](#compose-owned-return-information-and-turnover-results).
 
 The installed-artifact comparison with Alphalens 0.5.0 uses shared `30m`, `1ns`
 and `1D1h` outcome columns, nanosecond keys, ordinary/sparse cut buckets and a
@@ -524,7 +691,8 @@ Preparation comparisons use corrected Alphalens 0.5.0, including retained keys,
 missingness, bucket/group membership, cumulative versus terminal-bar returns and
 filter options. Integer-tick/Float32 accuracy is checked against independent
 fractions rather than reproducing legacy cancellation. These preparation calls
-do not yet provide every performance function or all seven legacy report routes.
+do not establish every performance/plotting adapter or original notebook workflow.
+The report compositions below reuse this preparation without another cleaner.
 The keyword-only `reference_version` defaults to `"0.5.0"`; `"0.4.6"` explicitly
 selects the frozen profile without global state. Actual 0.4.6 comparisons match
 daily price returns, retained keys and buckets for cumulative and terminal-bar
@@ -540,6 +708,16 @@ Polars 2.0.0, SciPy 1.18.1 and Plotly 7.1.0. A separate consumer/reference profi
 uses pandas 2.3.3, NumPy 2.2.6, Polars 1.36.1 and SciPy 1.17.0. The pinned Engineer
 wheel requires Polars 2, so its live regeneration is not claimed at that floor;
 standalone ingestion of its frozen captures needs no Engineer installation.
+
+Published Engineer 0.2.0 also regenerates the retained nanosecond, missing-price,
+cumulative/exit-bar, session-label, expected-bar, overnight and early-close
+captures. Their original fields, keys, endpoints and values match exactly.
+That producer adds six Boolean row/price-observation flags. Diagnostic preserves
+them in `outcome_data` and JSON rather than dropping them or treating them as
+additional return horizons. The historical capture metadata continues to name
+its original development producer; it is not relabelled as a 0.2.0 capture.
+The dedicated published-producer checks require all twelve actual cases, with
+no optional-producer skips accepted in that profile.
 
 The same namespace also provides explicit legacy clock/selector conversions:
 `backshift_returns_series`, `get_forward_returns_columns`,
@@ -563,6 +741,234 @@ Negative duration formatting uses an exact global sign: the independent `-1ns`
 round trip corrects Alphalens 0.5.0's mixed-sign component string. Floored day
 components are a separate utility; automatic turnover selects only positive
 exact-day labels, never a zero lag inferred from `30m` or `1ns`.
+
+### Keep familiar IC and quantile-statistics calls
+
+Unreleased after 0.1.9, the analytical adapters reuse the native IC, equal-date
+quantile statistics and propagated-error kernels. Continue from `adapter_clean`
+above with a changed import:
+
+```python
+# Previously: from alphalens import performance
+from ml4t.diagnostic.compat.alphalens import performance
+
+adapter_ic = performance.factor_information_coefficient(adapter_clean)
+adapter_mean_ic = performance.mean_information_coefficient(adapter_clean)
+adapter_means, adapter_errors = performance.mean_return_by_quantile(
+    adapter_clean, by_date=True, demeaned=False,
+)
+adapter_spread, adapter_spread_error = performance.compute_mean_returns_spread(
+    adapter_means, 2, 1, adapter_errors,
+)
+assert np.allclose(adapter_ic["1D"], 1)
+assert np.allclose(adapter_spread["1D"], 0.05)
+assert adapter_spread_error["1D"].isna().all()
+print("Alphalens statistical adapters: IC and explicit spread exposure checked")
+```
+
+IC and its mean/deviation are dimensionless. Quantile means and spreads are
+decimal returns; their errors are not fabricated for singleton samples.
+Corrected `reference_version="0.5.0"` returns a unit-gross spread, one half of
+the upper-minus-lower return and propagated error. Explicit `"0.4.6"` retains
+the historical raw gross-two difference. Native `compute_quantile_spread`
+keeps its existing raw-difference default. No input is re-bucketed or mutated.
+
+The same namespace exposes `factor_alpha_beta`, using the native same-universe
+regression and compounded intercept. The following supplied outcomes define an
+independently known beta of 0.6 and a per-observation intercept of 0.001:
+
+```python
+regression_dates = pd.bdate_range("2025-02-03", periods=3, tz="UTC")
+regression_index = pd.MultiIndex.from_product(
+    [regression_dates, ["A", "B"]], names=["date", "asset"],
+)
+universe_returns = np.array([-0.03, 0.01, 0.04])
+regression_data = pd.DataFrame({
+    "factor": np.tile([1.0, 0.0], 3),
+    "1D": np.column_stack([
+        0.001 + 0.6 * universe_returns,
+        -0.001 + 1.4 * universe_returns,
+    ]).ravel(),
+}, index=regression_index)
+adapter_regression = performance.factor_alpha_beta(regression_data, demeaned=False)
+assert np.isclose(adapter_regression.loc["beta", "1D"], 0.6)
+assert np.isclose(
+    adapter_regression.loc["Ann. alpha", "1D"], np.expm1(np.log1p(0.001) * 252),
+)
+print("Familiar factor regression: same-universe beta and compounded annual alpha")
+```
+
+Legacy duration labels default to a 252-day year, so `5D` uses 50.4, not 252.
+Explicit `annualization_factors={...}` selects other horizon scales. Supplied
+`returns=` bypasses factor weighting and may omit the unused factor column;
+dates align by key, and a Series selects the first forward-return column without
+renaming the caller's Series. The returned pandas rows are `Ann. alpha` and
+`beta`. Neither reference actually supplies its docstring's claimed t-statistic.
+All-missing outcomes and constant benchmarks remain unidentified rather than
+copying frozen zero-return or zero-beta behavior. Use the
+[owned native regression](#inspect-factor-alpha-and-beta-on-the-same-universe)
+to inspect paired observations, finite counts, rank and unavailability reasons.
+
+The overview notebook's direct persistence calls also use the native membership
+and full-date rank kernels:
+
+```python
+adapter_membership = performance.quantile_turnover(adapter_clean["factor_quantile"], 1)
+adapter_rank = performance.factor_rank_autocorrelation(adapter_clean, period=1)
+assert np.allclose(adapter_membership.iloc[1:], 0)
+assert np.allclose(adapter_rank.iloc[1:], 1)
+print("Familiar persistence: actual bucket membership and full-date ranks")
+```
+
+With a declared index frequency, shifts count positions on that grid. Without
+one, the corrected profile uses observed bucket dates for turnover and observed
+factor dates for rank correlation. The explicit frozen `reference_version="0.4.6"`
+profile inserts its historical daily grid. Missing comparisons remain unknown.
+Zero and negative legacy shifts retain self and future comparisons; they do not
+establish causal features. Native public persistence still requires positive lags.
+Pandas frequency metadata and all-unavailable object dtype follow the legacy
+sparse/full-grid alignment; native typed counts and statuses remain available
+through the separately named panel methods.
+
+The original overview's direct charts use the same analytical tables:
+
+```python
+from ml4t.diagnostic.compat.alphalens import plotting as familiar_plots
+
+adapter_bar = familiar_plots.plot_quantile_returns_bar(
+    performance.mean_return_by_quantile(adapter_clean, demeaned=False)[0],
+)
+assert np.allclose(adapter_bar.data[0].y, [1000, 2000])
+adapter_bar.write_html("familiar_quantile_means.html", include_plotlyjs=True)
+adapter_ic_figures = familiar_plots.plot_ic_ts(adapter_ic)
+assert len(adapter_ic_figures) == 2
+adapter_ic_figures[0].write_html("familiar_ic.html", include_plotlyjs=True)
+print("Familiar overview charts: supplied samples, bps and explicit Plotly exports")
+```
+
+These functions return Plotly figures, or a list for per-horizon/group panels;
+use `.show()` explicitly in notebook cells ending with a semicolon. Matplotlib
+`ax` reuse raises before output. Bar and violin ordinates are bps. Cumulative
+figures compound supplied raw observations into wealth multiples with the shared
+product kernel; their linear display replaces the reference's symmetric-log
+quantile axis. They do not infer daily execution accounts from a return label.
+Unknown group/bucket means remain absent, rather than copying the zero-height
+bars produced by pandas/Matplotlib for missing cells. No sample counts or standard
+errors are invented from supplied means. Native IC histograms use 25 bins, rather
+than the reference's automatic bin selection; the empirical missing-value mask
+is retained. Q-Q, rolling IC and month heatmaps reuse the existing native charts.
+The original `by_time="M"` call translates to an explicit month-end offset on
+pandas 3; it preserves the observation's civil month, not an exchange calendar.
+The four direct table functions use the same native report statistics:
+
+```python
+adapter_factor_table = familiar_plots.plot_quantile_statistics_table(
+    adapter_clean, return_df=True,
+)
+adapter_information_table = familiar_plots.plot_information_table(adapter_ic, return_df=True)
+adapter_return_table = familiar_plots.plot_returns_table(
+    adapter_regression,
+    performance.mean_return_by_quantile(adapter_clean, demeaned=False)[0],
+    adapter_spread,
+    return_df=True,
+)
+adapter_turnover_table, adapter_rank_table = familiar_plots.plot_turnover_table(
+    {1: adapter_rank}, {1: pd.concat([adapter_membership], axis=1)}, return_df=True,
+)
+assert adapter_factor_table["count"].sum() == len(adapter_clean)
+assert adapter_information_table.shape == (2, 7)
+assert adapter_return_table.loc["beta", "1D"] == adapter_regression.loc["beta", "1D"]
+assert adapter_turnover_table.iloc[0, 0] == 0
+print("Familiar tables: original labels, actual counts and unmodified regression units")
+```
+
+`return_df=True` returns pandas tables; the default returns escaped HTML strings,
+or two strings for turnover. Display them with `IPython.display.HTML` in a notebook
+or include them in a report. These functions do not reproduce terminal printouts
+or Matplotlib artists. Alpha and beta retain their supplied units; only the supplied
+quantile means and spread convert to bps. The return-table `reference_version`
+labels the caller's existing spread convention without rescaling it. Native IC
+summaries omit missing dates separately per column. Unlike frozen 0.4.6, a missing
+IC does not invalidate the remaining dates' inference. Constant and empty samples
+keep unavailable inference rather than reporting infinite significance.
+
+Direct cumulative, spread and persistence figures retain exact sub-millisecond
+timestamps with labelled observation-order axes and exact timestamps on hover.
+Distinct nanosecond keys are not passed through JavaScript's date conversion.
+Group titles wrap, horizons/quantiles remain visible in legends, and supplied
+mean/std event figures keep unknown deviations separate from known zero deviations.
+These checks cover the declared report options; qualification of every original
+journey also requires the installed-package notebook checks below.
+
+### Run preserved original Alphalens notebooks
+
+Unreleased source includes `scripts/migrate_alphalens_notebooks.py` for the
+original overview, intraday-factor, event-study and Pyfolio-integration notebooks. The unmodified
+upstream fixtures and their Apache 2.0 license are retained under
+`tests/fixtures/alphalens_original/`, pinned to Alphalens source
+`1bc181de4aafbe33437ed0e362ff96aa7ce20acd`. The generator checks the original
+hash, records every import/I/O/missing-value-method/presentation edit and retains
+the original analytical expressions. It replaces the obsolete Yahoo acquisition call, not the
+subsequent date conversion or stack operations. It does not download data.
+
+Supply a captured parquet file with unique date rows and Yahoo-shaped
+`(field, asset)` columns containing `Open` and `Close`. Those input dates have
+the provider's original daily-label convention; the original notebook's explicit
+UTC conversion remains in place. A long Data/Engineer frame must first be
+explicitly reshaped into that source-provider form. This narrow fixture contract
+is not a new requirement on Diagnostic's native long-frame analytical APIs.
+
+From a checkout of this matching source revision, run:
+
+```bash
+uv run --with nbclient --with ipykernel python scripts/migrate_alphalens_notebooks.py --source-notebook tests/fixtures/alphalens_original/overview.ipynb --ohlc captured_ohlc.parquet --output migrated_overview.ipynb --execute
+```
+
+Use the corresponding `intraday_factor.ipynb`, `event_study.ipynb` or
+`pyfolio_integration.ipynb` source and
+a new output filename for those journeys. Existing outputs and the original
+notebook are never overwritten. Modified outputs include a visible migration
+notice, the original license and the exact edit record. Optional Jupyter tools
+execute the generated notebook; no Alphalens, Empyrical or Pyfolio installation
+is required by the migrated analyses.
+
+Pandas 3's stack implementation retains missing values that the original
+notebooks' default omitted. The recorded `_stack_observed` method drops missing
+Series values and all-missing DataFrame rows explicitly, preserving absent-event
+membership instead of counting every missing event as a supplied factor. Native
+cleaner loss limits and missing-value accounting are unchanged. This converter
+requires external inputs; it is a migration tool, not a no-argument demo script.
+
+The tested overview preserves eleven independently compared intermediate tables
+and Series against actual Alphalens 0.5.0 on shared captured inputs. Diagnostic
+renders 33 Plotly MIME outputs and six HTML reports instead of the reference's
+24 Matplotlib images. Standalone installed-runtime tests also exercise the
+original intraday and event-study calculations, including their actual forward
+endpoints, retained keys, explicit UTC conversion and unchanged input files.
+Their numerical methods still use the separately tested native kernels; a
+successful notebook alone does not establish every legacy option. The original
+Alphalens/Pyfolio integration notebook uses the same native-backed complete
+Pyfolio reports for its daily and Monday-only factor selections. Its synthetic
+research allocations are labelled separately from execution-account facts.
+The legacy five-day offset on the Monday-only sample retains its original
+multiple: positions can extend beyond the return clock. It does not declare
+five NYSE sessions or justify clipping trailing unknown marks.
+Availability in published 0.1.9 is not claimed.
+
+IC preserves legacy per-column NaN propagation. Quantile means instead retain
+each supplied outcome's own available sample and give defined date means equal
+weight. Raw `compute_forward_returns` plus `quantize_factor` tables may retain
+incomplete forward tails; those are not silently cleaned across horizons.
+For native statistics on already supplied buckets without a score column, use
+`compute_quantile_statistics(..., factor_col=None)`; its default still selects
+finite score/outcome pairs. Group adjustment and group output remain independent.
+
+To inspect sample counts and uncertainty alongside these familiar pandas tables,
+use the existing [native quantile statistics](#inspect-daily-and-equal-date-quantile-statistics).
+For dependence-aware IC inference, use the separately selected
+[HAC validation](#complete-information-analysis-report); the adapter's ordinary
+IC mean is not a HAC estimate. Complete sheet composition is available through
+the [owned results](#compose-owned-return-information-and-turnover-results).
 
 ### Inspect grouped IC and adjusted outcomes
 
@@ -617,6 +1023,167 @@ particular output keys, including empty dates with zero pairs and null IC.
 This grid controls output keys only. It does not validate sessions, construct
 returns, fill observations or establish an exchange calendar.
 
+### Complete information-analysis report
+
+Unreleased source after 0.1.9 composes the owned panel's full information analysis.
+Using `panel` from the grouped-IC example above:
+
+```python
+from ml4t.diagnostic.signal import SignalInformationResult, analyze_signal_information
+from ml4t.diagnostic.visualization.signal import generate_signal_information_report
+
+information = analyze_signal_information(panel, group_adjust=True, by_group=True)
+generate_signal_information_report(information, output_file="signal-information.html")
+restored_information = SignalInformationResult.from_json(information.to_json())
+assert restored_information.get_table("prepared_data").height == panel.data.height
+print("Information report samples:", information.get_table("ic_by_date").height)
+```
+
+An already-clean factor table can keep its supplied buckets through the native
+`PreparedSignalPanel.from_prepared` constructor or the familiar sheet adapter:
+
+```python
+from ml4t.diagnostic.compat import alphalens as al
+from ml4t.diagnostic.signal import PreparedSignalPanel
+
+familiar_information = (
+    panel.data.to_pandas().set_index(["date", "asset"])
+    .rename(columns={"quantile": "factor_quantile"})
+)
+owned_information = PreparedSignalPanel.from_prepared(
+    familiar_information, return_columns=["1D"], calendar=None,
+)
+assert owned_information.metadata["bucket_source"] == "supplied, not recomputed"
+information_figures = al.tears.create_information_tear_sheet(
+    familiar_information, group_neutral=True, by_group=True,
+    output_file="adapted-information.html", return_fig=True,
+)
+assert len(information_figures) == 4
+print("Alphalens information adapter preserves the prepared sample and group options")
+```
+
+The legacy call is `alphalens.tears.create_information_tear_sheet(factor_data,
+group_neutral=..., by_group=...)`; change its import to
+`ml4t.diagnostic.compat.alphalens.tears`. Default notebook calls display the
+complete HTML report and return `None`. The explicit `return_fig=True` extension
+returns Plotly figures, not Matplotlib figures or axes. `output_file` saves the
+complete report atomically. `set_context` accepts the legacy boolean without
+changing global Matplotlib/seaborn state; use `theme` for native presentation.
+The same namespace also exposes turnover, event-returns and event-study sheets.
+Returns, summary and full-sheet composition use the shared owned results below;
+their plotting API and numerical method differences remain explicit.
+
+Continue from the price-produced `adapter_clean` and `adapter_prices` above:
+
+```python
+from ml4t.diagnostic.compat.alphalens import tears as familiar_sheets
+
+familiar_turnover = familiar_sheets.create_turnover_tear_sheet(
+    adapter_clean, turnover_periods=["1D", "2D"],
+    output_file="adapted-turnover.html", return_fig=True,
+)
+familiar_events = familiar_sheets.create_event_returns_tear_sheet(
+    adapter_clean, adapter_prices, avgretplot=(1, 1), long_short=False,
+    std_bar=False, output_file="adapted-events.html", return_fig=True,
+)
+familiar_study = familiar_sheets.create_event_study_tear_sheet(
+    adapter_clean, adapter_prices, avgretplot=(1, 1), n_bars=2,
+    output_file="adapted-study.html", return_fig=True,
+)
+assert len(familiar_turnover) == 4 and len(familiar_events) == 1
+assert len(familiar_study) == 6
+print("Familiar turnover and event sheets retain native samples and supplied levels")
+```
+
+The historical event argument is named `returns`, but both reference sheets
+pass it to `common_start_returns(cumulative=True)`. These adapters therefore
+preserve supplied levels without compounding or event-zero rebasing. For simple
+returns, use the native `panel.event_returns(..., input_kind="returns")` instead.
+`long_short`, `group_neutral`, `by_group` and `std_bar` retain their analytical
+roles; displayed error bars are sample deviations, not confidence intervals.
+Reference event plots multiply these values by 10,000 for BPS display;
+Diagnostic labels supplied-level or level-difference units. Diagnostic sorts
+event offsets chronologically; comparisons use exact offset labels when clipped
+reference windows retain concatenation order.
+Event study retains unadjusted date/bucket observations, optional level paths
+and elapsed-time event bins. `rate_of_ret=True` converts display means to the
+first supplied horizon using duration labels; the native route still requires
+explicit conversion factors for arbitrary selectors. No path is invented when
+`returns` or `avgretplot` is `None` in the event-study call.
+
+Turnover day labels select observed-grid lags, not exchange-validated durations.
+Both reference profiles preserve a declared pandas frequency. Without one,
+`reference_version="0.5.0"` retains observed dates while `"0.4.6"` selects the
+frozen civil-daily reporting grid. Native methods continue to require an explicit
+grid when a different output clock is wanted.
+
+Both routes require complete finite prepared factors/outcomes and positive bucket
+IDs; they do not silently clean or rebucket a supplied table. The constructor
+retains sparse bucket IDs, groups, exact keys and calendar declarations in owned
+data/audit copies. It does not manufacture original price endpoints or causal
+availability that the supplied table does not contain.
+
+The adapter preserves an input pandas frequency as an explicit output grid,
+including unknown ICs on absent factor dates. Preparation retains unused date
+levels without inventing factor rows. A missing declared date therefore remains
+unknown inside the complete 22-date rolling window, rather than compressing it
+into a 22-scored-date window. This is a named legacy reporting convention, not
+exchange-calendar validation. Native `analyze_signal_information` still defaults
+to observed dates; pass `date_grid` explicitly to request other output keys.
+
+`group_adjust` demeans each date/group's outcomes before correlation. Independently,
+`by_group=True` adds group means without replacing the global analysis; `False`
+shows civil-month heatmaps instead. Every supplied horizon gets an IC time series,
+actual-sample histogram and fitted Q-Q panel. The default is Spearman with at least
+two paired assets. Pearson remains an explicit native alternative.
+
+The result exports prepared keys/groups/buckets, global and requested group ICs,
+paired counts and undefined statuses, summary inference and exact month/group
+aggregates through `get_table`. Undefined observations remain missing, not zero.
+Empty, singleton and constant samples cannot produce KDE or fitted quantiles.
+Rolling means require all 22 finite ICs in a 22-observation window, not an elapsed
+month. Nanosecond keys remain in the typed export and chart payloads.
+
+IC, its sample deviation and mean/deviation ratio are dimensionless. The report
+uses naive two-sided t inference and biased skew/Fisher excess kurtosis. It keeps
+constant-sample inference undefined rather than adopting the reference's infinite
+t statistic and zero p value. This is an explicit degenerate-sample convention,
+not a claim that a differing definition proves a reference error.
+
+The fitted Q-Q convention matches Alphalens's standardized observations and
+estimated distribution. Standalone `plot_ic_qq` retains its existing native
+midpoint-probability/sample-deviation normal default; select `fitted=True` and,
+optionally, `theoretical_dist=scipy.stats.t` to request the fitted alternative.
+Civil-month grouping and supplied horizon labels establish no session calendar,
+expected-bar grid or annualization.
+
+The offline recipe runs all four adjustment/grouping combinations and exports
+four native HTML/typed-JSON pairs plus four familiar HTML reports without requiring
+Alphalens, Backtest or Engineer:
+
+```bash
+uv run --extra viz python examples/legacy_migration_comparison.py --task information --output signal-information.html
+```
+
+Its fixture uses 224 price-produced observations over 32 dates, changing unequal
+groups and supplied one-/five-observation returns. The `1D`/`5D` labels are supplied
+selectors, not validated elapsed-day or exchange-session declarations. Comparisons
+use Alphalens Reloaded 0.4.6, pandas 2.3.3, Polars 1.36.1 and Plotly 6.1.2, checking
+keys, buckets, groups, ICs, table values, rolling samples and actual plotted Q-Q data.
+The familiar adapter additionally executes the actual whole information sheet
+from Alphalens 0.5.0/pandas 3.0.6 and frozen 0.4.6/pandas 2.3.3, using shared
+price-produced six-asset samples and all four group-flag combinations. Original
+Matplotlib rendering is executed before comparing its IC observations, native
+histogram inputs and group/civil-month means. The minimum-renderer profile uses
+Plotly 6.1.2; the current profile uses Plotly 7.1.0. Neither reference is a native
+runtime dependency, and these tests do not qualify the other six sheets.
+
+The same retained IC observations can also feed Diagnostic's
+[HAC-adjusted inference](statistical-tests.md#hac-adjusted-ic). The recipe executes
+that separate analysis with an explicit five-observation label horizon; it does
+not relabel the report's naive t-test as HAC. Other report families use their
+own samples and methods; see [migration routes](#choose-a-migration-route).
+
 ### Inspect daily and equal-date quantile statistics
 
 The owned panel also exposes a separate bucket-statistics table. Using the
@@ -658,8 +1225,8 @@ and `0.5` give an equal-date mean of `0.40625` and a standard error of `0.09375`
 Pooling its three asset-date returns instead gives `0.375`. Choose the
 estimand explicitly; neither number establishes a self-financing portfolio.
 This bucket standard error is not a propagated spread error or a replacement
-for the existing two-sample spread test. Full portfolio/event/report paths
-remain separate work.
+for the existing two-sample spread test. Portfolio, event and report composition
+use these observations through the explicitly selected workflows below.
 
 Unreleased fixes after 0.1.9 stabilize the shared finite-return mean, sample
 deviation and standard error. Identical large finite returns retain their
@@ -843,10 +1410,10 @@ clocks remain observed dates; authoritative calendar adoption is separate.
 With the declared visualization extra, pass `report_result.to_tear_sheet()` to
 the existing `SignalDashboard` to render dated tables, method labels and summary
 values. Unavailable values display as `N/A`; the workflow does not create
-confidence bands from a fixed 252-observation assumption. These are numeric
-table/report paths, not complete dated chart composition or all seven Alphalens
-tear sheets. Quantile cumulative paths, holdings and event workflows remain
-separate accepted work. Persistence-disabled analyses and historical saved
+confidence bands from a fixed 252-observation assumption. The
+[complete turnover report](#complete-turnover-report) below composes all recorded
+lags. Other Alphalens tear sheets and dated holdings remain separate accepted
+work. Persistence-disabled analyses and historical saved
 results without dated observations return no turnover component; scalar means
 cannot reconstruct missing dates, buckets or reference ranks.
 
@@ -871,7 +1438,7 @@ print(rank_plot.layout.meta)
 ```
 
 For dated inputs, `lag` counts recorded clock observations, not return days or
-exchange sessions. The default selects the first recorded lag. Membership and
+exchange sessions. The individual plot default selects the smallest recorded lag. Membership and
 rank computations can retain different lag sets; inspect `dated_turnover` and
 `dated_autocorrelation` before selecting one. Missing or invalid lags raise
 `ValueError`. Return-horizon `period` and lag-summary `max_lags` selectors do not
@@ -895,19 +1462,129 @@ The heatmap reuses recorded bucket/lag means over defined dates and shows their
 date counts. A defined zero turnover remains zero; missing means stay blank.
 No confidence interval or half-life is inferred from the dated tables. The rank
 plot displays `CI unavailable` when `show_significance=True`; setting it to
-`False` omits that notice. The existing dashboard renders both dated charts
-at their first recorded lag and retains the complete tables and summaries.
+`False` omits that notice. The dashboard renders membership and rank charts
+for every recorded lag and retains the complete tables and summaries.
 
 Shared-input checks compare the same membership, rank universe and observation
 clock with Alphalens Reloaded 0.4.6 `quantile_turnover` and
 `factor_rank_autocorrelation` before their dated plotting routes. The native
 scalar larger-membership turnover and paired-sample Spearman definitions remain
-separate. These chart workflows do not establish exchange-calendar defaults,
-complete turnover-sheet composition or full Alphalens/Pyfolio replacement.
+separate. These chart workflows do not establish exchange-calendar defaults
+or full Alphalens/Pyfolio replacement.
 Run the existing
 [supplied-panel example](https://github.com/ml4t/diagnostic/blob/8d52739bb133e5c5d3540c8cf268ea1a8d3c7722/examples/signal_panel_cleaning.py)
 with `--plots` to inspect the actual
 trace values, recorded methods and hover counts without a legacy dependency.
+
+### Complete turnover report
+
+Unreleased after 0.1.9, `generate_signal_turnover_report` composes all recorded
+membership and rank lags, all-quantile mean/count tables, and the exact dated
+observations. It consumes the existing owned `TurnoverAnalysisResult`, without
+an Alphalens, Pyfolio, Backtest or Engineer runtime dependency. Use this route
+when you need to inspect missing dates, denominators and lag clocks alongside
+the charts. The result uses the same
+[dated persistence calculations](#inspect-dated-persistence-in-a-result-and-report)
+and JSON/Arrow snapshots as the analysis workflow.
+
+With the visualization extra installed, this price-produced example requests
+three lags on the observed-date clock:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+from ml4t.diagnostic.signal import prepare_signal_panel
+from ml4t.diagnostic.visualization.signal import (
+    generate_signal_turnover_report,
+    plot_signal_turnover,
+)
+
+turnover_dates = pd.bdate_range("2025-03-03", periods=14, tz="UTC")
+turnover_changes = np.array([
+    np.roll([0.01, 0.02, -0.01, -0.02], i) for i in range(13)
+])
+turnover_prices = pd.DataFrame(
+    np.vstack([np.full(4, 100.0), 100 * np.cumprod(1 + turnover_changes, axis=0)]),
+    index=turnover_dates,
+    columns=list("ABCD"),
+)
+turnover_factor = (
+    turnover_prices.pct_change(fill_method=None).iloc[1:-1]
+    .stack(future_stack=True).rename("factor")
+)
+turnover_forward = (
+    (turnover_prices.shift(-1) / turnover_prices - 1)
+    .stack(future_stack=True).rename("1D").to_frame()
+)
+turnover_factor.index.names = turnover_forward.index.names = ["date", "asset"]
+turnover_panel = prepare_signal_panel(
+    turnover_factor, turnover_forward, quantiles=2, max_loss=0
+)
+turnover_result = TurnoverAnalysisResult.from_observations(
+    turnover_panel.quantile_turnover(lags=(1, 2, 5)),
+    turnover_panel.rank_autocorrelation(lags=(1, 2, 5)),
+)
+turnover_means = turnover_result.get_dataframe("autocorrelation")
+np.testing.assert_allclose(turnover_means["autocorrelation"], [0, -1, 0], atol=1e-12)
+assert turnover_means["n_dates"].to_list() == [11, 10, 7]
+assert len(plot_signal_turnover(turnover_result)) == 6
+turnover_report = generate_signal_turnover_report(turnover_result)
+turnover_restored = TurnoverAnalysisResult.model_validate_json(turnover_result.model_dump_json())
+assert turnover_restored.get_dataframe("dated_turnover").equals(
+    turnover_result.get_dataframe("dated_turnover")
+)
+print("Turnover report: 6 panels; defined rank dates 11/10/7")
+```
+
+In a notebook, call `figure.show()` for each figure from
+`plot_signal_turnover(turnover_result)` and display the returned HTML. To write
+HTML atomically, pass `output_file="turnover-report.html"` to the generator.
+The HTML composer loads Plotly from its CDN; exporting this HTML alone does
+not make it an offline bundle. `show_all_quantiles=True` includes every recorded
+bucket in each membership chart. The default charts show the top and bottom
+buckets, while the tables always include all buckets. Custom lag order and
+different membership/rank lag sets are retained independently.
+Alphalens's default `turnover_periods=None` derives its lags from the forward-return
+column labels. Diagnostic takes explicit observation lags when constructing this
+result; a label such as `1D` does not establish a validated session duration.
+
+The runnable command also prints installed package versions and writes typed
+JSON alongside the HTML. Run it from a checkout containing this unreleased API:
+
+```bash
+uv run --extra viz python examples/legacy_migration_comparison.py --task turnover --output turnover-report.html
+```
+
+Clock choice changes the sample. Corrected Alphalens Reloaded 0.5.0 retains the
+12 observed scored dates when the prepared index has no frequency, matching
+Diagnostic's default. Frozen Alphalens Reloaded 0.4.6 with pandas 2.3.3
+calls `asfreq(None)` on the prepared index used in the comparison, inserting
+civil daily dates. This is a different sample, not a numerical tolerance issue.
+To compare on that reference's 16-date clock, supply the same grid to both
+Diagnostic calculations:
+
+```python
+turnover_grid = pd.DataFrame({
+    "date": pd.date_range(turnover_dates[1], turnover_dates[-2], freq="D")
+})
+turnover_daily = TurnoverAnalysisResult.from_observations(
+    turnover_panel.quantile_turnover(lags=(1, 2, 5), date_grid=turnover_grid),
+    turnover_panel.rank_autocorrelation(lags=(1, 2, 5), date_grid=turnover_grid),
+)
+assert turnover_daily.get_dataframe("autocorrelation")["n_dates"].to_list() == [9, 6, 6]
+```
+
+The rotating sample has the same mean rank correlations under these two
+clocks, but different dates, missingness and counts. The reference comparison
+checks those intermediates in separate corrected and frozen profiles and calls
+the complete reference turnover sheet
+for rotating, changing-membership, constant-rank and single-asset samples.
+Inserted weekends remain unavailable, not zero turnover or zero correlation.
+Choose the intended clock explicitly; neither observation lags nor this civil
+grid establish exchange-session validation. Native scalar definitions remain
+unchanged. This workflow does not qualify the other six Alphalens sheets,
+dated holdings/expiration accounting or full Pyfolio replacement.
 
 ### Plot empirical dated quantile observations
 
@@ -946,8 +1623,9 @@ but Plotly and Seaborn smoothing/box presentation are not claimed identical.
 Plot separate horizons explicitly; the current dashboard renders its first
 horizon and labels its selector as not interactive. A matching bundled Plotly
 runtime makes its HTML self-contained, including NumPy-backed trace arrays.
-Full multi-horizon chart composition, cumulative paths, event/portfolio
-workflows and all seven Alphalens tear sheets remain separate accepted work.
+For multi-horizon chart composition, cumulative paths and event/portfolio
+workflows use the [complete report routes](#choose-a-migration-route), not this
+single-component dashboard.
 
 ### Distinguish unavailable monotonicity from a negative decision
 
@@ -1092,8 +1770,8 @@ explicit cadence assumption, not inferred from the label `1D` or validated by
 an exchange calendar. Overlapping supplied horizons are not automatically a
 self-financing daily wealth path. Output dates are observed dates unless the
 caller supplies an explicit aggregate `date_grid`; missing requested dates
-have null return and zero count. Capital, signal expirations, dated holdings
-and the complete Alphalens/Pyfolio reports remain separate work.
+have null return and zero count. Capital, expirations and dated holdings belong
+to the separate [synthetic portfolio-input route](#turn-explicit-expiries-into-synthetic-portfolio-inputs).
 
 ### Inspect factor alpha and beta on the same universe
 
@@ -1214,8 +1892,8 @@ holes, and labels `compounding_clock="explicit_grid"` instead of `"observed"`.
 Neither behavior validates sessions or bars. Compounding overlapping
 forward outcomes is a mathematical horizon-return path, not self-financing
 daily holdings. Explicit synthetic expiration accounting is available below;
-cumulative quantile report panels and complete Alphalens/Pyfolio report coverage
-remain separate accepted work.
+cumulative quantile report panels use the
+[owned returns result](#retain-the-complete-return-analysis-sample-before-rendering).
 
 ### Turn explicit expiries into synthetic portfolio inputs
 
@@ -1297,6 +1975,14 @@ when a strategy selection starts later. `observations` retains the original
 pre-resampling outcomes, finite counts and wealth. No transactions, fees or
 slippage are fabricated.
 
+`to_pyfolio()` retains a minimal `attrs["diagnostic"]` origin marker on each
+returned object. Familiar simple/full account reports recognize synthetic
+forward-outcome returns separately from synthetic holdings, including mixed
+supplied/research inputs and hidden-position reports. They label these as
+research allocations and returns, not executed account P&L. Removing the marker
+removes that provenance; ordinary unmarked frames remain supplied observations,
+not evidence of executions. The marker does not change values or clocks.
+
 The adapters also provide `factor_weights`, `factor_returns` (including
 `by_asset=True`), `cumulative_returns`, `positions`, `factor_positions` and
 `factor_cumulative_returns`. Corrected Alphalens 0.5.0 comparisons exercise actual
@@ -1327,6 +2013,162 @@ the legacy wide export rejects an actual asset named `cash`, which that format r
 
 This qualifies the synthetic allocation/interchange route, not every legacy
 report, account normalization, round-trip, attribution or capacity workflow.
+
+### Retain the complete return-analysis sample before rendering
+
+Unreleased source after 0.1.9 composes the existing analytical kernels into one
+owned return-analysis result. Continue from `adapter_clean` above:
+
+```python
+from ml4t.diagnostic.signal import PreparedSignalPanel, SignalReturnsResult, analyze_signal_returns
+
+return_panel = PreparedSignalPanel.from_prepared(
+    adapter_clean, return_columns=["1D", "2D"], calendar=None,
+)
+return_analysis = analyze_signal_returns(
+    return_panel,
+    annualization_factors={"1D": 252, "2D": 126},
+    rate_conversion_factors={"1D": 1, "2D": 0.5},
+)
+return_copy = SignalReturnsResult.from_json(return_analysis.to_json())
+assert return_copy.get_table("prepared_data").height == len(adapter_clean)
+assert return_copy.metadata["annualization_factors"] == {"1D": 252, "2D": 126}
+assert return_analysis.get_table("quantile_observations")["standard_error"].is_null().all()
+print("Owned signal returns preserve explicit scales and unavailable per-date errors")
+```
+
+The example has one asset per date/bucket, so per-date sample errors are
+unavailable, not zero. Across-date means and errors remain separate statistics.
+Annual alpha compounds the fitted intercept with the caller's explicit factor;
+beta is dimensionless. A constant benchmark leaves the fit unavailable. Display
+means use the first supplied horizon, while descriptive errors scale by the
+square root of its declared conversion power. Raw statistics and counts remain
+inspectable; this conversion does not establish confidence coverage.
+
+`table_names` and `get_table` expose the prepared input, actual weights and
+returns, regression observations/statistics, global/group quantile statistics,
+dated observations, the requested output grid, propagated spreads and factor/
+quantile wealth paths. Every read and JSON restoration owns independent typed
+data. No price, provider or backtest installation is needed for supplied panels.
+
+Native spreads default to the raw +1/-1 mean difference. Select
+`spread_exposure="unit_gross"` to scale both spread and propagated error by one
+half. `date_grid` must retain every observed input date; additional requested
+cells have unknown returns, zero observed counts and `row_present=False` in
+`quantile_output_grid`. Wealth follows the existing explicit NaN-as-flat product
+without relabeling missing returns as observed zeros. These horizon-return paths
+are not self-financing accounts.
+
+Render the retained samples through the existing quantile charts:
+
+```python
+from ml4t.diagnostic.visualization.signal import generate_signal_returns_report, plot_signal_returns
+
+return_figures = plot_signal_returns(return_analysis)
+assert len(return_figures) == 10  # Five actual panels per retained horizon.
+generate_signal_returns_report(return_analysis, output_file="owned_signal_returns.html")
+print("Owned signal returns report: raw wealth, dated distributions and descriptive errors")
+```
+
+The standalone HTML includes Plotly without requiring an external script request.
+Each horizon has mean/error bars, the actual dated-mean distribution, descriptive
+spread bands and any requested factor/quantile paths. Group summaries add mean
+bars without inventing dated group paths. Beta and wealth multiples are
+dimensionless; quantile cumulative returns are wealth minus one. Sparse bucket
+IDs and full timestamp precision survive the chart bridge. Sub-millisecond keys
+use observation-order axes with exact keys retained for inspection, not browser
+date rounding. `to_quantile_result(return_column)` adapts those same owned samples
+for existing charts; uncomputed inference remains unavailable. Native spread
+rolling windows default to 21 observations and bands to one propagated SE.
+For the familiar returns-sheet entry point, retain the prepared pandas table:
+
+```python
+from ml4t.diagnostic.compat.alphalens import tears
+
+familiar_return_figures = tears.create_returns_tear_sheet(
+    adapter_clean, long_short=True, group_neutral=False, by_group=False,
+    reference_version="0.5.0", return_fig=True, set_context=False,
+    output_file="familiar_signal_returns.html",
+)
+assert len(familiar_return_figures) == 8
+print("Familiar returns sheet: retained samples and explicit corrected spread exposure")
+```
+
+The adapter retains Alphalens's first-horizon rate powers and 252-day horizon
+alpha scales; `annualization_factors=` overrides those scales explicitly.
+These duration ratios do not validate an exchange calendar. Corrected 0.5.0
+uses unit-gross spreads and errors; `reference_version="0.4.6"` keeps the raw
+gross-two convention. Both use complete 22-observation rolling means and
+half-SE descriptive bands. Familiar cumulative panels require a supplied `1D`
+column, unlike the native explicit arbitrary-horizon selection.
+
+Plotly/HTML replaces Matplotlib. Horizons have separate panels and distribution
+axis percentiles, and native mean bars additionally display the retained sample
+errors. Actual samples and counts are not changed by these presentation choices.
+Group mean bars supplement the global analysis. As with the other adapters,
+default notebook calls display the report and return `None`; `return_fig=True`
+returns native Plotly figures. Summary/full-sheet compositions and original
+notebook qualification remain separate unfinished acceptance.
+
+### Compose owned return, information and turnover results
+
+For a native summary or full report, reuse the same prepared sample rather than
+joining independently cleaned analyses:
+
+```python
+from ml4t.diagnostic.results.signal_results import TurnoverAnalysisResult
+from ml4t.diagnostic.signal import analyze_signal_information
+from ml4t.diagnostic.visualization.signal import generate_signal_report
+
+report_information = analyze_signal_information(return_panel, min_obs=2)
+report_turnover = TurnoverAnalysisResult.from_observations(
+    return_panel.quantile_turnover(lags=[1, 2]),
+    return_panel.rank_autocorrelation(lags=[1, 2]),
+)
+full_signal_html = generate_signal_report(return_analysis, report_information, report_turnover)
+assert full_signal_html.count('class="plot-container"') == 22
+generate_signal_report(
+    return_analysis, report_information, report_turnover,
+    summary=True, output_file="signal_summary.html",
+)
+print("Composed native signal report: owned returns, information and recorded persistence")
+```
+
+The full view renders the existing component collections. The summary retains
+mean bars plus actual factor, alpha/beta, quantile/spread, IC and persistence
+tables. Original factor statistics reuse the event-study calculation, including
+sample deviation and actual counts. Return and information components must own
+identical prepared rows and horizon order; a mismatch raises before replacing an
+output file. Supply dated turnover/rank components from that same sample; their
+recorded lag clocks are not inferred return horizons. Native information
+adjustment follows the supplied information result explicitly.
+
+The familiar compositions enter through the same prepared-data boundary:
+
+```python
+summary_figures = tears.create_summary_tear_sheet(
+    adapter_clean, return_fig=True, output_file="familiar_summary.html", set_context=False,
+)
+full_figures = tears.create_full_tear_sheet(
+    adapter_clean, return_fig=True, output_file="familiar_full.html", set_context=False,
+)
+assert len(summary_figures) == 2 and len(full_figures) == 20
+print("Familiar summary and full sheets: shared native samples and original IC adjustment")
+```
+
+Both references leave summary-sheet IC unadjusted even when `group_neutral=True`
+adjusts returns. The full sheet applies `group_neutral` to both returns and IC;
+`by_group=True` adds group summaries without discarding the global sample.
+Factor, return, IC and persistence tables retain their original analysis inputs;
+the HTML display rounds statistics to six significant digits, while the native
+owned results retain full precision. Native themes and Plotly figures replace
+Matplotlib context/artist behavior. Event-return and event-study sheets remain
+separate routes, as in the reference full-sheet composition.
+
+All seven familiar sheet names now have source implementations. This does not
+qualify every option, plotting/performance helper or the four original notebooks;
+those workflows and final artifact/platform checks remain required before any
+full Alphalens replacement claim.
 
 ### Align observed-clock event paths
 
@@ -1365,6 +2207,61 @@ assert AlignedEventResult.from_json(event_result.to_json()).paths.equals(event_r
 generate_aligned_event_report(event_result, output_file=Path("aligned_events.html"))
 print("Aligned event levels: 55.0; finite date paths: 2/3/2")
 ```
+
+Unreleased after 0.1.9, the direct familiar calls now delegate to that same
+native event engine. Neither call requires a provider, forward returns or a
+factor score. Reuse the supplied events and levels above:
+
+```python
+from ml4t.diagnostic.compat.alphalens import performance as familiar_events
+
+aligned = familiar_events.common_start_returns(
+    event_input, event_prices, 1, 1, cumulative=True, mean_by_date=True,
+)
+event_buckets = event_input.to_frame().assign(factor_quantile=1)
+average = familiar_events.average_cumulative_return_by_quantile(
+    event_buckets, event_prices, periods_before=1, periods_after=1, demeaned=False,
+)
+assert aligned.shape == (3, 3)
+assert average.loc[(1, "mean")].tolist() == [55.0, 55.0, 55.0]
+assert average.loc[(1, "std")].tolist() == [0.0, 0.0, 0.0]
+event_plot = familiar_plots.plot_quantile_average_cumulative_return(average, std_bar=True)
+assert len(event_plot.data) == 2
+event_plot.write_html("familiar_event_paths.html", include_plotlyjs=True)
+event_bins = familiar_plots.plot_events_distribution(event_input, num_bars=4)
+assert sum(event_bins.data[0].y) == len(event_input)
+print("Familiar event paths: observed clocks, date means and supplied levels retained")
+```
+
+`common_start_returns(cumulative=False)` first compounds periodic returns over
+the entire supplied clock. `demean_by` may include peer assets outside the event
+cohort; its event-date universe is held fixed across each window. Individual
+paths have repeated asset columns across event dates, matching the familiar
+layout. Assets within a date follow input order instead of Alphalens's
+unspecified Python-set order. Clipped offsets follow first-seen order, while
+genuinely missing supplied cells stay NaN. The native result additionally
+retains every requested offset, its status and its unique event ID.
+
+The average call consumes levels despite the legacy argument name `returns`.
+It weights date means equally, or group/date means with `group_adjust=True`;
+sample deviations use ddof=1, not standard error. `by_group=True` preserves the
+additional group level. Both Alphalens 0.5.0/pandas 3.0.6 and frozen
+0.4.6/pandas 2.3.3 have been compared on clipped/missing paths, demeaning,
+group options and duplicate events. The familiar no-demeaning aligned-path
+call retains the reference's within-date asset deduplication; native event
+analysis deliberately retains individual event multiplicity as described below.
+Missing assets, invalid clocks and a sample with no event on the value clock
+raise rather than inventing paths. These adapters do not perform calendar-grid
+validation or convert supplied levels into event-zero abnormal returns.
+`plot_quantile_average_cumulative_return` consumes the returned mean/std table
+directly. Use `by_quantile=True` for separate figures and select one group before
+plotting a grouped table. Ordinates follow the reference's bps convention, even
+when the caller supplied levels. Error bars show the supplied sample deviation,
+not SE, confidence coverage or an inferred number of paths. Event distributions
+reuse elapsed-time bins, count nonmissing supplied event values and retain empty
+bins. Numbered bin labels keep phone-sized reports readable; exact starts remain
+on hover. A one-instant sample has one bin instead of an invalid zero-frequency
+grouping. Windows too fine for the supplied timestamp resolution raise explicitly.
 
 For a price-produced panel with dynamic groups and buckets, run the existing
 migration example with an explicit task:
@@ -1459,6 +2356,80 @@ cells, duplicate-event weighting and observation-clock limitations above remain
 explicit. Full event-study, calendar and canonical-notebook qualification remain
 separate requirements.
 
+### Signal event-study report
+
+Unreleased after 0.1.9, `analyze_signal_event_study` composes the separate
+Alphalens event-study workflow from an owned `PreparedSignalPanel`. It retains
+factor statistics, elapsed-time event bins and each event's bin membership,
+raw prepared events, equal-date quantile statistics and empirical dated return
+samples. Optional event paths reuse the preceding event-returns workflow.
+This is not Diagnostic's abnormal-return/CAR model.
+
+Reference comparisons use corrected Alphalens Reloaded 0.5.0 and a separate
+frozen 0.4.6 profile on pandas 2.3.3. Diagnostic-only workflows also run without
+Alphalens; the legacy package is a comparison dependency, not a report runtime.
+
+```python
+from ml4t.diagnostic.signal import analyze_signal_event_study, prepare_signal_panel
+from ml4t.diagnostic.visualization.signal import generate_signal_event_study_report
+
+study_index = pd.MultiIndex.from_product(
+    [event_dates[[0, 2, 4]], ["A", "B"]], names=["date", "asset"]
+)
+study_scores = pd.Series(range(1, 7), index=study_index, name="factor")
+study_returns = pd.DataFrame({"3D": [0.03] * 6, "1D": [0.01] * 6}, index=study_index)
+study_panel = prepare_signal_panel(study_scores, study_returns, quantiles=1, max_loss=0)
+study_result = analyze_signal_event_study(
+    study_panel, rate_conversion_factors={"3D": 1, "1D": 3}, num_bars=3,
+)
+assert study_result.metadata["base_period"] == "3D"
+assert study_result.event_distribution["n_events"].sum() == 6
+generate_signal_event_study_report(study_result, output_file="signal_event_study.html")
+print("Signal event study: owned factor statistics, bins and dated return samples")
+```
+
+The first supplied horizon is the rate base, not necessarily the shortest one.
+Declare dimensionless `rate_conversion_factors` from known compatible horizon
+units. For a three-observation base and one-observation return, the powers are
+one and three. Labels such as `3D` alone establish neither elapsed days nor
+sessions. No calendar or annualization factor is inferred. With
+`rate_of_return=False`, raw horizon means are displayed and no factors are
+required. Raw means, deviations, errors and counts remain unchanged; separate
+`display_mean`, `conversion_ratio` and `display_status` fields expose conversion.
+Undefined real-valued rates remain missing rather than becoming zero returns.
+
+Supply `values` and an explicit `input_kind` for optional aligned paths. Omit
+values or pass `event_window=None` to exclude them; the report explains their
+absence and does not invent data. The window counts observed rows. Histogram
+bins instead divide the actual elapsed timestamp span; they retain empty bins
+and may include an endpoint bin beyond the requested `num_bars`. A singleton
+timestamp uses one observed bin, whereas the reference zero-width grouper fails.
+
+The native factor table reuses stable sample statistics. It retains finite
+two-point deviations for large finite factors where the reference overflows.
+Identity rate conversion preserves a supplied tiny return such as `1e-20`;
+the reference add/power/subtract calculation rounds it to zero. These are
+explicit numerical reconciliations, not blanket equivalence claims. Violin
+samples are the actual date/bucket means. Their visible limits use the 1st/99th
+percentiles without trimming the sample or generating observations; Plotly and
+Seaborn density rendering are not claimed identical.
+
+Run the original event-study notebook's threshold-crossing sequence on bounded
+offline prices, including one bin, all seven horizons and positive/negative
+event factors:
+
+```bash
+uv run --extra viz python examples/legacy_migration_comparison.py --task event-study --output event-study.html
+```
+
+The command checks nine events and 144 requested path cells per sign and writes
+positive/negative reports with typed JSON exports. Negative event factors change
+the factor statistics, not the sign of raw forward-outcome panels. This is the
+reference event-study convention, not a short-strategy portfolio simulation.
+Provider downloads are replaced by deterministic offline prices; no legacy
+library, Backtest or Engineer is required at runtime. The other canonical
+notebooks and report families remain separately required.
+
 ### Quantiles, turnover, and report boundaries
 
 In unreleased source after 0.1.9, direct `metrics.cross_sectional_ic_series()`
@@ -1491,17 +2462,18 @@ not elapsed calendar days; insufficient history returns NaN.
 The published baseline's `SignalResult.to_tear_sheet()` supplies IC and quantile
 analysis but not turnover or cumulative quantile-return paths. The unreleased
 persistence-enabled workflow above adds actual dated turnover/rank tables and
-summaries, not cumulative paths or complete reference chart composition. Do not
-infer complete panels from a successful HTML render. Keep Alphalens when those report sections,
-dated holdings/expiration accounting, or event-aligned cumulative paths are required.
+summaries. The complete turnover report composes every recorded lag. For dated
+holdings and expiration accounting use the separate
+[synthetic portfolio-input route](#turn-explicit-expiries-into-synthetic-portfolio-inputs),
+not the turnover table or changes in bucket membership.
 
 Alphalens also supplies grouped summaries and its own complete factor tear
 sheet. Those capabilities are not implied by grouped IC observations or by a Diagnostic signal result.
 Diagnostic's default global quantiles do not mean `group_adjust=True` or
 `binning_by_group=True`; the latter can now be requested explicitly during
 supplied-panel preparation. Request grouped IC explicitly through `ic_by_date`.
-Retain the legacy route for the missing analytical
-and report sections, not merely for constructing those buckets.
+Use the [complete familiar sheets](#choose-a-migration-route) for grouped report
+composition; selecting buckets alone does not select those additional methods.
 
 Factor *construction* is a separate task. If needed,
 [ML4T Engineer's feature guide](https://github.com/ml4t/engineer/blob/145ccafd2ca36dc61f976cdbeaaf147af21e7c2e/docs/user-guide/features.md)
@@ -1514,10 +2486,10 @@ preparation, while Diagnostic evaluates the resulting factor.
 [Pyfolio's `create_full_tear_sheet()`](https://github.com/quantopian/pyfolio/blob/4b901f6d73aa02ceb6d04b7d83502e5c6f2e81aa/pyfolio/tears.py)
 takes noncumulative daily returns, with optional positions, transactions,
 benchmark returns, and other inputs. Diagnostic separates numeric analysis
-from HTML rendering. Current unreleased source includes selected familiar
-`compat.pyfolio` report calls and a normalized Zipline performance-frame adapter.
-These are not a qualified replacement for `create_full_tear_sheet()` or an
-execution engine. Published 0.1.9 does not contain the additions below.
+from HTML rendering. Development source includes the nine familiar
+`compat.pyfolio` report calls, complete simple/full account composition and a
+normalized Zipline performance-frame adapter. These analytical routes do not
+implement an execution engine. Published 0.1.9 does not contain the additions below.
 
 <div class="migration-table" markdown="1">
 
@@ -1647,6 +2619,328 @@ inputs and different dated windows raise instead of guessing observation identit
 Single-series uncertainty retains its finite-value filter; neither route validates
 a calendar grid or records excluded dates in its result. Their stationary-bootstrap intervals are not Pyfolio's IID bootstrap
 intervals; matching point estimates does not establish interval equivalence.
+
+### Keep familiar performance tables and IID summaries
+
+Unreleased after 0.1.9, `compat.pyfolio.timeseries.perf_stats` uses the existing
+native metric kernels with Pyfolio's thirteen labels and per-metric defaults.
+It does not require Pyfolio or a producer package:
+
+```python
+from ml4t.diagnostic.compat.pyfolio import timeseries as familiar_performance
+
+performance_prices = pd.Series(
+    [100.0, 110.0, 99.0, 103.95],
+    index=pd.date_range("2025-02-03", periods=4, tz="UTC"),
+)
+performance_returns = performance_prices.pct_change(fill_method=None).iloc[1:]
+performance_table = familiar_performance.perf_stats(performance_returns)
+assert np.isclose(performance_table["Cumulative returns"], 0.0395)
+assert np.isclose(performance_table["Max drawdown"], -0.1)
+assert np.isclose(
+    performance_table["Daily value at risk"], 1 / 60 - 2 * np.sqrt(13 / 1200),
+)
+performance_bootstrap = familiar_performance.perf_stats_bootstrap(
+    daily_returns, n_samples=16, random_seed=42,
+)
+assert performance_bootstrap.shape == (13, 4)
+assert performance_bootstrap.attrs["diagnostic"]["method"] == "iid"
+print("Familiar performance table: metric-specific missingness and Gaussian periodic VaR")
+```
+
+Returns, volatility, drawdown and alpha use their declared return scales;
+Sharpe, leverage and beta are dimensionless. The table's Gaussian daily VaR is
+mean minus two sample deviations, not Empyrical's empirical quantile. The fixed
+legacy annualization default is 252; explicit `periods_per_year=12` is an
+extension for a differently declared observation cadence. Native annual-rate,
+linear-alpha and summary defaults are unchanged. Optional benchmark alpha/beta
+reuse the existing paired regression adapter, including compounded annual alpha.
+Supplied positions add original gross leverage, and actual transactions add the
+existing explicit AGB/closing-value turnover. Legacy leverage retains signed
+and zero-NAV division; native positive-NAV holdings ratios remain separate.
+
+Missingness is per statistic, not one global drop or fill. CAGR retains missing
+rows as elapsed observations; means/deviations omit them where their kernels
+define that behavior. The original SciPy skew/kurtosis profile propagates a
+missing return. These raw analytical helpers do not relax the native supplied
+account's finite-return validation.
+
+`calc_bootstrap` resamples paired positional rows and resets labels before calling
+the statistic, as in the reference. Its optional `random_seed` uses a local stream
+without changing global NumPy state. Unseeded draws are not promised to equal a
+reference process's global-RNG draws. `perf_stats_bootstrap` advances the same
+stream across metrics and returns raw draws with `return_stats=False`, or mean,
+median and 5/95 percentiles. These are IID sampling summaries, not stationary/HAC
+inference or calibrated confidence coverage. Degenerate/infinite metric samples
+can leave summaries undefined; they are not zero risk. Holdings and transactions
+are not bootstrapped, matching the original return-only bootstrap. Unlike the
+original function's silently ignored kwargs, explicit sample count, seed and scale
+are honored. Full report composition and original notebook qualification remain
+separate acceptance work.
+
+The `compat.pyfolio.plotting` return panels accept the same raw dated Series.
+They return Plotly figures, not reusable Matplotlib axes. For example:
+
+```python
+from ml4t.diagnostic.compat.pyfolio import plotting as familiar_return_plots
+
+wealth_panel = familiar_return_plots.plot_rolling_returns(
+    performance_returns, live_start_date=performance_returns.index[-1],
+    cone_std=(1, 2), num_samples=16, random_seed=42,
+)
+assert np.isclose(wealth_panel.data[0].y[-1], 0.99)
+assert np.isclose(wealth_panel.data[1].y[-1], 1.0395)
+assert wealth_panel.layout.meta["training_observations"] == 2
+split_performance = familiar_return_plots.show_perf_stats(
+    performance_returns, live_start_date=performance_returns.index[-1], return_df=True,
+)
+assert split_performance.loc["Cumulative returns", "All"] == "3.95%"
+print("Familiar return panels: full-clock wealth and training-only live forecasts")
+```
+
+The historical name `plot_rolling_returns` denotes cumulative wealth starting at
+one, not rolling CAGR. Benchmark matching uses sample volatility; logarithmic
+scale changes presentation, not returns. Raw `plot_returns` keeps NaNs as gaps,
+while wealth compounding treats them as neutral product factors. Date spacing
+counts observed rows; exact timestamps, including nanoseconds, remain on hover.
+`cone_std=None` is the direct plotting default. Explicit cones receive only the
+pre-live observations and their final wealth. A custom cone callback receives a
+copy and owns its own random seed. Native layout options are `theme`, `height`
+and `width`; arbitrary Matplotlib style keywords and `ax` are not accepted.
+
+`show_perf_stats` returns a pandas table with `return_df=True`, or escaped HTML
+otherwise. Percentage display applies only to the named return/volatility/
+drawdown/turnover rows; alpha and ratios retain their original numeric display.
+Bootstrap summaries keep mean, median and 5/95 columns. Actual Pyfolio 0.10.0
+instead reindexes the no-live bootstrap table to a nonexistent `Backtest`
+column and displays `nan%` even for known positive CAGR. Diagnostic retains the
+computed values. Live bootstrap samples pair the benchmark on each split's
+actual dates. Neither correction changes native inference defaults or claims
+complete portfolio-report coverage.
+
+### Run a complete familiar returns report
+
+The unreleased `compat.pyfolio.create_returns_tear_sheet` (also available under
+`compat.pyfolio.tears`) selects the original returns-report financial panels
+and uses the existing `PortfolioTearSheet` renderer. Supplied raw returns need
+no producer or Reloaded runtime:
+
+```python
+from ml4t.diagnostic.compat import pyfolio as familiar_portfolio
+
+returns_sheet = familiar_portfolio.create_returns_tear_sheet(
+    performance_returns, return_fig=True, periods_per_year=12,
+)
+assert len(returns_sheet.figures) == 14
+assert np.isclose(returns_sheet.figures["Underwater"].data[0].y[1], -0.1)
+assert returns_sheet.availability["volatility_match"]["status"] == "not_requested"
+assert returns_sheet.figures["Rolling volatility"].layout.meta["status"] == "unavailable"
+print("Complete familiar returns manifest: existing native renderer and explicit availability")
+```
+
+The report contains performance and drawdown tables, wealth/log/live/cone views,
+raw returns, rolling volatility and Sharpe, drawdown episodes/underwater, monthly
+heatmap/distribution, annual returns and daily/weekly/monthly return quantiles.
+A benchmark adds rolling beta and enables volatility matching. `bootstrap=True`
+requires a benchmark and adds actual IID metric distributions. A missing benchmark
+or undefined dispersion leaves volatility matching explicitly unavailable rather
+than displaying an unmatched curve under that name. `return_fig=True` returns the
+native report with `show()`, `save_html()` and `to_dict()`, not a Matplotlib figure;
+the default displays the report and returns `None`.
+
+The runnable price-to-report example produces 280 observations and a 260/20
+training/live split, with all JavaScript embedded for offline viewing:
+
+```bash
+uv run --extra viz python examples/pyfolio_returns_report.py --bootstrap --output returns-report.html
+```
+
+The optional reference run uses published Pyfolio 0.10.0 / Empyrical 0.7.0 and
+their supported pandas 2.3.3 profile, separately from native pandas 3 workflows:
+
+```bash
+uv run --isolated --no-dev --python 3.12 --extra viz --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/pyfolio_returns_report.py --compare --bootstrap --output returns-reference.html
+```
+
+Windows count observations, not inferred sessions or rebalances. The original
+126/252 rolling-beta arguments use inclusive endpoints and therefore select
+127/253 rows; volatility and Sharpe require complete 126-row samples. The same
+explicit `periods_per_year` reaches both summary and rolling risk calculations.
+Rolling panels with no finite estimates show an unavailable explanation instead
+of an empty auto-scaled risk axis. Observed zero volatility remains a plotted
+zero, and an available benchmark is not hidden by incomplete strategy windows.
+Calendar-year/month products include partial boundary periods and are not CAGR.
+Live quantiles aggregate independently inside each split. Monthly heatmap
+display retains the reference's three-decimal return rounding but leaves absent
+months blank instead of displaying invented zero returns. Tables and monthly
+heatmaps scroll horizontally on narrow screens to preserve readable values.
+
+Drawdown tables, shading and underwater curves include initial capital, matching
+Diagnostic's existing scalar drawdown. Pyfolio 0.10.0's report excludes that peak:
+returns `[-.2, .25, -.1]` produce a correct scalar drawdown of -20%, but its table's
+largest loss is only 10%. Diagnostic reports both 20% and 10% episodes. The initial
+peak timestamp is not present in a raw return Series, so this familiar table
+leaves it blank rather than guessing the first observation. Native supplied-account
+analysis can retain an initial valuation timestamp. The familiar duration column counts
+inclusive Monday-Friday civil dates only when peak and recovery are known,
+not exchange sessions. Existing native episode durations still count observations.
+The combined account route below reuses these panels. The original-notebook
+replay and producer examples below exercise their distinct input contracts.
+
+### Compose a familiar simple or full account report
+
+Unreleased after 0.1.9, `compat.pyfolio.create_simple_tear_sheet` and
+`create_full_tear_sheet` accept supplied pandas returns, optional marked dollar
+positions with separate `cash`, and an optional actual-fill ledger. No Data,
+Engineer, Backtest, Zipline or Reloaded runtime is required. This route is useful
+when migrating an existing account report to Diagnostic's owned report exports
+and its [supplied-account analysis](#normalize-a-supplied-account-without-a-backtest-engine).
+It does not reconstruct a broker account from a partial ledger.
+
+```python
+account_report_dates = pd.bdate_range("2025-02-04", periods=3, tz="UTC")
+account_report_returns = pd.Series([.1, -.1, .05], index=account_report_dates)
+account_report_nav = pd.Series([1100., 990., 1039.5], index=account_report_dates)
+account_report_positions = pd.DataFrame({
+    "Core": .6 * account_report_nav, "Hedge": -.2 * account_report_nav,
+    "cash": .6 * account_report_nav,
+})
+account_report_fills = pd.DataFrame({
+    "symbol": ["Core", "Core"], "amount": [1., -1.], "price": [110., 99.],
+}, index=account_report_dates[:2] + pd.Timedelta(hours=15))
+full_account_sheet = familiar_portfolio.create_full_tear_sheet(
+    account_report_returns, account_report_positions, account_report_fills,
+    turnover_denom="portfolio_value", estimate_intraday=False,
+    periods_per_year=12, return_fig=True,
+)
+assert np.isclose(full_account_sheet.figures["Returns/Cumulative wealth"].data[0].y[-1], 1.0395)
+assert np.allclose(full_account_sheet.figures["Transactions/Turnover"].data[0].y, [.1, .1, 0.])
+simple_account_sheet = familiar_portfolio.create_simple_tear_sheet(
+    account_report_returns, account_report_positions, account_report_fills,
+    slippage=10, estimate_intraday=False, return_fig=True,
+)
+assert np.isclose(simple_account_sheet.figures["Returns/Cumulative wealth"].data[0].y[-1], 1.0392900105)
+print("Familiar account composition: supplied returns, actual fills and options reach nested reports")
+```
+
+The simple report selects performance statistics, wealth, rolling Sharpe,
+underwater, optional benchmark beta, four position views and actual turnover/
+timing. The full report composes the complete returns, stress, positions and
+transaction manifests. Supply `market_data` for the original fixed-capital
+capacity sweep and all four threshold tables. Supply both `factor_returns` and
+`factor_loadings` for attribution statistics, factor statistics and partitioned
+paths/exposures. `factor_partitions=None` selects all factors; `{}` suppresses
+partition panels without suppressing the summary. `round_trips=True` additionally
+requires a flat opening state and complete actual execution history, as described
+in the [complete round-trip sheet](#use-the-familiar-complete-round-trip-sheet).
+The partial ledger in this example does not establish that condition.
+
+`return_fig=True` returns the existing `PortfolioTearSheet`; otherwise the
+functions display it and return `None`. Save offline HTML with
+`.save_html(path, include_plotlyjs=True)`. The full report retains optional
+tables in figures/export, not only an HTML string or a list of plots. Each
+component keeps its own keys, missingness and membership rules. Returns-only
+input does not create an empty transaction ledger. Invalid incomplete requested
+inputs raise before display. Matplotlib artist mutation and global style
+contexts do not migrate; `set_context` is accepted without mutating Matplotlib.
+
+`periods_per_year` reaches all selected annualized statistics, rolling risk,
+slippage and capacity curves and attribution statistics. It counts observations
+in the supplied return series, not rebalance dates. `turnover_denom` reaches both
+statistics and transaction panels. Pyfolio 0.10.0's full wrapper drops that
+argument when calling its transaction sheet, so its chart always uses AGB even
+when statistics use closing portfolio value. Diagnostic preserves the requested
+denominator. UTC fill instants use the supplied book's timezone before daily
+aggregation; naive/aware ambiguity is rejected rather than guessed.
+
+Additional `slippage` is a hypothetical cash-bps penalty, never a second charge
+for observed fees. Full composition preserves the original order: adjust on
+the supplied closing book before intraday selection, only when no explicit
+`unadjusted_returns` baseline was supplied. Simple composition selects intraday
+positions before applying additional costs. Tied equal-NAV peak candidates
+remain separate exposure observations but cannot duplicate a daily return or
+charge. The shared slippage adapter collapses their equal NAV denominator once;
+conflicting same-date NAV raises. Pyfolio's duplicate-index projection instead
+duplicates that day's adjusted return and compounds the cost twice.
+
+With `hide_positions=True`, full composition anonymizes asset and sector
+identities before preparing positions, fills, capacity, attribution or FIFO
+results. That includes exported tables and notebook payloads. Caller inputs
+remain unchanged. User-supplied free text such as `header_rows` is not a secret
+redaction service; do not place confidential identities there.
+
+Run the existing price-to-report example end to end:
+
+```bash
+uv run --extra viz python examples/pyfolio_returns_report.py --simple-output simple-account.html --full-output full-account.html --output returns-report.html
+```
+
+Add `--compare` under the published Pyfolio 0.10.0 / Empyrical 0.7.0 / pandas
+2.3.3 reference environment shown above to execute the actual original complete
+simple and full sheets as well. Native pandas 3 support is qualified separately
+from that reference's declared pandas range. These supplied-account examples
+do not establish every original notebook/provider workflow or full replacement.
+
+### Replay the original Pyfolio analytical notebooks
+
+Unreleased after 0.1.9, `scripts/migrate_pyfolio_notebooks.py` converts the five
+original Pyfolio examples at
+[`185eaa1`](https://github.com/stefan-jansen/pyfolio-reloaded/tree/185eaa1657a845a5e1c8c82809248eac7ce99340/src/pyfolio/examples).
+The output-cleared copies in `tests/fixtures/pyfolio_original/` retain every original
+markdown/code cell and include the original license and provenance. The command
+accepts these copies or the originals, rejects changed analytical cells, checks
+captured account hashes, records every import/I/O/display change, and never
+overwrites an existing notebook. Conversion alone does not execute anything.
+
+From this repository, run the original sector, slippage/full-report or round-trip
+workflow without installing Pyfolio, Alphalens, Empyrical, Data, Engineer or Backtest:
+
+```bash
+uv run --extra viz --with nbclient --with ipykernel python scripts/migrate_pyfolio_notebooks.py --source-notebook tests/fixtures/pyfolio_original/slippage_example.ipynb --output migrated-slippage.ipynb --execute
+```
+
+Substitute `sector_mappings_example.ipynb` or
+`round_trip_tear_sheet_example.ipynb` and a new output filename for those workflows.
+The original slippage account has 1,511 return observations, 1,506 closing position
+rows and 9,367 fills; its ending wealth multiple is 1.6540425002394212. Diagnostic
+uses the same report renderer and numerical adapters as the supplied-account
+examples above, with interactive Plotly figures and explicit unavailable panels.
+Matplotlib artist mutation is not preserved.
+
+The single-stock example requires your captured parquet history with a `Close`
+column and unique ordered timezone-naive dates, because its original financial
+cell explicitly localizes dates to UTC. No Yahoo request is substituted silently:
+
+```bash
+uv run --extra viz --with nbclient --with ipykernel python scripts/migrate_pyfolio_notebooks.py --source-notebook tests/fixtures/pyfolio_original/single_stock_example.ipynb --history captured-history.parquet --output migrated-single-stock.ipynb --execute
+```
+
+The `zipline_algo_example.ipynb` route replays the original analytical cells against
+the original captured
+[`results.pickle`](https://github.com/stefan-jansen/pyfolio-reloaded/blob/185eaa1657a845a5e1c8c82809248eac7ce99340/src/pyfolio/examples/results.pickle),
+not a new trading simulation. `--zipline-output` must match SHA256
+`7f6480c177869eb73fc7bf6cb0715924282d02b4fa507f128f182553967ba946`;
+other pickles are rejected before conversion or deserialization. Only this
+producer-object replay needs Zipline to deserialize its original asset objects:
+
+```bash
+uv run --extra viz --with nbclient --with ipykernel --with 'zipline-reloaded==3.2.0' --with 'pandas==2.3.3' --with 'numpy==2.2.6' python scripts/migrate_pyfolio_notebooks.py --source-notebook tests/fixtures/pyfolio_original/zipline_algo_example.ipynb --zipline-output results.pickle --output migrated-zipline.ipynb --execute
+```
+
+That original account is distinct from the CSV example: 1,511 account rows, 7,871
+fills and reported ending NAV multiple 1.6120420817. Zipline's declared Empyrical
+dependency belongs to this optional producer environment, not Diagnostic's
+analytical runtime. The command removes the producer magic cell explicitly and
+records it as not rerun. Conversion does not make arbitrary pickles safe.
+
+The four standalone analytical notebooks have installed-wheel evidence on
+Python 3.12, pandas 3.0.6 and a pandas 2.3.3 / NumPy 2.2.6 / Polars 1.36.1 /
+Plotly 6.1.2 floor. Their actual notebook Plotly payload counts are 7 (round-trip),
+17 (sector), 40 (slippage) and 14 (single-stock). The captured Zipline replay has
+80, with the same reported account wealth. These proofs cover captured analytical
+replay, not live Yahoo acquisition, cache behavior or rerunning the original
+Zipline algorithm. Those producer/provider journeys and full replacement remain
+separate acceptance work.
 
 ### Normalize a supplied account without a backtest engine
 
@@ -1889,11 +3183,54 @@ Run the six-plot, self-contained HTML recipe without Pyfolio:
 uv run python examples/pyfolio_transaction_adapters.py --report transaction-adapters.html
 ```
 
-The optional `--compare` flag also checks the published reference helpers on the
-same inputs. Reference tests additionally inspect real Matplotlib plot payloads
-under matched turnover, bps and timing-bin choices. These observed-input
-transaction routes do not yet qualify the complete `create_txn_tear_sheet`
-intraday-estimation options, round trips or capacity. Those remain accepted work.
+The optional `--compare` flag checks both the published helpers and the complete
+reference transaction sheet on those inputs. The example now calls the same
+report entry point used by migrating callers:
+
+```python
+import pandas as pd
+from ml4t.diagnostic.compat import pyfolio as pf
+
+txn_report_dates = pd.date_range("2025-07-07", periods=3, tz="America/New_York")
+txn_report_returns = pd.Series([.01, -.02, .03], index=txn_report_dates)
+txn_report_positions = pd.DataFrame(
+    {"A": [200.0, 400.0, 600.0], "cash": [800.0, 600.0, 400.0]}, index=txn_report_dates
+)
+txn_report_fills = pd.DataFrame(
+    {"amount": [1.0, -1.0, 2.0], "price": [100.0] * 3},
+    index=pd.to_datetime(["2025-07-07T15:00Z", "2025-07-07T16:00Z", "2025-07-09T15:00Z"]),
+)
+txn_report = pf.create_txn_tear_sheet(
+    txn_report_returns, txn_report_positions, txn_report_fills,
+    unadjusted_returns=txn_report_returns,
+    estimate_intraday=False, return_fig=True, periods_per_year=3,
+)
+assert len(txn_report.figures) == 6
+assert txn_report.availability["transactions"]["n_actual_fills"] == 3
+txn_report.save_html("transaction-report.html", include_plotlyjs=True)
+print("Complete familiar transaction manifest: actual fills and explicit extra-cost scenarios")
+```
+
+Without `unadjusted_returns`, the report includes turnover, activity-date unit
+volume, the finite turnover distribution and selected New York timing. Supplying
+it adds the original seven bps wealth paths and all 99 sensitivity scenarios;
+`periods_per_year` reaches the sensitivity CAGR calculation. Original net fees
+are not subtracted again. An empty actual ledger remains empty, never fills
+inferred from changing positions.
+
+`turnover_denom` selects `AGB` or `portfolio_value` on the whole report. The
+intraday selector uses the same explicit estimator as the positions report;
+estimated positions do not turn transactions into estimates. Plotly histogram
+bins and Matplotlib presentation differ. For full/simple account composition and
+the original portfolio notebooks, use the separate migration recipes above.
+
+The report converts owned aware fill timestamps to the supplied position
+clock's timezone before civil-day grouping. Instants, nanoseconds and caller
+frames remain unchanged. This corrects mixed UTC-fill/New-York-book alignment:
+the reference creates five unmatched daily keys with zero turnover for the
+known `[2, 0, .4]` sample. Naive/aware ambiguity requires an explicit timezone;
+the report does not guess UTC or exchange sessions. Standalone numerical
+adapters retain their documented input-clock definitions.
 
 ### Match actual fractional FIFO lots from an explicitly flat book
 
@@ -2040,8 +3377,8 @@ native-backed familiar tables. The callable
 `pf.round_trips.print_round_trip_stats(trades, hide_pos=True)` omits the symbol
 table. It writes plain text, not IPython display objects; cash is labeled supplied
 account currency rather than assumed USD. Return tables display NAV-relative
-percent, while `gen_round_trip_stats` keeps decimal fractions. These named calls
-do not yet complete the standalone plotting options or full tear sheet.
+percent, while `gen_round_trip_stats` keeps decimal fractions. For the complete
+report, use the [familiar round-trip sheet](#use-the-familiar-complete-round-trip-sheet).
 
 `pf.round_trips.add_closing_transactions(positions, transactions)` supplies the
 familiar optional closing projection for a declared-flat opening book and a
@@ -2097,7 +3434,8 @@ requested from known-at marks in reconstruction, with separate histogram traces,
 dashed lifelines and an explicit sample count. Original fills, actual realized
 PnL and remaining open lots do not change. Observed and explicit cash-price
 intraday routes and the bounded familiar round-trip sheet are described below.
-The complete multi-report portfolio facade remains separate accepted work.
+The [full account report](#compose-a-familiar-simple-or-full-account-report)
+composes these native results when their inputs are supplied.
 
 ### Analyze observed intraday snapshots on their own clock
 
@@ -2199,9 +3537,10 @@ default pivot mean turns two same-instant one-unit buys at 100 into 100 of
 exposure rather than the independently calculated 200. The same two fills at
 distinct instants give the correct 200 in that reference. Diagnostic preserves
 both actual quantities and returns 200 in both cases; it does not copy that
-reference error. The explicit daily projection below is a different method;
-full familiar report options still require separate qualification. This native
-route is not a full-replacement claim.
+reference error. The explicit daily projection below is a different method.
+The familiar intraday helpers and
+[complete account report](#compose-a-familiar-simple-or-full-account-report)
+select that daily estimate explicitly, without treating it as observed account state.
 
 ### Keep the daily intraday estimate separate from account facts
 
@@ -2288,7 +3627,8 @@ candidate clocks and membership. Native unknown holdings are still rejected.
 All marked values, executions and cash must use one supplied cash currency;
 this method does not provide FX conversion, external-flow accounting or margin
 reconstruction. The round-trip adapter below composes these named helpers;
-other portfolio reports remain separate work, not a full-replacement claim.
+the [complete account report](#compose-a-familiar-simple-or-full-account-report)
+composes the other requested portfolio sections from their actual inputs.
 
 ### Use the familiar complete round-trip sheet
 
@@ -2460,8 +3800,9 @@ now accepts same-instant closures, explicit point multipliers, actual zero/negat
 prices and signed cash-fee rebates. Producer-to-consumer tests pass these real
 FIFO rows through `TradeRecord` and `TradeAnalysis` without altering the execution
 quantity, prices or fees. Undefined price/duration ratios remain undefined;
-nanosecond instants survive metric tables and JSON. Full multi-report portfolio
-composition remains separate from the round-trip and intraday routes above.
+nanosecond instants survive metric tables and JSON. Use the
+[complete account report](#compose-a-familiar-simple-or-full-account-report)
+to combine those results with the other requested portfolio sections.
 ### Consume a Zipline performance result without a legacy analytics dependency
 
 The familiar extraction call is also available as
@@ -2573,22 +3914,23 @@ producers without captured holdings still support returns/account/fill analysis;
 the dependent holdings report remains unavailable. Aggregated-return conversion
 of non-bar or differently sampled holdings remains unqualified.
 
-The tested complete-capture producer is immutable Backtest source
-`da223f904cfa03744152311e3c617c15fdc1ddcd`, not a published 0.1.13 package.
+The complete-capture route works with published Backtest 0.2.0 and Specs 0.2.0.
+The earlier capture was qualified against immutable Backtest source
+`da223f904cfa03744152311e3c617c15fdc1ddcd`; its retained provenance is unchanged.
 The executable
 [backtest_portfolio_inputs.py](https://github.com/ml4t/diagnostic/blob/6ac080f97917e5a149f881edd32553d74a86c575/examples/backtest_portfolio_inputs.py)
 runs an actual Engine and checks returns `[0, 0, .02]`, cash `[1000, 800, 800]`,
 marked exposure `[0, 200, 220]`, NAV `[1000, 1000, 1020]` and 200 actual filled
 notional. Ten additional bps costs `.0002` of beginning NAV. The source-qualified
-recipe is:
+recipe using the published producer is:
 
 ```bash
-uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd' --with plotly python examples/backtest_portfolio_inputs.py --run-engine --report backtest-account.html
+uv run --isolated --no-dev --python 3.12 --with 'ml4t-backtest==0.2.0' --with plotly python examples/backtest_portfolio_inputs.py --run-engine --report backtest-account.html
 ```
 
-Current published Backtest 0.1.12 requires Specs below 0.2 and cannot satisfy
-current Diagnostic source's Specs 0.2 requirement. The immutable source probe
-does not establish a compatible published-package pair. Legacy frame exports
+Backtest 0.2.0 satisfies Diagnostic's Specs 0.2 requirement; older Backtest
+0.1.12 requires Specs below 0.2 and cannot be combined with this Diagnostic
+source. Legacy frame exports
 that dropped timezone information recover it only from matching actual public
 Fill/account record timestamps, never from a guessed timezone or return date.
 Standalone supplied-account and captured Zipline analysis need no Backtest
@@ -2597,6 +3939,19 @@ Both producer scripts consume bundled actual captures when run without arguments
 so ordinary examples need no execution engine. `--capture` explicitly regenerates
 Zipline input; Backtest regeneration requires `--run-engine`. The Backtest minute
 example declares 252*390 periods per year, rather than using an hourly scale.
+
+The bridge retains the producer's known initial capital as `initial_nav` for
+the first transaction denominator, including a same-bar opening fill. Supplied
+account users can pass that value to `PortfolioAnalysis.from_frames` explicitly.
+It does not invent an initial timestamp or fill later missing NAV observations.
+Net supplied returns already include actual fees; a zero-extra-cost scenario
+leaves them unchanged. Additional bps are separate hypothetical execution costs.
+
+Actual Backtest external capital records survive in the owned input metadata and
+the report's `external_capital_flows` availability/export entry. The HTML states
+their count and net account-currency amount. Reported NAV includes deposits and
+withdrawals; cumulative investment returns use the producer's flow-adjusted
+return series. They are not recomputed as a ratio of ending to initial NAV.
 Original position quantities, marks and multipliers remain in owned inputs;
 reported liquidation value and notional exposure are kept distinct.
 
@@ -2705,9 +4060,9 @@ arguments do not sample anything on that plotting route.
 
 Shared-input tests execute actual Pyfolio 0.10.0 / Empyrical 0.7.0 with pandas
 2.3.3, including raw draws, all bounds, event samples, original printed stress
-statistics and actual Matplotlib redraw artists. This does not qualify the
-remaining combined returns/full-sheet, bootstrap or original notebook routes.
-Those remain required before any full replacement claim.
+statistics and actual Matplotlib redraw artists. Combined returns/full-sheet,
+bootstrap and original notebook routes have their own regression corpora and
+recipes above; the stress/cone comparison does not substitute for those checks.
 
 ### Analyze prepared holdings on observed keys
 
@@ -2836,10 +4191,12 @@ independent input values, not treated as parity targets. Cash-only complete
 snapshots have an empty requested sector table and unchanged cash in timeline.
 
 The [prepared holdings dashboard](#render-prepared-holdings-in-the-portfolio-dashboard)
-renders these sector tables. This route does not provide intraday reconstruction, automatic
-per-asset Backtest holdings exports, calendar/session-aware `from_pyfolio()` or
-`from_zipline()`, transaction costs/scenarios or complete portfolio reports.
-Those remain accepted coverage requirements. No full replacement is claimed.
+renders these sector tables. It consumes owned holdings rather than simulating an account.
+Use [captured Backtest holdings](#consume-actual-backtest-account-capture) for producer
+snapshots, the [supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine)
+for declared clocks and external inputs, and the
+[complete account report](#compose-a-familiar-simple-or-full-account-report) for
+requested transactions, cost scenarios and other portfolio sections.
 
 #### Render prepared holdings in the portfolio dashboard
 
@@ -2892,8 +4249,9 @@ defined, exposure/sector charts show raw account-currency values with explicit
 units. Undefined concentration or absent sides have an explanation instead of
 an empty chart. `report.availability` distinguishes requested unavailable data
 from disabled analysis; `include_positions=True` without `holdings` supplies an
-actionable preparation reason. Transaction reporting in this dashboard remains
-explicitly unavailable, not silently implemented by the flag.
+actionable preparation reason. Supply an owned transaction analysis through
+`transactions=` to include actual turnover and incremental-cost panels; the
+positions flag alone does not create transaction data.
 
 The report owns its prepared snapshot and validates exact observation keys and
 timezone. Date labels cannot alias midnight timestamps; timestamp transport
@@ -2911,14 +4269,149 @@ reasons as HTML. Install IPython and nbformat in the notebook kernel and use a
 Plotly-compatible frontend. `report.show(compact=True)` remains the four-panel
 returns overview; it does not display the prepared holdings panels.
 
-These observed prepared-holdings panels do not establish the complete Pyfolio positions
-tear sheet or all portfolio reports. The separately tested unreleased
+These native prepared-holdings panels use positive-NAV definitions. The familiar
+position manifest below instead selects the legacy signed-NAV profile. Neither
+route establishes all portfolio reports. The separately tested unreleased
 [supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine),
 [actual transaction analysis](#analyze-actual-transactions-and-incremental-costs) and
 [capacity workflow](#supplied-market-capacity-and-impact-scenarios-unreleased) have their own
-methods and coverage below or above. Full positions-sheet composition, intraday reconstruction,
-round trips, unqualified risk/report options and complete Alphalens/Pyfolio composition remain
-accepted work.
+methods and coverage below or above. The [familiar account composition](#compose-a-familiar-simple-or-full-account-report)
+reuses those components. The [original notebook](#replay-the-original-pyfolio-analytical-notebooks)
+and [provider](#acquire-inputs-with-data-then-analyze-them-in-diagnostic) recipes
+exercise their complete journeys separately from this holdings dashboard.
+
+#### Keep familiar position projections without changing native account defaults
+
+Unreleased after 0.1.9, `compat.pyfolio.pos` provides `get_percent_alloc`,
+`get_top_long_short_abs`, `get_max_median_position_concentration`,
+`get_long_short_pos`, `get_sector_exposures` and `extract_pos`. These adapters
+reuse the native holdings extrema, concentration, exposure and marked-value
+calculations. They retain pandas labels and original asset IDs, including
+input-column tie order for top positions. This is the numerical input layer
+for familiar reports, not qualification of the complete positions tear sheet.
+
+```python
+import pandas as pd
+from ml4t.diagnostic.compat import pyfolio as pf
+
+position_dates = pd.date_range("2025-02-03", periods=2, tz="UTC")
+position_values = pd.DataFrame(
+    {203: [100.0, -20.0], 101: [-40.0, 10.0], "cash": [140.0, -40.0]},
+    index=position_dates,
+)
+allocation = pf.pos.get_percent_alloc(position_values)
+long_short = pf.pos.get_long_short_pos(position_values)
+assert allocation.loc[position_dates[0], 203] == 0.5
+assert long_short.loc[position_dates[0], "short"] == -0.2
+assert allocation.loc[position_dates[1], 203] == 0.4
+assert long_short.loc[position_dates[1], "long"] == -0.2
+top_long, top_short, top_absolute = pf.pos.get_top_long_short_abs(position_values)
+assert top_absolute.index[0] == 203
+print("Familiar positions: original assets, signed NAV and per-metric missingness")
+```
+
+The negative-NAV row deliberately shows the familiar sign reversal. Native
+holdings results still require positive finite NAV for normalized fractions;
+their raw marked exposures remain available independently. Missing positions
+are omitted from a row sum, not globally replaced with zero: allocation keeps
+each missing cell, while `get_long_short_pos` leaves all ratios missing when
+account cash is missing. Concentration selects signs of the normalized
+allocation, which can differ from the marked-position sign at negative NAV.
+Empty concentration tables retain the reference's empty RangeIndex.
+
+Sector projections warn and exclude unmapped assets, matching the familiar
+workflow. They reject a sector literally named `cash`: Pyfolio 0.10.0 overwrites
+that sector with account cash, so 60 of holdings plus 40 of cash becomes only
+40. Use the [native sector result](#render-prepared-holdings-in-the-portfolio-dashboard)
+to retain both namespaces and unknown classifications.
+
+`extract_pos` consumes actual `sid`, `amount` and `last_sale_price` records and
+supplied cash, without inventing returns. Declared asset-object multipliers
+are honored without installing Zipline. Repeated date/asset records retain the
+reference's pivot-mean convention, not additive fills. The supplied cash clock
+must cover every position date; complete all-cash dates remain in the result
+with zero asset values. This corrects the reference's left join, which drops
+cash-only dates. Inputs remain unchanged, including the cash Series name and
+frequency metadata; the projected index has no inferred frequency, as in the
+reference. Absent or NaN marked cells use the familiar zero-filled projection;
+do not apply it to incomplete holdings. Missing cash instead remains unknown,
+not the reference's invented zero balance. This projection is not account
+replay or inferred portfolio NAV.
+
+#### Run a complete familiar positions report
+
+This unreleased route composes the original exposure, top allocations,
+maximum/median concentration, holdings counts, long/short counts and gross
+leverage panels. Requested sector paths and top long/short/absolute tables use
+the same native kernels as the numerical adapters. It requires dated returns
+and a wide marked-value frame with separate `cash`; no broker or Reloaded
+runtime is required. Example snapshots below are explicitly constructed inputs,
+not observed fills or a reconstructed account:
+
+```python
+import numpy as np
+import pandas as pd
+from ml4t.diagnostic.compat import pyfolio as pf
+
+position_report_prices = pd.Series(
+    [100.0, 101.0, 99.0, 103.0],
+    index=pd.bdate_range("2025-02-03", periods=4, tz="UTC"),
+)
+position_report_returns = position_report_prices.pct_change(fill_method=None).iloc[1:]
+example_nav = 10000 * position_report_prices.iloc[1:] / position_report_prices.iloc[0]
+position_report_values = pd.DataFrame(
+    {"Core": .6 * example_nav, "Hedge": -.2 * example_nav, "cash": .6 * example_nav}
+)
+position_report = pf.create_position_tear_sheet(
+    position_report_returns,
+    position_report_values,
+    sector_mappings={"Core": "Core", "Hedge": "Hedge"},
+    estimate_intraday=False,
+    return_fig=True,
+)
+np.testing.assert_allclose(position_report.figures["Gross leverage"].data[0].y, .8)
+assert len(position_report.figures) == 10
+position_report.save_html("positions-report.html", include_plotlyjs=True)
+print("Complete familiar positions manifest: shared kernels, owned identities and explicit estimates")
+```
+
+Run the existing whole-return example with its companion position report:
+
+```bash
+uv run --extra viz python examples/pyfolio_returns_report.py \
+  --positions-output positions-report.html --output returns-report.html
+uv run --extra viz --with pyfolio-reloaded==0.10.0 \
+  --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 \
+  python examples/pyfolio_returns_report.py --compare \
+  --positions-output positions-reference.html --output returns-reference.html
+```
+
+`show_and_plot_top_pos=0` selects top paths, `1` selects top tables and `2`
+selects both. `hide_positions=True` forces plot-only output and anonymizes asset
+and sector labels before building any figure. Original IDs do not remain in
+HTML, data exports or Plotly notebook MIME. Caller inputs remain unchanged.
+
+The default `estimate_intraday="infer"` preserves the existing Pyfolio heuristic
+when actual transactions are supplied. `True` forces the explicit daily
+transaction-notional estimate; `False` or `None` keeps supplied positions. The
+report labels estimates `estimated_intraday`, preserves tied candidate rows
+with separate observation identities, and does not call them observed marked
+holdings or continuous-time peaks.
+
+Legacy normalization stays panel-specific. Exposure plotting omits missing cash
+from the closing row sum, unlike `pos.get_long_short_pos`, which leaves those
+ratios unknown. Undefined fractions remain gaps, not zero risk. Sector plots
+exclude unmapped assets with a warning and normalize mapped sectors plus cash;
+use native prepared holdings for unknown-sector retention and full-NAV weights.
+
+`return_fig=True` returns the existing `PortfolioTearSheet`, not a Matplotlib
+figure. Use `.save_html()`, `.show()` or `.to_dict()`; Matplotlib axes, artist
+mutation and plotting-style kwargs do not migrate. Notebook display requires
+a Plotly-compatible frontend. Exact keys remain in hover/export; horizontal
+spacing follows categorical observation order, not elapsed exchange sessions.
+This positions workflow is also used by the familiar full account report.
+The [original notebook replays](#replay-the-original-pyfolio-analytical-notebooks)
+exercise the complete report compositions with their pinned analytical inputs.
 
 ### Retain raw exposure when equity cannot normalize it
 
@@ -2941,17 +4434,15 @@ The existing migration example runs a real short order through the Backtest
 engine, verifies the actual fill, and checks marks of 150, 200 and 250 after
 shorting 10 shares at 100 from initial equity 1000:
 
-Current Diagnostic source requires Specs 0.2.0 or newer, while published
-Backtest 0.1.12 requires Specs below 0.2. These versions cannot be installed
-together. The following source examples pin the compatible immutable Backtest
-revision qualified as `0.1.13.dev32+gc6feb2408`, with Specs 0.2.0. This is an
-unpublished producer qualification, not a claim that PyPI Backtest 0.1.13 is
-available. A compatible published producer remains necessary for a new
-published-package workflow. The supplied-frame examples above do not require it.
+The exposure and activity recipes below work with published Backtest 0.2.0 and
+Specs 0.2.0. Upgrade older Backtest versions whose Specs bounds are incompatible;
+do not override their dependency bounds. Earlier captured qualification against
+`c6feb24084ec89c3342f5703cc47ea2524b521f4` remains historical producer evidence.
+The supplied-frame examples above do not require a Backtest installation.
 
 ```bash
 uv run --isolated --no-dev --python 3.12 --with plotly \
-  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
+  --with 'ml4t-backtest==0.2.0' \
   python examples/legacy_migration_comparison.py --task exposure
 ```
 
@@ -2999,7 +4490,7 @@ Run the existing migration example with actual next-bar short and cover fills:
 
 ```bash
 uv run --isolated --no-dev --python 3.12 --with plotly \
-  --with 'ml4t-backtest @ git+https://github.com/ml4t/backtest@c6feb24084ec89c3342f5703cc47ea2524b521f4' \
+  --with 'ml4t-backtest==0.2.0' \
   python examples/legacy_migration_comparison.py --task activity
 ```
 
@@ -3024,8 +4515,9 @@ recorded as differences, not parity targets.
 For direct supplied-frame ingestion, unknown fees, extra-cost scenarios and explicit
 observation/session grouping, use the newer
 [actual-transaction workflow](#analyze-actual-transactions-and-incremental-costs).
-The earlier bridge example here does not qualify those methods. External-flow adjustments
-and complete original-sheet options remain separate accepted work.
+The earlier bridge example here does not qualify those methods. External-flow
+adjustments use the supplied-account boundary; complete sheets retain their
+per-component input and numerical contracts.
 The full performance report still requires valid simple returns: a negative-NAV
 step below -100%, or a later 0/0 return after NAV reaches zero, is not supported
 by the current performance workflow. Standalone activity analysis does not
@@ -3153,13 +4645,13 @@ display. `return_fig=True` returns the single Plotly sweep, not a Matplotlib Fig
 `output_file` still saves every table in that mode. Optional `periods_per_year` and `impact`
 make the annualization scale and hypothetical coefficient explicit. The original fixed-capital,
 five-market-row liquidation and closing-NAV impact conventions remain different from the native
-result. These capacity routes do not certify all Pyfolio reports or the combined full sheet.
-Retain Pyfolio for unqualified report choices until installed-artifact and supported-platform
-evidence covers the workflow you need.
+result. Use the [complete account report](#compose-a-familiar-simple-or-full-account-report)
+to combine capacity with supplied returns, holdings, transactions and attribution.
 
-Selected unreleased Diagnostic workflows above implement dated stress/live
-analysis, training-only cones, actual FIFO, supplied-market capacity and
-supplied-holdings attribution. Their existence does not establish one-call
-equivalence for Pyfolio's full collection. Retain Pyfolio for any unqualified
-combined report, option or notebook route, and compare annualization, benchmark
-alignment, cash and cost conventions before comparing metrics.
+The development routes in this guide provide the seven Alphalens and nine Pyfolio
+analytical sheet families, with preserved original-notebook recipes and explicit
+native/legacy method choices. They are not part of the published 0.1.9 wheel.
+Keep the installed legacy workflow until a successor distribution containing the
+required route has been published and verified in your environment. Compare
+annualization, benchmark alignment, cash, costs and the stated sample conventions
+when migrating; matching API names alone does not establish equivalent inputs or results.

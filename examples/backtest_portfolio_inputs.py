@@ -1,7 +1,7 @@
 """Consume an actual opt-in Backtest bar account through Diagnostic's owned boundary.
 
 The default consumes a bundled real capture without Backtest. --run-engine
-requires the unreleased source pin in the migration guide, not published0.1.12.
+supports published Backtest 0.2.0 with the shared Specs 0.2 contract.
 """
 
 from __future__ import annotations

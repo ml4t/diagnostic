@@ -228,7 +228,7 @@ def compute_factor_alpha_beta(
     demeaned: bool = True,
     group_adjust: bool = False,
     equal_weight: bool = False,
-    factor_col: str = "factor",
+    factor_col: str | None = "factor",
     date_col: str = "date",
     asset_col: str = "asset",
     group_col: str = "group",
@@ -240,7 +240,9 @@ def compute_factor_alpha_beta(
     an external market index or group-neutral benchmark. Missing future outcomes
     do not change weights. With ``returns`` supplied, use its unique date grid
     and wide horizon columns (or one indexed Pandas Series), align by date and
-    ignore weighting options. Unmatched dates remain visible with zero benchmark
+    ignore weighting options. Set ``factor_col=None`` when only supplied portfolio
+    returns and universe outcomes are available; no unused score is required.
+    Unmatched dates remain visible with zero benchmark
     counts and null benchmark returns. Inputs are never mutated.
 
     ``annualization_factors`` must explicitly name each selected return column
@@ -263,6 +265,8 @@ def compute_factor_alpha_beta(
     This computes no t-statistic, wealth path, holdings or report panels.
     """
     _weight_flags(demeaned=demeaned, group_adjust=group_adjust, equal_weight=equal_weight)
+    if returns is None and factor_col is None:
+        raise ValueError("factor_col is required when factor returns are not supplied")
     values, columns = _signal_inputs(
         data,
         return_columns,

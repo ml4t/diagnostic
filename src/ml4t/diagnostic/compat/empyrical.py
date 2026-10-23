@@ -1,11 +1,12 @@
-"""Selected Empyrical metric signatures using native Diagnostic calculations.
+"""Empyrical analytical signatures using native Diagnostic calculations.
 
 Risk-free/MAR arguments are periodic. Native annual-rate APIs are unchanged.
 Missingness is metric-specific: CAGR counts missing rows as elapsed observations,
 while deviations and means omit undefined adjusted observations per column.
 Sortino preserves input column names, including the maintained reference's repair
 of the labels lost by published Empyrical Reloaded 0.5.12. Calmar remains 1D;
-apply it per column for a portfolio frame. This is not a full replacement module.
+apply it per column for a portfolio frame. Acquisition remains in Data; native
+metric defaults remain separate from these explicit compatibility methods.
 """
 
 from numbers import Real

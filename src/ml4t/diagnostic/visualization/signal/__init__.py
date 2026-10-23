@@ -40,10 +40,15 @@ All plots follow the ML4T Diagnostic visualization standards:
 - Configurable colors and dimensions
 """
 
+from ml4t.diagnostic.visualization.signal.composed_report import (
+    generate_signal_report,
+    plot_signal_report,
+)
 from ml4t.diagnostic.visualization.signal.dashboard import SignalDashboard
 from ml4t.diagnostic.visualization.signal.event_plots import (
     generate_aligned_event_report,
     generate_event_returns_report,
+    generate_signal_event_study_report,
     plot_aligned_event_paths,
     plot_ar_distribution,
     plot_caar,
@@ -51,12 +56,17 @@ from ml4t.diagnostic.visualization.signal.event_plots import (
     plot_event_count_distribution,
     plot_event_heatmap,
     plot_event_returns,
+    plot_signal_event_study,
 )
 from ml4t.diagnostic.visualization.signal.ic_plots import (
     plot_ic_histogram,
     plot_ic_qq,
     plot_ic_ts,
     plot_monthly_ic_heatmap,
+)
+from ml4t.diagnostic.visualization.signal.information_plots import (
+    generate_signal_information_report,
+    plot_signal_information,
 )
 from ml4t.diagnostic.visualization.signal.multi_signal_dashboard import (
     MultiSignalDashboard,
@@ -73,8 +83,14 @@ from ml4t.diagnostic.visualization.signal.quantile_plots import (
     plot_quantile_returns_violin,
     plot_spread_timeseries,
 )
+from ml4t.diagnostic.visualization.signal.returns_plots import (
+    generate_signal_returns_report,
+    plot_signal_returns,
+)
 from ml4t.diagnostic.visualization.signal.turnover_plots import (
+    generate_signal_turnover_report,
     plot_autocorrelation,
+    plot_signal_turnover,
     plot_top_bottom_turnover,
 )
 
@@ -82,19 +98,27 @@ __all__ = [
     # Dashboards
     "SignalDashboard",
     "MultiSignalDashboard",
+    "plot_signal_report",
+    "generate_signal_report",
     # IC plots
     "plot_ic_ts",
     "plot_ic_histogram",
     "plot_ic_qq",
     "plot_monthly_ic_heatmap",
+    "plot_signal_information",
+    "generate_signal_information_report",
     # Quantile plots
     "plot_quantile_returns_bar",
     "plot_quantile_returns_violin",
     "plot_cumulative_returns",
     "plot_spread_timeseries",
+    "plot_signal_returns",
+    "generate_signal_returns_report",
     # Turnover plots
     "plot_top_bottom_turnover",
     "plot_autocorrelation",
+    "plot_signal_turnover",
+    "generate_signal_turnover_report",
     # Event study plots
     "plot_caar",
     "plot_event_heatmap",
@@ -105,6 +129,8 @@ __all__ = [
     "generate_aligned_event_report",
     "generate_event_returns_report",
     "plot_event_returns",
+    "plot_signal_event_study",
+    "generate_signal_event_study_report",
     # Multi-signal plots
     "plot_ic_ridge",
     "plot_signal_ranking_bar",
