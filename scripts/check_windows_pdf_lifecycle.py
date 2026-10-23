@@ -35,7 +35,7 @@ def main() -> None:
             "pytest",
             "tests/test_visualization/test_pdf_process_ownership.py",
             "-k",
-            "exit7 or render_error or close_error or close_command_hang or cancel or profile_sharing or slow_shutdown or completed_page or previous_blank_page",
+            "exit7 or render_error or close_error or close_command_hang or cancel or profile_sharing or slow_shutdown or completed_page or previous_blank_page or context_burst",
             "-o",
             "addopts=",
             "-q",
@@ -68,7 +68,7 @@ def main() -> None:
         passed = (
             process.returncode == 0
             and not timed_out
-            and len(cases) == 10
+            and len(cases) == 11
             and not any(
                 child.tag in ("failure", "error", "skipped") for case in cases for child in case
             )

@@ -702,6 +702,47 @@ kaleido.Kaleido.__init__=init
     assert figure.to_json() == original
 
 
+def test_context_burst_cannot_drop_ready_main_world_after_a_child_frame(tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    patch = r"""
+import choreographer
+original_command=choreographer.Tab.send_command
+armed=False
+async def command(self,method,*args,**kwargs):
+    global armed
+    if method=='Runtime.disable':
+        result=await original_command(self,method,*args,**kwargs)
+        await original_command(self,'Runtime.enable')
+        armed=True
+        return result
+    if method=='Runtime.enable' and armed:
+        armed=False
+        child=self.subscribe_once('Runtime.executionContextCreated')
+        await original_command(self,'Runtime.evaluate',params={'expression':"document.body.appendChild(document.createElement('iframe'))"})
+        await child
+        await original_command(self,'Runtime.disable')
+    return await original_command(self,method,*args,**kwargs)
+choreographer.Tab.send_command=command
+"""
+    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
+    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 30)
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
+    figure = go.Figure(go.Bar(x=["A", "B"], y=[1, 3]))
+    figure.update_layout(title="Main rendering context survives a burst")
+    original = figure.to_json()
+    output = export_figures_to_pdf([figure], tmp_path / "context-burst.pdf", scale=1)
+    pages = pypdf.PdfReader(output).pages
+    assert len(pages) == 1
+    assert "Main rendering context survives a burst" in pages[0].extract_text()
+    assert figure.to_json() == original
+
+
 def test_pdf_worker_renders_without_initializing_the_analytical_package(tmp_path, monkeypatch):
     pytest.importorskip("kaleido")
     pypdf = pytest.importorskip("pypdf")

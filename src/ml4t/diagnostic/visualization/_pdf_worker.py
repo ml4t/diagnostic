@@ -51,29 +51,36 @@ class _PageEventsKaleido(kaleido.Kaleido):
             raise RuntimeError(f"PDF renderer frame query failed: {frame!r}")
         frame_id = frame["result"]["frameTree"]["frame"]["id"]
         await target.send_command("Runtime.disable")
-        context = target.subscribe_once("Runtime.executionContextCreated")
-        while context.done():
-            context = target.subscribe_once("Runtime.executionContextCreated")
-        await target.send_command("Runtime.enable")
-        while True:
-            current = (await context)["params"]["context"]
-            auxiliary = current.get("auxData", {})
-            if auxiliary.get("isDefault") and auxiliary.get("frameId") == frame_id:
-                response = await target.send_command(
-                    "Runtime.evaluate",
-                    params={
-                        "expression": expression,
-                        "contextId": current["id"],
-                        "returnByValue": True,
-                    },
-                )
-                if (
-                    isinstance(response, dict)
-                    and response.get("result", {}).get("result", {}).get("value") is True
-                ):
-                    wrapped._current_js_id = current["id"]
-                    return
-            context = target.subscribe_once("Runtime.executionContextCreated")
+        # A one-shot future drops later contexts emitted before Runtime.enable returns.
+        contexts = asyncio.Queue()
+        event = "Runtime.executionContextCreated"
+
+        async def context_created(message):
+            contexts.put_nowait(message)
+
+        target.subscribe(event, context_created)
+        try:
+            await target.send_command("Runtime.enable")
+            while True:
+                current = (await contexts.get())["params"]["context"]
+                auxiliary = current.get("auxData", {})
+                if auxiliary.get("isDefault") and auxiliary.get("frameId") == frame_id:
+                    response = await target.send_command(
+                        "Runtime.evaluate",
+                        params={
+                            "expression": expression,
+                            "contextId": current["id"],
+                            "returnByValue": True,
+                        },
+                    )
+                    if (
+                        isinstance(response, dict)
+                        and response.get("result", {}).get("result", {}).get("value") is True
+                    ):
+                        wrapped._current_js_id = current["id"]
+                        return
+        finally:
+            target.unsubscribe(event)
 
 
 async def _render(request_path: Path, status_path: Path) -> None:
