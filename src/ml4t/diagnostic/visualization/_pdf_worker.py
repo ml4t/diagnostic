@@ -15,7 +15,14 @@ from kaleido._kaleido_tab import _KaleidoTab
 
 class _PageEventsKaleido(kaleido.Kaleido):
     async def _conform_tabs(self, tabs: Iterable[Tab] | None = None) -> None:
-        selected = list(tabs or self.tabs.values())
+        if tabs is None:
+            # A startup target can stop answering Page.enable before any navigation.
+            previous = list(self.tabs)
+            selected = [await self.create_tab(url="about:blank", window=True)]
+            for target_id in previous:
+                await self.close_tab(target_id)
+        else:
+            selected = list(tabs)
         # Page.enable does not replay a load event missed during fast navigation.
         for tab in selected:
             await tab.send_command("Page.enable")

@@ -61,9 +61,9 @@ if mode in ('close_error','close_command_hang','render_hang'):
                 original_status_write(observed.with_suffix('.channel.json'),json.dumps({'closed':closed}))
         return original_status_write(self,text,*args,**kwargs)
     Path.write_text=observe_terminal_status
-async def command(self,method,*args,**kwargs):
-    result=await original_command(self,method,*args,**kwargs)
-    if method=='Browser.close':
+async def command(self,command,*args,**kwargs):
+    result=await original_command(self,command,*args,**kwargs)
+    if command=='Browser.close':
         observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
         if mode=='close_command_hang': await asyncio.sleep(3600)
     return result
@@ -79,6 +79,30 @@ def snapshot(self):
     profiles=[str(arg).split('=',1)[1] for arg in self.subprocess.args if str(arg).startswith('--user-data-dir=')]
     assert profiles, 'No actual browser profile observed'
     observed.with_suffix('.profiles.json').write_text(json.dumps(profiles))
+if mode=='unresponsive_startup':
+    from choreographer import Browser
+    original_populate=Browser.populate_targets
+    startup_armed=False
+    async def populate(self,*args,**kwargs):
+        global startup_armed
+        result=await original_populate(self,*args,**kwargs)
+        if not startup_armed and self.tabs:
+            startup_armed=True
+            target=next(iter(self.tabs.values()))
+            snapshot(self)
+            await target.send_command('Runtime.evaluate',params={
+                'expression':'setTimeout(()=>{while(true){}},100);true',
+            })
+            await asyncio.sleep(.25)
+            probe=asyncio.create_task(target.send_command('Page.enable'))
+            done,_=await asyncio.wait([probe],timeout=.5)
+            assert not done,'Initial renderer did not actually stop answering Page.enable'
+            probe.cancel()
+            try: await probe
+            except asyncio.CancelledError: pass
+            observed.with_suffix('.fault.json').write_text(json.dumps({'stage':'initial_page_command_unresponsive'}))
+        return result
+    Browser.populate_targets=populate
 async def opened(self,*args,**kwargs):
     await asyncio.sleep(startup_delay)
     result=await original_open(self,*args,**kwargs)
@@ -134,6 +158,7 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='unresponsive_startup': _pdf_process._RENDER_TIMEOUT=30
     if mode=='slow_shutdown':
         original_terminate=_pdf_process._OwnedProcesses.terminate
         def verify_graceful_before_escalation(self):
@@ -284,7 +309,7 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except BaseException as error:
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown'): raise
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
@@ -306,13 +331,15 @@ try:
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
         assert all(abs(float(page.mediabox.width)-450)<0.1 for page in pages)
         assert all(abs(float(page.mediabox.height)-337.5)<1 for page in pages)
     assert originals==[figure.to_json() for figure in figures]
+    if mode=='unresponsive_startup':
+        assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}
     if mode=='held_status': assert len(read_handles)==1 and all(handle.closed for handle in read_handles)
     if mode in ('shared_status','permanent_status'):
         assert sharing_started and actual_denials, 'No real Windows sharing denial was exercised'
@@ -405,6 +432,7 @@ def _run_pdf_probe(code, arguments):
             "close_command_hang",
             "close_hang",
             "slow_shutdown",
+            "unresponsive_startup",
             "render_error",
             "cleanup_error",
             "cancel",
@@ -660,7 +688,7 @@ async def command(self,method,*args,**kwargs):
     if method=='Page.navigate' and first_navigation:
         first_navigation=False
         loaded=self.subscribe_once('Page.loadEventFired')
-        await original_command(self,'Page.navigate',params={'url':'about:blank#previous-document'})
+        await original_command(self,'Page.navigate',params={'url':'data:text/html,<title>previous-document</title>'})
         await asyncio.wait_for(loaded,10)
         marker.write_text(json.dumps({'previous_document_load_delivered':True}))
     return await original_command(self,method,*args,**kwargs)
