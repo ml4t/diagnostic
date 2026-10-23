@@ -20,20 +20,18 @@ class _PageEventsKaleido(kaleido.Kaleido):
         for tab in selected:
             await tab.send_command("Page.enable")
         await super()._conform_tabs(selected)
-        ready = [self.tabs_ready.get_nowait() for _ in range(self.tabs_ready.qsize())]
-        try:
-            for wrapped in ready:
-                if wrapped.tab in selected:
-                    await self._renderer_document_ready(wrapped)
-        finally:
-            for wrapped in ready:
-                self.tabs_ready.put_nowait(wrapped)
+
+    async def _get_kaleido_tab(self) -> _KaleidoTab:
+        wrapped = await super()._get_kaleido_tab()
+        await self._renderer_document_ready(wrapped)
+        return wrapped
 
     async def _renderer_document_ready(self, wrapped: _KaleidoTab) -> None:
         target = wrapped.tab
         expression = (
             f"location.href === new URL({json.dumps(self._index)}).href && "
             "document.readyState === 'complete' && "
+            "typeof Plotly !== 'undefined' && typeof Plotly.newPlot === 'function' && "
             "typeof kaleido_scopes !== 'undefined' && "
             "typeof kaleido_scopes.plotly === 'function'"
         )
@@ -61,8 +59,20 @@ class _PageEventsKaleido(kaleido.Kaleido):
             current = (await context)["params"]["context"]
             auxiliary = current.get("auxData", {})
             if auxiliary.get("isDefault") and auxiliary.get("frameId") == frame_id:
-                wrapped._current_js_id = current["id"]
-                return
+                response = await target.send_command(
+                    "Runtime.evaluate",
+                    params={
+                        "expression": expression,
+                        "contextId": current["id"],
+                        "returnByValue": True,
+                    },
+                )
+                if (
+                    isinstance(response, dict)
+                    and response.get("result", {}).get("result", {}).get("value") is True
+                ):
+                    wrapped._current_js_id = current["id"]
+                    return
             context = target.subscribe_once("Runtime.executionContextCreated")
 
 

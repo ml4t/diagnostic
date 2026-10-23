@@ -628,6 +628,7 @@ def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_
     from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
 
     bundle = (Path(plotly.__file__).parent / "package_data/plotly.min.js").read_bytes()
+    bundle = b"setTimeout(function(){\n" + bundle + b"\n}, 750);"
     requested = []
 
     class DelayedBundle(BaseHTTPRequestHandler):
@@ -686,14 +687,17 @@ kaleido.Kaleido.__init__=init
             _pdf_process, "_BOOTSTRAP", renderer_patch + "\n" + _pdf_process._BOOTSTRAP
         )
         try:
-            output = export_figures_to_pdf([figure], tmp_path / "ready-document.pdf", scale=1)
+            output = export_figures_to_pdf(
+                [figure, figure], tmp_path / "ready-document.pdf", scale=1
+            )
         finally:
             server.shutdown()
             thread.join(timeout=5)
     assert json.loads(marker.read_text())["previous_document_load_delivered"]
     assert requested and set(requested) == {"/plotly.min.js"}
     pages = pypdf.PdfReader(output).pages
-    assert len(pages) == 1 and "Renderer document is ready" in pages[0].extract_text()
+    assert len(pages) == 2
+    assert all("Renderer document is ready" in page.extract_text() for page in pages)
     assert figure.to_json() == original
 
 
