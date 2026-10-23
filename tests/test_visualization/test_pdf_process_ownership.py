@@ -305,10 +305,11 @@ else:
     if mode=='profile_readonly':
         import stat
         original_terminate=_pdf_process._OwnedProcesses.terminate
-        def terminate_then_mark_real_profile_readonly(self):
-            original_terminate(self)
+        def mark_real_profile_readonly_then_terminate(self):
             profile=Path(json.loads(observed.with_suffix('.profiles.json').read_text())[0])
-            candidate=next(path for path in profile.rglob('*') if path.is_file())
+            profile.mkdir(exist_ok=True)
+            candidate=profile/'diagnostic-readonly.txt'
+            candidate.write_bytes(b'Retained read-only renderer artifact')
             candidate.chmod(stat.S_IREAD)
             attributes=candidate.stat().st_file_attributes
             assert attributes & stat.FILE_ATTRIBUTE_READONLY
@@ -319,7 +320,8 @@ else:
                     'path':str(candidate),'attributes':attributes,'winerror':error.winerror,
                     'directory':str(Path(self.process.args[-2]).parent)}))
             else: raise AssertionError('Actual read-only profile file allowed deletion')
-        _pdf_process._OwnedProcesses.terminate=terminate_then_mark_real_profile_readonly
+            return original_terminate(self)
+        _pdf_process._OwnedProcesses.terminate=mark_real_profile_readonly_then_terminate
     if mode in ('shared_status','permanent_status','profile_sharing'):
         import ctypes,threading
         from ctypes import wintypes
@@ -444,6 +446,10 @@ try:
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode in ('exit7','profile_readonly'): assert 'code 7' in str(error),repr(error)
+        if mode=='profile_readonly':
+            assert observed.with_suffix('.readonly.json').exists(),expected_render_error
+            assert not any('PDF process cleanup failed' in note or 'PDF profile cleanup failed' in note
+                           for note in expected_render_error['notes']),expected_render_error
         if mode in ('render_error','cleanup_error'):
             assert 'Actual renderer failed after first page' in str(error),repr(error)
             if mode=='cleanup_error':

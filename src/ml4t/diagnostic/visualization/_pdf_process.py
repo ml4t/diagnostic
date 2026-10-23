@@ -217,6 +217,10 @@ class _WindowsJob:
                 handle = self.api.OpenProcess(
                     0x00101001, False, process.pid
                 )  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION | TERMINATE
+                can_terminate = bool(handle)
+                if not handle and ctypes.get_last_error() == 5:
+                    # Keep a waitable identity handle when termination access is denied.
+                    handle = self.api.OpenProcess(0x00101000, False, process.pid)
                 if handle:
                     member = wintypes.BOOL()
                     membership = (
@@ -233,18 +237,20 @@ class _WindowsJob:
                         )
                     except psutil.Error:
                         pass
-                    handles.append((process.pid, handle, membership, identity))
+                    handles.append((process.pid, handle, membership, identity, can_terminate))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
             started = time.monotonic()
             deadline = started + 5
             # Keep the worker's pipe readers alive until its browser descendants exit.
-            for pid, handle, membership, identity in reversed(handles):
+            for pid, handle, membership, identity, can_terminate in reversed(handles):
                 state = self.api.WaitForSingleObject(handle, 0)
-                if state == 258 and membership:
+                if state == 258 and membership and can_terminate:
                     if not self.api.TerminateProcess(handle, 120):
                         error = ctypes.get_last_error()
-                        if self.api.WaitForSingleObject(handle, 0) != 0:
+                        # A repeated termination request can be denied during exit.
+                        # Only the following process-handle wait establishes completion.
+                        if error != 5 and self.api.WaitForSingleObject(handle, 0) != 0:
                             raise ctypes.WinError(error)
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
@@ -259,6 +265,7 @@ class _WindowsJob:
                         f"Owned PDF process {pid} not terminal before job termination: "
                         f"wait result {result}; identity={identity}, "
                         f"member_before_termination={membership}, exit_code={observed_exit}, "
+                        f"termination_access={can_terminate}, "
                         f"cleanup_elapsed={time.monotonic() - started:.6f}, "
                         f"wait_budget_ms={remaining_ms}"
                     )
@@ -279,7 +286,7 @@ class _WindowsJob:
                     )
                 time.sleep(0.05)
             # Accounting can reach zero before process teardown releases file handles.
-            for pid, handle, membership, identity in handles:
+            for pid, handle, membership, identity, _ in handles:
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
@@ -297,7 +304,7 @@ class _WindowsJob:
                         f"cleanup_elapsed={time.monotonic() - started:.6f}, wait_budget_ms={remaining_ms}"
                     )
         finally:
-            for _, handle, _, _ in handles:
+            for _, handle, _, _, _ in handles:
                 self.api.CloseHandle(handle)
             self.api.CloseHandle(self.handle)
 
