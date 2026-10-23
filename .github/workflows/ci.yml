@@ -325,6 +325,7 @@ jobs:
       - lint
       - typecheck
       - test
+      - windows-pdf-lifecycle
       - security
       - dependency-review
       - codeql
