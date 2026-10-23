@@ -154,6 +154,7 @@ class _WindowsJob:
             "OpenProcess": ([wintypes.DWORD, wintypes.BOOL, wintypes.DWORD], wintypes.HANDLE),
             "AssignProcessToJobObject": ([wintypes.HANDLE, wintypes.HANDLE], wintypes.BOOL),
             "TerminateJobObject": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
+            "TerminateProcess": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
             "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
             "IsProcessInJob": (
                 [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)],
@@ -214,8 +215,8 @@ class _WindowsJob:
                 if not process.is_running():
                     continue
                 handle = self.api.OpenProcess(
-                    0x00101000, False, process.pid
-                )  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+                    0x00101001, False, process.pid
+                )  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION | TERMINATE
                 if handle:
                     member = wintypes.BOOL()
                     membership = (
@@ -235,9 +236,33 @@ class _WindowsJob:
                     handles.append((process.pid, handle, membership, identity))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
-            self._check(self.api.TerminateJobObject(self.handle, 120))
             started = time.monotonic()
             deadline = started + 5
+            # Keep the worker's pipe readers alive until its browser descendants exit.
+            for pid, handle, membership, identity in reversed(handles):
+                state = self.api.WaitForSingleObject(handle, 0)
+                if state == 258 and membership:
+                    if not self.api.TerminateProcess(handle, 120):
+                        error = ctypes.get_last_error()
+                        if self.api.WaitForSingleObject(handle, 0) != 0:
+                            raise ctypes.WinError(error)
+                remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+                result = self.api.WaitForSingleObject(handle, remaining_ms)
+                if result != 0:
+                    exit_code = wintypes.DWORD()
+                    observed_exit = (
+                        exit_code.value
+                        if self.api.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+                        else None
+                    )
+                    raise RuntimeError(
+                        f"Owned PDF process {pid} not terminal before job termination: "
+                        f"wait result {result}; identity={identity}, "
+                        f"member_before_termination={membership}, exit_code={observed_exit}, "
+                        f"cleanup_elapsed={time.monotonic() - started:.6f}, "
+                        f"wait_budget_ms={remaining_ms}"
+                    )
+            self._check(self.api.TerminateJobObject(self.handle, 120))
             while True:
                 accounting = Accounting()
                 self._check(
