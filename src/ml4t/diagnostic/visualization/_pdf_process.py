@@ -472,6 +472,11 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                 primary_error.add_note(f"PDF process cleanup failed: {cleanup_error!r}")
             raise primary_error from cleanup_error
         if cleanup_error is not None:
+            output.seek(0)
+            cleanup_error.add_note(
+                f"PDF worker final status: {status!r}\n"
+                f"{output.read().decode('utf-8', errors='replace')}"
+            )
             raise cleanup_error
         if status.get("phase") != "closed":
             _logger.warning("Terminated owned PDF renderer after browser close failure: %s", status)

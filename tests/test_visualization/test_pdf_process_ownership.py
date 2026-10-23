@@ -28,7 +28,7 @@ fault_delay=float(sys.argv[4]) if len(sys.argv)>4 else .1
 observed=output.with_suffix('.processes.json')
 observed.with_suffix('.channel.bin').write_bytes(bytes(5))
 patch=r"""
-import asyncio,json,mmap,os,psutil,kaleido
+import asyncio,json,mmap,os,psutil,kaleido,sys,time
 from pathlib import Path
 from pypdf import PdfReader
 mode=MODE
@@ -72,6 +72,7 @@ async def command(self,command,*args,**kwargs):
     if command=='Browser.close' and mode=='close_command_hang_slow_shutdown':
         browser=psutil.Process(self.subprocess.pid)
         browser.suspend()
+        print('PDF close control: browser suspended',time.monotonic(),file=sys.stderr,flush=True)
         original_write_json=self._channel.write_json
         sent=[]
         def record_real_close_request(message):
@@ -82,6 +83,7 @@ async def command(self,command,*args,**kwargs):
         pending=asyncio.create_task(original_command(self,command,*args,**kwargs))
         try:
             while not sent: await asyncio.sleep(.01)
+            print('PDF close control: Browser.close transmitted',time.monotonic(),file=sys.stderr,flush=True)
             observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close_sent':True}))
             await asyncio.sleep(3600)
         finally:
@@ -161,6 +163,10 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     global failed_channel
+    if mode=='termination_error':
+        result=await original_close(self,*args,**kwargs)
+        print('PDF close control: actual browser close returned',file=sys.stderr,flush=True)
+        return result
     if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
         failed_channel=self._channel
     snapshot(self)
@@ -180,11 +186,16 @@ async def closed(self,*args,**kwargs):
             if pipe_closed: return original_pipe_close()
             pipe_closed.append(True)
             browser=psutil.Process(self.subprocess.pid)
+            print('PDF close control: entering pipe close',time.monotonic(),file=sys.stderr,flush=True)
             original_pipe_close()
+            print('PDF close control: pipe close returned',time.monotonic(),file=sys.stderr,flush=True)
             def resume():
-                try: browser.resume()
+                try:
+                    browser.resume()
+                    print('PDF close control: browser resumed',time.monotonic(),file=sys.stderr,flush=True)
                 except psutil.NoSuchProcess: pass
             threading.Timer(1,resume).start()
+            print('PDF close control: resume timer started',time.monotonic(),file=sys.stderr,flush=True)
         self._channel.close=close_then_allow_bounded_browser_exit
     if mode=='slow_shutdown':
         import threading
@@ -242,7 +253,7 @@ else:
                 interrupted.append(True)
                 _thread.interrupt_main()
         _pdf_process._OwnedProcesses.observe=cancel_after_valid_page
-    if mode=='cleanup_error':
+    if mode in ('cleanup_error','termination_error'):
         original_terminate=_pdf_process._OwnedProcesses.terminate
         def terminate_then_fail(self):
             original_terminate(self)
@@ -409,6 +420,11 @@ try:
             assert 'File "' in str(error) and 'Thread' in str(error),repr(error)
             assert 'Async task' in str(error) and 'in written' in str(error),repr(error)
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
+        if mode=='termination_error':
+            assert 'Owned termination verification failed' in str(error),repr(error)
+            notes='\n'.join(getattr(error,'__notes__',[]))
+            assert 'actual browser close returned' in notes,notes
+            assert "'phase': 'closed'" in notes and "'completed': 2" in notes,notes
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
         assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'), 'Rendering defect was swallowed'
@@ -591,6 +607,13 @@ Path.write_text=delay_terminal_notification
         result = _run_pdf_probe(delayed, ["close_command_hang", str(tmp_path / "report.pdf"), "0"])
     finally:
         assert (tmp_path / "report.processes.terminal-stall").read_bytes() == b"1"
+    assert result["running"] == [] and result["neighbor_alive"]
+
+
+def test_completed_pdf_termination_failure_preserves_worker_shutdown_diagnostics(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    result = _run_pdf_probe(_PROBE, ["termination_error", str(tmp_path / "report.pdf"), "0"])
     assert result["running"] == [] and result["neighbor_alive"]
 
 
