@@ -65,6 +65,7 @@ async def _render(request_path: Path, status_path: Path) -> None:
     )
     browser = getattr(renderer, "subprocess", None)
     status("closing", browser_pid=getattr(browser, "pid", None), **details)
+    close_deadline = asyncio.get_running_loop().time() + 13
     close_error = None
     try:
         await asyncio.wait_for(renderer.close(), timeout=10)
@@ -74,12 +75,18 @@ async def _render(request_path: Path, status_path: Path) -> None:
         # A failed vendor close can leave a healthy browser owning its profile.
         # Request normal browser shutdown before the parent resorts to OS termination.
         async def close_browser() -> None:
-            await renderer.send_command("Browser.close")
+            try:
+                await renderer.send_command("Browser.close")
+            except Exception:
+                pass
             while renderer.subprocess.poll() is None:
                 await asyncio.sleep(0.05)
 
         try:
-            await asyncio.wait_for(close_browser(), timeout=3)
+            await asyncio.wait_for(
+                close_browser(),
+                timeout=max(0, close_deadline - asyncio.get_running_loop().time()),
+            )
         except Exception:
             pass
     if render_error is not None:

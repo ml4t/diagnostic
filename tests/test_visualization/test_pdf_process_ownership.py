@@ -72,6 +72,16 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     snapshot(self)
+    if mode=='slow_shutdown':
+        import threading
+        process=psutil.Process(self.subprocess.pid)
+        process.suspend()
+        def resume():
+            try: process.resume()
+            except psutil.NoSuchProcess: pass
+        timer=threading.Timer(4,resume)
+        timer.daemon=True
+        timer.start()
     if mode.startswith('resource_error'):
         marker=observed.with_suffix('.close.json')
         marker.write_text(json.dumps({'entered':True,'finished':False}))
@@ -96,6 +106,17 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='slow_shutdown':
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        def verify_graceful_before_escalation(self):
+            browser_pid=int(next(iter(json.loads(observed.read_text()))))
+            try:
+                browser=psutil.Process(browser_pid)
+                running=browser.is_running() and browser.status()!=psutil.STATUS_ZOMBIE
+            except psutil.NoSuchProcess: running=False
+            original_terminate(self)
+            assert not running, 'OS escalation interrupted a bounded graceful browser shutdown'
+        _pdf_process._OwnedProcesses.terminate=verify_graceful_before_escalation
     if mode=='cancel':
         import _thread
         original_observe=_pdf_process._OwnedProcesses.observe
@@ -235,7 +256,7 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except BaseException as error:
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing'): raise
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
@@ -256,7 +277,7 @@ try:
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','held_status','shared_status','profile_sharing'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -350,6 +371,7 @@ def _run_pdf_probe(code, arguments):
         for mode in [
             "close_error",
             "close_hang",
+            "slow_shutdown",
             "render_error",
             "cleanup_error",
             "cancel",
