@@ -37,7 +37,23 @@ original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
 failed_channel=None
-if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang'):
+from choreographer.channels import Pipe
+original_pipe_init=Pipe.__init__
+original_os_close=os.close
+owned_pipe_descriptors={}
+def record_pipe_init(self):
+    original_pipe_init(self)
+    self.observed_closed_descriptors=set()
+    for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser'):
+        owned_pipe_descriptors[getattr(self,name)]=self
+def record_actual_descriptor_close(fd):
+    result=original_os_close(fd)
+    channel=owned_pipe_descriptors.pop(fd,None)
+    if channel is not None: channel.observed_closed_descriptors.add(fd)
+    return result
+Pipe.__init__=record_pipe_init
+os.close=record_actual_descriptor_close
+if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
     if os.name!='nt':
         from choreographer.browsers.chromium import Chromium
         original_cli=Chromium.get_cli
@@ -53,11 +69,7 @@ if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown
             if json.loads(text).get('phase') in ('close_failed','render_failed'):
                 closed=[]
                 for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser'):
-                    try: os.fstat(getattr(failed_channel,name))
-                    except OSError as error:
-                        assert error.errno==9,error
-                        closed.append(True)
-                    else: closed.append(False)
+                    closed.append(getattr(failed_channel,name) in failed_channel.observed_closed_descriptors)
                 original_status_write(observed.with_suffix('.channel.json'),json.dumps({'closed':closed}))
         return original_status_write(self,text,*args,**kwargs)
     Path.write_text=observe_terminal_status
@@ -141,9 +153,17 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     global failed_channel
-    if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang'):
+    if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
         failed_channel=self._channel
     snapshot(self)
+    if mode=='pipe_number_reuse':
+        await original_close(self,*args,**kwargs)
+        old_numbers={getattr(failed_channel,name) for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser')}
+        retained=[]
+        while not old_numbers.intersection(retained):
+            retained.append(os.open(observed.with_suffix('.after-close.log'),os.O_WRONLY|os.O_CREAT,0o600))
+            assert len(retained)<256,'No actual pipe descriptor number was reused'
+        observed.with_suffix('.reused.json').write_text(json.dumps({'reused':sorted(old_numbers.intersection(retained))}))
     if mode=='close_command_hang_slow_shutdown':
         import threading
         original_pipe_close=self._channel.close
@@ -343,7 +363,7 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except BaseException as error:
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown'): raise
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
@@ -365,7 +385,7 @@ try:
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -408,7 +428,7 @@ try:
     assert all(not Path(profile).exists() for profile in profiles), profiles
     if mode in ('close_error','close_command_hang','render_error','render_hang','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
-    if mode in ('close_error','close_command_hang','render_hang'):
+    if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse'):
         channel=json.loads(observed.with_suffix('.channel.json').read_text())
         assert all(channel['closed']), 'Graceful fallback retained owned browser pipe descriptors'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
@@ -467,6 +487,7 @@ def _run_pdf_probe(code, arguments):
             "close_error",
             "close_command_hang",
             "close_command_hang_slow_shutdown",
+            "pipe_number_reuse",
             "close_hang",
             "slow_shutdown",
             "unresponsive_startup",
