@@ -68,7 +68,7 @@ def main() -> None:
         passed = (
             process.returncode == 0
             and not timed_out
-            and len(cases) == 12
+            and len(cases) == 13
             and not any(
                 child.tag in ("failure", "error", "skipped") for case in cases for child in case
             )

@@ -12,6 +12,35 @@ tasks name their optional dependencies below.
 For selected performance metrics, see the separate
 [Empyrical migration assessment](empyrical-migration.md).
 
+## Choose a migration route
+
+The development source after 0.1.9 provides the following complete analytical
+report families. Start with the familiar adapter to retain a notebook's calling
+pattern, or use the native result when you need its samples, validation and
+serialization. The adapters share native calculations; they do not install a
+second analytical engine or require a Reloaded package at runtime.
+
+| Existing workflow | Diagnostic route | Runnable migration |
+|---|---|---|
+| Alphalens returns, summary, full, information, turnover, event-returns and event-study sheets | `ml4t.diagnostic.compat.alphalens.tears` | [Original Alphalens notebooks](#run-preserved-original-alphalens-notebooks), including the factor-to-Pyfolio journey |
+| Pyfolio returns, positions, transactions, simple/full accounts, attribution, capacity, round trips and historical-event sheets | `ml4t.diagnostic.compat.pyfolio` | [Complete account reports](#compose-a-familiar-simple-or-full-account-report) and [original Pyfolio notebooks](#replay-the-original-pyfolio-analytical-notebooks) |
+| Empyrical metrics, benchmarks, rolling windows, attribution and tail risk | `ml4t.diagnostic.compat.empyrical` | [Metric methods, units and shape contracts](empyrical-migration.md) |
+| Acquisition, factor preparation and execution outputs | Existing Data providers, Engineer outcomes and Backtest account captures | [Acquisition-to-report recipe](#acquire-inputs-with-data-then-analyze-them-in-diagnostic), [price preparation](#prepare-the-same-sample-directly-from-prices) and [actual Backtest capture](#consume-actual-backtest-account-capture) |
+
+Compatibility is analytical, not identical presentation. Figures are Plotly;
+reports use HTML/notebook display and explicit export methods instead of mutable
+Matplotlib axes, seaborn global styles or printed terminal tables. Requested
+panels still require their real inputs: returns alone cannot supply holdings,
+executed fills, factor loadings or market volume. Synthetic factor portfolios
+remain research outcomes, not executed account P&L. Each recipe below names
+its reference definitions, required inputs and reconciled numerical differences.
+
+Native defaults are not silently changed to match legacy definitions. For example,
+grouped IC is separate from group-neutral weights, an observation lag is not an
+exchange-session lag, and periodic risk-free returns are not annual yield quotes.
+Use the adapter's named reference profile or the native explicit method described
+in the relevant section. The published 0.1.9 wheel does not include these new routes.
+
 One reason to evaluate Diagnostic beyond these matching values is its
 [purged cross-validation workflow](cross-validation.md), which combines
 chronological folds with multiple-trial Sharpe assessment. For portfolio
@@ -285,8 +314,9 @@ statistics without changing those native defaults. Turnover is disabled by
 default on this prepared route; enabling it uses the existing observed-date
 lag method. Grouped IC, adjusted quantile statistics and factor weights require
 the explicit owned-panel methods below; they are not enabled by this shortcut.
-Complete reports remain unsupported by this route. No full-replacement claim follows from retaining a
-prepared panel.
+This shortcut does not itself compose a complete report. For that workflow use
+the [owned result composition](#compose-owned-return-information-and-turnover-results)
+or the familiar tear-sheet adapters listed above.
 
 Timestamp grouping can also differ. On a prepared sample containing three
 distinct nanosecond instants, Alphalens 0.4.6 regularizes IC to its inferred
@@ -340,8 +370,9 @@ displays `CI unavailable` without a band; `show_significance=False` omits both.
 Alphalens Reloaded 0.4.6 retains per-date undefined IC values in its table.
 The native facade still extracts finite IC dates before this bridge. Compare
 the same explicitly selected dates and finite observations; the bridge is not
-a complete dated-status/count export or a union-clock report. Calendar/bar
-semantics and full report composition remain separate accepted work. The
+a complete dated-status/count export or a union-clock report. Use the
+[complete information analysis](#complete-information-analysis-report) for its
+owned samples and the [shared time contract](cv-configuration.md) for calendar selection. The
 [runnable supplied-panel example](https://github.com/ml4t/diagnostic/blob/0ef65182e33fb661cb9cb8ccaf3aa0d01d123a63/examples/signal_panel_cleaning.py)
 checks report means against their actual series and prints the report summaries.
 
@@ -429,7 +460,8 @@ remain analyzable without invented daily lags. For explicit observation lags use
 `panel.quantile_turnover(lags=(1, 2))`. The executable
 `examples/signal_panel_cleaning.py --plots` includes supplied intraday outcomes,
 sparse cut buckets and actual plotted bucket means. Native pooled/equal-date/report
-differences below still apply; this change does not complete all seven tear sheets.
+differences below still apply. Complete sheets use the explicitly selected
+methods in the [owned report composition](#compose-owned-return-information-and-turnover-results).
 
 The installed-artifact comparison with Alphalens 0.5.0 uses shared `30m`, `1ns`
 and `1D1h` outcome columns, nanosecond keys, ordinary/sparse cut buckets and a
@@ -858,8 +890,8 @@ To inspect sample counts and uncertainty alongside these familiar pandas tables,
 use the existing [native quantile statistics](#inspect-daily-and-equal-date-quantile-statistics).
 For dependence-aware IC inference, use the separately selected
 [HAC validation](#complete-information-analysis-report); the adapter's ordinary
-IC mean is not a HAC estimate. Other numerical adapters and complete sheet
-composition remain in progress, not a full-replacement claim.
+IC mean is not a HAC estimate. Complete sheet composition is available through
+the [owned results](#compose-owned-return-information-and-turnover-results).
 
 ### Inspect grouped IC and adjusted outcomes
 
@@ -962,7 +994,7 @@ complete report atomically. `set_context` accepts the legacy boolean without
 changing global Matplotlib/seaborn state; use `theme` for native presentation.
 The same namespace also exposes turnover, event-returns and event-study sheets.
 Returns, summary and full-sheet composition use the shared owned results below;
-these adapters do not establish all-seven-sheet replacement.
+their plotting API and numerical method differences remain explicit.
 
 Continue from the price-produced `adapter_clean` and `adapter_prices` above:
 
@@ -1072,9 +1104,8 @@ runtime dependency, and these tests do not qualify the other six sheets.
 The same retained IC observations can also feed Diagnostic's
 [HAC-adjusted inference](statistical-tests.md#hac-adjusted-ic). The recipe executes
 that separate analysis with an explicit five-observation label horizon; it does
-not relabel the report's naive t-test as HAC. Other Alphalens sheets and complete
-Pyfolio/Empyrical coverage remain separate requirements. No new release or blanket
-replacement claim follows from this report.
+not relabel the report's naive t-test as HAC. Other report families use their
+own samples and methods; see [migration routes](#choose-a-migration-route).
 
 ### Inspect daily and equal-date quantile statistics
 
@@ -1117,8 +1148,8 @@ and `0.5` give an equal-date mean of `0.40625` and a standard error of `0.09375`
 Pooling its three asset-date returns instead gives `0.375`. Choose the
 estimand explicitly; neither number establishes a self-financing portfolio.
 This bucket standard error is not a propagated spread error or a replacement
-for the existing two-sample spread test. Full portfolio/event/report paths
-remain separate work.
+for the existing two-sample spread test. Portfolio, event and report composition
+use these observations through the explicitly selected workflows below.
 
 Unreleased fixes after 0.1.9 stabilize the shared finite-return mean, sample
 deviation and standard error. Identical large finite returns retain their
@@ -1515,8 +1546,9 @@ but Plotly and Seaborn smoothing/box presentation are not claimed identical.
 Plot separate horizons explicitly; the current dashboard renders its first
 horizon and labels its selector as not interactive. A matching bundled Plotly
 runtime makes its HTML self-contained, including NumPy-backed trace arrays.
-Full multi-horizon chart composition, cumulative paths, event/portfolio
-workflows and all seven Alphalens tear sheets remain separate accepted work.
+For multi-horizon chart composition, cumulative paths and event/portfolio
+workflows use the [complete report routes](#choose-a-migration-route), not this
+single-component dashboard.
 
 ### Distinguish unavailable monotonicity from a negative decision
 
@@ -1661,8 +1693,8 @@ explicit cadence assumption, not inferred from the label `1D` or validated by
 an exchange calendar. Overlapping supplied horizons are not automatically a
 self-financing daily wealth path. Output dates are observed dates unless the
 caller supplies an explicit aggregate `date_grid`; missing requested dates
-have null return and zero count. Capital, signal expirations, dated holdings
-and the complete Alphalens/Pyfolio reports remain separate work.
+have null return and zero count. Capital, expirations and dated holdings belong
+to the separate [synthetic portfolio-input route](#turn-explicit-expiries-into-synthetic-portfolio-inputs).
 
 ### Inspect factor alpha and beta on the same universe
 
@@ -1783,8 +1815,8 @@ holes, and labels `compounding_clock="explicit_grid"` instead of `"observed"`.
 Neither behavior validates sessions or bars. Compounding overlapping
 forward outcomes is a mathematical horizon-return path, not self-financing
 daily holdings. Explicit synthetic expiration accounting is available below;
-cumulative quantile report panels and complete Alphalens/Pyfolio report coverage
-remain separate accepted work.
+cumulative quantile report panels use the
+[owned returns result](#retain-the-complete-return-analysis-sample-before-rendering).
 
 ### Turn explicit expiries into synthetic portfolio inputs
 
@@ -2353,18 +2385,18 @@ not elapsed calendar days; insufficient history returns NaN.
 The published baseline's `SignalResult.to_tear_sheet()` supplies IC and quantile
 analysis but not turnover or cumulative quantile-return paths. The unreleased
 persistence-enabled workflow above adds actual dated turnover/rank tables and
-summaries. The complete turnover report composes every recorded lag; it does not
-add dated holdings/expiration accounting or the remaining complete reference
-sheets. Do not infer those capabilities from a successful HTML render. Keep the
-legacy route for report sections and workflows not yet qualified here.
+summaries. The complete turnover report composes every recorded lag. For dated
+holdings and expiration accounting use the separate
+[synthetic portfolio-input route](#turn-explicit-expiries-into-synthetic-portfolio-inputs),
+not the turnover table or changes in bucket membership.
 
 Alphalens also supplies grouped summaries and its own complete factor tear
 sheet. Those capabilities are not implied by grouped IC observations or by a Diagnostic signal result.
 Diagnostic's default global quantiles do not mean `group_adjust=True` or
 `binning_by_group=True`; the latter can now be requested explicitly during
 supplied-panel preparation. Request grouped IC explicitly through `ic_by_date`.
-Retain the legacy route for the missing analytical
-and report sections, not merely for constructing those buckets.
+Use the [complete familiar sheets](#choose-a-migration-route) for grouped report
+composition; selecting buckets alone does not select those additional methods.
 
 Factor *construction* is a separate task. If needed,
 [ML4T Engineer's feature guide](https://github.com/ml4t/engineer/blob/145ccafd2ca36dc61f976cdbeaaf147af21e7c2e/docs/user-guide/features.md)
@@ -2377,10 +2409,10 @@ preparation, while Diagnostic evaluates the resulting factor.
 [Pyfolio's `create_full_tear_sheet()`](https://github.com/quantopian/pyfolio/blob/4b901f6d73aa02ceb6d04b7d83502e5c6f2e81aa/pyfolio/tears.py)
 takes noncumulative daily returns, with optional positions, transactions,
 benchmark returns, and other inputs. Diagnostic separates numeric analysis
-from HTML rendering. Current unreleased source includes selected familiar
-`compat.pyfolio` report calls and a normalized Zipline performance-frame adapter.
-These are not a qualified replacement for `create_full_tear_sheet()` or an
-execution engine. Published 0.1.9 does not contain the additions below.
+from HTML rendering. Development source includes the nine familiar
+`compat.pyfolio` report calls, complete simple/full account composition and a
+normalized Zipline performance-frame adapter. These analytical routes do not
+implement an execution engine. Published 0.1.9 does not contain the additions below.
 
 <div class="migration-table" markdown="1">
 
@@ -3112,8 +3144,8 @@ inferred from changing positions.
 `turnover_denom` selects `AGB` or `portfolio_value` on the whole report. The
 intraday selector uses the same explicit estimator as the positions report;
 estimated positions do not turn transactions into estimates. Plotly histogram
-bins and Matplotlib presentation differ. Full/simple account composition and
-all original portfolio notebooks remain separate unfinished acceptance work.
+bins and Matplotlib presentation differ. For full/simple account composition and
+the original portfolio notebooks, use the separate migration recipes above.
 
 The report converts owned aware fill timestamps to the supplied position
 clock's timezone before civil-day grouping. Instants, nanoseconds and caller
@@ -3517,7 +3549,8 @@ candidate clocks and membership. Native unknown holdings are still rejected.
 All marked values, executions and cash must use one supplied cash currency;
 this method does not provide FX conversion, external-flow accounting or margin
 reconstruction. The round-trip adapter below composes these named helpers;
-other portfolio reports remain separate work, not a full-replacement claim.
+the [complete account report](#compose-a-familiar-simple-or-full-account-report)
+composes the other requested portfolio sections from their actual inputs.
 
 ### Use the familiar complete round-trip sheet
 
@@ -3948,9 +3981,9 @@ arguments do not sample anything on that plotting route.
 
 Shared-input tests execute actual Pyfolio 0.10.0 / Empyrical 0.7.0 with pandas
 2.3.3, including raw draws, all bounds, event samples, original printed stress
-statistics and actual Matplotlib redraw artists. This does not qualify the
-remaining combined returns/full-sheet, bootstrap or original notebook routes.
-Those remain required before any full replacement claim.
+statistics and actual Matplotlib redraw artists. Combined returns/full-sheet,
+bootstrap and original notebook routes have their own regression corpora and
+recipes above; the stress/cone comparison does not substitute for those checks.
 
 ### Analyze prepared holdings on observed keys
 
@@ -4162,8 +4195,9 @@ route establishes all portfolio reports. The separately tested unreleased
 [actual transaction analysis](#analyze-actual-transactions-and-incremental-costs) and
 [capacity workflow](#supplied-market-capacity-and-impact-scenarios-unreleased) have their own
 methods and coverage below or above. The [familiar account composition](#compose-a-familiar-simple-or-full-account-report)
-reuses those components. Unqualified risk/report options and original
-Alphalens/Pyfolio notebook/provider journeys remain accepted work.
+reuses those components. The [original notebook](#replay-the-original-pyfolio-analytical-notebooks)
+and [provider](#acquire-inputs-with-data-then-analyze-them-in-diagnostic) recipes
+exercise their complete journeys separately from this holdings dashboard.
 
 #### Keep familiar position projections without changing native account defaults
 
@@ -4402,8 +4436,9 @@ recorded as differences, not parity targets.
 For direct supplied-frame ingestion, unknown fees, extra-cost scenarios and explicit
 observation/session grouping, use the newer
 [actual-transaction workflow](#analyze-actual-transactions-and-incremental-costs).
-The earlier bridge example here does not qualify those methods. External-flow adjustments
-and complete original-sheet options remain separate accepted work.
+The earlier bridge example here does not qualify those methods. External-flow
+adjustments use the supplied-account boundary; complete sheets retain their
+per-component input and numerical contracts.
 The full performance report still requires valid simple returns: a negative-NAV
 step below -100%, or a later 0/0 return after NAV reaches zero, is not supported
 by the current performance workflow. Standalone activity analysis does not

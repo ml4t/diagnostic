@@ -37,7 +37,7 @@ original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
 failed_channel=None
-if mode in ('close_error','close_command_hang','render_hang'):
+if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang'):
     if os.name!='nt':
         from choreographer.browsers.chromium import Chromium
         original_cli=Chromium.get_cli
@@ -62,6 +62,8 @@ if mode in ('close_error','close_command_hang','render_hang'):
         return original_status_write(self,text,*args,**kwargs)
     Path.write_text=observe_terminal_status
 async def command(self,command,*args,**kwargs):
+    if command=='Browser.close' and mode=='close_command_hang_slow_shutdown':
+        await asyncio.sleep(3600)
     result=await original_command(self,command,*args,**kwargs)
     if command=='Browser.close':
         observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
@@ -122,8 +124,24 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     global failed_channel
-    if mode in ('close_error','close_command_hang','render_hang'): failed_channel=self._channel
+    if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang'):
+        failed_channel=self._channel
     snapshot(self)
+    if mode=='close_command_hang_slow_shutdown':
+        import threading
+        original_pipe_close=self._channel.close
+        pipe_closed=[]
+        def close_then_allow_bounded_browser_exit():
+            if pipe_closed: return original_pipe_close()
+            pipe_closed.append(True)
+            browser=psutil.Process(self.subprocess.pid)
+            browser.suspend()
+            original_pipe_close()
+            def resume():
+                try: browser.resume()
+                except psutil.NoSuchProcess: pass
+            threading.Timer(1,resume).start()
+        self._channel.close=close_then_allow_bounded_browser_exit
     if mode=='slow_shutdown':
         import threading
         process=psutil.Process(self.subprocess.pid)
@@ -159,7 +177,7 @@ except ImportError:
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
     if mode=='unresponsive_startup': _pdf_process._RENDER_TIMEOUT=30
-    if mode=='slow_shutdown':
+    if mode in ('slow_shutdown','close_command_hang_slow_shutdown'):
         original_terminate=_pdf_process._OwnedProcesses.terminate
         def verify_graceful_before_escalation(self):
             browser_pid=int(next(iter(json.loads(observed.read_text()))))
@@ -309,7 +327,7 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except BaseException as error:
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup'): raise
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode=='exit7': assert 'code 7' in str(error),repr(error)
@@ -331,7 +349,7 @@ try:
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -430,6 +448,7 @@ def _run_pdf_probe(code, arguments):
         for mode in [
             "close_error",
             "close_command_hang",
+            "close_command_hang_slow_shutdown",
             "close_hang",
             "slow_shutdown",
             "unresponsive_startup",
