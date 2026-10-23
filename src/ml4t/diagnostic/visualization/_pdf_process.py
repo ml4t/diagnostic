@@ -6,10 +6,12 @@ import logging
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -59,6 +61,27 @@ _STATUS_READ_TIMEOUT = 2.0
 _logger = logging.getLogger(__name__)
 
 
+def _remove_readonly_file(function: Callable[..., Any], path: str, error: BaseException) -> None:
+    if not (
+        sys.platform == "win32"
+        and function is os.unlink
+        and isinstance(error, PermissionError)
+        and getattr(error, "winerror", None) == 5
+    ):
+        raise error
+    try:
+        metadata = os.lstat(path)
+        if not (
+            stat.S_ISREG(metadata.st_mode)
+            and getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_READONLY
+        ):
+            raise error
+        os.chmod(path, metadata.st_mode | stat.S_IWRITE)
+        function(path)
+    except FileNotFoundError:
+        return
+
+
 @contextmanager
 def _renderer_directory():
     directory = Path(tempfile.mkdtemp())
@@ -72,7 +95,7 @@ def _renderer_directory():
         deadline = time.monotonic() + 2
         while True:
             try:
-                shutil.rmtree(directory)
+                shutil.rmtree(directory, onexc=_remove_readonly_file)
                 break
             except OSError as error:
                 if (
