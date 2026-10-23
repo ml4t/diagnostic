@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime
+from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -20,7 +21,10 @@ from scipy import stats
 from ml4t.diagnostic.compat import empyrical as ep
 from ml4t.diagnostic.compat._returns import ReturnInput, as_array
 from ml4t.diagnostic.evaluation.portfolio_analysis.inputs import positive_integer
-from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import gaussian_value_at_risk
+from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
+    gaussian_value_at_risk,
+    normal_cash_value_at_risk,
+)
 from ml4t.diagnostic.evaluation.portfolio_analysis.regimes import _PERIOD_DATES
 from ml4t.diagnostic.evaluation.portfolio_analysis.wealth_cones import (
     _iid_indices,
@@ -42,8 +46,67 @@ __all__ = [
     "rolling_volatility",
     "rolling_sharpe",
     "rolling_beta",
+    "rolling_regression",
     "gen_drawdown_table",
+    "omega_ratio",
+    "common_sense_ratio",
+    "normalize",
+    "var_cov_var_normal",
 ]
+
+_EMPYRICAL_METRICS = frozenset(
+    {
+        "max_drawdown",
+        "annual_return",
+        "annual_volatility",
+        "calmar_ratio",
+        "sortino_ratio",
+        "downside_risk",
+        "sharpe_ratio",
+        "alpha_beta",
+        "alpha",
+        "beta",
+        "stability_of_timeseries",
+        "tail_ratio",
+        "cum_returns",
+        "aggregate_returns",
+    }
+)
+__all__ += sorted(_EMPYRICAL_METRICS)
+
+
+def __getattr__(name: str) -> Callable[..., Any]:
+    if name in _EMPYRICAL_METRICS:
+        return getattr(ep, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def omega_ratio(returns: ReturnInput, annual_return_threshhold: float = 0.0) -> float:
+    """Retain the original misspelled annual threshold keyword and shared Omega definition."""
+    return ep.omega_ratio(returns, required_return=annual_return_threshhold)
+
+
+def common_sense_ratio(returns: ReturnInput) -> float | pd.Series | np.ndarray:
+    """Multiply signed tail ratio by gross CAGR, as computed by the original workflow.
+
+    The reference prose says gain-to-pain, but its actual implementation uses
+    gross annual return. This adapter preserves that computation and label.
+    """
+    return ep.tail_ratio(returns) * (1 + ep.annual_return(returns))
+
+
+def normalize(
+    returns: pd.Series | pd.DataFrame, starting_value: float = 1
+) -> pd.Series | pd.DataFrame:
+    """Scale each supplied path by its first row; this is not return compounding."""
+    if not isinstance(returns, pd.Series | pd.DataFrame):
+        raise TypeError("normalize requires a pandas Series or DataFrame")
+    return starting_value * (returns / returns.iloc[0])
+
+
+def var_cov_var_normal(P: float, c: float, mu: float = 0, sigma: float = 1) -> float:  # noqa: N803 - legacy keyword
+    """Project native Gaussian cash-loss VaR without changing empirical return VaR."""
+    return normal_cash_value_at_risk(P, c, mean=mu, std=sigma)
 
 
 def _rolling_complete(returns: pd.Series, window: int, metric: str, scale: int) -> pd.Series:
@@ -89,6 +152,64 @@ def rolling_beta(
         return pd.Series(np.nan, index=returns.index, dtype=float)
     factor = factor_returns.reindex(returns.index)
     return ep.roll_beta(returns, factor, window=width).reindex(returns.index)
+
+
+def rolling_regression(
+    returns: pd.Series,
+    factor_returns: pd.DataFrame,
+    rolling_window: int = 126,
+    nan_threshold: float = 0.1,
+) -> pd.DataFrame:
+    """Joint periodic OLS on inclusive legacy windows, using the native fit kernel.
+
+    Drop missing returns before selecting each window+1 row interval. Reject a
+    window when any factor exceeds nan_threshold, then fit its complete paired
+    rows. Warmup stays padded on the surviving return index. Singular fits use
+    centered minimum-norm coefficients; native exposure defaults stay unchanged.
+    Alpha is periodic, not compounded or annualized. No risk-free subtraction is
+    implicit; supply the intended raw or excess response and factors explicitly.
+    """
+    from ml4t.diagnostic.evaluation.factor.rolling_model import _rolling_ols_vectorized
+
+    width = positive_integer(rolling_window, "rolling_window") + 1
+    if (
+        isinstance(nan_threshold, bool | np.bool_)
+        or not isinstance(nan_threshold, Real)
+        or not np.isfinite(nan_threshold)
+        or not 0 <= nan_threshold <= 1
+    ):
+        raise ValueError("nan_threshold must be a finite fraction between zero and one")
+    if not isinstance(returns, pd.Series) or not isinstance(factor_returns, pd.DataFrame):
+        raise TypeError("rolling regression requires a return Series and factor DataFrame")
+    if not returns.index.is_unique or not returns.index.is_monotonic_increasing:
+        raise ValueError("return observation keys must be unique and increasing")
+    if not factor_returns.index.is_unique:
+        raise ValueError("factor observation keys must be unique")
+    if (
+        not factor_returns.columns.is_unique
+        or "alpha" in factor_returns.columns
+        or factor_returns.shape[1] == 0
+    ):
+        raise ValueError("factor names must be unique, nonempty and distinct from alpha")
+    response = returns.dropna().astype(float)
+    factors = factor_returns.astype(float)
+    if np.isinf(response.to_numpy()).any() or np.isinf(factors.to_numpy()).any():
+        raise ValueError("returns and factors must not contain infinite observations")
+    result = pd.DataFrame(np.nan, index=response.index.copy(), columns=["alpha", *factors.columns])
+    result.index.name = "dt"
+    for stop in range(width, len(response) + 1):
+        sample = response.iloc[stop - width : stop]
+        paired = factors.loc[sample.index]
+        if (paired.isna().mean() > nan_threshold).any():
+            continue
+        paired = paired.dropna()
+        if paired.empty:
+            continue
+        y = sample.loc[paired.index].to_numpy()
+        x = paired.to_numpy()
+        betas, alpha, _ = _rolling_ols_vectorized(y, x, len(y), minimum_norm=True)
+        result.iloc[stop - 1] = np.r_[alpha[0], betas[0]]
+    return result
 
 
 def gen_drawdown_table(returns: pd.Series, top: int = 10) -> pd.DataFrame:

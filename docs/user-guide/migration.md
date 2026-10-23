@@ -45,6 +45,52 @@ exchange-session lag, and periodic risk-free returns are not annual yield quotes
 Use the adapter's named reference profile or the native explicit method described
 in the relevant section. The published 0.1.9 wheel does not include these new routes.
 
+### Continue joint rolling-factor regression
+
+For Pyfolio's `timeseries.rolling_regression`, change the import to
+`ml4t.diagnostic.compat.pyfolio.timeseries`. This fits all factors jointly;
+separate rolling beta calls do not remove confounding between factors.
+Run the supplied example without a Reloaded dependency:
+
+```bash
+uv run python examples/pyfolio_rolling_regression.py
+```
+
+The recipe has seven fitted windows with final coefficients `alpha=0.001`,
+`market=1.5`, `style=-0.75`. Alpha is a periodic decimal return and betas are
+dimensionless. The executable reference cases compare Pyfolio 0.10.0 and
+Empyrical 0.7.0 on pandas 2.3.3, including nonconstant fitted coefficients,
+missing returns, reversed factor input order and rank-deficient designs.
+
+The familiar `rolling_window=3` selects four observations, including both
+endpoints. Missing returns are removed before selecting each interval. The
+adapter checks each factor's missing fraction against `nan_threshold`, then
+fits only rows complete across all factors in that interval. Missing factor
+date labels raise; they do not silently compress the clock. Warmup remains
+undefined on the surviving return index. Constant or collinear factor fits use
+centered minimum-norm coefficients; a single complete row has zero slopes and
+its return as intercept. These are estimates, not evidence of identified risk
+exposures. Output coefficients are numeric Float64, rather than the reference's
+initially object-typed table. Invalid thresholds and ambiguous duplicate keys
+raise before caller inputs change.
+
+Native `evaluation.factor.compute_rolling_exposures` remains available for
+its explicit `FactorData` inputs, expanding windows, R-squared and stability
+diagnostics. Its default window counts the complete rows after native input
+filtering, and singular windows remain unavailable. Neither route changes
+native annualization or silently subtracts a risk-free series. Supply the
+intended raw or excess response and factors explicitly.
+
+The same `timeseries` adapter exposes the original scalar metrics, alpha/beta,
+`cum_returns` and `aggregate_returns` through the existing Empyrical adapters.
+`omega_ratio` retains the original `annual_return_threshhold` spelling and its
+annual threshold convention. `common_sense_ratio` follows the original code,
+`tail_ratio * (1 + annual_return)`, despite its old gain-to-pain description.
+`normalize` divides a supplied path by its first row; it does not compound
+periodic returns. `var_cov_var_normal` delegates to the native Gaussian cash
+VaR definition and validates its nondegenerate confidence/scale inputs. These
+routes do not alter the native defaults described in the metric guide.
+
 ### Replace presentation and error helpers
 
 These supporting helpers do not require another analytical implementation.
