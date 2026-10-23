@@ -37,7 +37,7 @@ original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
 failed_channel=None
-if mode=='close_error':
+if mode in ('close_error','close_command_hang'):
     if os.name!='nt':
         from choreographer.browsers.chromium import Chromium
         original_cli=Chromium.get_cli
@@ -65,6 +65,7 @@ async def command(self,method,*args,**kwargs):
     result=await original_command(self,method,*args,**kwargs)
     if method=='Browser.close':
         observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
+        if mode=='close_command_hang': await asyncio.sleep(3600)
     return result
 kaleido.Kaleido.send_command=command
 def snapshot(self):
@@ -97,7 +98,7 @@ async def written(self,specs,*args,**kwargs):
     return result
 async def closed(self,*args,**kwargs):
     global failed_channel
-    if mode=='close_error': failed_channel=self._channel
+    if mode in ('close_error','close_command_hang'): failed_channel=self._channel
     snapshot(self)
     if mode=='slow_shutdown':
         import threading
@@ -304,7 +305,7 @@ try:
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -341,9 +342,9 @@ try:
     else: raise AssertionError('Process-wait control accepted a live unrelated child')
     profiles=json.loads(observed.with_suffix('.profiles.json').read_text())
     assert all(not Path(profile).exists() for profile in profiles), profiles
-    if mode in ('close_error','render_error','cancel'):
+    if mode in ('close_error','close_command_hang','render_error','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
-    if mode=='close_error':
+    if mode in ('close_error','close_command_hang'):
         channel=json.loads(observed.with_suffix('.channel.json').read_text())
         assert all(channel['closed']), 'Graceful fallback retained owned browser pipe descriptors'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
@@ -400,6 +401,7 @@ def _run_pdf_probe(code, arguments):
         (mode, 0)
         for mode in [
             "close_error",
+            "close_command_hang",
             "close_hang",
             "slow_shutdown",
             "render_error",

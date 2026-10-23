@@ -90,7 +90,8 @@ async def _render(request_path: Path, status_path: Path) -> None:
                 await renderer.send_command("Browser.close")
             except Exception:
                 pass
-            renderer._channel.close()
+            finally:
+                renderer._channel.close()
             while renderer.subprocess.poll() is None:
                 await asyncio.sleep(0.05)
 
