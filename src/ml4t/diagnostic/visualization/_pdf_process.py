@@ -17,15 +17,32 @@ from typing import Any
 import psutil
 
 _BOOTSTRAP = """
-import os,sys,runpy,threading,traceback
+import asyncio,os,sys,runpy,threading,traceback
 assert sys.stdin.buffer.read(1)==b'1'
 diagnostic_stop=threading.Event()
 def snapshot_threads():
     while not diagnostic_stop.wait(20):
         lines=['PDF worker thread snapshot\\n']
+        loops=set()
         for identifier,frame in sys._current_frames().items():
             lines.append(f'Thread {identifier}:\\n')
             lines.extend(traceback.format_stack(frame))
+            cursor=frame
+            while cursor is not None:
+                candidate=cursor.f_locals.get('self')
+                if isinstance(candidate,asyncio.AbstractEventLoop): loops.add(candidate)
+                cursor=cursor.f_back
+        for loop in loops:
+            try:
+                for task in asyncio.all_tasks(loop):
+                    lines.append(f'Async task {task.get_name()}:\\n')
+                    awaiting=task.get_coro()
+                    while awaiting is not None:
+                        frame=getattr(awaiting,'cr_frame',getattr(awaiting,'gi_frame',None))
+                        if frame is not None: lines.extend(traceback.format_stack(frame,limit=1))
+                        awaiting=getattr(awaiting,'cr_await',getattr(awaiting,'gi_yieldfrom',None))
+            except Exception as error:
+                lines.append(f'Async task snapshot failed: {error!r}\\n')
         os.write(2,''.join(lines).encode('utf-8',errors='backslashreplace'))
 watcher=threading.Thread(target=snapshot_threads,daemon=True)
 watcher.start()

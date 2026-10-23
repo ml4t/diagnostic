@@ -302,6 +302,7 @@ try:
             assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'after_first_valid_page'}
             assert "phase='rendering', completed=0, expected=2" in str(error),repr(error)
             assert 'File "' in str(error) and 'Thread' in str(error),repr(error)
+            assert 'Async task' in str(error) and 'in written' in str(error),repr(error)
         if mode=='invalid_page': assert isinstance(error,PdfReadError),repr(error)
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
