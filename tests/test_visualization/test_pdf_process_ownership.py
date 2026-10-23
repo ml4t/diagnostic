@@ -36,6 +36,31 @@ original_open=kaleido.Kaleido.open
 original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
+failed_channel=None
+if mode=='close_error':
+    if os.name!='nt':
+        from choreographer.browsers.chromium import Chromium
+        original_cli=Chromium.get_cli
+        def direct_browser_cli(self):
+            cli=original_cli(self)
+            # Match Windows' direct browser, without the Unix wrapper's synthetic bye.
+            direct="import os,sys;os.dup2(0,3);os.dup2(1,4);os.set_inheritable(3,True);os.set_inheritable(4,True);os.execv(sys.argv[1],sys.argv[1:])"
+            return [cli[0],'-c',direct,*cli[2:]]
+        Chromium.get_cli=direct_browser_cli
+    original_status_write=Path.write_text
+    def observe_terminal_status(self,text,*args,**kwargs):
+        if self.name.startswith('status-') and self.suffix=='.new' and failed_channel is not None:
+            if json.loads(text).get('phase')=='close_failed':
+                closed=[]
+                for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser'):
+                    try: os.fstat(getattr(failed_channel,name))
+                    except OSError as error:
+                        assert error.errno==9,error
+                        closed.append(True)
+                    else: closed.append(False)
+                original_status_write(observed.with_suffix('.channel.json'),json.dumps({'closed':closed}))
+        return original_status_write(self,text,*args,**kwargs)
+    Path.write_text=observe_terminal_status
 async def command(self,method,*args,**kwargs):
     result=await original_command(self,method,*args,**kwargs)
     if method=='Browser.close':
@@ -71,6 +96,8 @@ async def written(self,specs,*args,**kwargs):
     if mode=='invalid_page': Path(specs[0]['path']).write_bytes(b'invalid PDF')
     return result
 async def closed(self,*args,**kwargs):
+    global failed_channel
+    if mode=='close_error': failed_channel=self._channel
     snapshot(self)
     if mode=='slow_shutdown':
         import threading
@@ -316,6 +343,9 @@ try:
     assert all(not Path(profile).exists() for profile in profiles), profiles
     if mode in ('close_error','render_error','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
+    if mode=='close_error':
+        channel=json.loads(observed.with_suffix('.channel.json').read_text())
+        assert all(channel['closed']), 'Graceful fallback retained owned browser pipe descriptors'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
                       'waited_exit_codes':[process.returncode for process in gone],
                       'neighbor_alive':True,'input_figures_unchanged':True}),flush=True)
@@ -535,6 +565,50 @@ def test_plain_text_cleanup_fault_reaches_topojson_failure_without_vendor_mathja
     )
     assert observed["running"] == [] and observed["neighbor_alive"]
     assert requests == [], "Plain-text cleanup controls must not depend on the vendor CDN"
+
+
+def test_completed_page_cannot_lose_its_load_event_before_renderer_initialization(
+    tmp_path, monkeypatch
+):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    marker = tmp_path / "actual-navigation.json"
+    patch = r"""
+import asyncio,json,choreographer
+from pathlib import Path
+marker=Path(MARKER)
+original_command=choreographer.Tab.send_command
+navigated=set()
+async def command(self,method,*args,**kwargs):
+    if method=='Page.enable' and self.target_id in navigated:
+        for attempt in range(200):
+            result=await original_command(self,'Runtime.evaluate',params={'expression':'document.readyState','returnByValue':True})
+            if result.get('result',{}).get('result',{}).get('value')=='complete':
+                marker.write_text(json.dumps({'ready_before_page_enable':True}))
+                break
+            await asyncio.sleep(.05)
+        else: raise RuntimeError('Actual Chrome document did not finish loading')
+    result=await original_command(self,method,*args,**kwargs)
+    if method=='Page.navigate': navigated.add(self.target_id)
+    return result
+choreographer.Tab.send_command=command
+""".replace("MARKER", repr(str(marker)))
+    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
+    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 30)
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
+    figure = go.Figure(go.Scatter(x=[1, 2], y=[1, 3]))
+    figure.update_layout(title="Actual completed document")
+    original = figure.to_json()
+    output = export_figures_to_pdf([figure], tmp_path / "completed-document.pdf", scale=1)
+    assert json.loads(marker.read_text())["ready_before_page_enable"]
+    pages = pypdf.PdfReader(output).pages
+    assert len(pages) == 1 and "Actual completed document" in pages[0].extract_text()
+    assert figure.to_json() == original
 
 
 def test_pdf_worker_renders_without_initializing_the_analytical_package(tmp_path, monkeypatch):

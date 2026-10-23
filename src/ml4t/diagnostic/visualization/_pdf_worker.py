@@ -4,10 +4,21 @@ import asyncio
 import json
 import sys
 import tempfile
+from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
 
 import kaleido
+from choreographer import Tab
+
+
+class _PageEventsKaleido(kaleido.Kaleido):
+    async def _conform_tabs(self, tabs: Iterable[Tab] | None = None) -> None:
+        selected = list(tabs or self.tabs.values())
+        # Page.enable does not replay a load event missed during fast navigation.
+        for tab in selected:
+            await tab.send_command("Page.enable")
+        await super()._conform_tabs(selected)
 
 
 async def _render(request_path: Path, status_path: Path) -> None:
@@ -28,7 +39,7 @@ async def _render(request_path: Path, status_path: Path) -> None:
         )
         temporary.replace(destination)
 
-    renderer = kaleido.Kaleido(n=1, timeout=90, **request["defaults"])
+    renderer = _PageEventsKaleido(n=1, timeout=90, **request["defaults"])
 
     async def pages() -> None:
         nonlocal completed
@@ -79,6 +90,7 @@ async def _render(request_path: Path, status_path: Path) -> None:
                 await renderer.send_command("Browser.close")
             except Exception:
                 pass
+            renderer._channel.close()
             while renderer.subprocess.poll() is None:
                 await asyncio.sleep(0.05)
 
