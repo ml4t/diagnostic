@@ -6,10 +6,12 @@ import logging
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -59,6 +61,27 @@ _STATUS_READ_TIMEOUT = 2.0
 _logger = logging.getLogger(__name__)
 
 
+def _remove_readonly_file(function: Callable[..., Any], path: str, error: BaseException) -> None:
+    if not (
+        sys.platform == "win32"
+        and function is os.unlink
+        and isinstance(error, PermissionError)
+        and getattr(error, "winerror", None) == 5
+    ):
+        raise error
+    try:
+        metadata = os.lstat(path)
+        if not (
+            stat.S_ISREG(metadata.st_mode)
+            and getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_READONLY
+        ):
+            raise error
+        os.chmod(path, metadata.st_mode | stat.S_IWRITE)
+        function(path)
+    except FileNotFoundError:
+        return
+
+
 @contextmanager
 def _renderer_directory():
     directory = Path(tempfile.mkdtemp())
@@ -72,7 +95,7 @@ def _renderer_directory():
         deadline = time.monotonic() + 2
         while True:
             try:
-                shutil.rmtree(directory)
+                shutil.rmtree(directory, onexc=_remove_readonly_file)
                 break
             except OSError as error:
                 if (
@@ -131,6 +154,7 @@ class _WindowsJob:
             "OpenProcess": ([wintypes.DWORD, wintypes.BOOL, wintypes.DWORD], wintypes.HANDLE),
             "AssignProcessToJobObject": ([wintypes.HANDLE, wintypes.HANDLE], wintypes.BOOL),
             "TerminateJobObject": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
+            "TerminateProcess": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
             "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
             "IsProcessInJob": (
                 [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)],
@@ -191,8 +215,12 @@ class _WindowsJob:
                 if not process.is_running():
                     continue
                 handle = self.api.OpenProcess(
-                    0x00101000, False, process.pid
-                )  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+                    0x00101001, False, process.pid
+                )  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION | TERMINATE
+                can_terminate = bool(handle)
+                if not handle and ctypes.get_last_error() == 5:
+                    # Keep a waitable identity handle when termination access is denied.
+                    handle = self.api.OpenProcess(0x00101000, False, process.pid)
                 if handle:
                     member = wintypes.BOOL()
                     membership = (
@@ -209,12 +237,39 @@ class _WindowsJob:
                         )
                     except psutil.Error:
                         pass
-                    handles.append((process.pid, handle, membership, identity))
+                    handles.append((process.pid, handle, membership, identity, can_terminate))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
-            self._check(self.api.TerminateJobObject(self.handle, 120))
             started = time.monotonic()
             deadline = started + 5
+            # Keep the worker's pipe readers alive until its browser descendants exit.
+            for pid, handle, membership, identity, can_terminate in reversed(handles):
+                state = self.api.WaitForSingleObject(handle, 0)
+                if state == 258 and membership and can_terminate:
+                    if not self.api.TerminateProcess(handle, 120):
+                        error = ctypes.get_last_error()
+                        # A repeated termination request can be denied during exit.
+                        # Only the following process-handle wait establishes completion.
+                        if error != 5 and self.api.WaitForSingleObject(handle, 0) != 0:
+                            raise ctypes.WinError(error)
+                remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+                result = self.api.WaitForSingleObject(handle, remaining_ms)
+                if result != 0:
+                    exit_code = wintypes.DWORD()
+                    observed_exit = (
+                        exit_code.value
+                        if self.api.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+                        else None
+                    )
+                    raise RuntimeError(
+                        f"Owned PDF process {pid} not terminal before job termination: "
+                        f"wait result {result}; identity={identity}, "
+                        f"member_before_termination={membership}, exit_code={observed_exit}, "
+                        f"termination_access={can_terminate}, "
+                        f"cleanup_elapsed={time.monotonic() - started:.6f}, "
+                        f"wait_budget_ms={remaining_ms}"
+                    )
+            self._check(self.api.TerminateJobObject(self.handle, 120))
             while True:
                 accounting = Accounting()
                 self._check(
@@ -231,7 +286,7 @@ class _WindowsJob:
                     )
                 time.sleep(0.05)
             # Accounting can reach zero before process teardown releases file handles.
-            for pid, handle, membership, identity in handles:
+            for pid, handle, membership, identity, _ in handles:
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
@@ -249,7 +304,7 @@ class _WindowsJob:
                         f"cleanup_elapsed={time.monotonic() - started:.6f}, wait_budget_ms={remaining_ms}"
                     )
         finally:
-            for _, handle, _, _ in handles:
+            for _, handle, _, _, _ in handles:
                 self.api.CloseHandle(handle)
             self.api.CloseHandle(self.handle)
 

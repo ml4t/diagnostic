@@ -1,6 +1,7 @@
 """Real rendered pages survive close failures, but not incomplete or crashed rendering."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -58,7 +59,7 @@ def record_actual_descriptor_close(fd):
     return result
 Pipe.__init__=record_pipe_init
 os.close=record_actual_descriptor_close
-if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
+if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse','slow_shutdown'):
     if os.name!='nt':
         from choreographer.browsers.chromium import Chromium
         original_cli=Chromium.get_cli
@@ -201,9 +202,24 @@ async def closed(self,*args,**kwargs):
         import threading
         process=psutil.Process(self.subprocess.pid)
         process.suspend()
+        resume_lock=threading.Lock()
+        resumed=[]
+        pipe_closed=[]
+        original_pipe_close=self._channel.close
+        def observe_pipe_close():
+            with resume_lock:
+                if not pipe_closed:
+                    pipe_closed.append(True)
+                    observed.with_suffix('.slow-close.json').write_text(json.dumps({
+                        'resumed_before_pipe_close':bool(resumed),
+                    }))
+            return original_pipe_close()
+        self._channel.close=observe_pipe_close
         def resume():
-            try: process.resume()
-            except psutil.NoSuchProcess: pass
+            with resume_lock:
+                try: process.resume()
+                except psutil.NoSuchProcess: pass
+                else: resumed.append(True)
         timer=threading.Timer(4,resume)
         timer.daemon=True
         timer.start()
@@ -216,7 +232,7 @@ async def closed(self,*args,**kwargs):
         return result
     if mode in ('shared_status','permanent_status'):
         return await original_close(self,*args,**kwargs)
-    if mode=='exit7': os._exit(7)
+    if mode in ('exit7','profile_readonly'): os._exit(7)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
 kaleido.Kaleido.open=opened
@@ -232,7 +248,9 @@ except ImportError:
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
     if mode=='unresponsive_startup': _pdf_process._RENDER_TIMEOUT=30
-    if mode in ('slow_shutdown','close_command_hang_slow_shutdown'):
+    # Closing the command channel before resuming Chrome can require OS cleanup.
+    # The independent bounded pause still verifies cooperative exit.
+    if mode=='slow_shutdown':
         original_terminate=_pdf_process._OwnedProcesses.terminate
         def verify_graceful_before_escalation(self):
             browser_pid=int(next(iter(json.loads(observed.read_text()))))
@@ -284,6 +302,26 @@ else:
                 for handle in read_handles: handle.close()
         _pdf_process._OwnedProcesses.observe=hold_first_progress
         _pdf_process._OwnedProcesses.terminate=terminate_then_release
+    if mode=='profile_readonly':
+        import stat
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        def mark_real_profile_readonly_then_terminate(self):
+            profile=Path(json.loads(observed.with_suffix('.profiles.json').read_text())[0])
+            profile.mkdir(exist_ok=True)
+            candidate=profile/'diagnostic-readonly.txt'
+            candidate.write_bytes(b'Retained read-only renderer artifact')
+            candidate.chmod(stat.S_IREAD)
+            attributes=candidate.stat().st_file_attributes
+            assert attributes & stat.FILE_ATTRIBUTE_READONLY
+            try: candidate.unlink()
+            except PermissionError as error:
+                assert error.winerror==5
+                observed.with_suffix('.readonly.json').write_text(json.dumps({
+                    'path':str(candidate),'attributes':attributes,'winerror':error.winerror,
+                    'directory':str(Path(self.process.args[-2]).parent)}))
+            else: raise AssertionError('Actual read-only profile file allowed deletion')
+            return original_terminate(self)
+        _pdf_process._OwnedProcesses.terminate=mark_real_profile_readonly_then_terminate
     if mode in ('shared_status','permanent_status','profile_sharing'):
         import ctypes,threading
         from ctypes import wintypes
@@ -337,7 +375,7 @@ else:
             cleanup_denials=[]
             def observe_actual_cleanup(directory,*args,**kwargs):
                 try: return original_rmtree(directory,*args,**kwargs)
-                except PermissionError as error:
+                except OSError as error:
                     if Path(directory)==profile_directory and sharing_handles:
                         cleanup_denials.append(getattr(error,'winerror',None))
                         observed.with_suffix('.fault.json').write_text(json.dumps({
@@ -380,6 +418,7 @@ neighbor=subprocess.Popen([sys.executable,'-c','import time;time.sleep(180)'])
 server=None
 requests=[]
 success=False
+expected_render_error=None
 try:
     figures=[go.Figure(go.Scatter(x=[1,2,3],y=[1,3,2])) for _ in range(2)]
     if mode.startswith('resource_error'):
@@ -400,10 +439,17 @@ try:
     try:
         result=export_figures_to_pdf(figures,output,page_size=(600,450),scale=1)
     except BaseException as error:
+        expected_render_error={'type':type(error).__name__,'message':str(error),
+                               'notes':list(getattr(error,'__notes__',[]))}
+        observed.with_suffix('.error.json').write_text(json.dumps(expected_render_error))
         if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
-        if mode=='exit7': assert 'code 7' in str(error),repr(error)
+        if mode in ('exit7','profile_readonly'): assert 'code 7' in str(error),repr(error)
+        if mode=='profile_readonly':
+            assert observed.with_suffix('.readonly.json').exists(),expected_render_error
+            assert not any('PDF process cleanup failed' in note or 'PDF profile cleanup failed' in note
+                           for note in expected_render_error['notes']),expected_render_error
         if mode in ('render_error','cleanup_error'):
             assert 'Actual renderer failed after first page' in str(error),repr(error)
             if mode=='cleanup_error':
@@ -435,6 +481,9 @@ try:
         assert all(abs(float(page.mediabox.height)-337.5)<1 for page in pages)
         if mode=='close_command_hang_slow_shutdown':
             assert json.loads(observed.with_suffix('.graceful.json').read_text())=={'browser_close_sent':True}
+    if mode=='slow_shutdown':
+        observation=json.loads(observed.with_suffix('.slow-close.json').read_text())
+        assert observation['resumed_before_pipe_close'],'Recovering browser lost its command channel before resume'
     assert originals==[figure.to_json() for figure in figures]
     if mode=='unresponsive_startup':
         assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}
@@ -463,12 +512,13 @@ try:
         try:
             if process.status()!=psutil.STATUS_ZOMBIE: running.append(process.pid)
         except psutil.NoSuchProcess: pass
-    assert not running, running
+    assert not running, {'reason':'Owned browser processes remain after export','running':running}
     try: psutil.Process(neighbor.pid).wait(timeout=0)
     except psutil.TimeoutExpired: pass
     else: raise AssertionError('Process-wait control accepted a live unrelated child')
     profiles=json.loads(observed.with_suffix('.profiles.json').read_text())
-    assert all(not Path(profile).exists() for profile in profiles), profiles
+    assert all(not Path(profile).exists() for profile in profiles), {
+        'profiles':profiles,'expected_render_error':expected_render_error}
     if mode in ('close_error','close_command_hang','render_error','render_hang','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
     if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse'):
@@ -490,10 +540,23 @@ finally:
         except psutil.NoSuchProcess: pass
     psutil.wait_procs(descendants,timeout=5)
     neighbor.wait(timeout=5)
+    if mode=='profile_readonly' and observed.with_suffix('.readonly.json').exists():
+        import stat
+        readonly=json.loads(observed.with_suffix('.readonly.json').read_text())
+        candidate=Path(readonly['path'])
+        if candidate.exists(): candidate.chmod(stat.S_IWRITE)
+        directory=Path(readonly['directory'])
+        if directory.exists(): _pdf_process.shutil.rmtree(directory)
+    if mode=='profile_sharing':
+        release_sharing()
+        for timer in sharing_timers: timer.join(timeout=1)
+        if profile_directory is not None and profile_directory.exists():
+            original_rmtree(profile_directory)
     pipe_proof.close()
     pipe_proof_file.close()
     if not success:
         import traceback
+        print(json.dumps({'expected_render_error':expected_render_error}),flush=True)
         traceback.print_exc()
         sys.stdout.flush();sys.stderr.flush()
         os._exit(1)
@@ -523,6 +586,78 @@ def _run_pdf_probe(code, arguments):
         text = output.read()
     assert process.returncode == 0, text
     return json.loads(text.splitlines()[-1])
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows read-only profile required")
+def test_readonly_browser_profile_is_removed_after_actual_worker_crash(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    result = _run_pdf_probe(_PROBE, ["profile_readonly", str(target), "0"])
+    observation = json.loads(target.with_suffix(".processes.readonly.json").read_text())
+    assert observation["winerror"] == 5 and observation["attributes"] & 1
+    assert result["running"] == [] and result["neighbor_alive"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows sharing denial required")
+def test_profile_cleanup_deadline_preserves_existing_report_with_real_sharing_denial(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    previous = b"Existing report must survive failed profile cleanup"
+    target.write_bytes(previous)
+    probe = _PROBE.replace(
+        "threading.Timer(.2,release_sharing)", "threading.Timer(3,release_sharing)"
+    )
+    with pytest.raises(AssertionError) as failure:
+        _run_pdf_probe(probe, ["profile_sharing", str(target), "0"])
+    assert "WinError 32" in str(failure.value)
+    error = json.loads(target.with_suffix(".processes.error.json").read_text())
+    fault = json.loads(target.with_suffix(".processes.fault.json").read_text())
+    assert error["type"] == "PermissionError" and "WinError 32" in error["message"]
+    assert fault["denials"] == [32] and 32 in fault["cleanup_denials"]
+    assert target.read_bytes() == previous
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="Actual unprivileged POSIX directory denial required",
+)
+def test_crashed_worker_profile_failure_retains_original_error_and_cleanup_notes(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    original = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    denial = r"""
+    blocked_profile_roots=[]
+    original_termination=_pdf_process._OwnedProcesses.terminate
+    def deny_profile_after_actual_termination(self):
+        original_termination(self)
+        directory=Path(self.process.args[-2]).parent
+        blocked_profile_roots.append(directory)
+        directory.chmod(0)
+        try: list(directory.iterdir())
+        except PermissionError: pass
+        else: raise AssertionError('Actual directory access was not denied')
+    _pdf_process._OwnedProcesses.terminate=deny_profile_after_actual_termination
+"""
+    probe = _PROBE.replace(original, original + denial)
+    probe = probe.replace(
+        "    profiles=json.loads(observed.with_suffix('.profiles.json').read_text())",
+        "    assert len(blocked_profile_roots)==1\n"
+        "    for directory in blocked_profile_roots: directory.chmod(0o700)\n"
+        "    profiles=json.loads(observed.with_suffix('.profiles.json').read_text())",
+    )
+    probe = probe.replace(
+        "    neighbor.wait(timeout=5)",
+        "    neighbor.wait(timeout=5)\n"
+        "    for directory in blocked_profile_roots:\n"
+        "        directory.chmod(0o700)\n"
+        "        _pdf_process.shutil.rmtree(directory)",
+    )
+    with pytest.raises(AssertionError) as failure:
+        _run_pdf_probe(probe, ["exit7", str(tmp_path / "report.pdf"), "0"])
+    assert "PDF profile cleanup failed" in str(failure.value)
+    assert "code 7" in str(failure.value)
 
 
 @pytest.mark.parametrize(
@@ -569,6 +704,39 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+def test_unresponsive_browser_after_closed_channel_requires_verified_os_cleanup(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    psutil = pytest.importorskip("psutil")
+    target = tmp_path / "report.pdf"
+    probe = _PROBE.replace(
+        "threading.Timer(1,resume).start()",
+        "observed.with_suffix('.unresponsive-peer.json').write_text(json.dumps({"
+        "'pid':browser.pid,'created':browser.create_time(),'status':browser.status()}))",
+    ).replace(
+        "print('PDF close control: resume timer started',time.monotonic(),file=sys.stderr,flush=True)",
+        "print('PDF close control: browser stays suspended after channel close',file=sys.stderr,flush=True)",
+    )
+    original = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    observation = r"""
+    actual_termination_for_unresponsive_control=_pdf_process._OwnedProcesses.terminate
+    def record_unresponsive_before_cleanup(self):
+        browser_pid=int(next(iter(json.loads(observed.read_text()))))
+        browser=psutil.Process(browser_pid)
+        observed.with_suffix('.os-cleanup.json').write_text(json.dumps({
+            'pid':browser.pid,'created':browser.create_time(),'status':browser.status()}))
+        return actual_termination_for_unresponsive_control(self)
+    _pdf_process._OwnedProcesses.terminate=record_unresponsive_before_cleanup
+"""
+    probe = probe.replace(original, original + observation)
+    result = _run_pdf_probe(probe, ["close_command_hang_slow_shutdown", str(target), "0"])
+    fault = json.loads(target.with_suffix(".processes.unresponsive-peer.json").read_text())
+    cleanup = json.loads(target.with_suffix(".processes.os-cleanup.json").read_text())
+    assert fault == cleanup
+    assert fault["status"] == psutil.STATUS_STOPPED
+    assert result["running"] == [] and result["neighbor_alive"]
 
 
 def test_browser_fault_setup_waits_for_actual_script_entry_instead_of_elapsed_sleep(tmp_path):

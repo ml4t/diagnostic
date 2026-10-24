@@ -180,7 +180,7 @@ async def _render(request_path: Path, status_path: Path) -> None:
                 await asyncio.wait_for(
                     renderer.send_command("Browser.close"),
                     # Reserve the rest of the same deadline for pipe closure and process exit.
-                    timeout=min(3, max(0, close_deadline - asyncio.get_running_loop().time())),
+                    timeout=max(0, close_deadline - asyncio.get_running_loop().time()) / 2,
                 )
             finally:
                 renderer._channel.close()

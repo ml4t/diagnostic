@@ -29,6 +29,7 @@ Example workflow:
 """
 
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from stat import S_IMODE
 from tempfile import NamedTemporaryFile
@@ -857,6 +858,7 @@ def _build_html_document(
     str
         Complete HTML document
     """
+    title = escape(str(title))
     layout = theme_config.get("layout", {})
     font = layout.get("font", {})
     bg_color = layout.get("paper_bgcolor", _ML4T_COLORS["bg_light"])
@@ -1132,7 +1134,9 @@ def _generate_toc(sections: list[dict[str, Any]]) -> str:
         if section_title:
             # Create anchor-safe ID
             section_id = f"section-{i}"
-            toc_items.append(f'            <li><a href="#{section_id}">{section_title}</a></li>')
+            toc_items.append(
+                f'            <li><a href="#{section_id}">{escape(str(section_title))}</a></li>'
+            )
 
     toc_html = f"""        <nav class="toc">
             <h2>Table of Contents</h2>
@@ -1171,7 +1175,9 @@ def _generate_body_content(figure_htmls: list[str], sections: list[dict[str, Any
 
         # Add title if present
         if section_title:
-            section_html += f'                <h2 class="section-title">{section_title}</h2>\n'
+            section_html += (
+                f'                <h2 class="section-title">{escape(str(section_title))}</h2>\n'
+            )
 
         # Add text if present (section_text may contain HTML block elements,
         # so we don't wrap in <p> to avoid invalid nesting)
