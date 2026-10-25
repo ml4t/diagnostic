@@ -619,9 +619,14 @@ finally:
 
 def _run_pdf_probe(code, arguments):
     psutil = pytest.importorskip("psutil")
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+    with (
+        tempfile.TemporaryDirectory(prefix="ml4t-pdf-probe-") as directory,
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output,
+    ):
+        script = Path(directory) / "probe.py"
+        script.write_text(code, encoding="utf-8")
         process = subprocess.Popen(
-            [sys.executable, "-c", code, *arguments], stdout=output, stderr=output
+            [sys.executable, str(script), *arguments], stdout=output, stderr=output
         )
         try:
             process.wait(timeout=120)
