@@ -170,6 +170,9 @@ one-ULP variation. Native portfolio rolling metrics retain their distinct
 undefined-flat-window convention, and the Numba kernel retains zero for an
 exactly zero-return window. Pyfolio rolling reports still require complete
 windows; Empyrical rolling adapters omit missing observations within a window.
+The same sample-deviation kernel gives exactly zero volatility for finite
+constant returns. Native information ratio remains undefined at zero tracking
+error. Constant bootstrap resamples do not enter finite Sharpe confidence bounds.
 Annual return, volatility and downside deviation use decimal return units;
 Sharpe, Sortino and Calmar ratios are dimensionless.
 

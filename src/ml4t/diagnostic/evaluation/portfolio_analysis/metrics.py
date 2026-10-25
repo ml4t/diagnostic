@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Union, cast
 import numpy as np
 from scipy import stats
 
-from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth
+from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth, _sample_standard_deviation
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -219,7 +219,7 @@ def annual_volatility(
         Annualized volatility
     """
     returns = _to_numpy(returns)
-    return float(np.nanstd(returns, ddof=1) * _annualization_factor(periods_per_year))
+    return float(_sample_standard_deviation(returns) * _annualization_factor(periods_per_year))
 
 
 def value_at_risk(
@@ -461,7 +461,9 @@ def information_ratio(
     active_return = returns - benchmark
 
     # Tracking error (annualized)
-    tracking_error = np.nanstd(active_return, ddof=1) * _annualization_factor(periods_per_year)
+    tracking_error = _sample_standard_deviation(active_return) * _annualization_factor(
+        periods_per_year
+    )
 
     if tracking_error == 0:
         return np.nan

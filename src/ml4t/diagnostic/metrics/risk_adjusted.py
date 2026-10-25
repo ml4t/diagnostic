@@ -27,6 +27,17 @@ def _periodic_risk_free_rate(annual_risk_free_rate: float, periods_per_year: int
     return float((1 + annual_risk_free_rate) ** (1 / periods_per_year) - 1)
 
 
+def _sample_standard_deviation(returns: np.ndarray) -> np.floating[Any] | float:
+    """Omit NaNs and center on an observation before reducing sample dispersion."""
+    values = np.asarray(returns)
+    if values.dtype.kind not in "fc":
+        values = values.astype(float)
+    known = values[~np.isnan(values)]
+    if known.size < 2:
+        return np.nan
+    return np.std(known - known[0], ddof=1)
+
+
 def _drawdown_from_wealth(wealth: np.ndarray) -> np.ndarray:
     """Return declines from a high-water mark seeded by initial unit wealth."""
     high_water = np.maximum.accumulate(np.maximum(wealth, 1.0))
@@ -124,7 +135,7 @@ def periodic_sharpe_ratio(
 
     excess_returns = ret_clean - periodic_risk_free_rate
     mean_excess = np.mean(excess_returns)
-    std_excess = np.std(excess_returns - excess_returns[0], ddof=1)
+    std_excess = _sample_standard_deviation(excess_returns)
 
     if std_excess == 0:
         if mean_excess > 0:
@@ -194,7 +205,7 @@ def sharpe_ratio_with_ci(
         bootstrap_sample = np.random.choice(ret_clean, size=len(ret_clean), replace=True)
         bootstrap_excess = bootstrap_sample - periodic_rf
         bootstrap_mean = np.mean(bootstrap_excess)
-        bootstrap_std = np.std(bootstrap_excess, ddof=1)
+        bootstrap_std = _sample_standard_deviation(bootstrap_excess)
 
         if bootstrap_std > 0:
             bs_sharpe = bootstrap_mean / bootstrap_std

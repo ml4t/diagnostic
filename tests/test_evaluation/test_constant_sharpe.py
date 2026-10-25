@@ -12,6 +12,10 @@ from ml4t.diagnostic.compat import empyrical as ep
 from ml4t.diagnostic.compat.pyfolio.timeseries import rolling_sharpe
 from ml4t.diagnostic.core.numba_utils import rolling_sharpe_numba
 from ml4t.diagnostic.evaluation import PortfolioAnalysis
+from ml4t.diagnostic.evaluation.portfolio_analysis.metrics import (
+    annual_volatility,
+    information_ratio,
+)
 from ml4t.diagnostic.metrics import periodic_sharpe_ratio, sharpe_ratio
 
 
@@ -139,3 +143,34 @@ def test_native_rolling_one_ulp_dispersion_matches_exact_observed_values(backend
         actual = rolling_sharpe_numba(values, 10)[-1]
     assert np.isfinite(actual)
     assert actual == pytest.approx(expected, rel=2e-14)
+
+
+@pytest.mark.parametrize("value", [0.001, -0.001])
+@pytest.mark.parametrize("metric", ["volatility", "information_ratio"])
+def test_native_volatility_and_tracking_error_do_not_invent_constant_risk(value, metric):
+    values = np.full(252, value)
+    values[0] = np.nan
+    if metric == "volatility":
+        assert annual_volatility(values) == 0
+    else:
+        assert np.isnan(information_ratio(values, np.zeros(len(values))))
+
+
+def test_bootstrap_constant_resamples_do_not_create_impossible_sharpe_bounds():
+    values = np.array([0.001] * 9 + [0.003])
+    result = sharpe_ratio(values, confidence_intervals=True, bootstrap_samples=100, random_state=7)
+    # Every nonconstant ten-row resample has a two-point sample Sharpe below 100.
+    # Constant resamples have no finite ratio and must not enter the percentiles.
+    assert 0 < result["lower_ci"] <= result["upper_ci"] < 100
+
+
+@pytest.mark.parametrize("route", ["native", "compat"])
+def test_annual_volatility_preserves_real_one_ulp_dispersion(route):
+    values = np.full(10, 0.001)
+    values[-1] = np.nextafter(values[-1], np.inf)
+    exact = [Fraction.from_float(float(x)) for x in values]
+    mean = sum(exact) / len(exact)
+    variance = sum((x - mean) ** 2 for x in exact) / (len(exact) - 1)
+    expected = math.sqrt(float(variance) * 252)
+    actual = annual_volatility(values) if route == "native" else ep.annual_volatility(values)
+    assert actual == pytest.approx(expected, rel=2e-14, abs=0)
