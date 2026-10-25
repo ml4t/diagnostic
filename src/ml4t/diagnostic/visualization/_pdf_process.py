@@ -226,12 +226,13 @@ class _WindowsJob:
                         ]
 
                     members = ProcessIds()
-                    if self.api.QueryInformationJobObject(
+                    complete = self.api.QueryInformationJobObject(
                         self.handle, 3, ctypes.byref(members), ctypes.sizeof(members), None
-                    ):
+                    )
+                    if complete and members.listed >= members.assigned:
                         break
                     error = ctypes.get_last_error()
-                    if error != 234:
+                    if not complete and error != 234:
                         raise ctypes.WinError(error)
                     if time.monotonic() >= deadline:
                         raise RuntimeError("PDF job membership did not stabilize before cleanup")
