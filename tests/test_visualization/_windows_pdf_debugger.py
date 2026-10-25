@@ -109,13 +109,12 @@ def main() -> None:
             if event.code == 3:
                 if event.info.created.file:
                     check(api.CloseHandle(event.info.created.file))
+                record(ready, {"pid": pid, "debugger": os.getpid()})
             elif event.code == 6 and event.info.loaded.file:
                 check(api.CloseHandle(event.info.loaded.file))
             elif event.code == 1:
                 if event.info.exception.record.code != 0x80000003:
                     status = 0x80010001
-                else:
-                    record(ready, {"pid": pid, "debugger": os.getpid()})
             elif event.code == 5:
                 exit_code = wintypes.DWORD()
                 check(api.GetExitCodeProcess(process_handle, ctypes.byref(exit_code)))

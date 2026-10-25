@@ -233,6 +233,11 @@ async def closed(self,*args,**kwargs):
         return result
     if mode in ('shared_status','permanent_status'):
         return await original_close(self,*args,**kwargs)
+    if mode=='job_dependency':
+        browser=psutil.Process(self.subprocess.pid)
+        browser.suspend()
+        observed.with_suffix('.browser-held.json').write_text(json.dumps({
+            'pid':browser.pid,'suspend_returned':True}))
     if mode in ('exit7','profile_readonly','job_dependency'): os._exit(7)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
@@ -257,6 +262,8 @@ else:
             assert self.process.poll()==7, 'The actual worker must have exited before job cleanup'
             browser_pid=int(next(iter(json.loads(observed.read_text()))))
             assert browser_pid in self.observed
+            held=json.loads(observed.with_suffix('.browser-held.json').read_text())
+            assert held=={'pid':browser_pid,'suspend_returned':True}
             ready=observed.with_suffix('.debugger-ready.json')
             blocked=observed.with_suffix('.kernel-exit.json')
             debugger=subprocess.Popen(
