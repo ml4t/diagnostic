@@ -197,7 +197,7 @@ class _WindowsJob:
         if not ok:
             raise ctypes.WinError(ctypes.get_last_error())
 
-    def terminate(self, processes: list[psutil.Process]) -> None:
+    def terminate(self, processes: list[psutil.Process], *, worker_exited: bool) -> None:
         from ctypes import wintypes
 
         class Accounting(ctypes.Structure):
@@ -242,10 +242,13 @@ class _WindowsJob:
                     raise ctypes.WinError(ctypes.get_last_error())
             started = time.monotonic()
             deadline = started + 5
+            if worker_exited:
+                # No worker pipe readers remain. Stop every job member before waiting.
+                self._check(self.api.TerminateJobObject(self.handle, 120))
             # Keep the worker's pipe readers alive until its browser descendants exit.
             for pid, handle, membership, identity, can_terminate in reversed(handles):
                 state = self.api.WaitForSingleObject(handle, 0)
-                if state == 258 and membership and can_terminate:
+                if not worker_exited and state == 258 and membership and can_terminate:
                     if not self.api.TerminateProcess(handle, 120):
                         error = ctypes.get_last_error()
                         # A repeated termination request can be denied during exit.
@@ -262,14 +265,16 @@ class _WindowsJob:
                         else None
                     )
                     raise RuntimeError(
-                        f"Owned PDF process {pid} not terminal before job termination: "
+                        f"Owned PDF process {pid} not terminal "
+                        f"{'after' if worker_exited else 'before'} job termination: "
                         f"wait result {result}; identity={identity}, "
                         f"member_before_termination={membership}, exit_code={observed_exit}, "
                         f"termination_access={can_terminate}, "
                         f"cleanup_elapsed={time.monotonic() - started:.6f}, "
                         f"wait_budget_ms={remaining_ms}"
                     )
-            self._check(self.api.TerminateJobObject(self.handle, 120))
+            if not worker_exited:
+                self._check(self.api.TerminateJobObject(self.handle, 120))
             while True:
                 accounting = Accounting()
                 self._check(
@@ -326,7 +331,9 @@ class _OwnedProcesses:
     def terminate(self) -> None:
         self.observe()
         if self.job is not None:
-            self.job.terminate(list(self.observed.values()))
+            self.job.terminate(
+                list(self.observed.values()), worker_exited=self.process.poll() is not None
+            )
         else:
             # Chrome starts a new session of its own. Kill observed child-led groups too.
             for process in reversed(list(self.observed.values())):
