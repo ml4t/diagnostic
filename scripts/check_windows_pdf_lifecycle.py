@@ -19,7 +19,8 @@ _SELECTION = (
     "exit7 or render_error or close_error or close_command_hang or cancel or "
     "profile_sharing or slow_shutdown or completed_page or previous_blank_page or "
     "context_burst or unresponsive_startup or pipe_close_evidence or readonly_browser_profile or "
-    "profile_cleanup_deadline or unresponsive_browser_after_closed_channel or close_hang"
+    "profile_cleanup_deadline or unresponsive_browser_after_closed_channel or close_hang or "
+    "late_job_members or lost_worker_exit"
 )
 
 
@@ -45,8 +46,8 @@ def _collect_cases(root: Path, output: Path) -> list[str]:
     )
     (output / "collection.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     cases = [line.strip() for line in result.stdout.splitlines() if line.startswith(_MODULE + "::")]
-    if result.returncode or len(cases) != 19 or len(set(cases)) != 19:
-        raise SystemExit("The real Windows lifecycle corpus must collect all 19 distinct cases")
+    if result.returncode or len(cases) != 21 or len(set(cases)) != 21:
+        raise SystemExit("The real Windows lifecycle corpus must collect all 21 distinct cases")
     return cases
 
 
