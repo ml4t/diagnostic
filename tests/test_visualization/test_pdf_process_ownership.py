@@ -207,12 +207,20 @@ async def closed(self,*args,**kwargs):
         resumed=[]
         pipe_closed=[]
         original_pipe_close=self._channel.close
+        original_write_json=self._channel.write_json
+        close_sent=[]
+        def record_actual_close_request(message):
+            result=original_write_json(message)
+            if message.get('method')=='Browser.close': close_sent.append(True)
+            return result
+        self._channel.write_json=record_actual_close_request
         def observe_pipe_close():
             with resume_lock:
                 if not pipe_closed:
                     pipe_closed.append(True)
                     observed.with_suffix('.slow-close.json').write_text(json.dumps({
                         'resumed_before_pipe_close':bool(resumed),
+                        'browser_close_sent':bool(close_sent),
                     }))
             return original_pipe_close()
         self._channel.close=observe_pipe_close
@@ -298,19 +306,21 @@ else:
                 debugger.wait(timeout=5)
         _pdf_process._OwnedProcesses.terminate=add_unobserved_job_dependency
     if mode=='unresponsive_startup': _pdf_process._RENDER_TIMEOUT=30
-    # Closing the command channel before resuming Chrome can require OS cleanup.
-    # The independent bounded pause still verifies cooperative exit.
     if mode=='slow_shutdown':
         original_terminate=_pdf_process._OwnedProcesses.terminate
-        def verify_graceful_before_escalation(self):
+        def record_graceful_before_escalation(self):
             browser_pid=int(next(iter(json.loads(observed.read_text()))))
             try:
                 browser=psutil.Process(browser_pid)
                 running=browser.is_running() and browser.status()!=psutil.STATUS_ZOMBIE
             except psutil.NoSuchProcess: running=False
-            original_terminate(self)
-            assert not running, 'OS escalation interrupted a bounded graceful browser shutdown'
-        _pdf_process._OwnedProcesses.terminate=verify_graceful_before_escalation
+            result=original_terminate(self)
+            observed.with_suffix('.slow-termination.json').write_text(json.dumps({
+                'browser_live_before_owned_cleanup':running,
+                'owned_cleanup_returned':True,
+            }))
+            return result
+        _pdf_process._OwnedProcesses.terminate=record_graceful_before_escalation
     if mode=='cancel':
         import _thread
         original_observe=_pdf_process._OwnedProcesses.observe
@@ -538,6 +548,9 @@ try:
     if mode=='slow_shutdown':
         observation=json.loads(observed.with_suffix('.slow-close.json').read_text())
         assert observation['resumed_before_pipe_close'],'Recovering browser lost its command channel before resume'
+        assert observation['browser_close_sent'],'Graceful fallback did not transmit Browser.close'
+        cleanup=json.loads(observed.with_suffix('.slow-termination.json').read_text())
+        assert cleanup['owned_cleanup_returned'],'Owned process cleanup did not finish'
     assert originals==[figure.to_json() for figure in figures]
     if mode=='unresponsive_startup':
         assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}
@@ -803,6 +816,33 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+def test_real_early_pipe_closure_is_still_rejected_when_owned_cleanup_succeeds(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    fault = r"""
+    original_worker=Path(_pdf_process.__file__).with_name('_pdf_worker.py')
+    code=original_worker.read_text(encoding='utf-8')
+    intended='timeout=max(0, close_deadline - asyncio.get_running_loop().time()) / 2,'
+    assert code.count(intended)==1
+    code=code.replace(intended,'timeout=0.05,')
+    bad_worker=Path(__file__).with_name('early_pipe_worker.py')
+    bad_worker.write_text(code,encoding='utf-8')
+    _pdf_process._BOOTSTRAP=_pdf_process._BOOTSTRAP.replace(
+        'worker=sys.argv.pop(1)', 'sys.argv.pop(1);worker='+repr(str(bad_worker)))
+"""
+    anchor = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    probe = _PROBE.replace(anchor, anchor + fault)
+    with pytest.raises(
+        AssertionError, match="Recovering browser lost its command channel before resume"
+    ):
+        _run_pdf_probe(probe, ["slow_shutdown", str(tmp_path / "report.pdf"), "0"])
+    observation = json.loads((tmp_path / "report.processes.slow-close.json").read_text())
+    assert observation["browser_close_sent"]
+    assert not observation["resumed_before_pipe_close"]
+    cleanup = json.loads((tmp_path / "report.processes.slow-termination.json").read_text())
+    assert cleanup["owned_cleanup_returned"]
 
 
 def test_unresponsive_browser_after_closed_channel_requires_verified_os_cleanup(tmp_path):

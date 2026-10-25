@@ -56,6 +56,7 @@ jobs:
           --with-requirements python315-core.txt --with pytest --with pytest-timeout
           python -m pytest --noconftest -o addopts= -q --timeout=120
           tests/test_evaluation/test_constant_sharpe.py
+          tests/test_evaluation/test_sharpe_offset_precision.py
           tests/test_evaluation/test_risk_adjusted_correctness.py
           --junitxml=python315-canary.xml
       - name: Retain source-canary evidence even when the probe fails

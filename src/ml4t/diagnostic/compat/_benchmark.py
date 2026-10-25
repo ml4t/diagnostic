@@ -9,7 +9,6 @@ import pandas as pd
 
 from ml4t.diagnostic.evaluation.portfolio_analysis import metrics as native
 from ml4t.diagnostic.evaluation.portfolio_analysis.benchmark import benchmark_batting_average
-from ml4t.diagnostic.metrics.risk_adjusted import periodic_sharpe_ratio
 
 from ._returns import (
     MetricOutput,
@@ -17,7 +16,7 @@ from ._returns import (
     adjust_rate,
     as_array,
     output_array,
-    reduce_columns,
+    reduce_difference_sharpe,
     select_benchmark_sign,
 )
 
@@ -232,13 +231,7 @@ def excess_sharpe(
 ) -> MetricOutput:
     """Unannualized active-return Sharpe, not the native annual information ratio."""
     _output(returns, factor_returns, as_array(returns).shape[1:], out)
-    return reduce_columns(
-        returns,
-        lambda column, _: periodic_sharpe_ratio(column),
-        adjusted=adjust_rate(returns, factor_returns),
-        out=out,
-        min_length=2,
-    )
+    return reduce_difference_sharpe(returns, factor_returns, out=out)
 
 
 def _sign_alpha_beta(

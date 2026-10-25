@@ -38,6 +38,44 @@ def _sample_standard_deviation(returns: np.ndarray) -> np.floating[Any] | float:
     return np.std(known - known[0], ddof=1)
 
 
+def _sample_moments_of_difference(
+    returns: np.ndarray, baseline: float | np.ndarray
+) -> tuple[np.floating[Any] | float, np.floating[Any] | float]:
+    """Retain subtraction roundoff before reducing paired mean and sample deviation."""
+    values, rates = np.broadcast_arrays(returns, baseline)
+    dtype = np.result_type(values.dtype, rates.dtype, np.float64)
+    values, rates = values.astype(dtype, copy=False), rates.astype(dtype, copy=False)
+    high = values - rates
+    paired = ~np.isnan(high)
+    values, rates, high = values[paired], rates[paired], high[paired]
+    if len(values) < 2 or np.isinf(high).any():
+        return np.nan, np.nan
+    # TwoDiff keeps the low residual even when the rounded excess looks constant.
+    virtual_rate = values - high
+    low = (values - (high + virtual_rate)) + (virtual_rate - rates)
+    centered = (high - high[0]) + (low - low[0])
+    return np.mean(high) + np.mean(low), _sample_standard_deviation(centered)
+
+
+def _periodic_sharpe_from_samples(
+    returns: np.ndarray,
+    rates: float | np.ndarray,
+    annualization_factor: float | None = None,
+) -> float:
+    """Reduce aligned raw observations using the existing Sharpe conventions."""
+    mean_excess, std_excess = _sample_moments_of_difference(returns, rates)
+    if std_excess == 0:
+        if mean_excess > 0:
+            return np.inf
+        if mean_excess < 0:
+            return -np.inf
+        return np.nan
+    sharpe = mean_excess / std_excess
+    if annualization_factor is not None and not np.isinf(sharpe) and not np.isnan(sharpe):
+        sharpe *= np.sqrt(annualization_factor)
+    return float(sharpe)
+
+
 def _drawdown_from_wealth(wealth: np.ndarray) -> np.ndarray:
     """Return declines from a high-water mark seeded by initial unit wealth."""
     high_water = np.maximum.accumulate(np.maximum(wealth, 1.0))
@@ -128,28 +166,9 @@ def periodic_sharpe_ratio(
     float
         Sharpe ratio value
     """
-    ret_clean = _clean_returns(returns)
-
-    if len(ret_clean) < 2:
-        return np.nan
-
-    excess_returns = ret_clean - periodic_risk_free_rate
-    mean_excess = np.mean(excess_returns)
-    std_excess = _sample_standard_deviation(excess_returns)
-
-    if std_excess == 0:
-        if mean_excess > 0:
-            return np.inf
-        if mean_excess < 0:
-            return -np.inf
-        return np.nan
-
-    sharpe = mean_excess / std_excess
-
-    if annualization_factor is not None and not np.isinf(sharpe) and not np.isnan(sharpe):
-        sharpe *= np.sqrt(annualization_factor)
-
-    return float(sharpe) if not np.isinf(sharpe) else sharpe
+    return _periodic_sharpe_from_samples(
+        _clean_returns(returns), periodic_risk_free_rate, annualization_factor
+    )
 
 
 def sharpe_ratio_with_ci(
@@ -203,9 +222,7 @@ def sharpe_ratio_with_ci(
     bootstrap_sharpes = []
     for _ in range(bootstrap_samples):
         bootstrap_sample = np.random.choice(ret_clean, size=len(ret_clean), replace=True)
-        bootstrap_excess = bootstrap_sample - periodic_rf
-        bootstrap_mean = np.mean(bootstrap_excess)
-        bootstrap_std = _sample_standard_deviation(bootstrap_excess)
+        bootstrap_mean, bootstrap_std = _sample_moments_of_difference(bootstrap_sample, periodic_rf)
 
         if bootstrap_std > 0:
             bs_sharpe = bootstrap_mean / bootstrap_std

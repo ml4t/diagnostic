@@ -409,6 +409,7 @@ jobs:
           -q --tb=short tests/test_compat/test_empyrical_scalar_metrics.py
           tests/test_compat/test_empyrical_return_paths.py
           tests/test_evaluation/test_constant_sharpe.py
+          tests/test_evaluation/test_sharpe_offset_precision.py
       - name: Verify analytical and rendering adapters against Empyrical with pandas 3
         shell: bash
         run: >-
@@ -418,6 +419,7 @@ jobs:
           --with "empyrical-reloaded==0.7.0" --with pytest --with lxml
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
+          tests/test_evaluation/test_sharpe_offset_precision.py
           tests/test_metrics/test_gpd_tail_risk.py tests/test_metrics/test_gpd_helper_shapes.py
       - name: Verify published Pyfolio analytical and rendering workflows with compatible pandas
         shell: bash
