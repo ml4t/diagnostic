@@ -2,7 +2,7 @@
 
 Diagnostic is not a drop-in replacement for either package. Choose a task below,
 convert its input shape, and compare result definitions before comparing numbers.
-Unreleased source after 0.1.9 requires Polars 1.36.1 or newer. The earlier 0.20
+Diagnostic 0.2.0 requires Polars 1.36.1 or newer. The earlier 0.20
 minimum lacked APIs already used by prepared signal and factor-weight workflows.
 Polars 1.0 also fails existing empty-sample and numerical/report contracts.
 The complete signal suite passes at 1.36.1, including actual reference and browser
@@ -14,7 +14,7 @@ For selected performance metrics, see the separate
 
 ## Choose a migration route
 
-The development source after 0.1.9 provides the following complete analytical
+Diagnostic 0.2.0 provides the following complete analytical
 report families. Start with the familiar adapter to retain a notebook's calling
 pattern, or use the native result when you need its samples, validation and
 serialization. The adapters share native calculations; they do not install a
@@ -138,7 +138,7 @@ shared Sharpe, drawdown and IC results and prints other measured values. The
 figures below describe that published baseline, not a performance benchmark or
 a promise that every legacy output matches.
 
-The current checkout's script also exercises unreleased prepared-input routes.
+The current checkout's script also exercises 0.2.0 prepared-input routes.
 Do not combine it with the older installed package. From the current checkout,
 run the complete source comparison instead:
 
@@ -224,7 +224,7 @@ a factor Series indexed by date and asset plus a wide price DataFrame, then
 quantiles. Its full tear sheet includes returns, IC, turnover, and grouped
 analysis. Diagnostic's `analyze_signal()` takes two long tables and returns
 IC, quantile returns, spread, and turnover metrics. It recomputes forward
-returns from prices. Current unreleased source also provides
+returns from prices. Current 0.2.0 source also provides
 `analyze_prepared_signal()` for an existing cleaned factor table, retaining its
 supplied forward returns and bucket assignments without fabricated prices.
 For unbucketed factors and supplied outcomes, `prepare_signal_panel()` selects
@@ -238,22 +238,22 @@ and the [Diagnostic signal API](../api/index.md#signal-analysis).
 |---|---|---|
 | Factor Series with `(date, asset)` index | `analyze_signal(factor=...)` | Reset the index to columns `date`, `asset`, `factor`; keep one value per pair. |
 | Wide asset-price table | `analyze_signal(prices=...)` | Stack to `date`, `asset`, `price` rows, including enough future dates for the largest horizon. |
-| Already-cleaned factor table | `analyze_prepared_signal(data, ...)` | Accepts the ordinary pandas `(date, asset)` index, `factor_quantile` and `1D`/`5D` columns, or native flat columns. Preserves supplied buckets; rejects duplicate keys and incomplete requested data rather than cleaning it. Unreleased after 0.1.9. |
-| Unbucketed factors plus supplied returns | `signal.prepare_signal_panel(factor, forward_returns, ...)` | Owns one complete finite sample, then assigns qcut/cut buckets and records factor/return/group/bucketing losses. Supports static or dated groups and group-relative/zero-aware buckets. Unreleased after 0.1.9; does not compute returns or validate a calendar. |
+| Already-cleaned factor table | `analyze_prepared_signal(data, ...)` | Accepts the ordinary pandas `(date, asset)` index, `factor_quantile` and `1D`/`5D` columns, or native flat columns. Preserves supplied buckets; rejects duplicate keys and incomplete requested data rather than cleaning it. 0.2.0 after 0.1.9. |
+| Unbucketed factors plus supplied returns | `signal.prepare_signal_panel(factor, forward_returns, ...)` | Owns one complete finite sample, then assigns qcut/cut buckets and records factor/return/group/bucketing losses. Supports static or dated groups and group-relative/zero-aware buckets. 0.2.0 after 0.1.9; does not compute returns or validate a calendar. |
 | IC, quantile returns, and spread | `SignalResult.ic`, `.quantile_returns`, `.spread` | Specify `periods`, `quantiles`, and `ic_method`; check timestamp alignment and compare each statistic's definition. |
-| Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | Unreleased after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
-| Daily quantile means/errors and equal-date summaries | `panel.quantile_statistics(by_date=..., by_group=..., demeaned=..., group_adjust=...)` | Unreleased after 0.1.9. Reports sample standard deviation, standard error and asset/date counts; does not change the native pooled `SignalResult` fields or spread inference. |
-| Empirical quantile return distributions | `plot_quantile_returns_violin(result.to_quantile_result(), period=...)` | Unreleased after 0.1.9. Uses actual dated bucket means retained by the analysis/report bridge, with explicit adjustment and percentile options. No summary-derived simulation. Pooled bars and density presentation remain distinct. |
-| Dated spread/error chart | `plot_spread_timeseries(result.to_quantile_result(), observations=...)` | Unreleased after 0.1.9. Uses actual dated bucket means and independent propagated errors, with explicit pair, bandwidth and observation-window controls. No cumulative-increment reconstruction or inferred confidence coverage. |
-| Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | Unreleased after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
-| Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | Unreleased after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
-| Factor alpha and beta | `panel.factor_alpha_beta(annualization_factors=...)` | Unreleased after 0.1.9. Reuses factor returns and OLS against the same universe's equal-asset mean. Retains dated joint samples/counts and explicitly compounded annual alpha; constant benchmarks and unavailable dates remain explicit. The owned returns/report composition below includes these samples and tables. |
-| Selected-factor cumulative wealth | `panel.factor_cumulative_returns(return_column=..., quantiles=..., groups=...)` | Unreleased after 0.1.9. Selects rows before shared weighting, then compounds one supplied horizon in observation order. Retains actual returns/counts and a labelled flat-wealth policy for unavailable returns. Not self-financing daily holdings or an inferred calendar. |
-| Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. Unreleased after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
-| Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | Unreleased after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
-| Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | Unreleased after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
-| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` for selected components; `generate_signal_report(...)` for owned composition | Unreleased after 0.1.9. The owned composer renders actual returns, information and dated persistence results, including requested mathematical quantile paths. Familiar report routes and their option/sample differences are described below. |
-| Expiring allocations and daily portfolio interchange | `panel.positions(...)`, `panel.to_portfolio_inputs(...)`, `compat.alphalens.performance.create_pyfolio_input(...)` | Unreleased after 0.1.9. Explicit expiry, capital and daily conventions remain distinct from executed holdings/account P&L. Native end-of-day and familiar event-sum definitions are named separately. |
+| Grouped or group-adjusted IC observations | `panel.ic_by_date(group_adjust=..., by_group=...)` | 0.2.0 after 0.1.9. Uses supplied returns and reports per-date/group paired counts and undefined reasons. Inspect the shared adjusted outcomes with `panel.demean_returns(by_group=True)`. Does not construct a group-neutral portfolio. |
+| Daily quantile means/errors and equal-date summaries | `panel.quantile_statistics(by_date=..., by_group=..., demeaned=..., group_adjust=...)` | 0.2.0 after 0.1.9. Reports sample standard deviation, standard error and asset/date counts; does not change the native pooled `SignalResult` fields or spread inference. |
+| Empirical quantile return distributions | `plot_quantile_returns_violin(result.to_quantile_result(), period=...)` | 0.2.0 after 0.1.9. Uses actual dated bucket means retained by the analysis/report bridge, with explicit adjustment and percentile options. No summary-derived simulation. Pooled bars and density presentation remain distinct. |
+| Dated spread/error chart | `plot_spread_timeseries(result.to_quantile_result(), observations=...)` | 0.2.0 after 0.1.9. Uses actual dated bucket means and independent propagated errors, with explicit pair, bandwidth and observation-window controls. No cumulative-increment reconstruction or inferred confidence coverage. |
+| Arbitrary quantile mean differences and propagated errors | `panel.quantile_spread(upper_quantile=..., lower_quantile=..., ...)` | 0.2.0 after 0.1.9. Reuses daily/equal-date statistics and propagates independent leg errors with `hypot`. Raw +1 upper / -1 lower exposure is gross two, not a unit-gross portfolio return or a Student test. |
+| Factor weights and return contributions | `panel.factor_weights(...)`, `panel.factor_returns(..., by_asset=...)` | 0.2.0 after 0.1.9. Shares one magnitude/equal-sign/group weight calculation across supplied horizons, with explicit zero-signal handling. Does not construct dated holdings or expiration accounting. |
+| Factor alpha and beta | `panel.factor_alpha_beta(annualization_factors=...)` | 0.2.0 after 0.1.9. Reuses factor returns and OLS against the same universe's equal-asset mean. Retains dated joint samples/counts and explicitly compounded annual alpha; constant benchmarks and unavailable dates remain explicit. The owned returns/report composition below includes these samples and tables. |
+| Selected-factor cumulative wealth | `panel.factor_cumulative_returns(return_column=..., quantiles=..., groups=...)` | 0.2.0 after 0.1.9. Selects rows before shared weighting, then compounds one supplied horizon in observation order. Retains actual returns/counts and a labelled flat-wealth policy for unavailable returns. Not self-financing daily holdings or an inferred calendar. |
+| Quantile turnover | `SignalResult.turnover` | From 0.1.9, each horizon key uses that lag in sorted observed factor dates. 0.2.0 after 0.1.9, persistence summaries also preserve sub-microsecond observation identity. The direct `compute_turnover(..., lag=...)` helper defaults to one observation; neither route establishes calendar-aware turnover. |
+| Dated turnover by bucket | `panel.quantile_turnover(lags=..., quantiles=..., date_grid=...)` | 0.2.0 after 0.1.9. Reports entrants/current-membership fractions, leg/universe counts and unavailable statuses on an observed or explicitly supplied clock. The scalar larger-membership definition remains separate. |
+| Dated rank persistence | `panel.rank_autocorrelation(lags=..., min_obs=..., date_grid=...)` | 0.2.0 after 0.1.9. Ranks each full scored date before pairing assets and computing Pearson correlation. Retains counts, statuses and explicit clocks; native paired-sample Spearman summaries remain separate. |
+| Factor HTML report | `SignalResult.to_tear_sheet()` and `SignalDashboard` for selected components; `generate_signal_report(...)` for owned composition | 0.2.0 after 0.1.9. The owned composer renders actual returns, information and dated persistence results, including requested mathematical quantile paths. Familiar report routes and their option/sample differences are described below. |
+| Expiring allocations and daily portfolio interchange | `panel.positions(...)`, `panel.to_portfolio_inputs(...)`, `compat.alphalens.performance.create_pyfolio_input(...)` | 0.2.0 after 0.1.9. Explicit expiry, capital and daily conventions remain distinct from executed holdings/account P&L. Native end-of-day and familiar event-sum definitions are named separately. |
 
 </div>
 
@@ -303,7 +303,7 @@ batches upstream with an explicit quote/aggregation policy; Diagnostic does not
 silently choose first or last. The lower-level
 `metrics.compute_forward_returns(..., date_col=None)` retains explicit input-row
 order instead, including repeated timestamps within an asset. These are
-unreleased input-boundary changes after 0.1.9, not calendar/grid validation.
+0.2.0 input-boundary changes after 0.1.9, not calendar/grid validation.
 For metrics-layer IC, decay and feature-outcome panels, pass the asset key as
 `group_col`; `None` denotes one series per date. These workflows validate
 prediction keys and forward the declared `date_col` to the return producer,
@@ -313,7 +313,7 @@ timezone join at the finer unit without rounding. An unrepresentable conversion
 raises instead of wrapping timestamps; this does not infer a timezone policy or
 validate calendar sessions.
 
-For exact integer-count qcut membership, unreleased source after 0.1.9 accepts
+For exact integer-count qcut membership, 0.2.0 source after 0.1.9 accepts
 `quantile_method="qcut"` in both `prepare_data` and `analyze_signal`. The existing
 backend uses pandas qcut for boundary semantics while retaining Polars grouping,
 row order and categorical output. Twelve
@@ -399,7 +399,7 @@ kept all 600 rows; its mean IC and Diagnostic's `SignalResult.ic["1D"]` were
 both `0.318881`. Diagnostic also returned a top-minus-bottom quantile spread
 of `0.004636`. The agreement is for this ungrouped input and definition.
 
-Unreleased source after 0.1.9 retains the mean and positive fraction of a
+0.2.0 source after 0.1.9 retains the mean and positive fraction of a
 single defined date-level IC. Its sample standard deviation and t-test remain
 undefined. An empty IC sample has no positive-observation fraction, and a
 zero/undefined IC standard deviation has no IC information ratio; neither is
@@ -409,7 +409,7 @@ null for unavailable values and restores them as NaN on the result round trip.
 
 ### Match IC report statistics to selected dates
 
-Unreleased after 0.1.9, `result.to_ic_result()` and the tear-sheet bridge compute
+0.2.0 after 0.1.9, `result.to_ic_result()` and the tear-sheet bridge compute
 their summaries from the common finite IC dates they retain across requested
 horizons. The original `SignalResult.ic`, standard deviation and inference maps
 still describe each horizon's full finite sample. Select one period explicitly
@@ -445,7 +445,7 @@ checks report means against their actual series and prints the report summaries.
 
 ### Inspect monthly IC on the selected sample
 
-With the visualization extra, unreleased source after 0.1.9 plots arithmetic
+With the visualization extra, 0.2.0 source after 0.1.9 plots arithmetic
 monthly means of the IC observations already selected by the report bridge:
 
 ```python
@@ -483,7 +483,7 @@ checks and prints monthly plot values when run with
 
 ### Prepare and audit supplied returns
 
-For an unbucketed factor Series and a precomputed return panel, unreleased
+For an unbucketed factor Series and a precomputed return panel, 0.2.0
 source after 0.1.9 provides `ml4t.diagnostic.signal.prepare_signal_panel`.
 It does not need Alphalens or prices at runtime. From a source checkout, run the
 [self-contained example](https://github.com/ml4t/diagnostic/blob/3231786bd9ad1ff0e47cea7c2e3b336ff6519893/examples/signal_panel_cleaning.py):
@@ -511,7 +511,7 @@ caller or recovering precision already lost in Float32 inputs.
 
 The [signal API](../api/index.md#signal-analysis) documents static/dated groups,
 probability qcut, cut edges and zero-aware options. Preparing group-relative
-buckets alone does not provide group-neutral inference. Unreleased after 0.1.9,
+buckets alone does not provide group-neutral inference. 0.2.0 after 0.1.9,
 `panel.analyze()` retains arbitrary supplied return columns and sparse positive
 bucket IDs without rebucketing. `result.horizon_labels` preserves selector order;
 `result.quantile_ids` preserves the actual IDs in summaries, JSON and quantile
@@ -577,7 +577,7 @@ claim that all later producer revisions or every option has been qualified.
 
 ### Prepare the same sample directly from prices
 
-Unreleased after 0.1.9, `prepare_signal_panel(factor, prices=prices,
+0.2.0 after 0.1.9, `prepare_signal_panel(factor, prices=prices,
 horizons={"1D": 1, "2D": 2}, price_basis="raw", calendar=None)` feeds the
 same cleaner. Supply prices or realized outcomes, not both. Prices may be keyed
 long quotes or a pandas wide table; the declared basis is retained, not adjusted.
@@ -619,7 +619,7 @@ lost. This kernel emits Float64 returns; it cannot recover input quantization.
 
 ### Keep Alphalens preparation calls during migration
 
-Unreleased after 0.1.9, change the preparation import while keeping the pandas
+0.2.0 after 0.1.9, change the preparation import while keeping the pandas
 MultiIndex inputs and familiar cleaning arguments:
 
 ```python
@@ -744,7 +744,7 @@ exact-day labels, never a zero lag inferred from `30m` or `1ns`.
 
 ### Keep familiar IC and quantile-statistics calls
 
-Unreleased after 0.1.9, the analytical adapters reuse the native IC, equal-date
+0.2.0 after 0.1.9, the analytical adapters reuse the native IC, equal-date
 quantile statistics and propagated-error kernels. Continue from `adapter_clean`
 above with a changed import:
 
@@ -902,7 +902,7 @@ journey also requires the installed-package notebook checks below.
 
 ### Run preserved original Alphalens notebooks
 
-Unreleased source includes `scripts/migrate_alphalens_notebooks.py` for the
+0.2.0 source includes `scripts/migrate_alphalens_notebooks.py` for the
 original overview, intraday-factor, event-study and Pyfolio-integration notebooks. The unmodified
 upstream fixtures and their Apache 2.0 license are retained under
 `tests/fixtures/alphalens_original/`, pinned to Alphalens source
@@ -973,7 +973,7 @@ the [owned results](#compose-owned-return-information-and-turnover-results).
 ### Inspect grouped IC and adjusted outcomes
 
 Use the same owned panel to compare the observations underlying a grouped IC.
-These unreleased methods after 0.1.9 do not require Alphalens. Using `prepared`
+These 0.2.0 methods after 0.1.9 do not require Alphalens. Using `prepared`
 from the earlier example, first attach explicit asset groups:
 
 ```python
@@ -1025,7 +1025,7 @@ returns, fill observations or establish an exchange calendar.
 
 ### Complete information-analysis report
 
-Unreleased source after 0.1.9 composes the owned panel's full information analysis.
+0.2.0 source after 0.1.9 composes the owned panel's full information analysis.
 Using `panel` from the grouped-IC example above:
 
 ```python
@@ -1228,7 +1228,7 @@ This bucket standard error is not a propagated spread error or a replacement
 for the existing two-sample spread test. Portfolio, event and report composition
 use these observations through the explicitly selected workflows below.
 
-Unreleased fixes after 0.1.9 stabilize the shared finite-return mean, sample
+0.2.0 fixes after 0.1.9 stabilize the shared finite-return mean, sample
 deviation and standard error. Identical large finite returns retain their
 finite mean and observation count instead of overflowing into a missing daily
 mean. Standard error is rescaled separately, so it can remain finite even when
@@ -1239,7 +1239,7 @@ or underflow; their estimand and test method are unchanged.
 
 ### Inspect arbitrary quantile spreads and propagated errors
 
-Select the buckets explicitly. This unreleased method after 0.1.9 delegates to
+Select the buckets explicitly. This 0.2.0 method after 0.1.9 delegates to
 `quantile_statistics` and preserves its date/group sampling and adjustment flags:
 
 ```python
@@ -1285,7 +1285,7 @@ report/event/portfolio workflows remain separate capabilities.
 ### Inspect dated quantile turnover
 
 Use the owned sample's bucket assignments without recomputing returns or
-buckets. This unreleased method after 0.1.9 reports dimensionless fractions:
+buckets. This 0.2.0 method after 0.1.9 reports dimensionless fractions:
 
 ```python
 dated_turnover = panel.quantile_turnover(lags=(1, 2))
@@ -1332,7 +1332,7 @@ column error; that valid selector now retains the same scalar definition.
 ### Inspect dated full-date rank persistence
 
 Use the same owned sample to rank each date before intersecting assets. This
-unreleased route after 0.1.9 returns dimensionless correlations:
+0.2.0 route after 0.1.9 returns dimensionless correlations:
 
 ```python
 dated_rank = panel.rank_autocorrelation(lags=(1, 2), min_obs=2)
@@ -1372,7 +1372,7 @@ Neither route establishes full Alphalens/Pyfolio replacement.
 ### Inspect dated persistence in a result and report
 
 Enable persistence in the actual analysis workflow to retain the dated tables
-as well as the existing native scalar summaries. This unreleased workflow after
+as well as the existing native scalar summaries. This 0.2.0 workflow after
 0.1.9 works through `analyze_signal`, `analyze_prepared_signal` or the owned panel:
 
 ```python
@@ -1419,7 +1419,7 @@ cannot reconstruct missing dates, buckets or reference ranks.
 
 ### Plot dated rank and membership persistence
 
-Unreleased after 0.1.9, the existing plotting APIs consume the actual dated
+0.2.0 after 0.1.9, the existing plotting APIs consume the actual dated
 component retained by persistence-enabled analysis:
 
 ```python
@@ -1478,7 +1478,7 @@ trace values, recorded methods and hover counts without a legacy dependency.
 
 ### Complete turnover report
 
-Unreleased after 0.1.9, `generate_signal_turnover_report` composes all recorded
+0.2.0 after 0.1.9, `generate_signal_turnover_report` composes all recorded
 membership and rank lags, all-quantile mean/count tables, and the exact dated
 observations. It consumes the existing owned `TurnoverAnalysisResult`, without
 an Alphalens, Pyfolio, Backtest or Engineer runtime dependency. Use this route
@@ -1550,7 +1550,7 @@ column labels. Diagnostic takes explicit observation lags when constructing this
 result; a label such as `1D` does not establish a validated session duration.
 
 The runnable command also prints installed package versions and writes typed
-JSON alongside the HTML. Run it from a checkout containing this unreleased API:
+JSON alongside the HTML. Run it from a checkout containing this 0.2.0 API:
 
 ```bash
 uv run --extra viz python examples/legacy_migration_comparison.py --task turnover --output turnover-report.html
@@ -1588,7 +1588,7 @@ dated holdings/expiration accounting or full Pyfolio replacement.
 
 ### Plot empirical dated quantile observations
 
-Unreleased after 0.1.9, the actual raw, prepared and owned analysis routes retain
+0.2.0 after 0.1.9, the actual raw, prepared and owned analysis routes retain
 `result.quantile_observations`. Each row identifies a date, bucket and supplied
 return column, its mean, asset count and adjustment. The independent table
 survives `SignalResult` JSON, `to_quantile_result()` and `to_tear_sheet()`.
@@ -1629,7 +1629,7 @@ single-component dashboard.
 
 ### Distinguish unavailable monotonicity from a negative decision
 
-Unreleased after 0.1.9, use the structured result's availability-aware accessor
+0.2.0 after 0.1.9, use the structured result's availability-aware accessor
 before interpreting a quantile monotonicity flag. Construct two buckets
 explicitly from the supplied `prepared` observations above:
 
@@ -1662,7 +1662,7 @@ prints the unavailable decisions alongside the actual observations.
 
 ### Plot dated spreads and propagated errors
 
-Unreleased after 0.1.9, the existing spread chart uses actual dated bucket means
+0.2.0 after 0.1.9, the existing spread chart uses actual dated bucket means
 retained by the analysis or supplied explicitly. With the visualization extra:
 
 ```python
@@ -1713,7 +1713,7 @@ multi-horizon, cumulative, holdings or event workflows.
 ### Construct factor weights and supplied-return contributions
 
 Use the owned panel's factor observations to construct exposure independently of
-its bucket labels. These unreleased methods after 0.1.9 share one normalization
+its bucket labels. These 0.2.0 methods after 0.1.9 share one normalization
 calculation. Using the `panel` above:
 
 ```python
@@ -1775,7 +1775,7 @@ to the separate [synthetic portfolio-input route](#turn-explicit-expiries-into-s
 
 ### Inspect factor alpha and beta on the same universe
 
-Unreleased after 0.1.9, use the same `panel` to inspect a factor portfolio's
+0.2.0 after 0.1.9, use the same `panel` to inspect a factor portfolio's
 regression against its supplied asset universe. Declare annualization rather
 than inferring a duration from a column label:
 
@@ -1853,7 +1853,7 @@ from the reference docstring; its actual alpha/beta table contains no t-statisti
 
 ### Compound selected factor returns without inferring holdings
 
-Unreleased after 0.1.9, compose the existing factor weights and returns with the
+0.2.0 after 0.1.9, compose the existing factor weights and returns with the
 shared NaN-aware cumulative product. Choose one exact supplied return column:
 
 ```python
@@ -1897,7 +1897,7 @@ cumulative quantile report panels use the
 
 ### Turn explicit expiries into synthetic portfolio inputs
 
-Unreleased after 0.1.9, `panel.positions()` consumes supplied endpoint keys and
+0.2.0 after 0.1.9, `panel.positions()` consumes supplied endpoint keys and
 uses the existing factor-weight kernel. Group and bucket selections occur before
 sizing. Its owned `allocations`, `positions` and `timeline` retain each allocation
 ID, exact entry/expiry key, active count and exposure status. At each unique union
@@ -2016,7 +2016,7 @@ report, account normalization, round-trip, attribution or capacity workflow.
 
 ### Retain the complete return-analysis sample before rendering
 
-Unreleased source after 0.1.9 composes the existing analytical kernels into one
+0.2.0 source after 0.1.9 composes the existing analytical kernels into one
 owned return-analysis result. Continue from `adapter_clean` above:
 
 ```python
@@ -2208,7 +2208,7 @@ generate_aligned_event_report(event_result, output_file=Path("aligned_events.htm
 print("Aligned event levels: 55.0; finite date paths: 2/3/2")
 ```
 
-Unreleased after 0.1.9, the direct familiar calls now delegate to that same
+0.2.0 after 0.1.9, the direct familiar calls now delegate to that same
 native event engine. Neither call requires a provider, forward returns or a
 factor score. Reuse the supplied events and levels above:
 
@@ -2303,7 +2303,7 @@ do not establish complete Alphalens/Pyfolio replacement.
 
 ### Complete event-returns report
 
-Unreleased after Diagnostic 0.1.9, `analyze_event_returns` or
+0.2.0 after Diagnostic 0.1.9, `analyze_event_returns` or
 `panel.event_returns` prepares the global sample and, with `by_group=True`,
 separate group samples using the same event engine. The group panels supplement
 the global view. `generate_event_returns_report` renders the global overview,
@@ -2358,7 +2358,7 @@ separate requirements.
 
 ### Signal event-study report
 
-Unreleased after 0.1.9, `analyze_signal_event_study` composes the separate
+0.2.0 after 0.1.9, `analyze_signal_event_study` composes the separate
 Alphalens event-study workflow from an owned `PreparedSignalPanel`. It retains
 factor statistics, elapsed-time event bins and each event's bin membership,
 raw prepared events, equal-date quantile statistics and empirical dated return
@@ -2432,7 +2432,7 @@ notebooks and report families remain separately required.
 
 ### Quantiles, turnover, and report boundaries
 
-In unreleased source after 0.1.9, direct `metrics.cross_sectional_ic_series()`
+In 0.2.0 source after 0.1.9, direct `metrics.cross_sectional_ic_series()`
 and its summary route validate unique, nonmissing observation keys on both
 inputs. Multi-asset panels require `entity_col`; overlapping batches must be
 deduplicated upstream under an explicit policy. Each input supplies only its
@@ -2460,7 +2460,7 @@ Alphalens when membership sizes change. Lags count observed factor dates,
 not elapsed calendar days; insufficient history returns NaN.
 
 The published baseline's `SignalResult.to_tear_sheet()` supplies IC and quantile
-analysis but not turnover or cumulative quantile-return paths. The unreleased
+analysis but not turnover or cumulative quantile-return paths. The 0.2.0
 persistence-enabled workflow above adds actual dated turnover/rank tables and
 summaries. The complete turnover report composes every recorded lag. For dated
 holdings and expiration accounting use the separate
@@ -2497,8 +2497,8 @@ implement an execution engine. Published 0.1.9 does not contain the additions be
 |---|---|---|
 | Daily noncumulative return Series | `PortfolioAnalysis(returns=..., dates=...)` | A pandas DatetimeIndex is retained automatically. Explicit dates must agree with it; set `periods_per_year` and risk-free convention explicitly. |
 | Benchmark return Series | `PortfolioAnalysis(benchmark=...)` | A dated Series is aligned to every strategy observation, with extra benchmark dates excluded. Missing/duplicate keys and timezone mismatches raise; verify currency separately. Undated arrays must have equal lengths. |
-| Complete dated signed holdings | `PortfolioAnalysis(positions=...).compute_holdings_analysis(valuations, complete_snapshots=True)` | Unreleased after 0.1.9. Wide string asset columns or long `date`, `asset`, `value`; supply exact observed keys and reported account values. See [prepared holdings](#analyze-prepared-holdings-on-observed-keys). |
-| Fill transactions | `PortfolioAnalysis.from_frames(..., transactions=...).compute_transaction_analysis(...)` | Unreleased owned actual-fill analysis; select the denominator and known fee/cost declarations. [Actual transactions](#analyze-actual-transactions-and-incremental-costs) and [fractional FIFO](#match-actual-fractional-fifo-lots-from-an-explicitly-flat-book) are separate calculations, not inferred from changing weights. |
+| Complete dated signed holdings | `PortfolioAnalysis(positions=...).compute_holdings_analysis(valuations, complete_snapshots=True)` | 0.2.0 after 0.1.9. Wide string asset columns or long `date`, `asset`, `value`; supply exact observed keys and reported account values. See [prepared holdings](#analyze-prepared-holdings-on-observed-keys). |
+| Fill transactions | `PortfolioAnalysis.from_frames(..., transactions=...).compute_transaction_analysis(...)` | 0.2.0 owned actual-fill analysis; select the denominator and known fee/cost declarations. [Actual transactions](#analyze-actual-transactions-and-incremental-costs) and [fractional FIFO](#match-actual-fractional-fifo-lots-from-an-explicitly-flat-book) are separate calculations, not inferred from changing weights. |
 | Performance HTML | `generate_backtest_tearsheet(returns=..., metrics=...)` | Install the `viz` extra; supply a return array and any precomputed metrics. This is not a Pyfolio report template. |
 | A completed `ml4t-backtest` result | `generate_tearsheet_from_result(result)` or [normalized captured account](#consume-actual-backtest-account-capture) | The existing Backtest report bridge is distinct from supplied-account and Zipline performance-frame adapters. |
 | Trade-level ranking | `TradeAnalysis` on `TradeRecord` objects | Consume the explicitly prepared [FIFO result](#match-actual-fractional-fifo-lots-from-an-explicitly-flat-book); raw transaction rows are not completed trades. |
@@ -2540,12 +2540,12 @@ unique, increasing dates. Date preservation does not infer an exchange calendar
 or convert event timestamps to session labels. A raw-return backtest tearsheet
 without dated equity data marks calendar panels unavailable while retaining
 observation-based analysis. These boundary corrections are
-unreleased source changes after 0.1.9; earlier published behavior is not a
+0.2.0 source changes after 0.1.9; earlier published behavior is not a
 supported missing-data or positional-alignment policy.
 
 `PortfolioAnalysis` profit factor divides the sum of positive period returns by
 the absolute sum of negative period returns, without annualization. In
-unreleased source after 0.1.9, a flat sample reports `NaN` for undefined `0/0`,
+0.2.0 source after 0.1.9, a flat sample reports `NaN` for undefined `0/0`,
 instead of positive infinity. Gains without losses still produce infinity;
 losses without gains produce zero. This return-based ratio does not use
 trade-lifecycle cash P&L and is not a Pyfolio metric-parity claim.
@@ -2611,7 +2611,7 @@ sessions instead of treating them as warmup. In a tested NAV-to-return sample,
 analyzes that shorter window. Retain the window-selection reason with your
 research inputs; the result does not record it. The shared correction also
 preserves zeros in selection adjustment and automatic bootstrap block selection.
-This is unreleased source work after 0.1.9. Paired uncertainty, selection adjustment
+This is 0.2.0 source work after 0.1.9. Paired uncertainty, selection adjustment
 and Reality Check align pandas DatetimeIndex inputs with the same unique date
 labels chronologically, then exclude nonfinite observations with one common mask.
 Entirely positional inputs require equal original lengths. Mixed dated/positional
@@ -2622,7 +2622,7 @@ intervals; matching point estimates does not establish interval equivalence.
 
 ### Keep familiar performance tables and IID summaries
 
-Unreleased after 0.1.9, `compat.pyfolio.timeseries.perf_stats` uses the existing
+0.2.0 after 0.1.9, `compat.pyfolio.timeseries.perf_stats` uses the existing
 native metric kernels with Pyfolio's thirteen labels and per-metric defaults.
 It does not require Pyfolio or a producer package:
 
@@ -2720,7 +2720,7 @@ complete portfolio-report coverage.
 
 ### Run a complete familiar returns report
 
-The unreleased `compat.pyfolio.create_returns_tear_sheet` (also available under
+The 0.2.0 `compat.pyfolio.create_returns_tear_sheet` (also available under
 `compat.pyfolio.tears`) selects the original returns-report financial panels
 and uses the existing `PortfolioTearSheet` renderer. Supplied raw returns need
 no producer or Reloaded runtime:
@@ -2789,7 +2789,7 @@ replay and producer examples below exercise their distinct input contracts.
 
 ### Compose a familiar simple or full account report
 
-Unreleased after 0.1.9, `compat.pyfolio.create_simple_tear_sheet` and
+0.2.0 after 0.1.9, `compat.pyfolio.create_simple_tear_sheet` and
 `create_full_tear_sheet` accept supplied pandas returns, optional marked dollar
 positions with separate `cash`, and an optional actual-fill ledger. No Data,
 Engineer, Backtest, Zipline or Reloaded runtime is required. This route is useful
@@ -2883,7 +2883,7 @@ do not establish every original notebook/provider workflow or full replacement.
 
 ### Replay the original Pyfolio analytical notebooks
 
-Unreleased after 0.1.9, `scripts/migrate_pyfolio_notebooks.py` converts the five
+0.2.0 after 0.1.9, `scripts/migrate_pyfolio_notebooks.py` converts the five
 original Pyfolio examples at
 [`185eaa1`](https://github.com/stefan-jansen/pyfolio-reloaded/tree/185eaa1657a845a5e1c8c82809248eac7ce99340/src/pyfolio/examples).
 The output-cleared copies in `tests/fixtures/pyfolio_original/` retain every original
@@ -2944,7 +2944,7 @@ separate acceptance work.
 
 ### Normalize a supplied account without a backtest engine
 
-Unreleased after 0.1.9, `PortfolioAnalysis.from_frames()` accepts dated returns,
+0.2.0 after 0.1.9, `PortfolioAnalysis.from_frames()` accepts dated returns,
 an optional dated benchmark, signed marked holdings, reported cash/NAV and
 actual transaction records. It uses the existing portfolio metrics and holdings
 analysis. Ordinary supplied-account analysis needs no Pyfolio, Zipline,
@@ -3017,7 +3017,7 @@ and integration work.
 
 ### Analyze actual transactions and incremental costs
 
-Unreleased after 0.1.9, supplied accounts can prepare actual execution activity
+0.2.0 after 0.1.9, supplied accounts can prepare actual execution activity
 through `compute_transaction_analysis()`. This recipe uses two real-format
 execution records and explicitly synthetic net returns/NAV. Neither NAV changes
 nor target weights determine the returns or fills.
@@ -3110,7 +3110,7 @@ report parity.
 
 ### Keep familiar Pyfolio transaction calculations
 
-Unreleased after 0.1.9, replace `from pyfolio import txn` with
+0.2.0 after 0.1.9, replace `from pyfolio import txn` with
 `from ml4t.diagnostic.compat.pyfolio import txn` for `map_transaction`,
 `make_transaction_frame`, `get_txn_vol`, `get_turnover` and
 `adjust_returns_for_slippage`. These pandas-facing adapters use the same native
@@ -3234,7 +3234,7 @@ adapters retain their documented input-clock definitions.
 
 ### Match actual fractional FIFO lots from an explicitly flat book
 
-Unreleased after 0.1.9, `analysis.compute_round_trips(initial_state="flat")`
+0.2.0 after 0.1.9, `analysis.compute_round_trips(initial_state="flat")`
 matches actual owned executions in timestamp order, preserving source order at
 the same instant. The opening flat declaration is required; a first sale could
 otherwise be either a new short or an unknown prior long's closing sale. This
@@ -3439,7 +3439,7 @@ composes these native results when their inputs are supplied.
 
 ### Analyze observed intraday snapshots on their own clock
 
-Unreleased after 0.1.9,
+0.2.0 after 0.1.9,
 `ml4t.diagnostic.evaluation.portfolio_analysis.analyze_intraday_exposure`
 accepts complete observed marked holdings and optional reported valuations
 without a return series. It reuses the existing holdings/occupancy calculations.
@@ -3481,7 +3481,7 @@ results cannot be relabeled as intraday report peaks.
 
 ### Reconstruct an explicit cash-price intraday account
 
-Unreleased after 0.1.9, `RoundTripResult.reconstruct_intraday_exposure` replays
+0.2.0 after 0.1.9, `RoundTripResult.reconstruct_intraday_exposure` replays
 its owned original fills, complete opening quantities and supplied known-at marks.
 Run `uv run python examples/portfolio_intraday.py --reconstruct`; add
 `--report reconstructed.html` for the combined report. No Backtest, Data, Engineer
@@ -3544,7 +3544,7 @@ select that daily estimate explicitly, without treating it as observed account s
 
 ### Keep the daily intraday estimate separate from account facts
 
-Unreleased after 0.1.9, `analysis.compute_intraday_estimate(method="legacy_peak_notional")`
+0.2.0 after 0.1.9, `analysis.compute_intraday_estimate(method="legacy_peak_notional")`
 implements the retrospective daily transaction-notional estimate. It is not
 observed holdings or a quantity/quote reconstruction. Run
 `uv run python examples/portfolio_intraday.py --estimate --report estimated.html`.
@@ -3632,7 +3632,7 @@ composes the other requested portfolio sections from their actual inputs.
 
 ### Use the familiar complete round-trip sheet
 
-Unreleased after 0.1.9, `ml4t.diagnostic.compat.pyfolio.tears.create_round_trip_tear_sheet`
+0.2.0 after 0.1.9, `ml4t.diagnostic.compat.pyfolio.tears.create_round_trip_tear_sheet`
 accepts daily returns, complete wide marked positions/cash, actual transactions,
 `sector_mappings`, `estimate_intraday` and `return_fig`. Install the visualization
 extra. Run `uv run --extra viz python examples/portfolio_fifo.py --familiar-report round-trips.html`
@@ -3741,7 +3741,7 @@ additional closing fees. Actual realized PnL, open inventory and original fills
 are unchanged. Every open asset needs a supplied known-at quote for this option.
 `marked_gross_pnl`/`marked_net_pnl` sum realized and unrealized PnL; they do not
 reclassify hypothetical gains as actual wins. Original opening/mark tables remain
-available on the result. These are source-qualified, unreleased routes, not a
+available on the result. These are source-qualified, 0.2.0 routes, not a
 claim that published 0.1.9 accepts these arguments.
 
 `result.completed_trades()` aggregates entry-lot segments into one observation per
@@ -3827,7 +3827,7 @@ below preserves the original observation clock instead of this explicit daily
 compatibility projection. Both routes are exercised by
 `examples/zipline_portfolio_inputs.py` on portable captures and actual engine output.
 
-Unreleased after 0.1.9, `integration.zipline.portfolio_analysis_from_zipline()`
+0.2.0 after 0.1.9, `integration.zipline.portfolio_analysis_from_zipline()`
 extracts `run_algorithm` results into the same `PortfolioAnalysis.from_frames`
 boundary. It imports neither Zipline nor Pyfolio. The result's reported returns,
 `portfolio_value` and `ending_cash` remain authoritative. Nested positions are
@@ -3957,7 +3957,7 @@ reported liquidation value and notional exposure are kept distinct.
 
 ### Analyze dated stress, live splits and training-only wealth cones
 
-Current unreleased source can evaluate an existing dated portfolio without a
+Current 0.2.0 source can evaluate an existing dated portfolio without a
 backtest engine. The same owned account boundary feeds native summaries,
 stress/live analysis and the existing report. Stationary resampling provides
 an explicit dependence-aware alternative to IID draws; this is a tested reason
@@ -4066,7 +4066,7 @@ recipes above; the stress/cone comparison does not substitute for those checks.
 
 ### Analyze prepared holdings on observed keys
 
-In unreleased source after 0.1.9, use the existing `PortfolioAnalysis` workflow
+In 0.2.0 source after 0.1.9, use the existing `PortfolioAnalysis` workflow
 for complete, caller-prepared signed market values in a single account currency.
 Supply dated account valuations separately. Reported `equity` is authoritative;
 Diagnostic does not infer NAV from cash plus holdings, which need not describe
@@ -4200,7 +4200,7 @@ requested transactions, cost scenarios and other portfolio sections.
 
 #### Render prepared holdings in the portfolio dashboard
 
-This unreleased source route is not included in published 0.1.9.
+This 0.2.0 source route is not included in published 0.1.9.
 Pass the prepared result to the existing dashboard. Plotly is optional; no
 Backtest, Pyfolio or Empyrical runtime is required for caller-prepared inputs:
 
@@ -4271,7 +4271,7 @@ returns overview; it does not display the prepared holdings panels.
 
 These native prepared-holdings panels use positive-NAV definitions. The familiar
 position manifest below instead selects the legacy signed-NAV profile. Neither
-route establishes all portfolio reports. The separately tested unreleased
+route establishes all portfolio reports. The separately tested 0.2.0
 [supplied-account boundary](#normalize-a-supplied-account-without-a-backtest-engine),
 [actual transaction analysis](#analyze-actual-transactions-and-incremental-costs) and
 [capacity workflow](#supplied-market-capacity-and-impact-scenarios-unreleased) have their own
@@ -4282,7 +4282,7 @@ exercise their complete journeys separately from this holdings dashboard.
 
 #### Keep familiar position projections without changing native account defaults
 
-Unreleased after 0.1.9, `compat.pyfolio.pos` provides `get_percent_alloc`,
+0.2.0 after 0.1.9, `compat.pyfolio.pos` provides `get_percent_alloc`,
 `get_top_long_short_abs`, `get_max_median_position_concentration`,
 `get_long_short_pos`, `get_sector_exposures` and `extract_pos`. These adapters
 reuse the native holdings extrema, concentration, exposure and marked-value
@@ -4340,7 +4340,7 @@ replay or inferred portfolio NAV.
 
 #### Run a complete familiar positions report
 
-This unreleased route composes the original exposure, top allocations,
+This 0.2.0 route composes the original exposure, top allocations,
 maximum/median concentration, holdings counts, long/short counts and gross
 leverage panels. Requested sector paths and top long/short/absolute tables use
 the same native kernels as the numerical adapters. It requires dated returns
@@ -4452,7 +4452,7 @@ ratio 3 and net ratio -3. The other final ratios are unavailable; each window
 has two defined snapshots out of three. This capability reuses Backtest's
 observed state and Diagnostic's common profile/report analysis.
 
-This is an unreleased correction after 0.1.9, not direct ingestion of a Pyfolio
+This is an 0.2.0 correction after 0.1.9, not direct ingestion of a Pyfolio
 positions table. For the same positive-equity positions/cash, pinned Pyfolio
 0.9.9 `timeseries.gross_lev()` and `pos.get_long_short_pos()` agree on gross/net
 ratios. In the zero-equity short example, Pyfolio produces infinite gross
@@ -4500,7 +4500,7 @@ initial equity 1000, the final equity is 500, 0 or -500 and closing notional is
 The other closing ratios are unavailable; their active mean is 1 from one of
 two active observations. Their three-row windows have two normalized
 observations, and the zero-equity example generates the actual full report.
-This is an unreleased correction after 0.1.9.
+This is an 0.2.0 correction after 0.1.9.
 
 On shared positive-equity inputs, pinned Pyfolio 0.9.9
 `txn.get_turnover(..., denominator="portfolio_value")` agrees with the current
@@ -4523,7 +4523,7 @@ step below -100%, or a later 0/0 return after NAV reaches zero, is not supported
 by the current performance workflow. Standalone activity analysis does not
 remove those restrictions.
 
-### Supplied-market capacity and impact scenarios (unreleased)
+### Supplied-market capacity and impact scenarios (0.2.0) {#supplied-market-capacity-and-impact-scenarios-unreleased}
 
 Evaluate Diagnostic when you want to combine supplied account inputs, explicit market-coverage
 checks and typed capacity results in the existing portfolio report. The native result can be
@@ -4592,7 +4592,7 @@ If an older single-symbol provider omits its identity column, the example carrie
 requested symbol alongside those bars. It never infers an asset from prices or row positions,
 and it rejects a contradictory returned identity. Published Data 0.2.1 supplies that column itself.
 No Data or Reloaded installation is required for the supplied-input command. The example prints
-installed package versions. These new APIs belong to an unreleased source/wheel candidate, not
+installed package versions. These new APIs belong to an 0.2.0 source/wheel candidate, not
 the immutable published Diagnostic 0.1.9 distribution.
 
 For familiar calls, change the import to
@@ -4624,7 +4624,7 @@ being summed into a zero penalty. Native reports name unavailable and unbounded 
 not draw unbounded duration as zero. Defined reference liquidation, daily transaction, summary
 and impact cases are compared separately from these independent corrections.
 
-The unreleased `compat.pyfolio.tears.create_capacity_tear_sheet` composes all four familiar
+The 0.2.0 `compat.pyfolio.tears.create_capacity_tear_sheet` composes all four familiar
 full/recent liquidation/participation tables and the capital-performance sweep. It retains
 `liquidation_daily_vol_limit`, `trade_daily_vol_limit`, `last_n_days`,
 `days_to_liquidate_limit` and the original `estimate_intraday="infer"`, forced and disabled

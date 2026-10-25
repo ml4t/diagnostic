@@ -78,13 +78,13 @@ uses a percentile that includes NaN; Diagnostic `.var_95` returned
 missing-value policy before migration rather than relying on this one example.
 
 Those NaN values describe the pinned published 0.1.8 workflow above. Current
-unreleased source after 0.1.9 rejects missing/nonfinite portfolio returns at the
+Diagnostic 0.2.0 rejects missing/nonfinite portfolio returns at the
 constructor boundary. The same comparison script reports that rejection and
 still evaluates Empyrical's NaN behavior; it does not silently fill or drop a
 return to make the inputs agree. The published comparison table remains a
 historical measurement, not the current source's missing-data contract.
 
-## Use columnwise scalar adapters (unreleased)
+## Use columnwise scalar adapters (0.2.0) {#use-columnwise-scalar-adapters-unreleased}
 
 The source after 0.1.9 adds `ml4t.diagnostic.compat.empyrical` for annual
 return/CAGR, sample annual volatility, one-series Calmar, periodic-rate Sharpe,
@@ -158,6 +158,18 @@ buffer itself, and labeled calls share its storage. Sortino's optional
 `_downside_risk` is an already annualized deviation.
 Inputs are normalized to float64 for calculation; an explicitly supplied
 floating output buffer retains its dtype and corresponding output precision.
+
+Exactly identical finite excess returns have zero sample dispersion. With at
+least two observations, Diagnostic returns signed infinity for nonzero mean
+excess and `NaN` for zero mean excess. For example, ten or 252 copies of
+`0.001` produce positive infinity, including through `excess_sharpe` and the
+Empyrical rolling adapters. Published Empyrical 0.7.0 can instead produce a
+huge finite value from reduction rounding. Diagnostic centers observations
+before calculating dispersion; it does not use a tolerance that discards real
+one-ULP variation. Native portfolio rolling metrics retain their distinct
+undefined-flat-window convention, and the Numba kernel retains zero for an
+exactly zero-return window. Pyfolio rolling reports still require complete
+windows; Empyrical rolling adapters omit missing observations within a window.
 Annual return, volatility and downside deviation use decimal return units;
 Sharpe, Sortino and Calmar ratios are dimensionless.
 
@@ -169,7 +181,7 @@ sample-deviation and downside formulas are separate checks. Matching these
 scalar cases does not qualify the report, rolling or attribution workflows
 listed below.
 
-## Follow dated price and return paths (unreleased)
+## Follow dated price and return paths (0.2.0) {#follow-dated-price-and-return-paths-unreleased}
 
 The same namespace also exposes `simple_returns`, `cum_returns`,
 `cum_returns_final`, `drawdown_series` and `max_drawdown`. These adapters use
@@ -238,7 +250,7 @@ unlabeled `(1, n_columns)` NaN array for 2D input. Empty maximum reductions
 return scalar `NaN` or an unlabeled `(n_columns,)` NaN array. These per-function
 contracts are not a blanket DataFrame-support claim for other Empyrical routes.
 
-## Compare arbitrary supplied benchmarks (unreleased)
+## Compare arbitrary supplied benchmarks (0.2.0) {#compare-arbitrary-supplied-benchmarks-unreleased}
 
 The source after 0.1.9 adds `alpha_beta`, `alpha`, `beta`, their `_aligned`
 forms, `excess_sharpe`, `up_alpha_beta`, `down_alpha_beta` and `batting_average`
@@ -322,7 +334,7 @@ results. No blanket DataFrame or broadcast claim follows from these cases.
 
 These benchmark workflows are not a full-replacement claim.
 
-## Select metric definitions explicitly (unreleased)
+## Select metric definitions explicitly (0.2.0) {#select-metric-definitions-explicitly-unreleased}
 
 The same source compatibility namespace also provides `omega_ratio`,
 `tail_ratio`, `stability_of_timeseries`, `value_at_risk` and
@@ -391,7 +403,7 @@ dates from an integer index. All-missing observed groups have unchanged wealth
 dated pandas input is required; strategy columns and their labels are retained.
 The same `--task empyrical-definitions` recipe checks the ISO-year boundary.
 
-## Continue row-window research (unreleased)
+## Continue row-window research (0.2.0) {#continue-row-window-research-unreleased}
 
 The familiar facade adds row-window drawdown, CAGR, volatility, Sharpe, Sortino,
 downside risk, active Sharpe, alpha/beta and up/down capture functions. These use
@@ -483,7 +495,7 @@ threshold, scale, dimensionless shape, loss VaR and expected shortfall.
 The runnable `--task empyrical-tail` recipe also executes this complete
 registry without requiring Empyrical at runtime.
 
-## Attribute returns to supplied holdings and loadings (unreleased)
+## Attribute returns to supplied holdings and loadings (0.2.0) {#attribute-returns-to-supplied-holdings-and-loadings-unreleased}
 
 Use this workflow when you already have asset NAV weights and factor loadings.
 It does not estimate betas from portfolio returns. The same calculation serves
@@ -656,7 +668,7 @@ bin/path expectations; it does not reproduce the rendering exceptions or
 claim those reference calls completed. Complete attribution-report browser,
 artifact and platform qualification is recorded separately from table matches.
 
-## Inspect a fitted generalized-Pareto tail (unreleased)
+## Inspect a fitted generalized-Pareto tail (0.2.0) {#inspect-a-fitted-generalized-pareto-tail-unreleased}
 
 `metrics.estimate_gpd_tail_risk(returns, tail_probability=0.01, threshold=None)`
 returns `GPDTailRiskResult`, including fit status, threshold/scale/shape,
@@ -725,7 +737,7 @@ These source APIs implement the named GPD methods and explicit failure statuses.
 They do not describe the published 0.1.9 distribution. Select and compare the
 tail definition before replacing an existing Empyrical calculation.
 
-## Inspect benchmark fragility (unreleased)
+## Inspect benchmark fragility (0.2.0) {#inspect-benchmark-fragility-unreleased}
 
 `ml4t.diagnostic.metrics.beta_fragility` returns an immutable
 `BetaFragilityResult` with the periodic return gap, usable/excluded counts,
@@ -791,8 +803,8 @@ The GPD and supplied-holdings attribution routes above have explicit native
 and familiar methods. They do not define a general multi-asset matrix rolling
 contract: apply a documented one-portfolio helper separately to each column.
 Compare input alignment, tail definitions and attribution timing when migrating.
-All sections marked
-unreleased describe source work, not the published 0.1.9 distribution.
+These APIs are part of Diagnostic 0.2.0. They are absent from the immutable
+0.1.9 distribution.
 
 ## Replace path, UTC and warning utilities
 
