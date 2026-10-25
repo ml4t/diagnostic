@@ -124,7 +124,7 @@ def periodic_sharpe_ratio(
 
     excess_returns = ret_clean - periodic_risk_free_rate
     mean_excess = np.mean(excess_returns)
-    std_excess = np.std(excess_returns, ddof=1)
+    std_excess = np.std(excess_returns - excess_returns[0], ddof=1)
 
     if std_excess == 0:
         if mean_excess > 0:

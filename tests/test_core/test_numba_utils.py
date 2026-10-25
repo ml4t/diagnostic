@@ -187,13 +187,12 @@ class TestBlockBootstrapNumba:
 class TestRollingSharpeNumba:
     """Test Numba-optimized rolling Sharpe ratio."""
 
-    def test_constant_returns(self):
-        """Test with constant returns."""
+    def test_constant_returns_do_not_invent_nonzero_volatility(self):
+        """Nonzero constant returns retain the kernel's undefined-ratio convention."""
         returns = np.full(100, 0.01)
         result = rolling_sharpe_numba(returns, 20)
-        # Constant returns should have very high Sharpe (std ~0)
         assert np.all(np.isnan(result[:19]))  # First 19 are NaN
-        assert result[19] > 100  # Very high Sharpe for constant returns
+        assert np.all(np.isnan(result[19:]))
 
     def test_zero_returns(self):
         """Test with zero returns."""
