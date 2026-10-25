@@ -291,7 +291,9 @@ else:
                 observed.with_suffix('.late-job.json').write_text(json.dumps({
                     'worker_exit':self.process.returncode,'browser_pid':browser_pid,
                     'debugger_pid':debugger.pid,'job_member':True,'in_snapshot':False}))
-                return original_terminate(self)
+                result=original_terminate(self)
+                assert debugger.poll() is not None, 'Cleanup returned before the late job member was terminal'
+                return result
             finally:
                 debugger.wait(timeout=5)
         _pdf_process._OwnedProcesses.terminate=add_unobserved_job_dependency

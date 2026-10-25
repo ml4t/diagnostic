@@ -211,6 +211,39 @@ class _WindowsJob:
 
         handles = []
         try:
+            started = time.monotonic()
+            deadline = started + 5
+            if worker_exited:
+                # A crashed worker cannot refresh its observed descendant snapshot.
+                capacity = 64
+                while True:
+
+                    class ProcessIds(ctypes.Structure):
+                        _fields_ = [
+                            ("assigned", wintypes.DWORD),
+                            ("listed", wintypes.DWORD),
+                            ("pids", ctypes.c_size_t * capacity),
+                        ]
+
+                    members = ProcessIds()
+                    if self.api.QueryInformationJobObject(
+                        self.handle, 3, ctypes.byref(members), ctypes.sizeof(members), None
+                    ):
+                        break
+                    error = ctypes.get_last_error()
+                    if error != 234:
+                        raise ctypes.WinError(error)
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("PDF job membership did not stabilize before cleanup")
+                    capacity = max(capacity * 2, members.assigned)
+                running_pids = {process.pid for process in processes if process.is_running()}
+                processes = list(processes)
+                for pid in members.pids[: members.listed]:
+                    if pid not in running_pids:
+                        try:
+                            processes.append(psutil.Process(pid))
+                        except psutil.NoSuchProcess:
+                            pass
             for process in processes:
                 if not process.is_running():
                     continue
@@ -240,8 +273,9 @@ class _WindowsJob:
                     handles.append((process.pid, handle, membership, identity, can_terminate))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
-            started = time.monotonic()
-            deadline = started + 5
+            if not worker_exited:
+                started = time.monotonic()
+                deadline = started + 5
             if worker_exited:
                 # No worker pipe readers remain. Stop every job member before waiting.
                 self._check(self.api.TerminateJobObject(self.handle, 120))
