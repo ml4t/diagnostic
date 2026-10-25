@@ -30,8 +30,9 @@ Windows.
 uv add ml4t-diagnostic
 ```
 
-Python 3.15 is not currently supported because required dependency wheels are
-still being qualified. Progress is tracked in
+Python 3.15 support is pending complete native and installed-package
+qualification. Focused core source checks have passed on all three operating
+systems. Progress is tracked in
 [issue #45](https://github.com/ml4t/diagnostic/issues/45).
 
 ## Quick Start
