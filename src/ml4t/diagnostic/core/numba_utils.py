@@ -285,13 +285,13 @@ def rolling_sharpe_numba(
         excess_returns = window_returns - daily_rf
 
         mean_excess = np.mean(excess_returns)
-        std_excess = np.std(excess_returns)
+        std_excess = np.std(excess_returns - excess_returns[0])
 
         if std_excess > 0:
             result[i] = mean_excess / std_excess * sqrt_periods
         else:
             # If std is zero, check if mean is also zero
-            if abs(mean_excess) < 1e-10:
+            if mean_excess == 0:
                 result[i] = 0.0
             else:
                 result[i] = np.nan

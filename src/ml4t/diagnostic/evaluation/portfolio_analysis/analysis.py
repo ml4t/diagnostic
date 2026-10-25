@@ -830,7 +830,7 @@ class PortfolioAnalysis:
 
         # Compute mean and std across each window (axis=1)
         mu = np.mean(excess, axis=1)
-        sd = np.std(excess, axis=1, ddof=1)
+        sd = np.std(excess - excess[:, :1], axis=1, ddof=1)
 
         # Sharpe where std > 0
         sharpe = np.full(len(mu), np.nan)

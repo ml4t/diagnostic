@@ -408,6 +408,7 @@ jobs:
           python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/test_empyrical_scalar_metrics.py
           tests/test_compat/test_empyrical_return_paths.py
+          tests/test_evaluation/test_constant_sharpe.py
       - name: Verify analytical and rendering adapters against Empyrical with pandas 3
         shell: bash
         run: >-

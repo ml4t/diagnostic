@@ -4,6 +4,9 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/ml4t/diagnostic/__init__.py" }]
+
 [tool.hatch.version]
 path = "src/ml4t/diagnostic/__init__.py"
 

@@ -17,7 +17,7 @@ jobs:
   qualification:
     permissions:
       contents: read
-    uses: ml4t/ecosystem/.github/workflows/qualify-library.yml@a3080f8e09b197098c9d796240e746aca516492e # 2026-09-23 policy snapshot
+    uses: ml4t/ecosystem/.github/workflows/qualify-library.yml@322df8513e6f7dceae8eab9d9697b3428ee62af6 # 2026-10-25 bounded 0.2 qualification wait
     with:
       import-package: ml4t.diagnostic
       prerelease-exception: python-315-scipy
