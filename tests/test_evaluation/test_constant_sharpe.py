@@ -91,28 +91,36 @@ def test_compat_columns_missingness_and_output_buffer_keep_existing_contract():
 
 
 @pytest.mark.parametrize("value", [0.001, -0.001])
-def test_legacy_rolling_routes_keep_infinity_labels_and_missing_window_rules(value):
+@pytest.mark.parametrize("route", ["sharpe", "excess", "pyfolio"])
+def test_legacy_rolling_routes_keep_infinity_labels_and_missing_window_rules(value, route):
     values = pd.Series(np.full(12, value), index=pd.date_range("2026-01-01", periods=12))
-    for result in [
-        ep.roll_sharpe_ratio(values, window=10),
-        ep.roll_excess_sharpe(values, values * 0, window=10),
-    ]:
+    if route == "pyfolio":
+        result = rolling_sharpe(values, 10)
+        pd.testing.assert_index_equal(result.index, values.index)
+        assert result.iloc[:9].isna().all()
+        result = result.iloc[9:]
+    else:
+        result = (
+            ep.roll_sharpe_ratio(values, window=10)
+            if route == "sharpe"
+            else ep.roll_excess_sharpe(values, values * 0, window=10)
+        )
         pd.testing.assert_index_equal(result.index, values.index[9:])
-        np.testing.assert_equal(result.to_numpy(), np.full(3, np.copysign(np.inf, value)))
-    complete = rolling_sharpe(values, 10)
-    assert complete.iloc[:9].isna().all()
-    np.testing.assert_equal(complete.iloc[9:].to_numpy(), np.full(3, np.copysign(np.inf, value)))
+    np.testing.assert_equal(result.to_numpy(), np.full(3, np.copysign(np.inf, value)))
     values.iloc[5] = np.nan
     assert rolling_sharpe(values, 10).isna().all()
     assert np.isinf(ep.roll_sharpe_ratio(values, window=10)).all()
 
 
 @pytest.mark.parametrize("value", [0.001, -0.001, 1e-12, 0.125])
-def test_native_rolling_keeps_its_undefined_flat_window_convention(value):
+@pytest.mark.parametrize("backend", ["native", "numba"])
+def test_native_rolling_keeps_its_undefined_flat_window_convention(value, backend):
     values = np.full(12, value)
-    result = PortfolioAnalysis(values).compute_rolling_metrics(windows=[10], metrics=["sharpe"])
-    assert result.sharpe[10].is_null().all()
-    assert np.isnan(rolling_sharpe_numba(values, 10)[9:]).all()
+    if backend == "native":
+        result = PortfolioAnalysis(values).compute_rolling_metrics(windows=[10], metrics=["sharpe"])
+        assert result.sharpe[10].is_null().all()
+    else:
+        assert np.isnan(rolling_sharpe_numba(values, 10)[9:]).all()
 
 
 @pytest.mark.parametrize("backend", ["native", "numba"])
