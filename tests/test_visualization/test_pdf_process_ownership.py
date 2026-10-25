@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -232,7 +233,12 @@ async def closed(self,*args,**kwargs):
         return result
     if mode in ('shared_status','permanent_status'):
         return await original_close(self,*args,**kwargs)
-    if mode in ('exit7','profile_readonly'): os._exit(7)
+    if mode=='job_dependency':
+        browser=psutil.Process(self.subprocess.pid)
+        browser.suspend()
+        observed.with_suffix('.browser-held.json').write_text(json.dumps({
+            'pid':browser.pid,'suspend_returned':True}))
+    if mode in ('exit7','profile_readonly','job_dependency'): os._exit(7)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
 kaleido.Kaleido.open=opened
@@ -247,6 +253,50 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='job_dependency':
+        import ctypes
+        from ctypes import wintypes
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        def add_unobserved_job_dependency(self):
+            self.observe()
+            assert self.process.poll()==7, 'The actual worker must have exited before job cleanup'
+            browser_pid=int(next(iter(json.loads(observed.read_text()))))
+            assert browser_pid in self.observed
+            held=json.loads(observed.with_suffix('.browser-held.json').read_text())
+            assert held=={'pid':browser_pid,'suspend_returned':True}
+            ready=observed.with_suffix('.debugger-ready.json')
+            blocked=observed.with_suffix('.kernel-exit.json')
+            debugger=subprocess.Popen(
+                [sys.executable,sys.argv[5],str(browser_pid),str(ready),str(blocked)],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            handle=self.job.api.OpenProcess(0x1101,False,debugger.pid)
+            if not handle: raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                self.job._check(self.job.api.AssignProcessToJobObject(self.job.handle,handle))
+                member=wintypes.BOOL()
+                self.job._check(self.job.api.IsProcessInJob(handle,self.job.handle,ctypes.byref(member)))
+                assert member.value
+            finally: self.job.api.CloseHandle(handle)
+            debugger.stdin.write(b'1')
+            debugger.stdin.close()
+            try:
+                deadline=time.monotonic()+10
+                while not ready.exists() and debugger.poll() is None and time.monotonic()<deadline:
+                    time.sleep(.01)
+                assert ready.exists(), 'Owned debugger never attached'
+                attachment=json.loads(ready.read_text())
+                assert 'error' not in attachment,attachment
+                earlier=self.observed.get(debugger.pid)
+                assert earlier is None or not earlier.is_running(), 'Control must reproduce a late job member'
+                observed.with_suffix('.late-job.json').write_text(json.dumps({
+                    'worker_exit':self.process.returncode,'browser_pid':browser_pid,
+                    'debugger_pid':debugger.pid,'job_member':True,'in_snapshot':False}))
+                result=original_terminate(self)
+                assert debugger.poll() is not None, 'Cleanup returned before the late job member was terminal'
+                return result
+            finally:
+                debugger.wait(timeout=5)
+        _pdf_process._OwnedProcesses.terminate=add_unobserved_job_dependency
     if mode=='unresponsive_startup': _pdf_process._RENDER_TIMEOUT=30
     # Closing the command channel before resuming Chrome can require OS cleanup.
     # The independent bounded pause still verifies cooperative exit.
@@ -445,7 +495,11 @@ try:
         if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
-        if mode in ('exit7','profile_readonly'): assert 'code 7' in str(error),repr(error)
+        if mode in ('exit7','profile_readonly','job_dependency'): assert 'code 7' in str(error),repr(error)
+        if mode=='job_dependency':
+            assert observed.with_suffix('.late-job.json').exists(),expected_render_error
+            assert not any('PDF process cleanup failed' in note or 'PDF profile cleanup failed' in note
+                           for note in expected_render_error['notes']),expected_render_error
         if mode=='profile_readonly':
             assert observed.with_suffix('.readonly.json').exists(),expected_render_error
             assert not any('PDF process cleanup failed' in note or 'PDF profile cleanup failed' in note
@@ -565,9 +619,14 @@ finally:
 
 def _run_pdf_probe(code, arguments):
     psutil = pytest.importorskip("psutil")
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+    with (
+        tempfile.TemporaryDirectory(prefix="ml4t-pdf-probe-") as directory,
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output,
+    ):
+        script = Path(directory) / "probe.py"
+        script.write_text(code, encoding="utf-8")
         process = subprocess.Popen(
-            [sys.executable, "-c", code, *arguments], stdout=output, stderr=output
+            [sys.executable, str(script), *arguments], stdout=output, stderr=output
         )
         try:
             process.wait(timeout=120)
@@ -597,6 +656,46 @@ def test_readonly_browser_profile_is_removed_after_actual_worker_crash(tmp_path)
     observation = json.loads(target.with_suffix(".processes.readonly.json").read_text())
     assert observation["winerror"] == 5 and observation["attributes"] & 1
     assert result["running"] == [] and result["neighbor_alive"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows job and debug events required")
+def test_crashed_worker_cleanup_stops_late_job_members_before_process_waits(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    result = _run_pdf_probe(_PROBE, ["job_dependency", str(target), "0", "0.1", debugger])
+    observation = json.loads(target.with_suffix(".processes.late-job.json").read_text())
+    assert observation["worker_exit"] == 7 and observation["job_member"]
+    assert not observation["in_snapshot"]
+    assert result["running"] == [] and result["neighbor_alive"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows job and debug events required")
+def test_lost_worker_exit_evidence_leaves_a_real_kernel_exit_pending(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    marker = "    _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    probe = _PROBE.replace(
+        marker,
+        marker
+        + "\n"
+        + """
+    original_job_terminate=_pdf_process._WindowsJob.terminate
+    def lose_actual_worker_exit(self,processes,*,worker_exited):
+        return original_job_terminate(self,processes,worker_exited=False)
+    _pdf_process._WindowsJob.terminate=lose_actual_worker_exit
+""",
+    )
+    with pytest.raises(AssertionError) as failure:
+        _run_pdf_probe(probe, ["job_dependency", str(target), "0", "0.1", debugger])
+    assert "code 7" in str(failure.value)
+    assert "not terminal before job termination" in str(failure.value)
+    blocked = json.loads(target.with_suffix(".processes.kernel-exit.json").read_text())
+    assert blocked["event_exit_code"] == blocked["process_exit_code"] == 120
+    assert blocked["wait_result"] == 258
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows sharing denial required")
