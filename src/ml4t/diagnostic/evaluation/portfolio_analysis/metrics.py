@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Any, Union, cast
 import numpy as np
 from scipy import stats
 
-from ml4t.diagnostic.metrics.risk_adjusted import _drawdown_from_wealth, _sample_standard_deviation
+from ml4t.diagnostic.metrics.risk_adjusted import (
+    _drawdown_from_wealth,
+    _sample_standard_deviation,
+    _sample_standard_deviation_of_difference,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -461,9 +465,9 @@ def information_ratio(
     active_return = returns - benchmark
 
     # Tracking error (annualized)
-    tracking_error = _sample_standard_deviation(active_return) * _annualization_factor(
-        periods_per_year
-    )
+    tracking_error = _sample_standard_deviation_of_difference(
+        returns, benchmark
+    ) * _annualization_factor(periods_per_year)
 
     if tracking_error == 0:
         return np.nan

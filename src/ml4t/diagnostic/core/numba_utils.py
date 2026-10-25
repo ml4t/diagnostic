@@ -285,7 +285,7 @@ def rolling_sharpe_numba(
         excess_returns = window_returns - daily_rf
 
         mean_excess = np.mean(excess_returns)
-        std_excess = np.std(excess_returns - excess_returns[0])
+        std_excess = np.std(window_returns - window_returns[0])
 
         if std_excess > 0:
             result[i] = mean_excess / std_excess * sqrt_periods

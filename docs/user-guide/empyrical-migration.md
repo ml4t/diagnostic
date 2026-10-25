@@ -164,9 +164,16 @@ least two observations, Diagnostic returns signed infinity for nonzero mean
 excess and `NaN` for zero mean excess. For example, ten or 252 copies of
 `0.001` produce positive infinity, including through `excess_sharpe` and the
 Empyrical rolling adapters. Published Empyrical 0.7.0 can instead produce a
-huge finite value from reduction rounding. Diagnostic centers observations
-before calculating dispersion; it does not use a tolerance that discards real
-one-ULP variation. Native portfolio rolling metrics retain their distinct
+huge finite value from reduction rounding. Diagnostic centers paired raw
+returns and rates or benchmarks before subtraction, so a larger constant rate
+cannot erase a real one-ULP return variation. For example, ten returns near
+`1e-6`, with the last set to `np.nextafter(1e-6, np.inf)`, retain finite Sharpe
+with periodic `risk_free=0.0001`. Computing variance from the already rounded
+excess-return buffer would incorrectly classify that sample as constant.
+Paired missing observations are removed before choosing the centering sample.
+The native calculation also supplies benchmark tracking error and bootstrap
+dispersion; it does not use a tolerance that discards real variation.
+Native portfolio rolling metrics retain their distinct
 undefined-flat-window convention, and the Numba kernel retains zero for an
 exactly zero-return window. Pyfolio rolling reports still require complete
 windows; Empyrical rolling adapters omit missing observations within a window.

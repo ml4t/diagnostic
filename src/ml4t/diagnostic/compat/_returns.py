@@ -22,7 +22,7 @@ def as_array(returns: ReturnInput) -> np.ndarray:
     return values
 
 
-def adjust_rate(returns: ReturnInput, rate: float | ReturnInput) -> ReturnInput:
+def _normalized_rate(returns: ReturnInput, rate: float | ReturnInput) -> float | ReturnInput:
     if isinstance(returns, pd.DataFrame) and isinstance(rate, (pd.Series, pd.DataFrame)):
         labels = rate.index if isinstance(rate, pd.Series) else rate.columns
         if not labels.is_unique or set(labels) != set(returns.columns):
@@ -32,7 +32,11 @@ def adjust_rate(returns: ReturnInput, rate: float | ReturnInput) -> ReturnInput:
             if isinstance(rate, pd.Series)
             else rate.reindex(columns=returns.columns)
         )
-    return returns - rate
+    return rate
+
+
+def adjust_rate(returns: ReturnInput, rate: float | ReturnInput) -> ReturnInput:
+    return returns - _normalized_rate(returns, rate)
 
 
 def select_benchmark_sign(
@@ -128,3 +132,43 @@ def reduce_columns(
     if labeled and isinstance(returns, pd.DataFrame) and len(original) >= min_length:
         return pd.Series(output, index=returns.columns, copy=False)
     return output
+
+
+def reduce_difference_sharpe(
+    returns: ReturnInput,
+    rate: float | ReturnInput,
+    *,
+    annualization: float | None = None,
+    out: np.ndarray | None = None,
+) -> MetricOutput:
+    """Preserve legacy alignment and masks while passing raw samples to native Sharpe."""
+    from ml4t.diagnostic.metrics.risk_adjusted import _periodic_sharpe_from_samples
+
+    left, right = returns, _normalized_rate(returns, rate)
+    if isinstance(left, pd.Series) and isinstance(right, pd.Series):
+        left, right = left.align(right, join="outer")
+    elif isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
+        left, right = left.align(right, join="outer", axis=0)
+    elif isinstance(left, np.ndarray) and isinstance(right, pd.Series | pd.DataFrame):
+        # Preserve pandas' existing coercion errors for mixed container inputs.
+        adjust_rate(returns, rate)
+    values, rates = np.broadcast_arrays(
+        as_array(left),
+        as_array(right)
+        if isinstance(right, pd.Series | pd.DataFrame)
+        else np.asarray(right, dtype=float),
+    )
+
+    def calculate(_: np.ndarray, index: int) -> float:
+        left = values if values.ndim == 1 else values[:, index]
+        right = rates if rates.ndim == 1 else rates[:, index]
+        return _periodic_sharpe_from_samples(left, right, annualization)
+
+    return reduce_columns(
+        returns,
+        calculate,
+        out=out,
+        min_length=2,
+        adjusted=values,
+        additional_inputs=(rate,),
+    )

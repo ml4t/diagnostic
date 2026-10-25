@@ -40,6 +40,7 @@ from ml4t.diagnostic.compat._returns import (
     as_array,
     output_array,
     reduce_columns,
+    reduce_difference_sharpe,
 )
 from ml4t.diagnostic.compat._rolling import (
     down,
@@ -82,7 +83,6 @@ from ml4t.diagnostic.metrics.risk_adjusted import (
     _drawdown_from_wealth,
     _sortino_from_excess,
     periodic_downside_risk,
-    periodic_sharpe_ratio,
 )
 
 DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY = "daily", "weekly", "monthly", "quarterly", "yearly"
@@ -276,14 +276,7 @@ def sharpe_ratio(
 ) -> MetricOutput:
     """Use periodic risk-free returns and columnwise native Sharpe calculation."""
     scale = annualization_factor(period, annualization)
-    return reduce_columns(
-        returns,
-        lambda column, _: periodic_sharpe_ratio(column, annualization_factor=scale),
-        adjusted=adjust_rate(returns, risk_free),
-        additional_inputs=(risk_free,),
-        out=out,
-        min_length=2,
-    )
+    return reduce_difference_sharpe(returns, risk_free, annualization=scale, out=out)
 
 
 def downside_risk(
