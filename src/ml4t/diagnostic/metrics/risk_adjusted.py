@@ -42,9 +42,9 @@ def _sample_standard_deviation_of_difference(
     returns: np.ndarray, baseline: float | np.ndarray
 ) -> np.floating[Any] | float:
     """Center paired observations before subtraction can erase their variation."""
-    values, rates = np.broadcast_arrays(
-        np.asarray(returns, dtype=float), np.asarray(baseline, dtype=float)
-    )
+    values, rates = np.broadcast_arrays(returns, baseline)
+    dtype = np.result_type(values.dtype, rates.dtype, np.float64)
+    values, rates = values.astype(dtype, copy=False), rates.astype(dtype, copy=False)
     paired = ~np.isnan(values - rates)
     values, rates = values[paired], rates[paired]
     if len(values) < 2:
@@ -58,9 +58,9 @@ def _periodic_sharpe_from_samples(
     annualization_factor: float | None = None,
 ) -> float:
     """Reduce aligned raw observations using the existing Sharpe conventions."""
-    values, rates = np.broadcast_arrays(
-        np.asarray(returns, dtype=float), np.asarray(rates, dtype=float)
-    )
+    values, rates = np.broadcast_arrays(returns, rates)
+    dtype = np.result_type(values.dtype, rates.dtype, np.float64)
+    values, rates = values.astype(dtype, copy=False), rates.astype(dtype, copy=False)
     excess = values - rates
     paired = ~np.isnan(excess)
     if np.count_nonzero(paired) < 2:

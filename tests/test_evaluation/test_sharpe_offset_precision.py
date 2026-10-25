@@ -26,6 +26,20 @@ def exact_sharpe(returns, rates, *, scale=1, ddof=1):
     return float(mean) / math.sqrt(float(variance)) * math.sqrt(scale)
 
 
+def test_native_wider_return_dtype_is_not_demoted_before_calculating_variance():
+    value = np.longdouble(1) / 1024
+    values = np.full(10, value, dtype=np.longdouble)
+    values[-1] = np.nextafter(value, np.longdouble(np.inf))
+    first = Fraction(1, 1024)
+    delta = first * Fraction(float(np.finfo(np.longdouble).eps))
+    exact = [first] * 9 + [first + delta]
+    mean = sum(exact) / 10
+    variance = sum((item - mean) ** 2 for item in exact) / 9
+    actual = periodic_sharpe_ratio(values)
+    assert np.isfinite(actual)
+    assert actual == pytest.approx(float(mean) / math.sqrt(float(variance)), rel=2e-14)
+
+
 @pytest.mark.parametrize("length", [10, 252])
 @pytest.mark.parametrize("sign", [-1, 1])
 @pytest.mark.parametrize(
