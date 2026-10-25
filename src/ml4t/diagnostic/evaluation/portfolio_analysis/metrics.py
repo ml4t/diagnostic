@@ -18,8 +18,8 @@ from scipy import stats
 
 from ml4t.diagnostic.metrics.risk_adjusted import (
     _drawdown_from_wealth,
+    _sample_moments_of_difference,
     _sample_standard_deviation,
-    _sample_standard_deviation_of_difference,
 )
 
 if TYPE_CHECKING:
@@ -461,19 +461,16 @@ def information_ratio(
     if returns.ndim != 1 or benchmark.ndim != 1 or returns.shape != benchmark.shape:
         raise ValueError("benchmark and returns must be one-dimensional with equal length")
 
-    # Active return
-    active_return = returns - benchmark
+    mean_active, deviation = _sample_moments_of_difference(returns, benchmark)
 
     # Tracking error (annualized)
-    tracking_error = _sample_standard_deviation_of_difference(
-        returns, benchmark
-    ) * _annualization_factor(periods_per_year)
+    tracking_error = deviation * _annualization_factor(periods_per_year)
 
     if tracking_error == 0:
         return np.nan
 
     # Annualized active return
-    ann_active = np.nanmean(active_return) * periods_per_year
+    ann_active = mean_active * periods_per_year
 
     return ann_active / tracking_error
 

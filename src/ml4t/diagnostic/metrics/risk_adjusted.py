@@ -38,18 +38,23 @@ def _sample_standard_deviation(returns: np.ndarray) -> np.floating[Any] | float:
     return np.std(known - known[0], ddof=1)
 
 
-def _sample_standard_deviation_of_difference(
+def _sample_moments_of_difference(
     returns: np.ndarray, baseline: float | np.ndarray
-) -> np.floating[Any] | float:
-    """Center paired observations before subtraction can erase their variation."""
+) -> tuple[np.floating[Any] | float, np.floating[Any] | float]:
+    """Retain subtraction roundoff before reducing paired mean and sample deviation."""
     values, rates = np.broadcast_arrays(returns, baseline)
     dtype = np.result_type(values.dtype, rates.dtype, np.float64)
     values, rates = values.astype(dtype, copy=False), rates.astype(dtype, copy=False)
-    paired = ~np.isnan(values - rates)
-    values, rates = values[paired], rates[paired]
-    if len(values) < 2:
-        return np.nan
-    return _sample_standard_deviation((values - values[0]) - (rates - rates[0]))
+    high = values - rates
+    paired = ~np.isnan(high)
+    values, rates, high = values[paired], rates[paired], high[paired]
+    if len(values) < 2 or np.isinf(high).any():
+        return np.nan, np.nan
+    # TwoDiff keeps the low residual even when the rounded excess looks constant.
+    virtual_rate = values - high
+    low = (values - (high + virtual_rate)) + (virtual_rate - rates)
+    centered = (high - high[0]) + (low - low[0])
+    return np.mean(high) + np.mean(low), _sample_standard_deviation(centered)
 
 
 def _periodic_sharpe_from_samples(
@@ -58,15 +63,7 @@ def _periodic_sharpe_from_samples(
     annualization_factor: float | None = None,
 ) -> float:
     """Reduce aligned raw observations using the existing Sharpe conventions."""
-    values, rates = np.broadcast_arrays(returns, rates)
-    dtype = np.result_type(values.dtype, rates.dtype, np.float64)
-    values, rates = values.astype(dtype, copy=False), rates.astype(dtype, copy=False)
-    excess = values - rates
-    paired = ~np.isnan(excess)
-    if np.count_nonzero(paired) < 2:
-        return np.nan
-    mean_excess = np.mean(excess[paired])
-    std_excess = _sample_standard_deviation_of_difference(values[paired], rates[paired])
+    mean_excess, std_excess = _sample_moments_of_difference(returns, rates)
     if std_excess == 0:
         if mean_excess > 0:
             return np.inf
@@ -225,9 +222,7 @@ def sharpe_ratio_with_ci(
     bootstrap_sharpes = []
     for _ in range(bootstrap_samples):
         bootstrap_sample = np.random.choice(ret_clean, size=len(ret_clean), replace=True)
-        bootstrap_excess = bootstrap_sample - periodic_rf
-        bootstrap_mean = np.mean(bootstrap_excess)
-        bootstrap_std = _sample_standard_deviation_of_difference(bootstrap_sample, periodic_rf)
+        bootstrap_mean, bootstrap_std = _sample_moments_of_difference(bootstrap_sample, periodic_rf)
 
         if bootstrap_std > 0:
             bs_sharpe = bootstrap_mean / bootstrap_std

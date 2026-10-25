@@ -40,6 +40,24 @@ def test_native_wider_return_dtype_is_not_demoted_before_calculating_variance():
     assert actual == pytest.approx(float(mean) / math.sqrt(float(variance)), rel=2e-14)
 
 
+@pytest.mark.parametrize("route", ["compat", "excess", "information"])
+@pytest.mark.parametrize("shift", [0, 3, 9])
+def test_large_paired_benchmark_observation_does_not_erase_small_active_variation(route, shift):
+    rates = np.array([0.1] + [0.0001] * 9)
+    values = rates + 1e-6
+    values[-1] = np.nextafter(values[-1], np.inf)
+    values, rates = np.roll(values, shift), np.roll(rates, shift)
+    if route == "compat":
+        actual = ep.sharpe_ratio(values, risk_free=rates)
+    elif route == "excess":
+        actual = ep.excess_sharpe(values, rates)
+    else:
+        actual = information_ratio(values, rates)
+    expected = exact_sharpe(values, rates, scale=1 if route == "excess" else 252)
+    assert np.isfinite(actual)
+    assert actual == pytest.approx(expected, rel=2e-14)
+
+
 @pytest.mark.parametrize("length", [10, 252])
 @pytest.mark.parametrize("sign", [-1, 1])
 @pytest.mark.parametrize(
