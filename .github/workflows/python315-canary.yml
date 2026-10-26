@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "41 9 1 * *"
   workflow_dispatch:
+    inputs:
+      full-qualification:
+        description: Qualify an explicit next-version candidate, including native and installed workflows
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -69,3 +74,120 @@ jobs:
             python315-environment.json
             python315-canary.xml
           if-no-files-found: warn
+
+  full-qualification:
+    name: Full native and installed / ${{ matrix.os }} / Python 3.15
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full-qualification }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      UV_PYTHON: "3.15"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      NUMBA_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.10.9"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: python
+        with:
+          python-version: "3.15"
+          check-latest: true
+          allow-prereleases: false
+      - name: Install OpenMP runtime on macOS
+        if: runner.os == 'macOS'
+        run: brew install libomp
+      - name: Install the actual supported candidate without overriding Python metadata
+        shell: bash
+        run: |
+          uv sync --frozen --python "${{ steps.python.outputs.python-path }}" --dev --extra ml --extra viz --extra perf
+          uv run --no-sync python -c 'import sys; assert sys.version_info[:2] == (3, 15) and sys.version_info.releaselevel == "final"; print(sys.executable, sys.version)'
+          uv run --no-sync python -m playwright install --with-deps chromium
+          uv run --no-sync python -c 'from pathlib import Path; Path("artifacts/python315").mkdir(parents=True)'
+      - name: Build and verify the exact experimental wheel and source archive
+        shell: bash
+        run: |
+          uv build --out-dir artifacts/python315/dist
+          uv run --no-sync python scripts/verify_release_artifacts.py artifacts/python315/dist --expected-version 0.3.0.dev0
+          uv export --frozen --dev --extra ml --extra viz --extra perf --no-emit-project --output-file artifacts/python315/requirements.txt
+      - name: Run the full native suite including real PDF ownership and failures
+        run: >-
+          uv run --no-sync python -m pytest tests/ -q -n 2 --timeout 120
+          --junitxml=artifacts/python315/native.xml
+      - name: Run the full isolated installed-wheel suite
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          wheel=$(find artifacts/python315/dist -name '*.whl' -print -quit)
+          uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
+            --with-requirements artifacts/python315/requirements.txt --with "$wheel[ml,viz,perf]" \
+            python -I -c "import os,sys,pytest; from pathlib import Path; import ml4t.diagnostic as d; assert sys.version_info[:2]==(3,15) and d.__version__=='0.3.0.dev0'; assert not Path(d.__file__).resolve().is_relative_to(Path(os.environ['GITHUB_WORKSPACE']).resolve()); print('Installed wheel:', d.__version__, d.__file__, sys.version); raise SystemExit(pytest.main(['tests/', '-q', '-n', '2', '--timeout', '120', '--junitxml=artifacts/python315/installed.xml']))"
+      - name: Execute all five originals and PDF controls from both installed formats without Reloaded
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          ML4T_REQUIRED_PYFOLIO_NOTEBOOKS: "all"
+        run: |
+          for format in whl tar.gz; do
+            artifact=$(find artifacts/python315/dist -name "*.$format" -print -quit)
+            uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
+              --with "$artifact[viz,perf]" --with pytest --with pytest-timeout --with nbclient --with ipykernel \
+              python -I -c "import os,sys,importlib.util,pytest; from pathlib import Path; import ml4t.diagnostic as d; assert sys.version_info[:2]==(3,15) and d.__version__=='0.3.0.dev0'; assert not Path(d.__file__).resolve().is_relative_to(Path(os.environ['GITHUB_WORKSPACE']).resolve()); assert all(importlib.util.find_spec(n) is None for n in ('pyfolio','empyrical','alphalens','zipline','ml4t.data','ml4t.engineer','ml4t.backtest')); print('Installed format:', '$format', d.__file__); raise SystemExit(pytest.main(['--noconftest', '-o', 'addopts=', '-p', 'no:cacheprovider', '-q', '--timeout', '120', '--junitxml=artifacts/python315/originals-$format.xml', 'tests/test_compat/test_pyfolio_notebook_migration.py', 'tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_can_finish_without_a_second_load_event', 'tests/test_visualization/test_pdf_process_ownership.py::test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready', 'tests/test_visualization/test_pdf_process_ownership.py::test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly', '-k', 'not portable_original_capture_preserves_actual_producer_output']))"
+          done
+      - name: Exercise the installed all-extra package with actual published producers
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          ML4T_ACQUISITION_CAPTURE_DIRECTORY: ${{ github.workspace }}/tests/fixtures/acquisition
+          ML4T_REQUIRED_ACQUISITION_RECIPE: "1"
+        run: |
+          wheel=$(find artifacts/python315/dist -name '*.whl' -print -quit)
+          uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
+            --with "$wheel[all]" --with 'ml4t-data[yahoo]==0.3.0' --with ml4t-engineer==0.2.0 --with ml4t-backtest==0.2.0 \
+            --with pytest --with playwright \
+            python -I -c "import sys,pytest; assert sys.version_info[:2]==(3,15); raise SystemExit(pytest.main(['--noconftest', '-o', 'addopts=', '-p', 'no:cacheprovider', '-q', '--junitxml=artifacts/python315/producers.xml', 'tests/test_integration/test_producer_report_journeys.py', 'tests/test_compat/test_acquisition_recipe.py', '-k', 'not dated_rf_recipe_matches_actual_published_empyrical']))"
+      - name: Require the complete native, installed and migration outcomes
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          uv run --no-sync python - <<'PYTHON'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          root = Path("artifacts/python315")
+          counts = {}
+          expected = {"originals-whl": 17, "originals-tar.gz": 17, "producers": 17}
+          for name in ["native", "installed", *expected]:
+              cases = list(ET.parse(root / (name + ".xml")).iter("testcase"))
+              assert cases, name
+              assert not any(case.find(tag) is not None for case in cases for tag in ("failure", "error")), name
+              skipped = sum(case.find("skipped") is not None for case in cases)
+              if name in expected:
+                  assert len(cases) == expected[name] and skipped == 0, name
+              counts[name] = {"cases": len(cases), "skipped": skipped}
+          (root / "executed-counts.json").write_text(json.dumps(counts, indent=2))
+          print(counts)
+          PYTHON
+
+      - name: Audit the full declared dependency graph without bypassing hashes
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          uv export --frozen --all-extras --no-dev --no-emit-project --output-file artifacts/python315/requirements-audit.txt
+          uv run --no-sync pip-audit --strict --require-hashes --disable-pip --vulnerability-service pypi -r artifacts/python315/requirements-audit.txt
+      - name: Retain every actual native and installed outcome and artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python315-full-${{ matrix.os }}-${{ github.sha }}
+          path: artifacts/python315/
+          if-no-files-found: error
