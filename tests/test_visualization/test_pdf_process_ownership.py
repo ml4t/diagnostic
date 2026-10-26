@@ -1609,7 +1609,7 @@ def test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly(tmp
     output.write_bytes(b"previous verified report")
     with pytest.raises(RuntimeError) as failed:
         export_figures_to_pdf([go.Figure(go.Bar(x=[1, 2], y=[1, 3]))], output, scale=1)
-    assert "phase='rendering', completed=0, expected=1" in str(failed.value)
+    assert "phase='starting', completed=0, expected=1" in str(failed.value)
     assert output.read_bytes() == b"previous verified report"
     assert not getattr(failed.value, "__notes__", [])
     observations = re.findall(r"PDF document readiness: (\{[^\r\n]+\})", str(failed.value))
