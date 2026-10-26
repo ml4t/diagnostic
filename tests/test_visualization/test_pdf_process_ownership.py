@@ -120,7 +120,13 @@ if mode=='unresponsive_startup':
         result=await original_populate(self,*args,**kwargs)
         if not startup_armed and self.tabs:
             startup_armed=True
-            target=next(iter(self.tabs.values()))
+            # The arbitrary initial target may already be unresponsive before injection.
+            previous=list(self.tabs)
+            target=await self.create_tab(url='about:blank',window=True)
+            for target_id in previous:
+                await self.close_tab(target_id)
+            observed.with_suffix('.setup.json').write_text(json.dumps({
+                'target_id':target.target_id,'replaced_target_ids':previous}))
             snapshot(self)
             await target.send_command('Runtime.enable')
             await target.send_command('Runtime.addBinding',params={'name':'diagnosticStartupBlocked'})
@@ -1143,6 +1149,71 @@ def test_browser_fault_setup_waits_for_actual_script_entry_instead_of_elapsed_sl
     )
     assert result["observed_browser_processes"] > 0
     assert result["running"] == [] and result["neighbor_alive"]
+
+
+def test_browser_fault_setup_can_replace_an_already_blocked_initial_target(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    blocked_initial = r"""
+        if not startup_armed and self.tabs:
+            initial=next(iter(self.tabs.values()))
+            await initial.send_command('Runtime.enable')
+            await initial.send_command('Runtime.addBinding',params={'name':'initialAlreadyBlocked'})
+            entered=asyncio.Queue()
+            async def initial_entry(message):
+                if message.get('params',{}).get('name')=='initialAlreadyBlocked':
+                    entered.put_nowait(message)
+            initial.subscribe('Runtime.bindingCalled',initial_entry)
+            evaluation=asyncio.create_task(initial.send_command('Runtime.evaluate',params={
+                'expression':"initialAlreadyBlocked('entered');while(true){}",
+            }))
+            try: await entered.get()
+            finally:
+                initial.unsubscribe('Runtime.bindingCalled')
+                evaluation.cancel()
+                try: await evaluation
+                except (Exception,asyncio.CancelledError): pass
+            observed.with_suffix('.initial-blocked.json').write_text(json.dumps({
+                'target_id':initial.target_id,'actual_script_entered':True}))
+"""
+    anchor = "        result=await original_populate(self,*args,**kwargs)"
+    assert _PROBE.count(anchor) == 1
+    probe = _PROBE.replace(anchor, anchor + blocked_initial)
+    target = tmp_path / "report.pdf"
+    result = _run_pdf_probe(probe, ["unresponsive_startup", str(target), "0"])
+    initial = json.loads(target.with_suffix(".processes.initial-blocked.json").read_text())
+    setup = json.loads(target.with_suffix(".processes.setup.json").read_text())
+    assert initial["actual_script_entered"]
+    assert initial["target_id"] in setup["replaced_target_ids"]
+    assert initial["target_id"] != setup["target_id"]
+    assert result["running"] == [] and result["neighbor_alive"]
+
+
+def test_exporter_reusing_the_blocked_initial_target_still_fails(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    fault = r"""
+    original_worker=Path(_pdf_process.__file__).with_name('_pdf_worker.py')
+    code=original_worker.read_text(encoding='utf-8')
+    intended='''            previous = list(self.tabs)
+            selected = [await self.create_tab(url="about:blank", window=True)]
+            for target_id in previous:
+                await self.close_tab(target_id)'''
+    assert code.count(intended)==1
+    code=code.replace(intended,'            selected = list(self.tabs.values())')
+    bad_worker=Path(__file__).with_name('blocked_initial_worker.py')
+    bad_worker.write_text(code,encoding='utf-8')
+    _pdf_process._BOOTSTRAP=_pdf_process._BOOTSTRAP.replace(
+        'worker=sys.argv.pop(1)', 'sys.argv.pop(1);worker='+repr(str(bad_worker)))
+"""
+    anchor = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    probe = _PROBE.replace(anchor, anchor + fault)
+    target = tmp_path / "report.pdf"
+    with pytest.raises(AssertionError, match="exceeded its progress deadline"):
+        _run_pdf_probe(probe, ["unresponsive_startup", str(target), "0"])
+    observation = json.loads(target.with_suffix(".processes.fault.json").read_text())
+    assert observation == {"stage": "initial_page_command_unresponsive"}
+    assert not target.exists()
 
 
 def test_pipe_close_evidence_survives_interrupted_terminal_status_notification(tmp_path):
