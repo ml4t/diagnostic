@@ -123,6 +123,7 @@ jobs:
           for variant in base fixed; do
             wheel=$(find "artifacts/native-exit/$variant" -name '*.whl' -print -quit)
             uv run --isolated --no-project --python "$UV_PYTHON" --with "$wheel[viz]" \
+              --with choreographer==1.4.0 --with kaleido==1.5.0 \
               --with pytest --with pytest-timeout python -I - "$variant" <<'PYTHON'
           import hashlib, io, json, os, subprocess, sys, tarfile
           import xml.etree.ElementTree as ET
