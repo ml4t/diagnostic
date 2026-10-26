@@ -70,8 +70,8 @@ def metadata_failures(metadata: Message, *, expected_version: str) -> list[str]:
     for field, expected in expected_scalars.items():
         if get(field) != expected:
             failures.append(f"{field} is {get(field)!r}, expected {expected!r}")
-    if SpecifierSet(str(get("Requires-Python", ""))) != SpecifierSet(">=3.12,<3.15"):
-        failures.append("Requires-Python differs from >=3.12,<3.15")
+    if SpecifierSet(str(get("Requires-Python", ""))) != SpecifierSet(">=3.12,<3.16"):
+        failures.append("Requires-Python differs from >=3.12,<3.16")
     project_urls = {}
     for value in get_all("Project-URL", []):
         label, separator, url = value.partition(", ")

@@ -34,6 +34,7 @@ EXPECTED_CLASSIFIERS = {
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Typing :: Typed",
 }
 HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -86,7 +87,7 @@ def published_release_failures(
         and info.get("author_email") == EXPECTED_AUTHOR
         and info.get("maintainer_email") == EXPECTED_MAINTAINER
         and info.get("license_expression") == "MIT"
-        and SpecifierSet(str(info.get("requires_python", ""))) == SpecifierSet(">=3.12,<3.15")
+        and SpecifierSet(str(info.get("requires_python", ""))) == SpecifierSet(">=3.12,<3.16")
         and info.get("project_urls") == EXPECTED_URLS
         and EXPECTED_KEYWORDS <= keywords
         and EXPECTED_CLASSIFIERS <= set(info.get("classifiers", []))
