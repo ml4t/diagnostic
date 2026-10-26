@@ -74,6 +74,14 @@ if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown
             return [cli[0],'-c',direct,*cli[2:]]
         Chromium.get_cli=direct_browser_cli
 async def command(self,command,*args,**kwargs):
+    if command=='Browser.close' and mode=='acknowledged_native_exit':
+        original_request_write=self._channel.write_json
+        def record_actual_close_request(message):
+            result=original_request_write(message)
+            if message.get('method')=='Browser.close':
+                observed.with_suffix('.graceful-request.json').write_text(json.dumps({'browser_close_sent':True}))
+            return result
+        self._channel.write_json=record_actual_close_request
     if command=='Browser.close' and mode=='close_command_hang_slow_shutdown':
         browser=psutil.Process(self.subprocess.pid)
         browser.suspend()
@@ -96,6 +104,8 @@ async def command(self,command,*args,**kwargs):
             try: await pending
             except (Exception,asyncio.CancelledError): pass
     result=await original_command(self,command,*args,**kwargs)
+    if command=='Browser.close' and mode=='acknowledged_native_exit':
+        await asyncio.sleep(3600)
     if command=='Browser.close':
         observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
         if mode=='close_command_hang': await asyncio.sleep(3600)
@@ -1200,13 +1210,15 @@ def test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget(tmp_path)
         _run_pdf_probe(_PROBE, ["acknowledged_native_exit", str(target), "0", ".1", debugger])
     held = json.loads(target.with_suffix(".processes.ack-kernel-exit.json").read_text())
     terminal = json.loads(target.with_suffix(".processes.ack-after-cleanup.json").read_text())
-    acknowledged = json.loads(target.with_suffix(".processes.graceful.json").read_text())
+    request = json.loads(target.with_suffix(".processes.graceful-request.json").read_text())
     control = json.loads(target.with_suffix(".processes.ack-control.json").read_text())
     attachment = json.loads(target.with_suffix(".processes.ack-debugger-ready.json").read_text())
     assert held["wait_result"] == terminal["native_wait_result"] == 258
     assert held["pid"] == terminal["pid"] == control["browser_pid"]
     assert not terminal["cleanup_returned"]
-    assert acknowledged == {"browser_close": True}
+    assert request == {"browser_close_sent": True}
+    with pytest.raises(FileNotFoundError):
+        target.with_suffix(".processes.graceful.json").read_text()
     assert control["outside_renderer_job"] and control["release_delay"] == 30
     assert "error" not in attachment, attachment
     assert target.read_bytes() == previous
