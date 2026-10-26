@@ -124,7 +124,7 @@ jobs:
           import ml4t.diagnostic as diagnostic
           variant = sys.argv[1]
           revision = os.environ["PDF_FAILURE_BASE"] if variant == "base" else os.environ["GITHUB_SHA"]
-          assert version("ml4t-diagnostic") == "0.2.0" and sys.version_info[:2] == (3, 13)
+          assert version("ml4t-diagnostic") == diagnostic.__version__ and sys.version_info[:2] == (3, 13)
           package = Path(diagnostic.__file__).resolve().parents[2]
           assert not package.is_relative_to(Path.cwd())
           with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(["git", "archive", revision, "src/ml4t/diagnostic"]))) as archive:
