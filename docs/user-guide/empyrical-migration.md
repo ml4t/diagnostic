@@ -524,7 +524,7 @@ To compare the familiar public tables with Empyrical Reloaded 0.7.0, use its
 qualified pandas 2.3.3 profile in an isolated environment:
 
 ```bash
-uv run --no-project --isolated --python 3.15 --with '.[viz]' --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --report holdings-attribution.html
+uv run --no-project --isolated --python 3.12 --with '.[viz]' --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --report holdings-attribution.html
 ```
 
 The example prints actual package versions and checks exposures `[1.5, 0.25]`
@@ -628,7 +628,7 @@ display object. Use `--compare-pyfolio` in the example with optional Pyfolio
 Reloaded 0.10.0, Empyrical 0.7.0 and pandas 2.3.3 to run both public workflows.
 
 ```bash
-uv run --no-project --isolated --python 3.15 --with '.[viz]' --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --compare-pyfolio --report holdings-attribution.html
+uv run --no-project --isolated --python 3.12 --with '.[viz]' --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pandas==2.3.3 python examples/holdings_factor_attribution.py --compare --compare-pyfolio --report holdings-attribution.html
 ```
 
 One numerical correction is intentional. Pyfolio 0.10.0 drops an asset without
