@@ -488,6 +488,30 @@ jobs:
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             python -I examples/portfolio_intraday.py --estimate \
             --report artifacts/fifo/estimated-intraday.html
+      - name: Preserve exact native trade durations at the pandas floor and current dependency
+        shell: bash
+        run: |
+          for pandas_requirement in 'pandas==2.3.3' 'pandas>=3.1'; do
+            uv run --isolated --no-project --python 3.12 \
+              --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+              --with "$pandas_requirement" --with pytest \
+              python -I - <<'PYTHON'
+          import platform
+          import sys
+          from importlib.metadata import distributions, version
+          from pathlib import Path
+          from packaging.specifiers import SpecifierSet
+          import ml4t.diagnostic as diagnostic
+          import pytest
+
+          assert sys.version_info[:2] == (3, 12), sys.version
+          assert not Path(diagnostic.__file__).resolve().is_relative_to(Path.cwd())
+          unsupported = {dist.metadata["Name"]: dist.metadata["Requires-Python"] for dist in distributions() if dist.metadata.get("Requires-Python") and not SpecifierSet(dist.metadata["Requires-Python"]).contains(platform.python_version(), prereleases=True)}
+          assert not unsupported, unsupported
+          print("pandas", version("pandas"), "installed", diagnostic.__file__)
+          raise SystemExit(pytest.main(["--noconftest", "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "tests/test_evaluation/test_fifo_trade_consumer.py", "tests/test_evaluation/test_fifo_completed_statistics.py", "tests/test_backtest_contract.py"]))
+          PYTHON
+          done
       - name: Run complete capacity workflows from installed wheel
         shell: bash
         run: |

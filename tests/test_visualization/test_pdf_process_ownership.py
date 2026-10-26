@@ -1163,12 +1163,26 @@ def test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callba
         trace=json.loads(trace_path.read_text())
         trace['suspensions'].append({'pid':process.pid,'created':process.create_time()})
         trace_path.write_text(json.dumps(trace))
-        if len(trace['suspensions'])==1:
-            threading.Timer(.1,self._channel.close).start()
 """
     assert callback.count(pause) == 1
     callback = callback.replace(pause, pause + observe_pause)
+    sent = "            if message.get('method')=='Browser.close': close_sent.append(True)"
+    record_sent = r"""
+            if message.get('method')=='Browser.close':
+                close_sent.append(True)
+                trace=json.loads(trace_path.read_text())
+                trace['browser_close_sent']=True
+                trace_path.write_text(json.dumps(trace))
+                if len(close_sent)==1:
+                    threading.Timer(.1,self._channel.close).start()
+"""
+    assert callback.count(sent) == 1
+    callback = callback.replace(sent, record_sent)
     probe = _PROBE[:begin] + callback + _PROBE[end:]
+    acknowledgement = "assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'"
+    request = "assert json.loads(observed.with_suffix('.bounded-shutdown.json').read_text())['browser_close_sent'], 'EOF control never transmitted the real shutdown request'"
+    assert probe.count(acknowledgement) == 1
+    probe = probe.replace(acknowledgement, request)
     target = tmp_path / "report.pdf"
     error = None
     try:
@@ -1178,6 +1192,7 @@ def test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callba
     trace = json.loads(target.with_suffix(".processes.bounded-shutdown.json").read_text())
     assert trace["entries"] >= 2, "The actual closed channel did not reenter vendor shutdown"
     assert len(trace["suspensions"]) == 1, trace
+    assert trace["browser_close_sent"]
     assert error is None, str(error)
     assert result["running"] == [] and result["neighbor_alive"]
     assert result["successful_owned_pipe_closes"] == [1, 1, 1, 1]
