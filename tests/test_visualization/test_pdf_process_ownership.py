@@ -319,7 +319,7 @@ else:
             actual_observe(self)
             if native or not observed.exists(): return
             try: recorded=json.loads(observed.read_text())
-            except json.JSONDecodeError: return
+            except (json.JSONDecodeError,PermissionError): return
             pid=int(next(iter(recorded)))
             assert psutil.Process(pid).create_time()==recorded[str(pid)]
             handle=self.job.api.OpenProcess(0x00101000,False,pid)
