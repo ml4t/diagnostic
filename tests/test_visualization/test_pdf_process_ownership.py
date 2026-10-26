@@ -783,6 +783,35 @@ def _run_pdf_probe(code, arguments):
     return json.loads(text.splitlines()[-1])
 
 
+def _defer_native_job_termination(probe, *, omit_membership=False, serial=False, lost_exit=False):
+    marker = "    _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    fault = r"""
+    import inspect,textwrap
+    code=textwrap.dedent(inspect.getsource(_pdf_process._WindowsJob.terminate))
+    stop='        self._check(self.api.TerminateJobObject(self.handle, 120))'+chr(10)+'        job_terminated = True'
+    accounting='        while True:'+chr(10)+'            accounting = Accounting()'
+    assert code.count(stop)==code.count(accounting)==1
+    code=code.replace(stop,'',1).replace(accounting,stop+chr(10)+accounting,1)
+    if OMIT_MEMBERSHIP:
+        begin=code.index('        capacity = 64'+chr(10))
+        end=code.index('        for process in processes:'+chr(10),begin)
+        code=code[:begin]+'        if worker_exited:'+chr(10)+textwrap.indent(code[begin:end],'    ')+code[end:]
+    if SERIAL:
+        intended='for item in reversed(handles):'
+        assert code.count(intended)==1
+        code=code.replace(intended,'for item in ():')
+    namespace={}
+    exec(compile(code,_pdf_process.__file__,'exec'),vars(_pdf_process),namespace)
+    wrong_order=namespace['terminate']
+    def wait_before_owned_job_stop(self,processes,*,worker_exited):
+        return wrong_order(self,processes,worker_exited=False if LOST_EXIT else worker_exited)
+    _pdf_process._WindowsJob.terminate=wait_before_owned_job_stop
+"""
+    fault = fault.replace("OMIT_MEMBERSHIP", repr(omit_membership))
+    fault = fault.replace("SERIAL", repr(serial)).replace("LOST_EXIT", repr(lost_exit))
+    return probe.replace(marker, marker + "\n" + fault)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows read-only profile required")
 def test_readonly_browser_profile_is_removed_after_actual_worker_crash(tmp_path):
     pytest.importorskip("kaleido")
@@ -813,18 +842,7 @@ def test_lost_worker_exit_evidence_leaves_a_real_kernel_exit_pending(tmp_path):
     pytest.importorskip("pypdf")
     target = tmp_path / "report.pdf"
     debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
-    marker = "    _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
-    probe = _PROBE.replace(
-        marker,
-        marker
-        + "\n"
-        + """
-    original_job_terminate=_pdf_process._WindowsJob.terminate
-    def lose_actual_worker_exit(self,processes,*,worker_exited):
-        return original_job_terminate(self,processes,worker_exited=False)
-    _pdf_process._WindowsJob.terminate=lose_actual_worker_exit
-""",
-    )
+    probe = _defer_native_job_termination(_PROBE, omit_membership=True, lost_exit=True)
     with pytest.raises(AssertionError) as failure:
         _run_pdf_probe(probe, ["job_dependency", str(target), "0", "0.1", debugger])
     assert "code 7" in str(failure.value)
@@ -960,6 +978,50 @@ def test_worker_owned_native_exit_dependency_stops_before_process_waits(tmp_path
 
 
 @pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual worker-owned Windows debug event required"
+)
+def test_waiting_before_job_stop_retains_worker_owned_native_exit(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    previous = b"Existing report must survive worker-dependent cleanup failure"
+    target.write_bytes(previous)
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    probe = _defer_native_job_termination(_PROBE)
+    with pytest.raises(AssertionError) as failure:
+        _run_pdf_probe(probe, ["worker_exit_dependency", str(target), "0", ".1", debugger])
+    assert "not terminal before job termination" in str(failure.value)
+    blocked = json.loads(target.with_suffix(".processes.kernel-exit.json").read_text())
+    assert blocked["event_exit_code"] == blocked["process_exit_code"] == 120
+    assert blocked["wait_result"] == 258
+    owned = json.loads(target.with_suffix(".processes.worker-job.json").read_text())
+    assert owned["worker_alive"] and owned["debugger_inside_worker"]
+    assert owned["worker_and_browser_job_members"]
+    assert target.read_bytes() == previous
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows job and debug events required")
+def test_unknown_worker_exit_still_stops_all_native_job_members(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    marker = "    _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    replacement = r"""
+    actual_stop=_pdf_process._WindowsJob.terminate
+    def absent_worker_exit_metadata(self,processes,*,worker_exited):
+        return actual_stop(self,processes,worker_exited=False)
+    _pdf_process._WindowsJob.terminate=absent_worker_exit_metadata
+"""
+    probe = _PROBE.replace(marker, marker + "\n" + replacement)
+    result = _run_pdf_probe(probe, ["job_dependency", str(target), "0", ".1", debugger])
+    error = json.loads(target.with_suffix(".processes.error.json").read_text())
+    assert "code 7" in error["message"]
+    assert not any("cleanup failed" in note for note in error["notes"])
+    assert result["running"] == [] and result["neighbor_alive"]
+
+
+@pytest.mark.skipif(
     sys.platform != "win32", reason="Actual live Windows worker and debug events required"
 )
 def test_live_worker_stops_all_observed_dependencies_before_process_waits(tmp_path):
@@ -991,18 +1053,7 @@ def test_serial_live_worker_termination_leaves_a_real_kernel_exit_pending(tmp_pa
     previous = b"Existing report must survive failed native cleanup"
     target.write_bytes(previous)
     debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
-    marker = "    _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
-    fault = r"""
-    import inspect,textwrap
-    code=textwrap.dedent(inspect.getsource(_pdf_process._WindowsJob.terminate))
-    intended='for item in reversed(handles):'
-    assert code.count(intended)==1
-    code=code.replace(intended,'for item in ():')
-    namespace={}
-    exec(compile(code,_pdf_process.__file__,'exec'),vars(_pdf_process),namespace)
-    _pdf_process._WindowsJob.terminate=namespace['terminate']
-"""
-    probe = _PROBE.replace(marker, marker + "\n" + fault)
+    probe = _defer_native_job_termination(_PROBE, serial=True)
     with pytest.raises(AssertionError) as failure:
         _run_pdf_probe(probe, ["live_worker_dependency", str(target), "0", ".1", debugger])
     assert "not terminal before job termination" in str(failure.value)

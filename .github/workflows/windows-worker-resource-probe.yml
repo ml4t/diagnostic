@@ -34,7 +34,7 @@ jobs:
         run: >-
           uv run --no-sync python -m pytest
           tests/test_visualization/test_pdf_process_ownership.py
-          -k worker_owned -o addopts= -vv -rA --timeout 120
+          -k "worker_owned or unknown_worker_exit or lost_worker_exit or live_worker or close_hang or close_command_hang_slow_shutdown or early_pipe_closure" -o addopts= -vv -rA --timeout 120
           --junitxml=artifacts/windows-worker-resource.xml
           --basetemp=artifacts/windows-worker-resource
       - name: Retain every actual regression outcome
