@@ -30,13 +30,14 @@ fault_delay=float(sys.argv[4]) if len(sys.argv)>4 else .1
 observed=output.with_suffix('.processes.json')
 observed.with_suffix('.channel.bin').write_bytes(bytes(5))
 patch=r"""
-import asyncio,json,mmap,os,psutil,kaleido,sys,time
+import asyncio,json,mmap,os,psutil,kaleido,subprocess,sys,time
 from pathlib import Path
 from pypdf import PdfReader
 mode=MODE
 startup_delay=STARTUP_DELAY
 fault_delay=FAULT_DELAY
 observed=Path(OBSERVED)
+debugger_path=DEBUGGER_PATH
 pipe_proof_file=observed.with_suffix('.channel.bin').open('r+b')
 pipe_proof=mmap.mmap(pipe_proof_file.fileno(),5,access=mmap.ACCESS_WRITE)
 original_open=kaleido.Kaleido.open
@@ -44,6 +45,7 @@ original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
 failed_channel=None
+live_dependency_armed=False
 from choreographer.channels import Pipe
 original_pipe_init=Pipe.__init__
 original_os_close=os.close
@@ -247,12 +249,35 @@ async def closed(self,*args,**kwargs):
         observed.with_suffix('.browser-held.json').write_text(json.dumps({
             'pid':browser.pid,'suspend_returned':True}))
     if mode in ('exit7','profile_readonly','job_dependency'): os._exit(7)
+    if mode=='live_worker_dependency':
+        global live_dependency_armed
+        if live_dependency_armed: await asyncio.sleep(3600)
+        live_dependency_armed=True
+        browser=psutil.Process(self.subprocess.pid)
+        browser.suspend()
+        ready=observed.with_suffix('.debugger-ready.json')
+        blocked=observed.with_suffix('.kernel-exit.json')
+        helper=subprocess.Popen(
+            [sys.executable,debugger_path,str(browser.pid),str(ready),str(blocked)],
+            stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        helper.stdin.write(b'1')
+        helper.stdin.close()
+        deadline=time.monotonic()+8
+        while not ready.exists() and helper.poll() is None and time.monotonic()<deadline:
+            await asyncio.sleep(.01)
+        assert ready.exists(), 'Live worker debugger never attached'
+        attached=json.loads(ready.read_text())
+        assert 'error' not in attached, attached
+        observed.with_suffix('.live-helper.json').write_text(json.dumps({
+            'worker_pid':os.getpid(),'browser_pid':browser.pid,'helper_pid':helper.pid,
+            'helper_created':psutil.Process(helper.pid).create_time()}))
+        await asyncio.sleep(3600)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
 kaleido.Kaleido.open=opened
 kaleido.Kaleido.write_fig_from_object=written
 kaleido.Kaleido.close=closed
-""".replace('MODE',repr(mode)).replace('STARTUP_DELAY',repr(startup_delay)).replace('FAULT_DELAY',repr(fault_delay)).replace('OBSERVED',repr(str(observed)))
+""".replace('MODE',repr(mode)).replace('STARTUP_DELAY',repr(startup_delay)).replace('FAULT_DELAY',repr(fault_delay)).replace('OBSERVED',repr(str(observed))).replace('DEBUGGER_PATH',repr(sys.argv[5] if len(sys.argv)>5 else ''))
 exec(patch)
 read_handles=[]
 try:
@@ -305,6 +330,57 @@ else:
             finally:
                 debugger.wait(timeout=5)
         _pdf_process._OwnedProcesses.terminate=add_unobserved_job_dependency
+    if mode=='live_worker_dependency':
+        import ctypes
+        from ctypes import wintypes
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        def require_order_independent_live_cleanup(self):
+            self.observe()
+            assert self.process.poll() is None, 'The real worker must still be alive'
+            live=json.loads(observed.with_suffix('.live-helper.json').read_text())
+            worker=psutil.Process(live['worker_pid'])
+            helper=psutil.Process(live['helper_pid'])
+            lineage=[worker,*worker.parents()]
+            identities=[]
+            for candidate in [self.root,worker,helper,psutil.Process(live['browser_pid'])]:
+                native=self.job.api.OpenProcess(0x00101000,False,candidate.pid)
+                if not native: raise ctypes.WinError(ctypes.get_last_error())
+                try:
+                    membership=wintypes.BOOL()
+                    self.job._check(self.job.api.IsProcessInJob(native,self.job.handle,ctypes.byref(membership)))
+                    identities.append({'pid':candidate.pid,'ppid':candidate.ppid(),
+                        'exe':candidate.exe(),'cmdline':candidate.cmdline(),
+                        'job_member':bool(membership.value)})
+                finally: self.job.api.CloseHandle(native)
+            observed.with_suffix('.live-lineage.json').write_text(json.dumps({
+                'popen_pid':self.process.pid,'worker_ancestors':[item.pid for item in lineage],
+                'identities':identities}))
+            assert self.process.pid in [item.pid for item in lineage]
+            assert helper.ppid()==worker.pid
+            assert helper.create_time()==live['helper_created']
+            assert helper.pid in self.observed
+            handle=self.job.api.OpenProcess(0x00101000,False,helper.pid)
+            if not handle: raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                member=wintypes.BOOL()
+                self.job._check(self.job.api.IsProcessInJob(handle,self.job.handle,ctypes.byref(member)))
+                assert member.value
+                browser=self.observed.pop(live['browser_pid'])
+                # A descendant snapshot has no dependency-order guarantee.
+                self.observed[browser.pid]=browser
+                observed.with_suffix('.live-job.json').write_text(json.dumps({
+                    **live,'worker_alive':True,'helper_is_worker_child':True,
+                    'helper_is_job_member':True,'observation_order':list(self.observed),
+                    'protected_worker_pids':list(getattr(self.job,'worker_pids',()))}))
+                result=original_terminate(self)
+                terminal=self.job.api.WaitForSingleObject(handle,0)
+                assert terminal==0, 'Cleanup returned before the owned helper was terminal'
+                observed.with_suffix('.live-terminal.json').write_text(json.dumps({
+                    'helper_wait_result':terminal,'cleanup_returned':True}))
+                return result
+            finally:
+                self.job.api.CloseHandle(handle)
+        _pdf_process._OwnedProcesses.terminate=require_order_independent_live_cleanup
     if mode=='unresponsive_startup': _pdf_process._RENDER_TIMEOUT=30
     if mode=='slow_shutdown':
         original_terminate=_pdf_process._OwnedProcesses.terminate
@@ -502,7 +578,7 @@ try:
         expected_render_error={'type':type(error).__name__,'message':str(error),
                                'notes':list(getattr(error,'__notes__',[]))}
         observed.with_suffix('.error.json').write_text(json.dumps(expected_render_error))
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'): raise
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode in ('exit7','profile_readonly','job_dependency'): assert 'code 7' in str(error),repr(error)
@@ -537,7 +613,7 @@ try:
             assert "'phase': 'closed'" in notes and "'completed': 2" in notes,notes
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -588,7 +664,7 @@ try:
         'profiles':profiles,'expected_render_error':expected_render_error}
     if mode in ('close_error','close_command_hang','render_error','render_hang','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
-    if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse'):
+    if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse','live_worker_dependency'):
         assert pipe_proof[4]==1,'The resource control requires one observed renderer pipe'
         assert list(pipe_proof[:4])==[1,1,1,1], 'Graceful fallback retained owned browser pipe descriptors'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
@@ -816,6 +892,61 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual live Windows worker and debug events required"
+)
+def test_live_worker_stops_all_observed_dependencies_before_process_waits(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    result = _run_pdf_probe(_PROBE, ["live_worker_dependency", str(target), "0", ".1", debugger])
+    observed = json.loads(target.with_suffix(".processes.live-job.json").read_text())
+    terminal = json.loads(target.with_suffix(".processes.live-terminal.json").read_text())
+    assert observed["worker_alive"] and observed["helper_is_worker_child"]
+    assert observed["helper_is_job_member"]
+    assert observed["worker_pid"] in observed["protected_worker_pids"]
+    assert observed["observation_order"].index(observed["helper_pid"]) < observed[
+        "observation_order"
+    ].index(observed["browser_pid"])
+    assert terminal == {"helper_wait_result": 0, "cleanup_returned": True}
+    assert result["running"] == [] and result["neighbor_alive"]
+    assert result["successful_owned_pipe_closes"] == [1, 1, 1, 1]
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual live Windows worker and debug events required"
+)
+def test_serial_live_worker_termination_leaves_a_real_kernel_exit_pending(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    previous = b"Existing report must survive failed native cleanup"
+    target.write_bytes(previous)
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    marker = "    _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    fault = r"""
+    import inspect,textwrap
+    code=textwrap.dedent(inspect.getsource(_pdf_process._WindowsJob.terminate))
+    intended='for item in reversed(handles):'
+    assert code.count(intended)==1
+    code=code.replace(intended,'for item in ():')
+    namespace={}
+    exec(compile(code,_pdf_process.__file__,'exec'),vars(_pdf_process),namespace)
+    _pdf_process._WindowsJob.terminate=namespace['terminate']
+"""
+    probe = _PROBE.replace(marker, marker + "\n" + fault)
+    with pytest.raises(AssertionError) as failure:
+        _run_pdf_probe(probe, ["live_worker_dependency", str(target), "0", ".1", debugger])
+    assert "not terminal before job termination" in str(failure.value)
+    blocked = json.loads(target.with_suffix(".processes.kernel-exit.json").read_text())
+    assert blocked["event_exit_code"] == blocked["process_exit_code"] == 120
+    assert blocked["wait_result"] == 258
+    observed = json.loads(target.with_suffix(".processes.live-job.json").read_text())
+    assert observed["worker_alive"] and observed["helper_is_job_member"]
+    assert target.read_bytes() == previous
 
 
 def test_real_early_pipe_closure_is_still_rejected_when_owned_cleanup_succeeds(tmp_path):

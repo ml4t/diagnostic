@@ -170,6 +170,7 @@ class _WindowsJob:
             function = getattr(self.api, name)
             function.argtypes = args
             function.restype = result
+        self.worker_pids = {pid}
         self.handle = self.api.CreateJobObjectW(None, None)
         if not self.handle:
             raise ctypes.WinError(ctypes.get_last_error())
@@ -280,16 +281,31 @@ class _WindowsJob:
             if worker_exited:
                 # No worker pipe readers remain. Stop every job member before waiting.
                 self._check(self.api.TerminateJobObject(self.handle, 120))
-            # Keep the worker's pipe readers alive until its browser descendants exit.
-            for pid, handle, membership, identity, can_terminate in reversed(handles):
+
+            def request_termination(item):
+                _, handle, membership, _, can_terminate = item
                 state = self.api.WaitForSingleObject(handle, 0)
-                if not worker_exited and state == 258 and membership and can_terminate:
+                if state == 258 and membership and can_terminate:
                     if not self.api.TerminateProcess(handle, 120):
                         error = ctypes.get_last_error()
                         # A repeated termination request can be denied during exit.
                         # Only the following process-handle wait establishes completion.
                         if error != 5 and self.api.WaitForSingleObject(handle, 0) != 0:
                             raise ctypes.WinError(error)
+
+            if not worker_exited:
+                # Native exit can depend on another owned process being stopped first.
+                for item in reversed(handles):
+                    if item[0] not in self.worker_pids:
+                        request_termination(item)
+            # A Windows venv launcher and its interpreter are distinct owned processes.
+            # Preserve both pipe readers until every other captured descendant is terminal.
+            ordered = list(reversed(handles))
+            ordered.sort(key=lambda item: item[0] in self.worker_pids)
+            for item in ordered:
+                pid, handle, membership, identity, can_terminate = item
+                if not worker_exited:
+                    request_termination(item)
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
@@ -361,6 +377,22 @@ class _OwnedProcesses:
             for child in self.root.children(recursive=True):
                 self.observed[child.pid] = child
         except psutil.NoSuchProcess:
+            pass
+
+    def observe_worker(self, pid: int) -> None:
+        if self.job is None or pid in self.job.worker_pids:
+            return
+        try:
+            worker = psutil.Process(pid)
+            lineage = [worker, *worker.parents()]
+            root = next((index for index, item in enumerate(lineage) if item == self.root), None)
+            if root is None:
+                raise RuntimeError("PDF interpreter is not a child of its owned launcher")
+            for item in lineage[: root + 1]:
+                self.observed[item.pid] = item
+                self.job.worker_pids.add(item.pid)
+        except psutil.NoSuchProcess:
+            # Final progress can be read after the interpreter has already exited.
             pass
 
     def terminate(self) -> None:
@@ -475,6 +507,8 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                 if not next_path.exists():
                     return
                 status = _read_status(next_path)
+                if owner is not None and (worker_pid := status.get("worker_pid")) is not None:
+                    owner.observe_worker(worker_pid)
                 sequence += 1
 
         try:
