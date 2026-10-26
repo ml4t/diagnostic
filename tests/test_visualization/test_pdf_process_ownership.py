@@ -792,6 +792,16 @@ def _defer_native_job_termination(probe, *, omit_membership=False, serial=False,
     accounting='        while True:'+chr(10)+'            accounting = Accounting()'
     assert code.count(stop)==code.count(accounting)==1
     code=code.replace(stop,'',1).replace(accounting,stop+chr(10)+accounting,1)
+    loop='        for pid, handle, membership, identity, can_terminate in handles:'
+    assert code.count(loop)==1
+    old_loop=chr(10).join([
+        '        ordered = list(reversed(handles))',
+        '        ordered.sort(key=lambda item: item[0] in self.worker_pids)',
+        '        for item in ordered:',
+        '            pid, handle, membership, identity, can_terminate = item',
+        '            request_termination(item)',
+    ])
+    code=code.replace(loop,old_loop,1)
     if OMIT_MEMBERSHIP:
         begin=code.index('        capacity = 64'+chr(10))
         end=code.index('        for process in processes:'+chr(10),begin)

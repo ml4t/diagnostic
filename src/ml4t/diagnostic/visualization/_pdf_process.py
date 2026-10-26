@@ -296,12 +296,7 @@ class _WindowsJob:
             # Stop the complete owned job before waiting on any member's native exit.
             self._check(self.api.TerminateJobObject(self.handle, 120))
             job_terminated = True
-            ordered = list(reversed(handles))
-            ordered.sort(key=lambda item: item[0] in self.worker_pids)
-            for item in ordered:
-                pid, handle, membership, identity, can_terminate = item
-                if not job_terminated:
-                    request_termination(item)
+            for pid, handle, membership, identity, can_terminate in handles:
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
