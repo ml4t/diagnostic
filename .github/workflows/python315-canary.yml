@@ -109,10 +109,10 @@ jobs:
         id: environment
         shell: bash
         run: |
-          uv sync --frozen --python "${{ steps.python.outputs.python-path }}" --dev --extra ml --extra viz --extra perf
+          mkdir -p artifacts/python315
+          uv sync --frozen --python "${{ steps.python.outputs.python-path }}" --dev --extra ml --extra viz --extra perf 2>&1 | tee artifacts/python315/native-install.log
           uv run --no-sync python -c 'import sys; assert sys.version_info[:2] == (3, 15) and sys.version_info.releaselevel == "final"; print(sys.executable, sys.version)'
           uv run --no-sync python -m playwright install --with-deps chromium
-          uv run --no-sync python -c 'from pathlib import Path; Path("artifacts/python315").mkdir(parents=True)'
       - name: Build and verify the exact experimental wheel and source archive
         id: artifacts
         shell: bash

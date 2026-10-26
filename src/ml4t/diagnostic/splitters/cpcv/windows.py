@@ -82,7 +82,7 @@ def timestamp_window_from_indices(
     test_timestamps = timestamps.take(indices)
     start_time = test_timestamps.min()
     # Add 1 nanosecond to make end exclusive (handles duplicate timestamps)
-    end_time_exclusive = test_timestamps.max() + pd.Timedelta(1, "ns")
+    end_time_exclusive = pd.Timestamp(test_timestamps.max()) + pd.Timedelta(1, "ns")
     return TimeWindow(start=start_time, end_exclusive=end_time_exclusive)
 
 

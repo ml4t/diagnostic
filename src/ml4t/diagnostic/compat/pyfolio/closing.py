@@ -90,7 +90,7 @@ def closing_transactions(
         terminal = terminal.tz_convert(times.tz)
     if transactions.index.tz is None and feed.timezone is not None:
         projected.index = times.rename(transactions.index.name)
-    if times.max() > terminal:
+    if pd.Timestamp(times.max()) > terminal:
         raise ValueError(
             "closing as_of precedes actual executions; provide the actual valuation instant"
         )

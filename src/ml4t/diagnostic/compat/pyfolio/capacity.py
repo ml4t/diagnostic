@@ -198,7 +198,7 @@ def get_max_days_to_liquidate_by_ticker(
     )
     if last_n_days is not None:
         days = positive_integer(last_n_days, "last_n_days")
-        keep = values.index >= values.index.max() - pd.Timedelta(days=days)
+        keep = values.index >= pd.Timestamp(values.index.max()) - pd.Timedelta(days=days)
         values, allocation = values.loc[keep], allocation.loc[keep]
     rows = []
     for asset in values.columns:

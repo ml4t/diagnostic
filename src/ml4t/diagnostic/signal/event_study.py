@@ -153,7 +153,7 @@ def _elapsed_event_bins(
     events = pd.DataFrame(
         {"event_row": np.arange(len(dates)), "factor": values.to_numpy()}, index=dates
     )
-    span = dates.max() - dates.min()
+    span = pd.Timestamp(dates.max()) - pd.Timestamp(dates.min())
     width = span / int(num_bars)
     if span == pd.Timedelta(0):
         counts = pd.Series([values.count()], index=pd.DatetimeIndex([dates[0]]))
