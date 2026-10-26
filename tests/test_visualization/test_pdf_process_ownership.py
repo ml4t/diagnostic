@@ -334,9 +334,25 @@ else:
             self.observe()
             assert self.process.poll() is None, 'The real worker must still be alive'
             live=json.loads(observed.with_suffix('.live-helper.json').read_text())
-            assert live['worker_pid']==self.process.pid
+            worker=psutil.Process(live['worker_pid'])
             helper=psutil.Process(live['helper_pid'])
-            assert helper.ppid()==self.process.pid
+            lineage=[worker,*worker.parents()]
+            identities=[]
+            for candidate in [self.root,worker,helper,psutil.Process(live['browser_pid'])]:
+                native=self.job.api.OpenProcess(0x00101000,False,candidate.pid)
+                if not native: raise ctypes.WinError(ctypes.get_last_error())
+                try:
+                    membership=wintypes.BOOL()
+                    self.job._check(self.job.api.IsProcessInJob(native,self.job.handle,ctypes.byref(membership)))
+                    identities.append({'pid':candidate.pid,'ppid':candidate.ppid(),
+                        'exe':candidate.exe(),'cmdline':candidate.cmdline(),
+                        'job_member':bool(membership.value)})
+                finally: self.job.api.CloseHandle(native)
+            observed.with_suffix('.live-lineage.json').write_text(json.dumps({
+                'popen_pid':self.process.pid,'worker_ancestors':[item.pid for item in lineage],
+                'identities':identities}))
+            assert self.process.pid in [item.pid for item in lineage]
+            assert helper.ppid()==worker.pid
             assert helper.create_time()==live['helper_created']
             assert helper.pid in self.observed
             handle=self.job.api.OpenProcess(0x00101000,False,helper.pid)
