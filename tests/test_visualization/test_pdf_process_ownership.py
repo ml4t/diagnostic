@@ -249,7 +249,7 @@ async def closed(self,*args,**kwargs):
         observed.with_suffix('.browser-held.json').write_text(json.dumps({
             'pid':browser.pid,'suspend_returned':True}))
     if mode in ('exit7','profile_readonly','job_dependency'): os._exit(7)
-    if mode=='live_worker_dependency':
+    if mode in ('live_worker_dependency','worker_exit_dependency'):
         global live_dependency_armed
         if live_dependency_armed: await asyncio.sleep(3600)
         live_dependency_armed=True
@@ -257,20 +257,33 @@ async def closed(self,*args,**kwargs):
         browser.suspend()
         ready=observed.with_suffix('.debugger-ready.json')
         blocked=observed.with_suffix('.kernel-exit.json')
-        helper=subprocess.Popen(
-            [sys.executable,debugger_path,str(browser.pid),str(ready),str(blocked)],
-            stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        helper.stdin.write(b'1')
-        helper.stdin.close()
+        if mode=='worker_exit_dependency':
+            import runpy,threading
+            native=runpy.run_path(debugger_path)
+            thread=threading.Thread(target=native['hold_exit'],args=(browser.pid,ready,blocked),daemon=True)
+            thread.start()
+            helper=None
+        else:
+            helper=subprocess.Popen(
+                [sys.executable,debugger_path,str(browser.pid),str(ready),str(blocked)],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            helper.stdin.write(b'1')
+            helper.stdin.close()
         deadline=time.monotonic()+8
-        while not ready.exists() and helper.poll() is None and time.monotonic()<deadline:
+        while not ready.exists() and time.monotonic()<deadline:
             await asyncio.sleep(.01)
         assert ready.exists(), 'Live worker debugger never attached'
         attached=json.loads(ready.read_text())
         assert 'error' not in attached, attached
-        observed.with_suffix('.live-helper.json').write_text(json.dumps({
-            'worker_pid':os.getpid(),'browser_pid':browser.pid,'helper_pid':helper.pid,
-            'helper_created':psutil.Process(helper.pid).create_time()}))
+        if helper is None:
+            assert attached['debugger']==os.getpid()
+            observed.with_suffix('.worker-debugger.json').write_text(json.dumps({
+                'worker_pid':os.getpid(),'worker_created':psutil.Process().create_time(),
+                'browser_pid':browser.pid,'debugger_pid':attached['debugger']}))
+        else:
+            observed.with_suffix('.live-helper.json').write_text(json.dumps({
+                'worker_pid':os.getpid(),'browser_pid':browser.pid,'helper_pid':helper.pid,
+                'helper_created':psutil.Process(helper.pid).create_time()}))
         await asyncio.sleep(3600)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
@@ -330,6 +343,40 @@ else:
             finally:
                 debugger.wait(timeout=5)
         _pdf_process._OwnedProcesses.terminate=add_unobserved_job_dependency
+    if mode=='worker_exit_dependency':
+        import ctypes
+        from ctypes import wintypes
+        original_terminate=_pdf_process._OwnedProcesses.terminate
+        def observe_worker_owned_exit(self):
+            self.observe()
+            assert self.process.poll() is None, 'The worker dependency must still be alive'
+            recorded=json.loads(observed.with_suffix('.worker-debugger.json').read_text())
+            assert recorded['worker_pid']==recorded['debugger_pid']
+            worker=psutil.Process(recorded['worker_pid'])
+            assert worker.create_time()==recorded['worker_created']
+            assert worker.pid in self.job.worker_pids
+            handles=[]
+            try:
+                for pid in [recorded['worker_pid'],recorded['browser_pid']]:
+                    handle=self.job.api.OpenProcess(0x00101000,False,pid)
+                    if not handle: raise ctypes.WinError(ctypes.get_last_error())
+                    handles.append(handle)
+                    member=wintypes.BOOL()
+                    self.job._check(self.job.api.IsProcessInJob(handle,self.job.handle,ctypes.byref(member)))
+                    assert member.value
+                    assert self.job.api.WaitForSingleObject(handle,0)==258
+                observed.with_suffix('.worker-job.json').write_text(json.dumps({
+                    **recorded,'worker_alive':True,'debugger_inside_worker':True,
+                    'worker_and_browser_job_members':True}))
+                result=original_terminate(self)
+                waits=[self.job.api.WaitForSingleObject(handle,0) for handle in handles]
+                assert waits==[0,0], 'Cleanup returned before native worker/browser teardown'
+                observed.with_suffix('.worker-terminal.json').write_text(json.dumps({
+                    'native_wait_results':waits,'cleanup_returned':True}))
+                return result
+            finally:
+                for handle in handles: self.job.api.CloseHandle(handle)
+        _pdf_process._OwnedProcesses.terminate=observe_worker_owned_exit
     if mode=='live_worker_dependency':
         import ctypes
         from ctypes import wintypes
@@ -578,7 +625,7 @@ try:
         expected_render_error={'type':type(error).__name__,'message':str(error),
                                'notes':list(getattr(error,'__notes__',[]))}
         observed.with_suffix('.error.json').write_text(json.dumps(expected_render_error))
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency'): raise
+        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode in ('exit7','profile_readonly','job_dependency'): assert 'code 7' in str(error),repr(error)
@@ -613,7 +660,7 @@ try:
             assert "'phase': 'closed'" in notes and "'completed': 2" in notes,notes
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency'), 'Rendering defect was swallowed'
+        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -664,7 +711,7 @@ try:
         'profiles':profiles,'expected_render_error':expected_render_error}
     if mode in ('close_error','close_command_hang','render_error','render_hang','cancel'):
         assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'
-    if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse','live_worker_dependency'):
+    if mode in ('close_error','close_command_hang','render_hang','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'):
         assert pipe_proof[4]==1,'The resource control requires one observed renderer pipe'
         assert list(pipe_proof[:4])==[1,1,1,1], 'Graceful fallback retained owned browser pipe descriptors'
     print(json.dumps({'mode':mode,'startup_delay':startup_delay,'observed_browser_processes':len(rows),'running':running,
@@ -892,6 +939,24 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual worker-owned Windows debug event required"
+)
+def test_worker_owned_native_exit_dependency_stops_before_process_waits(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    result = _run_pdf_probe(_PROBE, ["worker_exit_dependency", str(target), "0", ".1", debugger])
+    owned = json.loads(target.with_suffix(".processes.worker-job.json").read_text())
+    terminal = json.loads(target.with_suffix(".processes.worker-terminal.json").read_text())
+    assert owned["worker_alive"] and owned["debugger_inside_worker"]
+    assert owned["worker_and_browser_job_members"]
+    assert terminal == {"native_wait_results": [0, 0], "cleanup_returned": True}
+    assert result["running"] == [] and result["neighbor_alive"]
+    assert result["successful_owned_pipe_closes"] == [1, 1, 1, 1]
 
 
 @pytest.mark.skipif(
