@@ -124,7 +124,8 @@ Build a fresh unpublished wheel with `uv build --out-dir dist/empyrical-adapters
 Run all seven routes and print the actual package versions from that wheel:
 
 ```bash
-uv run --no-project --with dist/empyrical-adapters/ml4t_diagnostic-0.1.9-py3-none-any.whl \
+uv run --no-project --isolated --python 3.12 \
+  --with dist/empyrical-adapters/ml4t_diagnostic-0.2.0-py3-none-any.whl \
   python -I examples/legacy_migration_comparison.py --task empyrical-native
 ```
 
