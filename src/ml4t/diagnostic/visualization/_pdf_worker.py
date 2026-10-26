@@ -25,10 +25,21 @@ class _PageEventsKaleido(kaleido.Kaleido):
                 await self.close_tab(target_id)
         else:
             selected = list(tabs)
-        # Page.enable does not replay a load event missed during fast navigation.
         for tab in selected:
+            wrapped = _KaleidoTab(tab, headers=self._headers)
+            await wrapped._apply_headers()
             await tab.send_command("Page.enable")
-        await super()._conform_tabs(selected)
+            navigation = await tab.send_command("Page.navigate", params={"url": self._index})
+            if not isinstance(navigation, dict) or "error" in navigation:
+                raise RuntimeError(f"PDF renderer navigation failed: {navigation!r}")
+            if navigation.get("result", {}).get("errorText"):
+                raise RuntimeError(f"PDF renderer navigation failed: {navigation!r}")
+            await tab.send_command("Page.enable")
+            # Same-document navigation need not emit another Page.loadEventFired.
+            await self._renderer_document_ready(wrapped)
+            wrapped.js_logger.reset()
+            self._total_tabs += 1
+            await self.tabs_ready.put(wrapped)
 
     async def _get_kaleido_tab(self) -> _KaleidoTab:
         wrapped = await super()._get_kaleido_tab()

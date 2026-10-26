@@ -159,6 +159,7 @@ def extract_rets_pos_txn_from_zipline(
     Actual execution instants retain timezone/ns. Raw integer IDs use the legacy
     cash-price-per-unit convention; supply asset_metadata for point multipliers.
     Asset objects are accepted without importing their producer package.
+    Portable descriptors use stable SIDs in both position columns and fill symbols.
     """
     required = {"positions", "transactions", "ending_cash"}
     if missing := required.difference(backtest.columns):
@@ -183,8 +184,7 @@ def extract_rets_pos_txn_from_zipline(
                     identifier = getattr(source, "sid", None)
                     label = source
                 labels[identifier] = label
-                if not isinstance(source, Mapping):
-                    scalar_symbols[identifier] = source
+                scalar_symbols[identifier] = label
     analysis = portfolio_analysis_from_zipline(backtest, calendar=None, asset_metadata=declarations)
     inputs = analysis.input_data
     assert inputs is not None

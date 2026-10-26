@@ -82,6 +82,28 @@ def test_cash_only_zipline_tuple_is_an_empty_asset_book_not_an_absent_account():
     assert transactions.empty
 
 
+def test_portable_zipline_tuple_keeps_matching_asset_ids_through_full_round_trip_report():
+    pytest.importorskip("plotly")
+    from ml4t.diagnostic.compat.pyfolio import create_full_tear_sheet
+    from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
+
+    performance = _performance()
+    before = deepcopy(performance)
+    returns, positions, transactions = extract_rets_pos_txn_from_zipline(performance)
+    report = create_full_tear_sheet(
+        returns,
+        positions=positions,
+        transactions=transactions,
+        round_trips=True,
+        estimate_intraday=False,
+        return_fig=True,
+    )
+    assert report is not None and report.figures
+    assert transactions["symbol"].tolist() == [7, 7]
+    assert set(transactions["symbol"]) <= set(positions.columns)
+    pd.testing.assert_frame_equal(performance, before)
+
+
 def test_partial_cash_export_stays_unknown_in_familiar_tuple_instead_of_becoming_zero():
     from ml4t.diagnostic.compat.pyfolio.utils import extract_rets_pos_txn_from_zipline
 

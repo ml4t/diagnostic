@@ -96,9 +96,9 @@ def _preserve_trade_nanoseconds(value: Any) -> Any:
 
 
 def _trade_duration_seconds(value: timedelta) -> float:
-    return value.total_seconds() + (
-        value.nanoseconds / 1e9 if isinstance(value, pd.Timedelta) else 0
-    )
+    if isinstance(value, pd.Timedelta):
+        return float(value / timedelta(seconds=1))
+    return value.total_seconds()
 
 
 def _preserve_trade_duration(value: Any) -> Any:
