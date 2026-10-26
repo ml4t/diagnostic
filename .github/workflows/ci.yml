@@ -82,6 +82,76 @@ jobs:
           path: ${{ runner.temp }}/pdf-crash-lifecycle/
           if-no-files-found: warn
 
+  acknowledged-exit-regression:
+    name: Windows acknowledged browser exit regression
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      UV_PYTHON: "3.13"
+      PDF_FAILURE_BASE: 0bf1d11081db0559ef66dd649af90641bca3675b
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.10.9"
+      - run: uv python install 3.13
+      - name: Build the actual failing-base and repaired packages
+        shell: bash
+        run: |
+          for variant in base fixed; do
+            revision="$PDF_FAILURE_BASE"
+            if [ "$variant" = fixed ]; then revision="$GITHUB_SHA"; fi
+            directory="$RUNNER_TEMP/pdf-native-exit-$variant"
+            mkdir -p "$directory"
+            git archive "$revision" | tar -xf - -C "$directory"
+            uv --directory "$directory" build --out-dir "$GITHUB_WORKSPACE/artifacts/native-exit/$variant"
+          done
+      - name: Reproduce the real pending native exit and require repaired public export
+        shell: bash
+        run: |
+          for variant in base fixed; do
+            wheel=$(find "artifacts/native-exit/$variant" -name '*.whl' -print -quit)
+            uv run --isolated --no-project --python 3.13 --with "$wheel[viz]" \
+              --with pytest --with pytest-timeout python -I - "$variant" <<'PYTHON'
+          import hashlib, io, json, os, subprocess, sys, tarfile
+          import xml.etree.ElementTree as ET
+          from importlib.metadata import version
+          from pathlib import Path
+          import pytest
+          import ml4t.diagnostic as diagnostic
+          variant = sys.argv[1]
+          revision = os.environ["PDF_FAILURE_BASE"] if variant == "base" else os.environ["GITHUB_SHA"]
+          assert version("ml4t-diagnostic") == "0.2.0" and sys.version_info[:2] == (3, 13)
+          package = Path(diagnostic.__file__).resolve().parents[2]
+          assert not package.is_relative_to(Path.cwd())
+          with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(["git", "archive", revision, "src/ml4t/diagnostic"]))) as archive:
+              modules = {m.name.removeprefix("src/"): archive.extractfile(m).read() for m in archive.getmembers() if m.isfile() and m.name.endswith(".py")}
+          assert len(modules) == 358 and all((package / name).read_bytes() == value for name, value in modules.items())
+          output = Path("artifacts/native-exit") / variant
+          report = output / "regression.xml"
+          (output / "identity.json").write_text(json.dumps({"source_revision": revision, "module": str(package), "packages": {name: version(name) for name in ["ml4t-diagnostic", "kaleido", "choreographer", "plotly", "psutil", "pypdf"]}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}, indent=2))
+          code = pytest.main(["--noconftest", "--rootdir", str(Path.cwd()), "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "-s", "--timeout", "120", "--junitxml", str(report), "--basetemp", str(output / "tmp"), "tests/test_visualization/test_pdf_process_ownership.py::test_acknowledged_native_exit_finishes_before_forced_job_cleanup"])
+          cases = list(ET.parse(report).iter("testcase"))
+          assert len(cases) == 1 and cases[0].find("skipped") is None
+          if variant == "base":
+              failure = cases[0].find("failure")
+              assert code == 1 and failure is not None and "Acknowledged browser exit remained pending before forced job cleanup" in failure.text
+              print("Actual unchanged base reproduced acknowledged-but-nonterminal native exit")
+          else:
+              assert code == 0 and not any(cases[0].find(tag) is not None for tag in ["failure", "error"])
+              print("Actual repaired installed wheel completed native exit before forced cleanup")
+          PYTHON
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: acknowledged-native-exit-regression
+          path: artifacts/native-exit/
+          if-no-files-found: error
+
   pyfolio-notebooks:
     name: Installed original Pyfolio notebooks
     runs-on: ubuntu-latest
@@ -341,6 +411,7 @@ jobs:
       - typecheck
       - test
       - windows-pdf-lifecycle
+      - acknowledged-exit-regression
       - security
       - dependency-review
       - codeql

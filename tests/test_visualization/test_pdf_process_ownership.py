@@ -47,6 +47,7 @@ original_command=kaleido.Kaleido.send_command
 failed_channel=None
 live_dependency_armed=False
 slow_shutdown_armed=False
+acknowledged_exit_armed=False
 from choreographer.channels import Pipe
 original_pipe_init=Pipe.__init__
 original_os_close=os.close
@@ -173,7 +174,7 @@ async def written(self,specs,*args,**kwargs):
     if mode=='invalid_page': Path(specs[0]['path']).write_bytes(b'invalid PDF')
     return result
 async def closed(self,*args,**kwargs):
-    global failed_channel,slow_shutdown_armed
+    global failed_channel,slow_shutdown_armed,acknowledged_exit_armed
     if mode=='termination_error':
         result=await original_close(self,*args,**kwargs)
         print('PDF close control: actual browser close returned',file=sys.stderr,flush=True)
@@ -293,6 +294,30 @@ async def closed(self,*args,**kwargs):
                 'worker_pid':os.getpid(),'browser_pid':browser.pid,'helper_pid':helper.pid,
                 'helper_created':psutil.Process(helper.pid).create_time()}))
         await asyncio.sleep(3600)
+    if mode=='acknowledged_native_exit':
+        if not acknowledged_exit_armed:
+            acknowledged_exit_armed=True
+            ready=observed.with_suffix('.ack-debugger-ready.json')
+            blocked=observed.with_suffix('.ack-kernel-exit.json')
+            helper=subprocess.Popen(
+                [sys.executable,debugger_path,str(self.subprocess.pid),str(ready),str(blocked),'4'],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            helper.stdin.write(b'1')
+            helper.stdin.close()
+            deadline=time.monotonic()+8
+            while not ready.exists() and time.monotonic()<deadline:
+                await asyncio.sleep(.01)
+            assert ready.exists(), 'Real native-exit observer did not attach'
+            attachment=json.loads(ready.read_text())
+            assert 'error' not in attachment,attachment
+            control=observed.with_suffix('.ack-control.json')
+            temporary=control.with_suffix('.new')
+            temporary.write_text(json.dumps({
+                'browser_pid':self.subprocess.pid,
+                'browser_created':psutil.Process(self.subprocess.pid).create_time(),
+                'helper_pid':helper.pid,'worker_pid':os.getpid(),'release_delay':4}))
+            temporary.replace(control)
+        await asyncio.sleep(3600)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
 kaleido.Kaleido.open=opened
@@ -307,6 +332,37 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='acknowledged_native_exit':
+        import ctypes
+        from ctypes import wintypes
+        native=[]
+        actual_observe=_pdf_process._OwnedProcesses.observe
+        actual_terminate=_pdf_process._OwnedProcesses.terminate
+        def retain_actual_browser_handle(self):
+            actual_observe(self)
+            control=observed.with_suffix('.ack-control.json')
+            if native or not control.exists(): return
+            recorded=json.loads(control.read_text())
+            pid=recorded['browser_pid']
+            assert psutil.Process(pid).create_time()==recorded['browser_created']
+            handle=self.job.api.OpenProcess(0x00101000,False,pid)
+            if not handle: raise ctypes.WinError(ctypes.get_last_error())
+            member=wintypes.BOOL()
+            self.job._check(self.job.api.IsProcessInJob(handle,self.job.handle,ctypes.byref(member)))
+            assert member.value, 'The actual browser must belong to the renderer job'
+            native.append((pid,handle))
+        def record_native_exit_before_forced_cleanup(self):
+            assert native, 'No actual browser handle retained'
+            pid,handle=native[0]
+            code=wintypes.DWORD()
+            self.job._check(self.job.api.GetExitCodeProcess(handle,ctypes.byref(code)))
+            observation={'pid':pid,'native_wait_result':self.job.api.WaitForSingleObject(handle,0),
+                         'exit_code':code.value}
+            observed.with_suffix('.ack-before-cleanup.json').write_text(json.dumps(observation))
+            try: return actual_terminate(self)
+            finally: self.job.api.CloseHandle(handle)
+        _pdf_process._OwnedProcesses.observe=retain_actual_browser_handle
+        _pdf_process._OwnedProcesses.terminate=record_native_exit_before_forced_cleanup
     if mode=='job_dependency':
         import ctypes
         from ctypes import wintypes
@@ -633,7 +689,7 @@ try:
         expected_render_error={'type':type(error).__name__,'message':str(error),
                                'notes':list(getattr(error,'__notes__',[]))}
         observed.with_suffix('.error.json').write_text(json.dumps(expected_render_error))
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'): raise
+        if mode in ('acknowledged_native_exit','close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode in ('exit7','profile_readonly','job_dependency'): assert 'code 7' in str(error),repr(error)
@@ -668,7 +724,7 @@ try:
             assert "'phase': 'closed'" in notes and "'completed': 2" in notes,notes
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'), 'Rendering defect was swallowed'
+        assert mode in ('acknowledged_native_exit','close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -975,6 +1031,43 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual Windows acknowledged native exit required"
+)
+def test_acknowledged_native_exit_finishes_before_forced_job_cleanup(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    error = None
+    result = None
+    try:
+        result = _run_pdf_probe(
+            _PROBE, ["acknowledged_native_exit", str(target), "0", ".1", debugger]
+        )
+    except AssertionError as failure:
+        error = failure
+    before = json.loads(target.with_suffix(".processes.ack-before-cleanup.json").read_text())
+    held = json.loads(target.with_suffix(".processes.ack-kernel-exit.json").read_text())
+    assert held["wait_result"] == 258, "The real native-exit control was not pending"
+    acknowledged = json.loads(target.with_suffix(".processes.graceful.json").read_text())
+    assert acknowledged == {"browser_close": True}
+    assert held["pid"] == before["pid"]
+    assert before["native_wait_result"] == 0, (
+        "Acknowledged browser exit remained pending before forced job cleanup",
+        before,
+        held,
+    )
+    assert error is None, str(error)
+    released = json.loads(
+        target.with_suffix(".processes.ack-kernel-exit.released.json").read_text()
+    )
+    assert released["held_seconds"] >= 4
+    attachment = json.loads(target.with_suffix(".processes.ack-debugger-ready.json").read_text())
+    assert "error" not in attachment, attachment
+    assert result is not None and result["running"] == [] and result["neighbor_alive"]
 
 
 @pytest.mark.skipif(

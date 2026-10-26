@@ -185,7 +185,8 @@ async def _render(request_path: Path, status_path: Path) -> None:
     close_deadline = asyncio.get_running_loop().time() + 13
     close_error = None
     try:
-        await asyncio.wait_for(renderer.close(), timeout=10)
+        vendor_timeout = max(0, close_deadline - asyncio.get_running_loop().time()) / 2
+        await asyncio.wait_for(renderer.close(), timeout=vendor_timeout)
     except Exception as error:
         close_error = error
 
