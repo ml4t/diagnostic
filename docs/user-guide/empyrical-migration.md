@@ -120,7 +120,7 @@ assert calmar.shape == (2,)
 print("Empyrical scalar adapters: columnwise counts, periodic rates and labels checked")
 ```
 
-Build a fresh unpublished wheel with `uv build --out-dir dist/empyrical-adapters`.
+Build the 0.2.0 wheel from this checkout with `uv build --out-dir dist/empyrical-adapters`.
 Run all seven routes and print the actual package versions from that wheel:
 
 ```bash
