@@ -214,38 +214,37 @@ class _WindowsJob:
         try:
             started = time.monotonic()
             deadline = started + 5
-            if worker_exited:
-                # A crashed worker cannot refresh its observed descendant snapshot.
-                capacity = 64
-                while True:
+            # Kernel job membership remains authoritative while the worker is alive.
+            capacity = 64
+            while True:
 
-                    class ProcessIds(ctypes.Structure):
-                        _fields_ = [
-                            ("assigned", wintypes.DWORD),
-                            ("listed", wintypes.DWORD),
-                            ("pids", ctypes.c_size_t * capacity),
-                        ]
+                class ProcessIds(ctypes.Structure):
+                    _fields_ = [
+                        ("assigned", wintypes.DWORD),
+                        ("listed", wintypes.DWORD),
+                        ("pids", ctypes.c_size_t * capacity),
+                    ]
 
-                    members = ProcessIds()
-                    complete = self.api.QueryInformationJobObject(
-                        self.handle, 3, ctypes.byref(members), ctypes.sizeof(members), None
-                    )
-                    if complete and members.listed >= members.assigned:
-                        break
-                    error = ctypes.get_last_error()
-                    if not complete and error != 234:
-                        raise ctypes.WinError(error)
-                    if time.monotonic() >= deadline:
-                        raise RuntimeError("PDF job membership did not stabilize before cleanup")
-                    capacity = max(capacity * 2, members.assigned)
-                running_pids = {process.pid for process in processes if process.is_running()}
-                processes = list(processes)
-                for pid in members.pids[: members.listed]:
-                    if pid not in running_pids:
-                        try:
-                            processes.append(psutil.Process(pid))
-                        except psutil.NoSuchProcess:
-                            pass
+                members = ProcessIds()
+                complete = self.api.QueryInformationJobObject(
+                    self.handle, 3, ctypes.byref(members), ctypes.sizeof(members), None
+                )
+                if complete and members.listed >= members.assigned:
+                    break
+                error = ctypes.get_last_error()
+                if not complete and error != 234:
+                    raise ctypes.WinError(error)
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("PDF job membership did not stabilize before cleanup")
+                capacity = max(capacity * 2, members.assigned)
+            running_pids = {process.pid for process in processes if process.is_running()}
+            processes = list(processes)
+            for pid in members.pids[: members.listed]:
+                if pid not in running_pids:
+                    try:
+                        processes.append(psutil.Process(pid))
+                    except psutil.NoSuchProcess:
+                        pass
             for process in processes:
                 if not process.is_running():
                     continue
@@ -275,12 +274,7 @@ class _WindowsJob:
                     handles.append((process.pid, handle, membership, identity, can_terminate))
                 elif ctypes.get_last_error() != 87:  # PID already gone
                     raise ctypes.WinError(ctypes.get_last_error())
-            if not worker_exited:
-                started = time.monotonic()
-                deadline = started + 5
-            if worker_exited:
-                # No worker pipe readers remain. Stop every job member before waiting.
-                self._check(self.api.TerminateJobObject(self.handle, 120))
+            job_terminated = False
 
             def request_termination(item):
                 _, handle, membership, _, can_terminate = item
@@ -298,14 +292,11 @@ class _WindowsJob:
                 for item in reversed(handles):
                     if item[0] not in self.worker_pids:
                         request_termination(item)
-            # A Windows venv launcher and its interpreter are distinct owned processes.
-            # Preserve both pipe readers until every other captured descendant is terminal.
-            ordered = list(reversed(handles))
-            ordered.sort(key=lambda item: item[0] in self.worker_pids)
-            for item in ordered:
-                pid, handle, membership, identity, can_terminate = item
-                if not worker_exited:
-                    request_termination(item)
+            # A descendant can depend on resources retained by the worker itself.
+            # Stop the complete owned job before waiting on any member's native exit.
+            self._check(self.api.TerminateJobObject(self.handle, 120))
+            job_terminated = True
+            for pid, handle, membership, identity, can_terminate in handles:
                 remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                 result = self.api.WaitForSingleObject(handle, remaining_ms)
                 if result != 0:
@@ -317,15 +308,13 @@ class _WindowsJob:
                     )
                     raise RuntimeError(
                         f"Owned PDF process {pid} not terminal "
-                        f"{'after' if worker_exited else 'before'} job termination: "
+                        f"{'after' if job_terminated else 'before'} job termination: "
                         f"wait result {result}; identity={identity}, "
                         f"member_before_termination={membership}, exit_code={observed_exit}, "
                         f"termination_access={can_terminate}, "
                         f"cleanup_elapsed={time.monotonic() - started:.6f}, "
                         f"wait_budget_ms={remaining_ms}"
                     )
-            if not worker_exited:
-                self._check(self.api.TerminateJobObject(self.handle, 120))
             while True:
                 accounting = Accounting()
                 self._check(

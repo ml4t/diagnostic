@@ -68,9 +68,7 @@ class DebugEvent(ctypes.Structure):
     ]
 
 
-def main() -> None:
-    pid, ready, blocked = int(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
-    assert sys.stdin.buffer.read(1) == b"1", "Debugger must join the owned job before attaching"
+def hold_exit(pid: int, ready: Path, blocked: Path) -> None:
     api = ctypes.WinDLL("kernel32", use_last_error=True)
     signatures = {
         "DebugActiveProcess": ([wintypes.DWORD], wintypes.BOOL),
@@ -134,6 +132,12 @@ def main() -> None:
     except BaseException as error:
         record(ready, {"error": repr(error), "pid": pid})
         raise
+
+
+def main() -> None:
+    pid, ready, blocked = int(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+    assert sys.stdin.buffer.read(1) == b"1", "Debugger must join the owned job before attaching"
+    hold_exit(pid, ready, blocked)
 
 
 if __name__ == "__main__":
