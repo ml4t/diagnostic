@@ -41,6 +41,7 @@ FIXTURE_HASHES = {
     "test_txn.csv.gz": "bb8725c641ff33955ca2afaf3e6372f952bc10451ecba86dbb7fbc3f2c101b42",
 }
 ZIPLINE_HASH = "7f6480c177869eb73fc7bf6cb0715924282d02b4fa507f128f182553967ba946"
+ZIPLINE_CAPTURE_HASH = "d8b45de845d7d311fd8d220d36999823af5f2e2f05055a88c012a1342abc4041"
 FIXTURES = Path(__file__).resolve().parents[1] / "tests/fixtures/pyfolio_original"
 
 
@@ -110,21 +111,35 @@ def migrate_notebook(
             ]
         )
     elif original.name == "zipline_algo_example.ipynb":
-        if zipline_output is None or _digest(zipline_output) != ZIPLINE_HASH:
+        if zipline_output is not None and _digest(zipline_output) != ZIPLINE_HASH:
             raise ValueError(
                 "Zipline replay requires the exact pinned original results.pickle hash"
             )
+        capture = fixtures / "zipline_original_account.json.gz"
+        if _digest(capture) != ZIPLINE_CAPTURE_HASH:
+            raise ValueError("portable captured account does not match the pinned original")
         inputs["original_zipline_output"] = {
             "sha256": ZIPLINE_HASH,
-            "path": str(zipline_output.resolve()),
+            "path": str(zipline_output.resolve()) if zipline_output is not None else None,
+            "deserialized": False,
+        }
+        inputs["portable_zipline_account"] = {
+            "sha256": ZIPLINE_CAPTURE_HASH,
+            "path": str(capture.resolve()),
         }
         replacements.extend(
             [
                 ("%load_ext zipline", "", "producer_presentation"),
+                ("import zipline\n", "", "producer_presentation"),
                 (
-                    "pd.read_pickle('results.pickle')",
-                    f"pd.read_pickle({str(zipline_output.resolve())!r})",
-                    "pinned_original_producer_io",
+                    "results = pd.read_pickle('results.pickle')",
+                    "import gzip\nimport json\n"
+                    f"with gzip.open({str(capture.resolve())!r}, 'rt', encoding='utf-8') as stream:\n"
+                    "    captured_account = json.load(stream)\n"
+                    "results = pd.DataFrame(captured_account['records'])\n"
+                    "results.index = pd.DatetimeIndex(pd.to_datetime(results.pop('date')))"
+                    ".rename(captured_account['index_name'])",
+                    "portable_original_producer_io",
                 ),
                 (
                     "pf.plot_drawdown_periods(returns, top=5).set_xlabel('Date');",

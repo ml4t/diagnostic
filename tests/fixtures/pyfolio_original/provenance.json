@@ -32,6 +32,40 @@
     },
     "test_txn.csv.gz": {
       "sha256": "bb8725c641ff33955ca2afaf3e6372f952bc10451ecba86dbb7fbc3f2c101b42"
+    },
+    "zipline_original_account.json.gz": {
+      "original_pickle_sha256": "7f6480c177869eb73fc7bf6cb0715924282d02b4fa507f128f182553967ba946",
+      "capture_bytes": 415036,
+      "fields": [
+        "returns",
+        "portfolio_value",
+        "starting_cash",
+        "ending_cash",
+        "positions",
+        "transactions"
+      ],
+      "conversion_versions": {
+        "ml4t-diagnostic": "0.2.0",
+        "zipline-reloaded": "3.2.0",
+        "pyfolio-reloaded": "0.10.0",
+        "empyrical-reloaded": "0.7.0",
+        "pandas": "2.3.3",
+        "numpy": "2.2.6"
+      },
+      "rows": 1511,
+      "fills": 7871,
+      "missing_commission_count": 7871,
+      "reported_ending_nav_multiple": 1.6120420817000065,
+      "native_original_and_portable": "Exact returns/index, marked positions/cash, fill index/SIDs/amount/price/commission/cash flow",
+      "published_reference": "Actual Pyfolio0.10.0 returns, shared marked positions/cash, all7871fills and their observed numeric fields match",
+      "native_position_dates": 1511,
+      "legacy_position_dates": 1510,
+      "position_date_difference": "Native retains complete all-cash dates; legacy removes all-zero position dates. Portable input does not change either definition.",
+      "converter": "examples/zipline_portfolio_inputs.py::_portable",
+      "serialization": "JSON sorted keys, compact separators, finite values; gzip mtime0",
+      "source_url": "https://github.com/stefan-jansen/pyfolio-reloaded/blob/185eaa1657a845a5e1c8c82809248eac7ce99340/src/pyfolio/examples/results.pickle",
+      "original_producer_version": "Unknown; the recorded package versions describe deserialization/conversion and validation, not an algorithm rerun.",
+      "sha256": "d8b45de845d7d311fd8d220d36999823af5f2e2f05055a88c012a1342abc4041"
     }
   }
 }
