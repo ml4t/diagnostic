@@ -22,6 +22,7 @@ assert mode in {"native", "whl", "tar.gz"}
 assert sys.version_info[:2] == (3, 15) and not sysconfig.get_config_var("Py_GIL_DISABLED")
 assert diagnostic.__version__ == "0.3.0.dev0"
 manifest = json.loads(Path("artifacts/canonical/manifest.json").read_text())
+assert manifest["source_revision"] == os.environ["GITHUB_SHA"]
 for name, digest in manifest["archives"].items():
     assert hashlib.sha256((Path("artifacts/canonical") / name).read_bytes()).hexdigest() == digest
 package = Path(diagnostic.__file__).resolve()
@@ -62,6 +63,8 @@ output.mkdir(parents=True, exist_ok=True)
 report = output / (mode + ".xml")
 identity = {
     "mode": mode,
+    "qualifier_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    "package_versions": {d.metadata["Name"]: d.version for d in distributions()},
     "python": sys.version,
     "module": str(package),
     "unsupported": unsupported,
