@@ -46,6 +46,7 @@ original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
 failed_channel=None
 live_dependency_armed=False
+slow_shutdown_armed=False
 from choreographer.channels import Pipe
 original_pipe_init=Pipe.__init__
 original_os_close=os.close
@@ -172,7 +173,7 @@ async def written(self,specs,*args,**kwargs):
     if mode=='invalid_page': Path(specs[0]['path']).write_bytes(b'invalid PDF')
     return result
 async def closed(self,*args,**kwargs):
-    global failed_channel
+    global failed_channel,slow_shutdown_armed
     if mode=='termination_error':
         result=await original_close(self,*args,**kwargs)
         print('PDF close control: actual browser close returned',file=sys.stderr,flush=True)
@@ -207,7 +208,8 @@ async def closed(self,*args,**kwargs):
             threading.Timer(1,resume).start()
             print('PDF close control: resume timer started',time.monotonic(),file=sys.stderr,flush=True)
         self._channel.close=close_then_allow_bounded_browser_exit
-    if mode=='slow_shutdown':
+    if mode=='slow_shutdown' and not slow_shutdown_armed:
+        slow_shutdown_armed=True
         import threading
         process=psutil.Process(self.subprocess.pid)
         process.suspend()
@@ -1141,6 +1143,61 @@ def test_unresponsive_browser_after_closed_channel_requires_verified_os_cleanup(
     assert result["running"] == [] and result["neighbor_alive"]
 
 
+def test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callback(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    begin = _PROBE.index("async def closed(self,*args,**kwargs):")
+    end = _PROBE.index("kaleido.Kaleido.open=opened", begin)
+    callback = _PROBE[begin:end].replace("mode=='slow_shutdown'", "mode=='close_error'")
+    entry = "    if mode=='termination_error':"
+    record = r"""
+    trace_path=observed.with_suffix('.bounded-shutdown.json')
+    trace=json.loads(trace_path.read_text()) if trace_path.exists() else {'entries':0,'suspensions':[]}
+    trace['entries']+=1
+    trace_path.write_text(json.dumps(trace))
+"""
+    assert callback.count(entry) == 1
+    callback = callback.replace(entry, record + entry)
+    pause = "        process.suspend()"
+    observe_pause = r"""
+        trace=json.loads(trace_path.read_text())
+        trace['suspensions'].append({'pid':process.pid,'created':process.create_time()})
+        trace_path.write_text(json.dumps(trace))
+"""
+    assert callback.count(pause) == 1
+    callback = callback.replace(pause, pause + observe_pause)
+    sent = "            if message.get('method')=='Browser.close': close_sent.append(True)"
+    record_sent = r"""
+            if message.get('method')=='Browser.close':
+                close_sent.append(True)
+                trace=json.loads(trace_path.read_text())
+                trace['browser_close_sent']=True
+                trace_path.write_text(json.dumps(trace))
+                if len(close_sent)==1:
+                    threading.Timer(.1,self._channel.close).start()
+"""
+    assert callback.count(sent) == 1
+    callback = callback.replace(sent, record_sent)
+    probe = _PROBE[:begin] + callback + _PROBE[end:]
+    acknowledgement = "assert observed.with_suffix('.graceful.json').exists(), 'Close failure skipped graceful browser shutdown'"
+    request = "assert json.loads(observed.with_suffix('.bounded-shutdown.json').read_text())['browser_close_sent'], 'EOF control never transmitted the real shutdown request'"
+    assert probe.count(acknowledgement) == 1
+    probe = probe.replace(acknowledgement, request)
+    target = tmp_path / "report.pdf"
+    error = None
+    try:
+        result = _run_pdf_probe(probe, ["close_error", str(target), "0"])
+    except AssertionError as exc:
+        error = exc
+    trace = json.loads(target.with_suffix(".processes.bounded-shutdown.json").read_text())
+    assert trace["entries"] >= 2, "The actual closed channel did not reenter vendor shutdown"
+    assert len(trace["suspensions"]) == 1, trace
+    assert trace["browser_close_sent"]
+    assert error is None, str(error)
+    assert result["running"] == [] and result["neighbor_alive"]
+    assert result["successful_owned_pipe_closes"] == [1, 1, 1, 1]
+
+
 def test_browser_fault_setup_waits_for_actual_script_entry_instead_of_elapsed_sleep(tmp_path):
     pytest.importorskip("kaleido")
     pytest.importorskip("pypdf")
@@ -1430,6 +1487,61 @@ choreographer.Tab.send_command=command
     assert figure.to_json() == original
 
 
+def test_loaded_renderer_document_can_finish_without_a_second_load_event(tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    marker = tmp_path / "actual-same-document-navigation.json"
+    patch = r"""
+import asyncio,json,choreographer,kaleido
+from pathlib import Path
+marker=Path(MARKER)
+original_command=choreographer.Tab.send_command
+original_populate=kaleido.Kaleido.populate_targets
+async def populate(self):
+    self._index=str(self._index)+'#diagnostic-ready'
+    return await original_populate(self)
+kaleido.Kaleido.populate_targets=populate
+original_create=choreographer.Browser.create_tab
+async def create(self,*args,**kwargs):
+    tab=await original_create(self,*args,**kwargs)
+    await original_command(tab,'Page.enable')
+    loaded=tab.subscribe_once('Page.loadEventFired')
+    await original_command(tab,'Page.navigate',params={'url':str(self._index).split('#',1)[0]})
+    await asyncio.wait_for(loaded,10)
+    marker.write_text(json.dumps({'initial_document_loaded':True}))
+    return tab
+choreographer.Browser.create_tab=create
+async def command(self,method,*args,**kwargs):
+    response=await original_command(self,method,*args,**kwargs)
+    if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
+        observation=json.loads(marker.read_text())
+        observation.update({'same_document_navigation':'loaderId' not in response.get('result',{}),
+            'response':response})
+        marker.write_text(json.dumps(observation))
+    return response
+choreographer.Tab.send_command=command
+""".replace("MARKER", repr(str(marker)))
+    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
+    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 15)
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
+    figure = go.Figure(go.Scatter(x=[1, 2], y=[1, 3]))
+    figure.update_layout(title="Loaded renderer without another load event")
+    original = figure.to_json()
+    output = export_figures_to_pdf([figure], tmp_path / "same-document.pdf", scale=1)
+    observation = json.loads(marker.read_text())
+    assert observation["initial_document_loaded"] and observation["same_document_navigation"]
+    pages = pypdf.PdfReader(output).pages
+    assert (
+        len(pages) == 1 and "Loaded renderer without another load event" in pages[0].extract_text()
+    )
+    assert figure.to_json() == original
+
+
 def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_path, monkeypatch):
     import threading
     import time
@@ -1554,7 +1666,7 @@ def test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly(tmp
     output.write_bytes(b"previous verified report")
     with pytest.raises(RuntimeError) as failed:
         export_figures_to_pdf([go.Figure(go.Bar(x=[1, 2], y=[1, 3]))], output, scale=1)
-    assert "phase='rendering', completed=0, expected=1" in str(failed.value)
+    assert "phase='starting', completed=0, expected=1" in str(failed.value)
     assert output.read_bytes() == b"previous verified report"
     assert not getattr(failed.value, "__notes__", [])
     observations = re.findall(r"PDF document readiness: (\{[^\r\n]+\})", str(failed.value))

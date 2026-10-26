@@ -95,10 +95,10 @@ jobs:
           version: "0.10.9"
       - run: uv python install 3.12
       - run: uv build --out-dir artifacts/notebooks
-      - name: Execute four standalone originals without any Reloaded or producer runtime
+      - name: Execute all five originals without any Reloaded or producer runtime
         shell: bash
         env:
-          ML4T_REQUIRED_PYFOLIO_NOTEBOOKS: "standalone"
+          ML4T_REQUIRED_PYFOLIO_NOTEBOOKS: "all"
         run: |
           for profile in current floor; do
             packages=(--with pandas==3.0.6)
@@ -108,12 +108,11 @@ jobs:
             uv run --isolated --no-project --python 3.12 \
               --with "$(find artifacts/notebooks -name '*.whl' -print -quit)[viz]" \
               --with pytest --with nbclient --with ipykernel "${packages[@]}" \
-              python -I -c "import importlib.util, pytest; assert all(importlib.util.find_spec(n) is None for n in ('pyfolio', 'empyrical', 'alphalens', 'zipline', 'ml4t.data', 'ml4t.engineer', 'ml4t.backtest')); raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/$profile', 'tests/test_compat/test_pyfolio_notebook_migration.py']))"
+              python -I -c "import importlib.util, pytest; assert all(importlib.util.find_spec(n) is None for n in ('pyfolio', 'empyrical', 'alphalens', 'zipline', 'ml4t.data', 'ml4t.engineer', 'ml4t.backtest')); raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/$profile', 'tests/test_compat/test_pyfolio_notebook_migration.py', '-k', 'not portable_original_capture_preserves_actual_producer_output']))"
           done
-      - name: Execute the captured original Zipline account, not its trading algorithm
+      - name: Compare the portable account with its original producer binary in a reference environment
         shell: bash
         env:
-          ML4T_REQUIRED_PYFOLIO_NOTEBOOKS: "all"
           ML4T_ORIGINAL_ZIPLINE_OUTPUT: ${{ runner.temp }}/original-pyfolio-results.pickle
         run: |
           curl --fail --location --retry 3 \
@@ -122,8 +121,8 @@ jobs:
           uv run --isolated --no-project --python 3.12 \
             --with "$(find artifacts/notebooks -name '*.whl' -print -quit)[viz]" \
             --with pandas==2.3.3 --with numpy==2.2.6 --with polars==1.36.1 --with plotly==6.1.2 \
-            --with zipline-reloaded==3.2.0 --with pytest --with nbclient --with ipykernel \
-            python -I -c "import importlib.util, pytest; assert all(importlib.util.find_spec(n) is None for n in ('pyfolio', 'alphalens')); raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/zipline', 'tests/test_compat/test_pyfolio_notebook_migration.py']))"
+            --with zipline-reloaded==3.2.0 --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pytest \
+            python -I -c "import pytest; raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/reference', 'tests/test_compat/test_pyfolio_notebook_migration.py::test_portable_original_capture_preserves_actual_producer_output']))"
       - name: Retain converted notebooks and installed artifacts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -489,6 +488,30 @@ jobs:
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             python -I examples/portfolio_intraday.py --estimate \
             --report artifacts/fifo/estimated-intraday.html
+      - name: Preserve exact native trade durations at the pandas floor and current dependency
+        shell: bash
+        run: |
+          for pandas_requirement in 'pandas==2.3.3' 'pandas>=3.1'; do
+            uv run --isolated --no-project --python 3.12 \
+              --with "$(find dist -name '*.whl' -print -quit)[viz]" \
+              --with "$pandas_requirement" --with pytest \
+              python -I - <<'PYTHON'
+          import platform
+          import sys
+          from importlib.metadata import distributions, version
+          from pathlib import Path
+          from packaging.specifiers import SpecifierSet
+          import ml4t.diagnostic as diagnostic
+          import pytest
+
+          assert sys.version_info[:2] == (3, 12), sys.version
+          assert not Path(diagnostic.__file__).resolve().is_relative_to(Path.cwd())
+          unsupported = {dist.metadata["Name"]: dist.metadata["Requires-Python"] for dist in distributions() if dist.metadata.get("Requires-Python") and not SpecifierSet(dist.metadata["Requires-Python"]).contains(platform.python_version(), prereleases=True)}
+          assert not unsupported, unsupported
+          print("pandas", version("pandas"), "installed", diagnostic.__file__)
+          raise SystemExit(pytest.main(["--noconftest", "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "tests/test_evaluation/test_fifo_trade_consumer.py", "tests/test_evaluation/test_fifo_completed_statistics.py", "tests/test_backtest_contract.py"]))
+          PYTHON
+          done
       - name: Run complete capacity workflows from installed wheel
         shell: bash
         run: |

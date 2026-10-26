@@ -2916,31 +2916,45 @@ uv run --extra viz --with nbclient --with ipykernel python scripts/migrate_pyfol
 ```
 
 The `zipline_algo_example.ipynb` route replays the original analytical cells against
-the original captured
+a portable copy of the original captured
 [`results.pickle`](https://github.com/stefan-jansen/pyfolio-reloaded/blob/185eaa1657a845a5e1c8c82809248eac7ce99340/src/pyfolio/examples/results.pickle),
-not a new trading simulation. `--zipline-output` must match SHA256
+not a new trading simulation. The bundled `zipline_original_account.json.gz`
+preserves all 1,511 account rows, cash, marked positions, stable asset IDs,
+symbols, multipliers and 7,871 fills. Its source pickle has SHA256
 `7f6480c177869eb73fc7bf6cb0715924282d02b4fa507f128f182553967ba946`;
-other pickles are rejected before conversion or deserialization. Only this
-producer-object replay needs Zipline to deserialize its original asset objects:
+the conversion environment and independent original/reference comparisons are
+recorded in `tests/fixtures/pyfolio_original/provenance.json`. Unknown fill
+commissions stay unknown. Asset objects become plain SID/symbol/multiplier
+records; the analytical replay imports no Zipline, Pyfolio, Empyrical or Alphalens:
 
 ```bash
-uv run --extra viz --with nbclient --with ipykernel --with 'zipline-reloaded==3.2.0' --with 'pandas==2.3.3' --with 'numpy==2.2.6' python scripts/migrate_pyfolio_notebooks.py --source-notebook tests/fixtures/pyfolio_original/zipline_algo_example.ipynb --zipline-output results.pickle --output migrated-zipline.ipynb --execute
+uv run --extra viz --with nbclient --with ipykernel python scripts/migrate_pyfolio_notebooks.py --source-notebook tests/fixtures/pyfolio_original/zipline_algo_example.ipynb --output migrated-zipline.ipynb --execute
 ```
 
-That original account is distinct from the CSV example: 1,511 account rows, 7,871
-fills and reported ending NAV multiple 1.6120420817. Zipline's declared Empyrical
-dependency belongs to this optional producer environment, not Diagnostic's
-analytical runtime. The command removes the producer magic cell explicitly and
-records it as not rerun. Conversion does not make arbitrary pickles safe.
+The familiar tuple uses matching stable SID labels for position columns and
+transaction `symbol` values. Descriptive symbols remain in the source and
+native account metadata, rather than becoming a different instrument key.
 
-The four standalone analytical notebooks have installed-wheel evidence on
+That original account is distinct from the CSV example: 1,511 account rows, 7,871
+fills and reported ending NAV multiple 1.6120420817. The command removes the
+unused producer import and magic cell explicitly and records them as not rerun.
+Supplying `--zipline-output results.pickle` remains an optional checksum check:
+the binary must match the pinned original and is never deserialized by this
+route. The portable input's separate hash is checked before conversion. An
+independent reference environment validates its values, clocks and asset
+membership against the original producer objects and published Pyfolio. Native
+extraction retains one complete all-cash date omitted by the reference's wide
+positions table; this is recorded rather than silently dropping that date.
+
+All five analytical notebooks run from the installed wheel without a Reloaded
+or producer runtime. The retained qualification profiles use
 Python 3.12, pandas 3.0.6 and a pandas 2.3.3 / NumPy 2.2.6 / Polars 1.36.1 /
 Plotly 6.1.2 floor. Their actual notebook Plotly payload counts are 7 (round-trip),
 17 (sector), 40 (slippage) and 14 (single-stock). The captured Zipline replay has
 80, with the same reported account wealth. These proofs cover captured analytical
-replay, not live Yahoo acquisition, cache behavior or rerunning the original
-Zipline algorithm. Those producer/provider journeys and full replacement remain
-separate acceptance work.
+replay, not live Yahoo acquisition or rerunning the original Zipline algorithm.
+Live acquisition and strategy execution remain Data/Backtest responsibilities;
+this replay consumes captured accounts and declared histories.
 
 ### Normalize a supplied account without a backtest engine
 
