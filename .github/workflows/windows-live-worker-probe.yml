@@ -22,6 +22,8 @@ jobs:
           version: "0.10.9"
       - run: uv python install 3.12
       - run: uv sync --frozen --dev --extra viz
+      - name: Prepare owned probe artifact directory
+        run: uv run --no-sync python -c "from pathlib import Path; Path('artifacts').mkdir(exist_ok=True)"
       - name: Exercise actual live-worker ownership and native exit signals
         run: >-
           uv run --no-sync python -m pytest
