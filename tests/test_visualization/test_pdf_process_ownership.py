@@ -45,6 +45,7 @@ original_write=kaleido.Kaleido.write_fig_from_object
 original_close=kaleido.Kaleido.close
 original_command=kaleido.Kaleido.send_command
 failed_channel=None
+live_dependency_armed=False
 from choreographer.channels import Pipe
 original_pipe_init=Pipe.__init__
 original_os_close=os.close
@@ -249,6 +250,9 @@ async def closed(self,*args,**kwargs):
             'pid':browser.pid,'suspend_returned':True}))
     if mode in ('exit7','profile_readonly','job_dependency'): os._exit(7)
     if mode=='live_worker_dependency':
+        global live_dependency_armed
+        if live_dependency_armed: await asyncio.sleep(3600)
+        live_dependency_armed=True
         browser=psutil.Process(self.subprocess.pid)
         browser.suspend()
         ready=observed.with_suffix('.debugger-ready.json')
