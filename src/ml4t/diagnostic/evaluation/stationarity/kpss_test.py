@@ -274,6 +274,8 @@ def kpss_test(
         pvalue = result[1]
         usedlag = result[2]
         critical_vals = result[3]
+        if not isinstance(critical_vals, dict):
+            raise TypeError("KPSS critical values must be a mapping of significance levels")
 
         logger.info(
             "KPSS test completed",
