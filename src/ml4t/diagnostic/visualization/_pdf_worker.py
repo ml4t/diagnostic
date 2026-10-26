@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import sys
 import tempfile
 from collections.abc import Iterable
@@ -122,10 +123,14 @@ async def _render(request_path: Path, status_path: Path) -> None:
         destination = status_path.with_name(f"{status_path.stem}-{sequence:06d}.json")
         temporary = destination.with_suffix(".new")
         temporary.write_text(
-            json.dumps({"phase": phase, "completed": completed, **details}), encoding="utf-8"
+            json.dumps(
+                {"phase": phase, "completed": completed, "worker_pid": os.getpid(), **details}
+            ),
+            encoding="utf-8",
         )
         temporary.replace(destination)
 
+    status("starting")
     renderer = _PageEventsKaleido(n=1, timeout=90, **request["defaults"])
 
     async def pages() -> None:

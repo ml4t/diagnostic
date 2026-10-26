@@ -370,7 +370,8 @@ else:
                 self.observed[browser.pid]=browser
                 observed.with_suffix('.live-job.json').write_text(json.dumps({
                     **live,'worker_alive':True,'helper_is_worker_child':True,
-                    'helper_is_job_member':True,'observation_order':list(self.observed)}))
+                    'helper_is_job_member':True,'observation_order':list(self.observed),
+                    'protected_worker_pids':list(getattr(self.job,'worker_pids',()))}))
                 result=original_terminate(self)
                 terminal=self.job.api.WaitForSingleObject(handle,0)
                 assert terminal==0, 'Cleanup returned before the owned helper was terminal'
@@ -906,12 +907,46 @@ def test_live_worker_stops_all_observed_dependencies_before_process_waits(tmp_pa
     terminal = json.loads(target.with_suffix(".processes.live-terminal.json").read_text())
     assert observed["worker_alive"] and observed["helper_is_worker_child"]
     assert observed["helper_is_job_member"]
+    assert observed["worker_pid"] in observed["protected_worker_pids"]
     assert observed["observation_order"].index(observed["helper_pid"]) < observed[
         "observation_order"
     ].index(observed["browser_pid"])
     assert terminal == {"helper_wait_result": 0, "cleanup_returned": True}
     assert result["running"] == [] and result["neighbor_alive"]
     assert result["successful_owned_pipe_closes"] == [1, 1, 1, 1]
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual live Windows worker and debug events required"
+)
+def test_serial_live_worker_termination_leaves_a_real_kernel_exit_pending(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    previous = b"Existing report must survive failed native cleanup"
+    target.write_bytes(previous)
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    marker = "    _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    fault = r"""
+    import inspect,textwrap
+    code=textwrap.dedent(inspect.getsource(_pdf_process._WindowsJob.terminate))
+    intended='for item in reversed(handles):'
+    assert code.count(intended)==1
+    code=code.replace(intended,'for item in ():')
+    namespace={}
+    exec(compile(code,_pdf_process.__file__,'exec'),vars(_pdf_process),namespace)
+    _pdf_process._WindowsJob.terminate=namespace['terminate']
+"""
+    probe = _PROBE.replace(marker, marker + "\n" + fault)
+    with pytest.raises(AssertionError) as failure:
+        _run_pdf_probe(probe, ["live_worker_dependency", str(target), "0", ".1", debugger])
+    assert "not terminal before job termination" in str(failure.value)
+    blocked = json.loads(target.with_suffix(".processes.kernel-exit.json").read_text())
+    assert blocked["event_exit_code"] == blocked["process_exit_code"] == 120
+    assert blocked["wait_result"] == 258
+    observed = json.loads(target.with_suffix(".processes.live-job.json").read_text())
+    assert observed["worker_alive"] and observed["helper_is_job_member"]
+    assert target.read_bytes() == previous
 
 
 def test_real_early_pipe_closure_is_still_rejected_when_owned_cleanup_succeeds(tmp_path):
