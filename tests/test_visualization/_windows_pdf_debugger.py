@@ -149,7 +149,9 @@ def hold_exit(pid: int, ready: Path, blocked: Path, release_delay: float | None 
 
 def main() -> None:
     pid, ready, blocked = int(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
-    assert sys.stdin.buffer.read(1) == b"1", "Debugger must join the owned job before attaching"
+    assert sys.stdin.buffer.read(1) == b"1", (
+        "Debugger must receive the ownership handshake before attaching"
+    )
     hold_exit(pid, ready, blocked, float(sys.argv[4]) if len(sys.argv) > 4 else None)
 
 

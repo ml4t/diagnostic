@@ -47,7 +47,6 @@ original_command=kaleido.Kaleido.send_command
 failed_channel=None
 live_dependency_armed=False
 slow_shutdown_armed=False
-acknowledged_exit_armed=False
 from choreographer.channels import Pipe
 original_pipe_init=Pipe.__init__
 original_os_close=os.close
@@ -157,32 +156,9 @@ if mode=='unresponsive_startup':
         return result
     Browser.populate_targets=populate
 async def opened(self,*args,**kwargs):
-    global acknowledged_exit_armed
     await asyncio.sleep(startup_delay)
     result=await original_open(self,*args,**kwargs)
     snapshot(self)
-    if mode=='acknowledged_native_exit' and not acknowledged_exit_armed:
-        acknowledged_exit_armed=True
-        ready=observed.with_suffix('.ack-debugger-ready.json')
-        blocked=observed.with_suffix('.ack-kernel-exit.json')
-        helper=subprocess.Popen(
-            [sys.executable,debugger_path,str(self.subprocess.pid),str(ready),str(blocked),'4'],
-            stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        helper.stdin.write(b'1')
-        helper.stdin.close()
-        deadline=time.monotonic()+8
-        while not ready.exists() and time.monotonic()<deadline:
-            await asyncio.sleep(.01)
-        assert ready.exists(), 'Real native-exit observer did not attach'
-        attachment=json.loads(ready.read_text())
-        assert 'error' not in attachment,attachment
-        control=observed.with_suffix('.ack-control.json')
-        temporary=control.with_suffix('.new')
-        temporary.write_text(json.dumps({
-            'browser_pid':self.subprocess.pid,
-            'browser_created':psutil.Process(self.subprocess.pid).create_time(),
-            'helper_pid':helper.pid,'worker_pid':os.getpid(),'release_delay':4}))
-        temporary.replace(control)
     return result
 async def written(self,specs,*args,**kwargs):
     result=await original_write(self,specs,*args,**kwargs)
@@ -197,7 +173,7 @@ async def written(self,specs,*args,**kwargs):
     if mode=='invalid_page': Path(specs[0]['path']).write_bytes(b'invalid PDF')
     return result
 async def closed(self,*args,**kwargs):
-    global failed_channel,slow_shutdown_armed,acknowledged_exit_armed
+    global failed_channel,slow_shutdown_armed
     if mode=='termination_error':
         result=await original_close(self,*args,**kwargs)
         print('PDF close control: actual browser close returned',file=sys.stderr,flush=True)
@@ -336,33 +312,57 @@ else:
         import ctypes
         from ctypes import wintypes
         native=[]
+        external=[]
         actual_observe=_pdf_process._OwnedProcesses.observe
         actual_terminate=_pdf_process._OwnedProcesses.terminate
         def retain_actual_browser_handle(self):
             actual_observe(self)
-            control=observed.with_suffix('.ack-control.json')
-            if native or not control.exists(): return
-            recorded=json.loads(control.read_text())
-            pid=recorded['browser_pid']
-            assert psutil.Process(pid).create_time()==recorded['browser_created']
+            if native or not observed.exists(): return
+            try: recorded=json.loads(observed.read_text())
+            except json.JSONDecodeError: return
+            pid=int(next(iter(recorded)))
+            assert psutil.Process(pid).create_time()==recorded[str(pid)]
             handle=self.job.api.OpenProcess(0x00101000,False,pid)
             if not handle: raise ctypes.WinError(ctypes.get_last_error())
             member=wintypes.BOOL()
             self.job._check(self.job.api.IsProcessInJob(handle,self.job.handle,ctypes.byref(member)))
             assert member.value, 'The actual browser must belong to the renderer job'
             native.append((pid,handle))
-        def record_native_exit_before_forced_cleanup(self):
+            ready=observed.with_suffix('.ack-debugger-ready.json')
+            blocked=observed.with_suffix('.ack-kernel-exit.json')
+            debugger=subprocess.Popen(
+                [sys.executable,sys.argv[5],str(pid),str(ready),str(blocked),'9'],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            external.append(debugger)
+            witness=self.job.api.OpenProcess(0x00101000,False,debugger.pid)
+            if not witness: raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                outside=wintypes.BOOL()
+                self.job._check(self.job.api.IsProcessInJob(witness,self.job.handle,ctypes.byref(outside)))
+                assert not outside.value, 'Native I/O witness must remain outside renderer ownership'
+            finally: self.job.api.CloseHandle(witness)
+            observed.with_suffix('.ack-control.json').write_text(json.dumps({
+                'browser_pid':pid,'debugger_pid':debugger.pid,'outside_renderer_job':True,
+                'release_delay':9}))
+            debugger.stdin.write(b'1')
+            debugger.stdin.close()
+        def record_native_exit_around_forced_cleanup(self):
             assert native, 'No actual browser handle retained'
             pid,handle=native[0]
-            code=wintypes.DWORD()
-            self.job._check(self.job.api.GetExitCodeProcess(handle,ctypes.byref(code)))
-            observation={'pid':pid,'native_wait_result':self.job.api.WaitForSingleObject(handle,0),
-                         'exit_code':code.value}
-            observed.with_suffix('.ack-before-cleanup.json').write_text(json.dumps(observation))
-            try: return actual_terminate(self)
-            finally: self.job.api.CloseHandle(handle)
+            returned=False
+            try:
+                result=actual_terminate(self)
+                returned=True
+                return result
+            finally:
+                code=wintypes.DWORD()
+                self.job._check(self.job.api.GetExitCodeProcess(handle,ctypes.byref(code)))
+                observed.with_suffix('.ack-after-cleanup.json').write_text(json.dumps({
+                    'pid':pid,'native_wait_result':self.job.api.WaitForSingleObject(handle,0),
+                    'exit_code':code.value,'cleanup_returned':returned}))
+                self.job.api.CloseHandle(handle)
         _pdf_process._OwnedProcesses.observe=retain_actual_browser_handle
-        _pdf_process._OwnedProcesses.terminate=record_native_exit_before_forced_cleanup
+        _pdf_process._OwnedProcesses.terminate=record_native_exit_around_forced_cleanup
     if mode=='job_dependency':
         import ctypes
         from ctypes import wintypes
@@ -738,6 +738,9 @@ try:
         assert observation['browser_close_sent'],'Graceful fallback did not transmit Browser.close'
         cleanup=json.loads(observed.with_suffix('.slow-termination.json').read_text())
         assert cleanup['owned_cleanup_returned'],'Owned process cleanup did not finish'
+    if mode=='acknowledged_native_exit':
+        assert len(external)==1
+        assert external[0].wait(timeout=5)==0, 'Renderer cleanup killed the external native witness'
     assert originals==[figure.to_json() for figure in figures]
     if mode=='unresponsive_startup':
         assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}
@@ -1036,38 +1039,30 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
 @pytest.mark.skipif(
     sys.platform != "win32", reason="Actual Windows acknowledged native exit required"
 )
-def test_acknowledged_native_exit_finishes_before_forced_job_cleanup(tmp_path):
+def test_acknowledged_native_exit_finishes_within_original_cleanup_budget(tmp_path):
     pytest.importorskip("kaleido")
     pytest.importorskip("pypdf")
     target = tmp_path / "report.pdf"
     debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
-    error = None
-    result = None
-    try:
-        result = _run_pdf_probe(
-            _PROBE, ["acknowledged_native_exit", str(target), "0", ".1", debugger]
-        )
-    except AssertionError as failure:
-        error = failure
-    before = json.loads(target.with_suffix(".processes.ack-before-cleanup.json").read_text())
+    result = _run_pdf_probe(_PROBE, ["acknowledged_native_exit", str(target), "0", ".1", debugger])
     held = json.loads(target.with_suffix(".processes.ack-kernel-exit.json").read_text())
-    assert held["wait_result"] == 258, "The real native-exit control was not pending"
+    terminal = json.loads(target.with_suffix(".processes.ack-after-cleanup.json").read_text())
     acknowledged = json.loads(target.with_suffix(".processes.graceful.json").read_text())
-    assert acknowledged == {"browser_close": True}
-    assert held["pid"] == before["pid"]
-    assert before["native_wait_result"] == 0, (
-        "Acknowledged browser exit remained pending before forced job cleanup",
-        before,
-        held,
-    )
-    assert error is None, str(error)
+    control = json.loads(target.with_suffix(".processes.ack-control.json").read_text())
     released = json.loads(
         target.with_suffix(".processes.ack-kernel-exit.released.json").read_text()
     )
-    assert released["held_seconds"] >= 4
+    assert held["wait_result"] == 258, "The real native-exit control was not pending"
+    assert held["pid"] == terminal["pid"] == control["browser_pid"]
+    assert acknowledged == {"browser_close": True}
+    assert control["outside_renderer_job"] and control["release_delay"] == 9
+    assert released["held_seconds"] >= 9
+    assert terminal["native_wait_result"] == 0 and terminal["cleanup_returned"]
     attachment = json.loads(target.with_suffix(".processes.ack-debugger-ready.json").read_text())
     assert "error" not in attachment, attachment
-    assert result is not None and result["running"] == [] and result["neighbor_alive"]
+    assert result["running"] == [] and result["neighbor_alive"]
+    assert result["observed_pipe_channels"] == 1
+    assert result["successful_owned_pipe_closes"] == [1, 1, 1, 1]
 
 
 @pytest.mark.skipif(
