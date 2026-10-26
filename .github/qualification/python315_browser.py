@@ -51,8 +51,7 @@ with sync_playwright() as runtime:
 required = json.loads(Path(".github/qualification/python315-browser-cases.json").read_text())
 expected = set(required["required_cases"])
 assert len(expected) == 127
-modules = sorted({case.split("::")[0] for case in expected})
-modules += [
+pdf_paths = [
     "tests/test_contract/test_pdf_collection_lifecycle.py",
     "tests/test_visualization/test_pdf_report_lifecycle.py",
     "tests/test_visualization/test_pdf_process_ownership.py",
@@ -76,6 +75,8 @@ identity = {
 code = pytest.main(
     [
         "--noconftest",
+        "--rootdir",
+        str(Path.cwd()),
         "-c",
         "/dev/null",
         "-p",
@@ -90,12 +91,14 @@ code = pytest.main(
         str(output / mode),
         "--junitxml",
         str(report),
-        *modules,
+        *sorted(expected),
+        *pdf_paths,
     ]
 )
 if code:
     raise SystemExit(code)
 cases = list(ET.parse(report).iter("testcase"))
+assert len(cases) == 227
 actual = {c.get("classname").replace(".", "/") + ".py::" + c.get("name"): c for c in cases}
 assert expected <= actual.keys(), sorted(expected - actual.keys())
 for name in expected:
@@ -107,4 +110,19 @@ for case in cases:
     assert skipped is None or not any(
         word in skipped.get("message", "").lower() for word in ("chrome", "chromium", "playwright")
     ), (case.get("name"), skipped.get("message"))
-print("Qualified all127 formerly omitted real browser cases and complete PDF modules", mode)
+pdf_modules = [module.removesuffix(".py").replace("/", ".") for module in pdf_paths]
+pdf_cases = [
+    case
+    for case in cases
+    if any(case.attrib["classname"].startswith(module) for module in pdf_modules)
+]
+assert len(pdf_cases) == 100
+for case in pdf_cases:
+    skipped = case.find("skipped")
+    if skipped is not None:
+        message = skipped.get("message", "")
+        if sys.platform == "win32":
+            assert "POSIX" in message, (case.get("name"), message)
+        else:
+            assert "Windows" in message, (case.get("name"), message)
+print("Qualified all127 formerly omitted real browser cases and complete100-case PDF modules", mode)
