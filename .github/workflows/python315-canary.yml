@@ -240,6 +240,11 @@ jobs:
           git merge-base --is-ancestor "$QUALIFIED_NATIVE_REVISION" HEAD
           git diff --exit-code "$QUALIFIED_NATIVE_REVISION" HEAD -- src tests scripts pyproject.toml uv.lock
       - run: uv build --out-dir artifacts/canonical
+      - name: Verify both canonical artifact metadata envelopes
+        run: >-
+          uv run --isolated --no-project --with packaging
+          python scripts/verify_release_artifacts.py artifacts/canonical
+          --expected-version 0.3.0.dev0
       - name: Bind the actual archives to the qualified wheel and Git modules
         run: |
           uv run --isolated --no-project python - <<'PYTHON'
@@ -308,7 +313,7 @@ jobs:
             uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
               --with "$artifact[viz]" --with pytest --with pytest-timeout --with nbclient --with ipykernel \
               python -I - "$format" <<'PYTHON'
-          import hashlib, importlib.util, json, platform, sys
+          import hashlib, importlib.util, json, platform, sys, sysconfig
           import xml.etree.ElementTree as ET
           from importlib.metadata import distributions
           from pathlib import Path
@@ -316,6 +321,7 @@ jobs:
           import ml4t.diagnostic as diagnostic
           import pytest
           assert sys.version_info[:2] == (3, 15) and sys.version_info.releaselevel == "final"
+          assert not sysconfig.get_config_var("Py_GIL_DISABLED")
           assert diagnostic.__version__ == "0.3.0.dev0"
           assert not Path(diagnostic.__file__).resolve().is_relative_to(Path.cwd())
           assert all(importlib.util.find_spec(n) is None for n in ("pyfolio", "empyrical", "alphalens", "zipline", "ml4t.data", "ml4t.engineer", "ml4t.backtest"))
