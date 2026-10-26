@@ -157,9 +157,32 @@ if mode=='unresponsive_startup':
         return result
     Browser.populate_targets=populate
 async def opened(self,*args,**kwargs):
+    global acknowledged_exit_armed
     await asyncio.sleep(startup_delay)
     result=await original_open(self,*args,**kwargs)
     snapshot(self)
+    if mode=='acknowledged_native_exit' and not acknowledged_exit_armed:
+        acknowledged_exit_armed=True
+        ready=observed.with_suffix('.ack-debugger-ready.json')
+        blocked=observed.with_suffix('.ack-kernel-exit.json')
+        helper=subprocess.Popen(
+            [sys.executable,debugger_path,str(self.subprocess.pid),str(ready),str(blocked),'4'],
+            stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        helper.stdin.write(b'1')
+        helper.stdin.close()
+        deadline=time.monotonic()+8
+        while not ready.exists() and time.monotonic()<deadline:
+            await asyncio.sleep(.01)
+        assert ready.exists(), 'Real native-exit observer did not attach'
+        attachment=json.loads(ready.read_text())
+        assert 'error' not in attachment,attachment
+        control=observed.with_suffix('.ack-control.json')
+        temporary=control.with_suffix('.new')
+        temporary.write_text(json.dumps({
+            'browser_pid':self.subprocess.pid,
+            'browser_created':psutil.Process(self.subprocess.pid).create_time(),
+            'helper_pid':helper.pid,'worker_pid':os.getpid(),'release_delay':4}))
+        temporary.replace(control)
     return result
 async def written(self,specs,*args,**kwargs):
     result=await original_write(self,specs,*args,**kwargs)
@@ -181,7 +204,7 @@ async def closed(self,*args,**kwargs):
         return result
     if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
         failed_channel=self._channel
-    snapshot(self)
+    if mode!='acknowledged_native_exit': snapshot(self)
     if mode=='pipe_number_reuse':
         await original_close(self,*args,**kwargs)
         old_numbers={getattr(failed_channel,name) for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser')}
@@ -294,30 +317,7 @@ async def closed(self,*args,**kwargs):
                 'worker_pid':os.getpid(),'browser_pid':browser.pid,'helper_pid':helper.pid,
                 'helper_created':psutil.Process(helper.pid).create_time()}))
         await asyncio.sleep(3600)
-    if mode=='acknowledged_native_exit':
-        if not acknowledged_exit_armed:
-            acknowledged_exit_armed=True
-            ready=observed.with_suffix('.ack-debugger-ready.json')
-            blocked=observed.with_suffix('.ack-kernel-exit.json')
-            helper=subprocess.Popen(
-                [sys.executable,debugger_path,str(self.subprocess.pid),str(ready),str(blocked),'4'],
-                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            helper.stdin.write(b'1')
-            helper.stdin.close()
-            deadline=time.monotonic()+8
-            while not ready.exists() and time.monotonic()<deadline:
-                await asyncio.sleep(.01)
-            assert ready.exists(), 'Real native-exit observer did not attach'
-            attachment=json.loads(ready.read_text())
-            assert 'error' not in attachment,attachment
-            control=observed.with_suffix('.ack-control.json')
-            temporary=control.with_suffix('.new')
-            temporary.write_text(json.dumps({
-                'browser_pid':self.subprocess.pid,
-                'browser_created':psutil.Process(self.subprocess.pid).create_time(),
-                'helper_pid':helper.pid,'worker_pid':os.getpid(),'release_delay':4}))
-            temporary.replace(control)
-        await asyncio.sleep(3600)
+    if mode=='acknowledged_native_exit': await asyncio.sleep(3600)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
 kaleido.Kaleido.open=opened
