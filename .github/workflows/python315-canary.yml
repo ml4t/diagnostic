@@ -106,6 +106,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install libomp
       - name: Install the actual supported candidate without overriding Python metadata
+        id: environment
         shell: bash
         run: |
           uv sync --frozen --python "${{ steps.python.outputs.python-path }}" --dev --extra ml --extra viz --extra perf
@@ -113,6 +114,7 @@ jobs:
           uv run --no-sync python -m playwright install --with-deps chromium
           uv run --no-sync python -c 'from pathlib import Path; Path("artifacts/python315").mkdir(parents=True)'
       - name: Build and verify the exact experimental wheel and source archive
+        id: artifacts
         shell: bash
         run: |
           uv build --out-dir artifacts/python315/dist
@@ -144,7 +146,7 @@ jobs:
           uv run --no-sync python -m pytest tests/ -q -n 2 --timeout 120
           --junitxml=artifacts/python315/native.xml
       - name: Run the full isolated installed-wheel suite
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && steps.artifacts.outcome == 'success' }}
         shell: bash
         run: |
           wheel=$(find artifacts/python315/dist -name '*.whl' -print -quit)
@@ -152,7 +154,7 @@ jobs:
             --with-requirements artifacts/python315/requirements.txt --with "$wheel[ml,viz,perf]" \
             python -I -c "import os,sys,json,platform,pytest; from pathlib import Path; from importlib.metadata import distributions; from packaging.specifiers import SpecifierSet; import ml4t.diagnostic as d; unsupported={dist.metadata['Name']:dist.metadata['Requires-Python'] for dist in distributions() if dist.metadata.get('Requires-Python') and not SpecifierSet(dist.metadata['Requires-Python']).contains(platform.python_version(), prereleases=True)}; Path('artifacts/python315/installed-python-bounds.json').write_text(json.dumps(unsupported,indent=2)); assert not unsupported, unsupported; assert sys.version_info[:2]==(3,15) and d.__version__=='0.3.0.dev0'; assert not Path(d.__file__).resolve().is_relative_to(Path(os.environ['GITHUB_WORKSPACE']).resolve()); print('Installed wheel:', d.__version__, d.__file__, sys.version); raise SystemExit(pytest.main(['tests/', '-q', '-n', '2', '--timeout', '120', '--junitxml=artifacts/python315/installed.xml']))"
       - name: Execute all five originals and PDF controls from both installed formats without Reloaded
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && steps.artifacts.outcome == 'success' }}
         shell: bash
         env:
           ML4T_REQUIRED_PYFOLIO_NOTEBOOKS: "all"
@@ -164,7 +166,7 @@ jobs:
               python -I -c "import os,sys,importlib.util,pytest; from pathlib import Path; import ml4t.diagnostic as d; assert sys.version_info[:2]==(3,15) and d.__version__=='0.3.0.dev0'; assert not Path(d.__file__).resolve().is_relative_to(Path(os.environ['GITHUB_WORKSPACE']).resolve()); assert all(importlib.util.find_spec(n) is None for n in ('pyfolio','empyrical','alphalens','zipline','ml4t.data','ml4t.engineer','ml4t.backtest')); print('Installed format:', '$format', d.__file__); raise SystemExit(pytest.main(['--noconftest', '-o', 'addopts=', '-p', 'no:cacheprovider', '-q', '--timeout', '120', '--junitxml=artifacts/python315/originals-$format.xml', 'tests/test_compat/test_pyfolio_notebook_migration.py', 'tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_can_finish_without_a_second_load_event', 'tests/test_visualization/test_pdf_process_ownership.py::test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready', 'tests/test_visualization/test_pdf_process_ownership.py::test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly', '-k', 'not portable_original_capture_preserves_actual_producer_output']))"
           done
       - name: Exercise the installed all-extra package with actual published producers
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && steps.artifacts.outcome == 'success' }}
         shell: bash
         env:
           ML4T_ACQUISITION_CAPTURE_DIRECTORY: ${{ github.workspace }}/tests/fixtures/acquisition
@@ -176,7 +178,7 @@ jobs:
             --with pytest --with playwright \
             python -I -c "import sys,json,platform,pytest; from pathlib import Path; from importlib.metadata import metadata; from packaging.specifiers import SpecifierSet; peers=['ml4t-diagnostic','ml4t-data','ml4t-engineer','ml4t-backtest']; bounds={name:metadata(name).get('Requires-Python','') for name in peers}; Path('artifacts/python315/producer-python-bounds.json').write_text(json.dumps(bounds,indent=2)); unsupported={name:value for name,value in bounds.items() if value and not SpecifierSet(value).contains(platform.python_version(),prereleases=True)}; assert not unsupported, unsupported; assert sys.version_info[:2]==(3,15); raise SystemExit(pytest.main(['--noconftest', '-o', 'addopts=', '-p', 'no:cacheprovider', '-q', '--junitxml=artifacts/python315/producers.xml', 'tests/test_integration/test_producer_report_journeys.py', 'tests/test_compat/test_acquisition_recipe.py', '-k', 'not dated_rf_recipe_matches_actual_published_empyrical']))"
       - name: Require the complete native, installed and migration outcomes
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && steps.artifacts.outcome == 'success' }}
         shell: bash
         run: |
           uv run --no-sync python - <<'PYTHON'
@@ -200,7 +202,7 @@ jobs:
           PYTHON
 
       - name: Audit the full declared dependency graph without bypassing hashes
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
         shell: bash
         run: |
           uv export --frozen --all-extras --no-dev --no-emit-project --output-file artifacts/python315/requirements-audit.txt
