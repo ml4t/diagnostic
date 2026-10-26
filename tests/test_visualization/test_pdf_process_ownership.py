@@ -1430,6 +1430,61 @@ choreographer.Tab.send_command=command
     assert figure.to_json() == original
 
 
+def test_loaded_renderer_document_can_finish_without_a_second_load_event(tmp_path, monkeypatch):
+    pytest.importorskip("kaleido")
+    pypdf = pytest.importorskip("pypdf")
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    marker = tmp_path / "actual-same-document-navigation.json"
+    patch = r"""
+import asyncio,json,choreographer,kaleido
+from pathlib import Path
+marker=Path(MARKER)
+original_command=choreographer.Tab.send_command
+original_populate=kaleido.Kaleido.populate_targets
+async def populate(self):
+    self._index=str(self._index)+'#diagnostic-ready'
+    return await original_populate(self)
+kaleido.Kaleido.populate_targets=populate
+original_create=choreographer.Browser.create_tab
+async def create(self,*args,**kwargs):
+    tab=await original_create(self,*args,**kwargs)
+    await original_command(tab,'Page.enable')
+    loaded=tab.subscribe_once('Page.loadEventFired')
+    await original_command(tab,'Page.navigate',params={'url':str(self._index).split('#',1)[0]})
+    await asyncio.wait_for(loaded,10)
+    marker.write_text(json.dumps({'initial_document_loaded':True}))
+    return tab
+choreographer.Browser.create_tab=create
+async def command(self,method,*args,**kwargs):
+    response=await original_command(self,method,*args,**kwargs)
+    if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
+        observation=json.loads(marker.read_text())
+        observation.update({'same_document_navigation':'loaderId' not in response.get('result',{}),
+            'response':response})
+        marker.write_text(json.dumps(observation))
+    return response
+choreographer.Tab.send_command=command
+""".replace("MARKER", repr(str(marker)))
+    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
+    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 15)
+    monkeypatch.setattr(pio.defaults, "mathjax", False)
+    figure = go.Figure(go.Scatter(x=[1, 2], y=[1, 3]))
+    figure.update_layout(title="Loaded renderer without another load event")
+    original = figure.to_json()
+    output = export_figures_to_pdf([figure], tmp_path / "same-document.pdf", scale=1)
+    observation = json.loads(marker.read_text())
+    assert observation["initial_document_loaded"] and observation["same_document_navigation"]
+    pages = pypdf.PdfReader(output).pages
+    assert (
+        len(pages) == 1 and "Loaded renderer without another load event" in pages[0].extract_text()
+    )
+    assert figure.to_json() == original
+
+
 def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_path, monkeypatch):
     import threading
     import time
