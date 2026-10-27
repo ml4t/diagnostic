@@ -1,8 +1,7 @@
 # Book Guide
 
 The public *Machine Learning for Trading, Third Edition* companion shows
-Diagnostic in longer research workflows. The links below point to notebooks
-at book commit [`2d6e8f95eeccaee66906245606471f570b5807e5`](https://github.com/stefan-jansen/machine-learning-for-trading/tree/2d6e8f95eeccaee66906245606471f570b5807e5).
+Diagnostic in longer research workflows.
 All selected notebooks directly call `ml4t.diagnostic`; some also teach the
 underlying method manually. The complete book workflows may require data and
 optional packages beyond the [synthetic quickstart](../getting-started/quickstart.md).

@@ -64,7 +64,7 @@ The package separates four stages of analysis:
 3. Backtest analysis applies DSR, PBO, RAS, FDR control, and trade-level diagnostics.
 4. Portfolio analysis measures returns, drawdowns, risk, and factor attribution.
 
-The [API reference](api/index.md) lists exact public imports. The
+The [API reference](api/index.md) lists functions, classes, and parameters. The
 [book guide](book-guide/index.md) maps the library to *Machine Learning for
 Trading, Third Edition*.
 
