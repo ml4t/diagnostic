@@ -74,6 +74,14 @@ if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown
             return [cli[0],'-c',direct,*cli[2:]]
         Chromium.get_cli=direct_browser_cli
 async def command(self,command,*args,**kwargs):
+    if command=='Browser.close' and mode=='acknowledged_native_exit':
+        original_request_write=self._channel.write_json
+        def record_actual_close_request(message):
+            result=original_request_write(message)
+            if message.get('method')=='Browser.close':
+                observed.with_suffix('.graceful-request.json').write_text(json.dumps({'browser_close_sent':True}))
+            return result
+        self._channel.write_json=record_actual_close_request
     if command=='Browser.close' and mode=='close_command_hang_slow_shutdown':
         browser=psutil.Process(self.subprocess.pid)
         browser.suspend()
@@ -96,6 +104,8 @@ async def command(self,command,*args,**kwargs):
             try: await pending
             except (Exception,asyncio.CancelledError): pass
     result=await original_command(self,command,*args,**kwargs)
+    if command=='Browser.close' and mode=='acknowledged_native_exit':
+        await asyncio.sleep(3600)
     if command=='Browser.close':
         observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
         if mode=='close_command_hang': await asyncio.sleep(3600)
@@ -180,7 +190,7 @@ async def closed(self,*args,**kwargs):
         return result
     if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
         failed_channel=self._channel
-    snapshot(self)
+    if mode!='acknowledged_native_exit': snapshot(self)
     if mode=='pipe_number_reuse':
         await original_close(self,*args,**kwargs)
         old_numbers={getattr(failed_channel,name) for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser')}
@@ -293,6 +303,7 @@ async def closed(self,*args,**kwargs):
                 'worker_pid':os.getpid(),'browser_pid':browser.pid,'helper_pid':helper.pid,
                 'helper_created':psutil.Process(helper.pid).create_time()}))
         await asyncio.sleep(3600)
+    if mode=='acknowledged_native_exit': await asyncio.sleep(3600)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
 kaleido.Kaleido.open=opened
@@ -307,6 +318,61 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='acknowledged_native_exit':
+        import ctypes
+        from ctypes import wintypes
+        native=[]
+        external=[]
+        actual_observe=_pdf_process._OwnedProcesses.observe
+        actual_terminate=_pdf_process._OwnedProcesses.terminate
+        def retain_actual_browser_handle(self):
+            actual_observe(self)
+            if native or not observed.exists(): return
+            try: recorded=json.loads(observed.read_text())
+            except (json.JSONDecodeError,PermissionError): return
+            pid=int(next(iter(recorded)))
+            assert psutil.Process(pid).create_time()==recorded[str(pid)]
+            handle=self.job.api.OpenProcess(0x00101000,False,pid)
+            if not handle: raise ctypes.WinError(ctypes.get_last_error())
+            member=wintypes.BOOL()
+            self.job._check(self.job.api.IsProcessInJob(handle,self.job.handle,ctypes.byref(member)))
+            assert member.value, 'The actual browser must belong to the renderer job'
+            native.append((pid,handle))
+            ready=observed.with_suffix('.ack-debugger-ready.json')
+            blocked=observed.with_suffix('.ack-kernel-exit.json')
+            debugger=subprocess.Popen(
+                [sys.executable,sys.argv[5],str(pid),str(ready),str(blocked),'30'],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            external.append(debugger)
+            witness=self.job.api.OpenProcess(0x00101000,False,debugger.pid)
+            if not witness: raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                outside=wintypes.BOOL()
+                self.job._check(self.job.api.IsProcessInJob(witness,self.job.handle,ctypes.byref(outside)))
+                assert not outside.value, 'Native I/O witness must remain outside renderer ownership'
+            finally: self.job.api.CloseHandle(witness)
+            observed.with_suffix('.ack-control.json').write_text(json.dumps({
+                'browser_pid':pid,'debugger_pid':debugger.pid,'outside_renderer_job':True,
+                'release_delay':30}))
+            debugger.stdin.write(b'1')
+            debugger.stdin.close()
+        def record_native_exit_around_forced_cleanup(self):
+            assert native, 'No actual browser handle retained'
+            pid,handle=native[0]
+            returned=False
+            try:
+                result=actual_terminate(self)
+                returned=True
+                return result
+            finally:
+                code=wintypes.DWORD()
+                self.job._check(self.job.api.GetExitCodeProcess(handle,ctypes.byref(code)))
+                observed.with_suffix('.ack-after-cleanup.json').write_text(json.dumps({
+                    'pid':pid,'native_wait_result':self.job.api.WaitForSingleObject(handle,0),
+                    'exit_code':code.value,'cleanup_returned':returned}))
+                self.job.api.CloseHandle(handle)
+        _pdf_process._OwnedProcesses.observe=retain_actual_browser_handle
+        _pdf_process._OwnedProcesses.terminate=record_native_exit_around_forced_cleanup
     if mode=='job_dependency':
         import ctypes
         from ctypes import wintypes
@@ -633,7 +699,7 @@ try:
         expected_render_error={'type':type(error).__name__,'message':str(error),
                                'notes':list(getattr(error,'__notes__',[]))}
         observed.with_suffix('.error.json').write_text(json.dumps(expected_render_error))
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'): raise
+        if mode in ('acknowledged_native_exit','close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode in ('exit7','profile_readonly','job_dependency'): assert 'code 7' in str(error),repr(error)
@@ -668,7 +734,7 @@ try:
             assert "'phase': 'closed'" in notes and "'completed': 2" in notes,notes
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'), 'Rendering defect was swallowed'
+        assert mode in ('acknowledged_native_exit','close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -682,6 +748,9 @@ try:
         assert observation['browser_close_sent'],'Graceful fallback did not transmit Browser.close'
         cleanup=json.loads(observed.with_suffix('.slow-termination.json').read_text())
         assert cleanup['owned_cleanup_returned'],'Owned process cleanup did not finish'
+    if mode=='acknowledged_native_exit':
+        assert len(external)==1
+        assert external[0].wait(timeout=5)==0, 'Renderer cleanup killed the external native witness'
     assert originals==[figure.to_json() for figure in figures]
     if mode=='unresponsive_startup':
         assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}
@@ -975,6 +1044,184 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual inherited Windows pipe I/O required")
+def test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read(tmp_path):
+    import ctypes
+    import threading
+    import time
+    import types
+    from ctypes import wintypes
+
+    pytest.importorskip("kaleido")
+    from choreographer.channels import Pipe
+
+    from ml4t.diagnostic.visualization._pdf_worker import _PageEventsKaleido
+
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    api.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    api.OpenThread.restype = wintypes.HANDLE
+    api.GetThreadIOPendingFlag.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+    api.GetThreadIOPendingFlag.restype = wintypes.BOOL
+    api.CloseHandle.argtypes = [wintypes.HANDLE]
+    api.CloseHandle.restype = wintypes.BOOL
+
+    def exercise(directory, *, restore_vendor_mode_change=False):
+        directory.mkdir()
+        renderer = _PageEventsKaleido(n=1, timeout=90)
+        channel = renderer._channel
+        if restore_vendor_mode_change:
+            channel._unblock_fd = types.MethodType(Pipe._unblock_fd, channel)
+        renderer._browser_impl.pre_open()
+        cli = renderer._browser_impl.get_cli()
+        handles = next(arg for arg in cli if arg.startswith("--remote-debugging-io-pipes="))
+        inherited_read = handles.split("=", 1)[1].split(",", 1)[0]
+        ready = directory / "peer.json"
+        code = """
+import _winapi,ctypes,json,sys,threading,time
+from ctypes import wintypes
+from pathlib import Path
+api=ctypes.WinDLL('kernel32',use_last_error=True)
+api.OpenThread.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.DWORD]
+api.OpenThread.restype=wintypes.HANDLE
+api.GetThreadIOPendingFlag.argtypes=[wintypes.HANDLE,ctypes.POINTER(wintypes.BOOL)]
+api.GetThreadIOPendingFlag.restype=wintypes.BOOL
+api.CloseHandle.argtypes=[wintypes.HANDLE]
+tid=threading.get_native_id()
+def notify_actual_read():
+    handle=api.OpenThread(0x0040,False,tid)
+    if not handle: raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        pending=wintypes.BOOL()
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline:
+            if not api.GetThreadIOPendingFlag(handle,ctypes.byref(pending)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if pending.value:
+                ready=Path(sys.argv[2])
+                temporary=ready.with_suffix('.new')
+                temporary.write_text(json.dumps({'tid':tid,'actual_read_pending':True}))
+                temporary.replace(ready)
+                return
+            time.sleep(.01)
+        raise RuntimeError('Native peer read never became pending')
+    finally:
+        api.CloseHandle(handle)
+threading.Thread(target=notify_actual_read,daemon=True).start()
+try:
+    value,error=_winapi.ReadFile(int(sys.argv[1]),1)
+except OSError as error:
+    result={'read':'','error':error.winerror}
+else:
+    result={'read':value.hex(),'error':error}
+print(json.dumps(result),flush=True)
+"""
+        peer = subprocess.Popen(
+            [sys._base_executable, "-I", "-c", code, inherited_read, str(ready)],
+            close_fds=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        thread_handle = None
+        closer = None
+        errors = []
+        try:
+            deadline = time.monotonic() + 5
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert ready.exists(), "Actual inherited pipe peer never started"
+            tid = json.loads(ready.read_text())["tid"]
+            thread_handle = api.OpenThread(0x0040, False, tid)
+            if not thread_handle:
+                raise ctypes.WinError(ctypes.get_last_error())
+            pending = wintypes.BOOL()
+            while time.monotonic() < deadline:
+                if not api.GetThreadIOPendingFlag(thread_handle, ctypes.byref(pending)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if pending.value:
+                    break
+                time.sleep(0.01)
+            assert pending.value and peer.poll() is None, (
+                "Peer did not enter actual pending ReadFile"
+            )
+            channel.open()
+
+            def close_actual_channel():
+                try:
+                    channel.close()
+                except BaseException as error:
+                    errors.append(repr(error))
+
+            closer = threading.Thread(target=close_actual_channel, daemon=True)
+            closer.start()
+            closer.join(timeout=1)
+            blocked = closer.is_alive()
+            if blocked:
+                if not api.GetThreadIOPendingFlag(thread_handle, ctypes.byref(pending)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                assert pending.value, "Shutdown delay was not the real pending peer read"
+                os.write(channel._write_to_browser, b"x")
+            closer.join(timeout=5)
+            assert not closer.is_alive() and not errors, errors
+            output, stderr = peer.communicate(timeout=5)
+            assert peer.returncode == 0, stderr
+            result = {
+                "blocked_until_peer_input": blocked,
+                "initial_native_io_pending": True,
+                "peer_result": json.loads(output),
+                "restored_vendor_mode": restore_vendor_mode_change,
+            }
+            (directory / "result.json").write_text(json.dumps(result))
+            return result
+        finally:
+            if peer.poll() is None:
+                peer.kill()
+            peer.wait(timeout=5)
+            if closer is not None:
+                closer.join(timeout=5)
+            if thread_handle:
+                api.CloseHandle(thread_handle)
+            channel.close()
+            renderer._browser_impl.clean()
+
+    actual = exercise(tmp_path / "actual")
+    assert not actual["blocked_until_peer_input"], (
+        "Inherited browser pipe mode change blocked shutdown while its actual peer read was pending"
+    )
+    assert actual["peer_result"] == {"read": "", "error": 109}
+    restored = exercise(tmp_path / "restored", restore_vendor_mode_change=True)
+    assert restored["blocked_until_peer_input"]
+    assert restored["peer_result"] == {"read": "78", "error": 0}
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual Windows acknowledged native exit required"
+)
+def test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    previous = b"Existing report must survive externally blocked native exit"
+    target.write_bytes(previous)
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    with pytest.raises(AssertionError, match="not terminal after job termination.*wait result 258"):
+        _run_pdf_probe(_PROBE, ["acknowledged_native_exit", str(target), "0", ".1", debugger])
+    held = json.loads(target.with_suffix(".processes.ack-kernel-exit.json").read_text())
+    terminal = json.loads(target.with_suffix(".processes.ack-after-cleanup.json").read_text())
+    request = json.loads(target.with_suffix(".processes.graceful-request.json").read_text())
+    control = json.loads(target.with_suffix(".processes.ack-control.json").read_text())
+    attachment = json.loads(target.with_suffix(".processes.ack-debugger-ready.json").read_text())
+    assert held["wait_result"] == terminal["native_wait_result"] == 258
+    assert held["pid"] == terminal["pid"] == control["browser_pid"]
+    assert not terminal["cleanup_returned"]
+    assert request == {"browser_close_sent": True}
+    with pytest.raises(FileNotFoundError):
+        target.with_suffix(".processes.graceful.json").read_text()
+    assert control["outside_renderer_job"] and control["release_delay"] == 30
+    assert "error" not in attachment, attachment
+    assert target.read_bytes() == previous
 
 
 @pytest.mark.skipif(
@@ -1509,9 +1756,12 @@ kaleido.Kaleido.populate_targets=populate
 original_create=choreographer.Browser.create_tab
 async def create(self,*args,**kwargs):
     tab=await original_create(self,*args,**kwargs)
+    marker.write_text(json.dumps({'stage':'target_created'}))
     await original_command(tab,'Page.enable')
+    marker.write_text(json.dumps({'stage':'page_enabled'}))
     loaded=tab.subscribe_once('Page.loadEventFired')
     await original_command(tab,'Page.navigate',params={'url':str(self._index).split('#',1)[0]})
+    marker.write_text(json.dumps({'stage':'preload_navigation_sent'}))
     await asyncio.wait_for(loaded,10)
     marker.write_text(json.dumps({'initial_document_loaded':True}))
     return tab
@@ -1526,7 +1776,13 @@ async def command(self,method,*args,**kwargs):
     return response
 choreographer.Tab.send_command=command
 """.replace("MARKER", repr(str(marker)))
-    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
+    monkeypatch.setattr(
+        _pdf_process,
+        "_BOOTSTRAP",
+        patch
+        + "\n"
+        + _pdf_process._BOOTSTRAP.replace("diagnostic_stop.wait(20)", "diagnostic_stop.wait(5)"),
+    )
     monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 15)
     monkeypatch.setattr(pio.defaults, "mathjax", False)
     figure = go.Figure(go.Scatter(x=[1, 2], y=[1, 3]))
