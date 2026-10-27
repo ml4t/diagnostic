@@ -125,7 +125,7 @@ jobs:
             uv run --isolated --no-project --python "$UV_PYTHON" --with "$wheel[viz]" \
               --with choreographer==1.4.0 --with kaleido==1.5.0 \
               --with pytest --with pytest-timeout python -I - "$variant" <<'PYTHON'
-          import hashlib, io, json, os, subprocess, sys, tarfile
+          import hashlib, io, json, os, subprocess, sys, tarfile, time
           import xml.etree.ElementTree as ET
           from importlib.metadata import version
           from pathlib import Path
@@ -141,7 +141,7 @@ jobs:
           assert len(modules) == 358 and all((package / name).read_bytes() == value for name, value in modules.items())
           output = Path("artifacts/native-exit") / variant
           report = output / "regression.xml"
-          (output / "identity.json").write_text(json.dumps({"source_revision": revision, "python_version": sys.version, "platform": sys.platform, "module": str(package), "packages": {name: version(name) for name in ["ml4t-diagnostic", "kaleido", "choreographer", "plotly", "psutil", "pypdf"]}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}, indent=2))
+          (output / "identity.json").write_text(json.dumps({"source_revision": revision, "python_version": sys.version, "platform": sys.platform, "module": str(package), "clocks": {name: vars(time.get_clock_info(name)) for name in ["monotonic", "perf_counter"]}, "packages": {name: version(name) for name in ["ml4t-diagnostic", "kaleido", "choreographer", "plotly", "psutil", "pypdf"]}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}, indent=2))
           code = pytest.main(["--noconftest", "--rootdir", str(Path.cwd()), "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "-s", "--timeout", "120", "--junitxml", str(report), "--basetemp", str(output / "tmp"), "tests/test_visualization/test_pdf_process_ownership.py::test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget", "tests/test_visualization/test_pdf_process_ownership.py::test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read", "tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_setup_does_not_require_a_page_event", "tests/test_visualization/test_pdf_process_ownership.py::test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script"])
           cases = list(ET.parse(report).iter("testcase"))
           assert len(cases) == 4 and all(case.find("skipped") is None for case in cases)

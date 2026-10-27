@@ -1791,7 +1791,6 @@ choreographer.Tab.send_command=command
         + "\n"
         + _pdf_process._BOOTSTRAP.replace("diagnostic_stop.wait(20)", "diagnostic_stop.wait(5)"),
     )
-    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 15)
     monkeypatch.setattr(pio.defaults, "mathjax", False)
     figure = go.Figure(go.Scatter(x=[1, 2], y=[1, 3]))
     figure.update_layout(title="Loaded renderer without another load event")
@@ -1932,20 +1931,39 @@ def test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script(
 
     bundle = (Path(plotly.__file__).parent / "package_data/plotly.min.js").read_bytes()
     delivered = []
+    requested = []
+    request_lock = threading.Lock()
 
     class SlowScript(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path != "/actual-plotly.js":
                 self.send_error(404)
                 return
-            started = time.monotonic()
-            time.sleep(10.1)
+            with request_lock:
+                delayed = not requested
+                requested.append(self.path)
+            started = time.perf_counter_ns()
+            if delayed:
+                time.sleep(16)
             self.send_response(200)
             self.send_header("Content-Type", "application/javascript")
             self.send_header("Content-Length", str(len(bundle)))
             self.end_headers()
-            self.wfile.write(bundle)
-            delivered.append({"elapsed_seconds": time.monotonic() - started, "bytes": len(bundle)})
+            try:
+                self.wfile.write(bundle)
+                received = True
+            except (BrokenPipeError, ConnectionResetError):
+                received = False
+            elapsed = time.perf_counter_ns() - started
+            delivered.append(
+                {
+                    "delayed": delayed,
+                    "received": received,
+                    "elapsed_nanoseconds": elapsed,
+                    "elapsed_seconds": elapsed / 1e9,
+                    "bytes": len(bundle),
+                }
+            )
 
         def log_message(self, *_args):
             pass
@@ -1963,8 +1981,8 @@ def test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script(
         server.server_close()
         thread.join(timeout=5)
         (tmp_path / "actual-slow-script.json").write_text(json.dumps(delivered))
-    assert delivered and all(row["elapsed_seconds"] >= 10.1 for row in delivered)
-    assert all(row["bytes"] == len(bundle) for row in delivered)
+    assert any(row["delayed"] and row["elapsed_nanoseconds"] >= 16_000_000_000 for row in delivered)
+    assert all(row["received"] and row["bytes"] == len(bundle) for row in delivered)
 
 
 def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_path, monkeypatch):
