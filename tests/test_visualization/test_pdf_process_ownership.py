@@ -1772,7 +1772,7 @@ async def command(self,method,*args,**kwargs):
                     if observed['href']==observed['expected_href'] and observed['state']=='complete' and observed['plotly'] and observed['scopes']:
                         return observed,navigation
                 await asyncio.sleep(.05)
-        observed,navigation=await asyncio.wait_for(preload_ready(),10)
+        observed,navigation=await preload_ready()
         marker.write_text(json.dumps({'initial_document_loaded':True,'preload':observed,
             'preload_response':navigation,'preload_navigation_sent':True}))
     response=await original_command(self,method,*args,**kwargs)
@@ -1917,6 +1917,54 @@ choreographer.Tab.send_command=_preload_without_page_events
     assert document["preload"]["state"] == "complete"
     assert document["preload"]["plotly"] and document["preload"]["scopes"]
     assert document["same_document_navigation"]
+
+
+def test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script(
+    tmp_path, monkeypatch
+):
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+
+    plotly = pytest.importorskip("plotly")
+    import plotly.io as pio
+
+    bundle = (Path(plotly.__file__).parent / "package_data/plotly.min.js").read_bytes()
+    delivered = []
+
+    class SlowScript(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/actual-plotly.js":
+                self.send_error(404)
+                return
+            started = time.monotonic()
+            time.sleep(10.1)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", str(len(bundle)))
+            self.end_headers()
+            self.wfile.write(bundle)
+            delivered.append({"elapsed_seconds": time.monotonic() - started, "bytes": len(bundle)})
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), SlowScript)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(
+        pio.defaults, "plotlyjs", f"http://127.0.0.1:{server.server_port}/actual-plotly.js"
+    )
+    try:
+        test_loaded_renderer_document_setup_does_not_require_a_page_event(tmp_path, monkeypatch)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        (tmp_path / "actual-slow-script.json").write_text(json.dumps(delivered))
+    assert delivered and all(row["elapsed_seconds"] >= 10.1 for row in delivered)
+    assert all(row["bytes"] == len(bundle) for row in delivered)
 
 
 def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_path, monkeypatch):
