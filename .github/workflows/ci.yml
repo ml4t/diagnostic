@@ -142,12 +142,13 @@ jobs:
           output = Path("artifacts/native-exit") / variant
           report = output / "regression.xml"
           (output / "identity.json").write_text(json.dumps({"source_revision": revision, "python_version": sys.version, "platform": sys.platform, "module": str(package), "packages": {name: version(name) for name in ["ml4t-diagnostic", "kaleido", "choreographer", "plotly", "psutil", "pypdf"]}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}, indent=2))
-          code = pytest.main(["--noconftest", "--rootdir", str(Path.cwd()), "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "-s", "--timeout", "120", "--junitxml", str(report), "--basetemp", str(output / "tmp"), "tests/test_visualization/test_pdf_process_ownership.py::test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget", "tests/test_visualization/test_pdf_process_ownership.py::test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read"])
+          code = pytest.main(["--noconftest", "--rootdir", str(Path.cwd()), "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "-s", "--timeout", "120", "--junitxml", str(report), "--basetemp", str(output / "tmp"), "tests/test_visualization/test_pdf_process_ownership.py::test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget", "tests/test_visualization/test_pdf_process_ownership.py::test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read", "tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_setup_does_not_require_a_page_event"])
           cases = list(ET.parse(report).iter("testcase"))
-          assert len(cases) == 2 and all(case.find("skipped") is None for case in cases)
+          assert len(cases) == 3 and all(case.find("skipped") is None for case in cases)
           if variant == "base":
               failures = {case.get("name"): case.find("failure") for case in cases}
               assert code == 1 and failures["test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget"] is None
+              assert failures["test_loaded_renderer_document_setup_does_not_require_a_page_event"] is None
               pipe_failure = failures["test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read"]
               assert pipe_failure is not None and "Inherited browser pipe mode change blocked shutdown" in pipe_failure.text
               print("Actual unchanged base reproduced blocked inherited pipe shutdown; external native hold correctly failed closed")
