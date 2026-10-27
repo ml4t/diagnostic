@@ -41,4 +41,5 @@ jobs:
           tests/test_visualization/test_pdf_report_lifecycle.py
           tests/test_visualization/test_pdf_process_ownership.py
           tests/test_visualization/test_report_generation.py
-          -q -s -n 0 --timeout 120 --tb=short
+          tests/test_visualization/test_report_literal_titles.py
+          -v -s -n 0 --timeout 120 --tb=short
