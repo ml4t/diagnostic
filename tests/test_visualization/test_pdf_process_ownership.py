@@ -1753,37 +1753,28 @@ async def populate(self):
     self._index=str(self._index)+'#diagnostic-ready'
     return await original_populate(self)
 kaleido.Kaleido.populate_targets=populate
-original_create=choreographer.Browser.create_tab
-async def create(self,*args,**kwargs):
-    tab=await original_create(self,*args,**kwargs)
-    marker.write_text(json.dumps({'stage':'target_created'}))
-    await original_command(tab,'Page.enable')
-    marker.write_text(json.dumps({'stage':'page_enabled'}))
-    preload_url=str(self._index).split('#',1)[0]
-    expression=("JSON.stringify({href:location.href,expected_href:new URL("+json.dumps(preload_url)+").href,"
-        "state:document.readyState,plotly:typeof Plotly!=='undefined'&&typeof Plotly.newPlot==='function',"
-        "scopes:typeof kaleido_scopes!=='undefined'&&typeof kaleido_scopes.plotly==='function'})")
-    async def preload_ready():
-        navigation=None
-        while True:
-            result=await original_command(tab,'Runtime.evaluate',params={'expression':expression,'returnByValue':True})
-            value=result.get('result',{}).get('result',{}).get('value')
-            if isinstance(value,str):
-                observed=json.loads(value)
-                marker.write_text(json.dumps({'stage':'preload_readiness','observation':observed,'response':navigation}))
-                if observed['href']==observed['expected_href'] and observed['state']=='complete' and observed['plotly'] and observed['scopes']:
-                    return observed,navigation
-            if navigation is None:
-                navigation=await original_command(tab,'Page.navigate',params={'url':preload_url})
-                assert 'result' in navigation and 'error' not in navigation and not navigation['result'].get('errorText'),navigation
-                marker.write_text(json.dumps({'stage':'preload_navigation_sent','response':navigation}))
-            await asyncio.sleep(.05)
-    observed,navigation=await asyncio.wait_for(preload_ready(),10)
-    marker.write_text(json.dumps({'initial_document_loaded':True,'preload':observed,
-        'preload_response':navigation,'preload_navigation_sent':navigation is not None}))
-    return tab
-choreographer.Browser.create_tab=create
 async def command(self,method,*args,**kwargs):
+    if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
+        preload_url=kwargs['params']['url'].split('#',1)[0]
+        expression=("JSON.stringify({href:location.href,expected_href:new URL("+json.dumps(preload_url)+").href,"
+            "state:document.readyState,plotly:typeof Plotly!=='undefined'&&typeof Plotly.newPlot==='function',"
+            "scopes:typeof kaleido_scopes!=='undefined'&&typeof kaleido_scopes.plotly==='function'})")
+        async def preload_ready():
+            navigation=await original_command(self,'Page.navigate',params={'url':preload_url})
+            assert 'result' in navigation and 'error' not in navigation and not navigation['result'].get('errorText'),navigation
+            marker.write_text(json.dumps({'stage':'preload_navigation_sent','response':navigation}))
+            while True:
+                result=await original_command(self,'Runtime.evaluate',params={'expression':expression,'returnByValue':True})
+                value=result.get('result',{}).get('result',{}).get('value')
+                if isinstance(value,str):
+                    observed=json.loads(value)
+                    marker.write_text(json.dumps({'stage':'preload_readiness','observation':observed,'response':navigation}))
+                    if observed['href']==observed['expected_href'] and observed['state']=='complete' and observed['plotly'] and observed['scopes']:
+                        return observed,navigation
+                await asyncio.sleep(.05)
+        observed,navigation=await asyncio.wait_for(preload_ready(),10)
+        marker.write_text(json.dumps({'initial_document_loaded':True,'preload':observed,
+            'preload_response':navigation,'preload_navigation_sent':True}))
     response=await original_command(self,method,*args,**kwargs)
     if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
         observation=json.loads(marker.read_text())
@@ -1824,59 +1815,72 @@ import asyncio,json,choreographer
 from pathlib import Path
 _preload_control_path=Path(CONTROL)
 _preload_original_command=choreographer.Tab.send_command
-_preload_original_create=choreographer.Browser.create_tab
+_preload_original_populate=choreographer.Browser.populate_targets
+_preload_original_close=choreographer.Browser.close_tab
 _preload_control={}
 _preload_load_events=[]
-_preload_target_urls={}
-async def _preload_create_at_renderer(self,*args,**kwargs):
-    url=str(self._index).split('#',1)[0]
-    kwargs['url']=url
-    tab=await _preload_original_create(self,*args,**kwargs)
-    _preload_target_urls[tab.target_id]=url
-    return tab
-choreographer.Browser.create_tab=_preload_create_at_renderer
+_preload_browser=None
+_preload_initial_targets=[]
+_preload_closed_targets=[]
+async def _preload_populate(self):
+    global _preload_browser,_preload_initial_targets
+    await _preload_original_populate(self)
+    if not self.tabs:
+        await self.create_tab(url='about:blank')
+    _preload_browser=self
+    _preload_initial_targets=list(self.tabs)
+    _preload_control_path.write_text(json.dumps({'stage':'initial_targets','initial_targets':_preload_initial_targets}))
+choreographer.Browser.populate_targets=_preload_populate
+async def _preload_close(self,target_id):
+    result=await _preload_original_close(self,target_id)
+    assert result.get('result',{}).get('success') is True,result
+    _preload_closed_targets.append(target_id)
+    return result
+choreographer.Browser.close_tab=_preload_close
 async def _preload_load_event(message):
     _preload_load_events.append(message)
 async def _preload_without_page_events(self,method,*args,**kwargs):
-    if method=='Page.enable' and _preload_control and 'load_events_before_renderer_enable' not in _preload_control:
+    if method=='Page.navigate' and '#diagnostic-ready' not in kwargs['params']['url']:
+        assert _preload_initial_targets and set(_preload_initial_targets)<=set(_preload_closed_targets), 'Preload started before initial browser targets were retired'
+        while True:
+            targets=await _preload_browser.send_command('Target.getTargets')
+            actual=[item['targetId'] for item in targets['result']['targetInfos']]
+            if not set(_preload_initial_targets)&set(actual):
+                break
+            await asyncio.sleep(.05)
+        _preload_control.update({'initial_targets_retired_before_preload':True,
+            'initial_target_ids':list(_preload_initial_targets),
+            'closed_target_ids':list(_preload_closed_targets),'actual_targets_before_preload':actual})
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    if method=='Page.enable' and 'actual_page_disable_response' in _preload_control and 'load_events_before_renderer_enable' not in _preload_control:
         _preload_control['load_events_before_renderer_enable']=list(_preload_load_events)
         self.unsubscribe('Page.loadEventFired')
         _preload_control_path.write_text(json.dumps(_preload_control))
     result=await _preload_original_command(self,method,*args,**kwargs)
-    if method=='Page.enable' and not _preload_control and self.target_id in _preload_target_urls:
-        url=_preload_target_urls[self.target_id]
-        expression=("JSON.stringify({href:location.href,expected_href:new URL("+json.dumps(url)+").href,"
-            "state:document.readyState,plotly:typeof Plotly!=='undefined'&&typeof Plotly.newPlot==='function',"
-            "scopes:typeof kaleido_scopes!=='undefined'&&typeof kaleido_scopes.plotly==='function'})")
-        async def actual_document_ready():
-            while True:
-                response=await _preload_original_command(self,'Runtime.evaluate',params={'expression':expression,'returnByValue':True})
-                value=response.get('result',{}).get('result',{}).get('value')
-                if isinstance(value,str):
-                    ready=json.loads(value)
-                    _preload_control_path.write_text(json.dumps({'stage':'preparing_control','observation':ready}))
-                    if ready['href']==ready['expected_href'] and ready['state']=='complete' and ready['plotly'] and ready['scopes']:
-                        return ready
-                await asyncio.sleep(.05)
-        ready=await asyncio.wait_for(actual_document_ready(),10)
-        identity='prepared-renderer-'+self.target_id
-        assigned=await _preload_original_command(self,'Runtime.evaluate',params={
-            'expression':'window.__diagnostic_preload_identity='+json.dumps(identity),'returnByValue':True})
-        assert assigned['result']['result']['value']==identity,assigned
-        disabled=await _preload_original_command(self,'Page.disable')
-        assert 'result' in disabled and 'error' not in disabled,disabled
-        _preload_control.update({'actual_page_disable_response':disabled,
-            'actual_page_ready_before_disable':ready,'prepared_document_identity':identity,
-            'preload_navigations_before_renderer_enable':[]})
-        self.subscribe('Page.loadEventFired',_preload_load_event)
-        _preload_control_path.write_text(json.dumps(_preload_control))
-    if method=='Page.navigate' and _preload_control:
-        if 'load_events_before_renderer_enable' not in _preload_control:
-            _preload_control['preload_navigations_before_renderer_enable'].append(result)
+    if method=='Runtime.evaluate' and 'actual_page_disable_response' not in _preload_control:
+        value=result.get('result',{}).get('result',{}).get('value')
+        if isinstance(value,str) and kwargs['params']['expression'].startswith('JSON.stringify({href:'):
+            ready=json.loads(value)
+            _preload_control_path.write_text(json.dumps(dict(_preload_control,stage='preparing_control',observation=ready)))
+            if ready['href']==ready['expected_href'] and ready['state']=='complete' and ready['plotly'] and ready['scopes']:
+                identity='prepared-renderer-'+self.target_id
+                assigned=await _preload_original_command(self,'Runtime.evaluate',params={
+                    'expression':'window.__diagnostic_preload_identity='+json.dumps(identity),'returnByValue':True})
+                assert assigned['result']['result']['value']==identity,assigned
+                disabled=await _preload_original_command(self,'Page.disable')
+                assert 'result' in disabled and 'error' not in disabled,disabled
+                _preload_control.update({'actual_page_disable_response':disabled,
+                    'actual_page_ready_before_disable':ready,'prepared_document_identity':identity,
+                    'preload_navigations_before_renderer_enable':[]})
+                self.subscribe('Page.loadEventFired',_preload_load_event)
+                _preload_control_path.write_text(json.dumps(_preload_control))
+    if method=='Page.navigate' and 'actual_page_disable_response' in _preload_control:
         if '#diagnostic-ready' in kwargs['params']['url']:
             identity=await _preload_original_command(self,'Runtime.evaluate',params={
                 'expression':'window.__diagnostic_preload_identity','returnByValue':True})
             _preload_control['prepared_document_identity_at_fragment_navigation']=identity['result']['result'].get('value')
+        elif 'load_events_before_renderer_enable' not in _preload_control:
+            _preload_control['preload_navigations_before_renderer_enable'].append(result)
         _preload_control_path.write_text(json.dumps(_preload_control))
     return result
 choreographer.Tab.send_command=_preload_without_page_events
@@ -1903,7 +1907,12 @@ choreographer.Tab.send_command=_preload_without_page_events
     ), "Preload replaced the already prepared renderer document"
     assert observed["preload_navigations_before_renderer_enable"] == []
     document = json.loads((tmp_path / "actual-same-document-navigation.json").read_text())
-    assert not document["preload_navigation_sent"]
+    assert observed["initial_targets_retired_before_preload"]
+    assert observed["initial_target_ids"]
+    assert set(observed["initial_target_ids"]) <= set(observed["closed_target_ids"])
+    assert not set(observed["initial_target_ids"]) & set(observed["actual_targets_before_preload"])
+    assert document["preload_navigation_sent"]
+    assert "loaderId" in document["preload_response"]["result"]
     assert document["preload"]["href"] == document["preload"]["expected_href"]
     assert document["preload"]["state"] == "complete"
     assert document["preload"]["plotly"] and document["preload"]["scopes"]
