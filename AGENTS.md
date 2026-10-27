@@ -44,6 +44,11 @@ uv run mkdocs build --strict
 pre-commit run --all-files
 ```
 
+Default pytest selection covers source checks. The `native_browser` integration checks run
+serially in every supported platform cell defined by
+[the native test workflow](.github/workflows/test-matrix.yml); that stage is also required
+when qualifying reports.
+
 ## Notes
 
 - `ml4t.diagnostic` sits between `ml4t-engineer` and `ml4t-backtest` in the ML4T stack.

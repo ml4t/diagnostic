@@ -1753,20 +1753,28 @@ async def populate(self):
     self._index=str(self._index)+'#diagnostic-ready'
     return await original_populate(self)
 kaleido.Kaleido.populate_targets=populate
-original_create=choreographer.Browser.create_tab
-async def create(self,*args,**kwargs):
-    tab=await original_create(self,*args,**kwargs)
-    marker.write_text(json.dumps({'stage':'target_created'}))
-    await original_command(tab,'Page.enable')
-    marker.write_text(json.dumps({'stage':'page_enabled'}))
-    loaded=tab.subscribe_once('Page.loadEventFired')
-    await original_command(tab,'Page.navigate',params={'url':str(self._index).split('#',1)[0]})
-    marker.write_text(json.dumps({'stage':'preload_navigation_sent'}))
-    await asyncio.wait_for(loaded,10)
-    marker.write_text(json.dumps({'initial_document_loaded':True}))
-    return tab
-choreographer.Browser.create_tab=create
 async def command(self,method,*args,**kwargs):
+    if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
+        preload_url=kwargs['params']['url'].split('#',1)[0]
+        expression=("JSON.stringify({href:location.href,expected_href:new URL("+json.dumps(preload_url)+").href,"
+            "state:document.readyState,plotly:typeof Plotly!=='undefined'&&typeof Plotly.newPlot==='function',"
+            "scopes:typeof kaleido_scopes!=='undefined'&&typeof kaleido_scopes.plotly==='function'})")
+        async def preload_ready():
+            navigation=await original_command(self,'Page.navigate',params={'url':preload_url})
+            assert 'result' in navigation and 'error' not in navigation and not navigation['result'].get('errorText'),navigation
+            marker.write_text(json.dumps({'stage':'preload_navigation_sent','response':navigation}))
+            while True:
+                result=await original_command(self,'Runtime.evaluate',params={'expression':expression,'returnByValue':True})
+                value=result.get('result',{}).get('result',{}).get('value')
+                if isinstance(value,str):
+                    observed=json.loads(value)
+                    marker.write_text(json.dumps({'stage':'preload_readiness','observation':observed,'response':navigation}))
+                    if observed['href']==observed['expected_href'] and observed['state']=='complete' and observed['plotly'] and observed['scopes']:
+                        return observed,navigation
+                await asyncio.sleep(.05)
+        observed,navigation=await preload_ready()
+        marker.write_text(json.dumps({'initial_document_loaded':True,'preload':observed,
+            'preload_response':navigation,'preload_navigation_sent':True}))
     response=await original_command(self,method,*args,**kwargs)
     if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
         observation=json.loads(marker.read_text())
@@ -1783,7 +1791,6 @@ choreographer.Tab.send_command=command
         + "\n"
         + _pdf_process._BOOTSTRAP.replace("diagnostic_stop.wait(20)", "diagnostic_stop.wait(5)"),
     )
-    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 15)
     monkeypatch.setattr(pio.defaults, "mathjax", False)
     figure = go.Figure(go.Scatter(x=[1, 2], y=[1, 3]))
     figure.update_layout(title="Loaded renderer without another load event")
@@ -1796,6 +1803,186 @@ choreographer.Tab.send_command=command
         len(pages) == 1 and "Loaded renderer without another load event" in pages[0].extract_text()
     )
     assert figure.to_json() == original
+
+
+def test_loaded_renderer_document_setup_does_not_require_a_page_event(tmp_path, monkeypatch):
+    from ml4t.diagnostic.visualization import _pdf_process
+
+    control = tmp_path / "actual-preload-event-control.json"
+    prefix = r"""
+import asyncio,json,choreographer
+from pathlib import Path
+_preload_control_path=Path(CONTROL)
+_preload_original_command=choreographer.Tab.send_command
+_preload_original_populate=choreographer.Browser.populate_targets
+_preload_original_close=choreographer.Browser.close_tab
+_preload_control={}
+_preload_load_events=[]
+_preload_browser=None
+_preload_initial_targets=[]
+_preload_closed_targets=[]
+async def _preload_populate(self):
+    global _preload_browser,_preload_initial_targets
+    await _preload_original_populate(self)
+    if not self.tabs:
+        await self.create_tab(url='about:blank')
+    _preload_browser=self
+    _preload_initial_targets=list(self.tabs)
+    _preload_control_path.write_text(json.dumps({'stage':'initial_targets','initial_targets':_preload_initial_targets}))
+choreographer.Browser.populate_targets=_preload_populate
+async def _preload_close(self,target_id):
+    result=await _preload_original_close(self,target_id)
+    assert result.get('result',{}).get('success') is True,result
+    _preload_closed_targets.append(target_id)
+    return result
+choreographer.Browser.close_tab=_preload_close
+async def _preload_load_event(message):
+    _preload_load_events.append(message)
+async def _preload_without_page_events(self,method,*args,**kwargs):
+    if method=='Page.navigate' and '#diagnostic-ready' not in kwargs['params']['url']:
+        assert _preload_initial_targets and set(_preload_initial_targets)<=set(_preload_closed_targets), 'Preload started before initial browser targets were retired'
+        while True:
+            targets=await _preload_browser.send_command('Target.getTargets')
+            actual=[item['targetId'] for item in targets['result']['targetInfos']]
+            if not set(_preload_initial_targets)&set(actual):
+                break
+            await asyncio.sleep(.05)
+        _preload_control.update({'initial_targets_retired_before_preload':True,
+            'initial_target_ids':list(_preload_initial_targets),
+            'closed_target_ids':list(_preload_closed_targets),'actual_targets_before_preload':actual})
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    if method=='Page.enable' and 'actual_page_disable_response' in _preload_control and 'load_events_before_renderer_enable' not in _preload_control:
+        _preload_control['load_events_before_renderer_enable']=list(_preload_load_events)
+        self.unsubscribe('Page.loadEventFired')
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    result=await _preload_original_command(self,method,*args,**kwargs)
+    if method=='Runtime.evaluate' and 'actual_page_disable_response' not in _preload_control:
+        value=result.get('result',{}).get('result',{}).get('value')
+        if isinstance(value,str) and kwargs['params']['expression'].startswith('JSON.stringify({href:'):
+            ready=json.loads(value)
+            _preload_control_path.write_text(json.dumps(dict(_preload_control,stage='preparing_control',observation=ready)))
+            if ready['href']==ready['expected_href'] and ready['state']=='complete' and ready['plotly'] and ready['scopes']:
+                identity='prepared-renderer-'+self.target_id
+                assigned=await _preload_original_command(self,'Runtime.evaluate',params={
+                    'expression':'window.__diagnostic_preload_identity='+json.dumps(identity),'returnByValue':True})
+                assert assigned['result']['result']['value']==identity,assigned
+                disabled=await _preload_original_command(self,'Page.disable')
+                assert 'result' in disabled and 'error' not in disabled,disabled
+                _preload_control.update({'actual_page_disable_response':disabled,
+                    'actual_page_ready_before_disable':ready,'prepared_document_identity':identity,
+                    'preload_navigations_before_renderer_enable':[]})
+                self.subscribe('Page.loadEventFired',_preload_load_event)
+                _preload_control_path.write_text(json.dumps(_preload_control))
+    if method=='Page.navigate' and 'actual_page_disable_response' in _preload_control:
+        if '#diagnostic-ready' in kwargs['params']['url']:
+            identity=await _preload_original_command(self,'Runtime.evaluate',params={
+                'expression':'window.__diagnostic_preload_identity','returnByValue':True})
+            _preload_control['prepared_document_identity_at_fragment_navigation']=identity['result']['result'].get('value')
+        elif 'load_events_before_renderer_enable' not in _preload_control:
+            _preload_control['preload_navigations_before_renderer_enable'].append(result)
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    return result
+choreographer.Tab.send_command=_preload_without_page_events
+""".replace("CONTROL", repr(str(control)))
+
+    class WithoutPreloadPageEvents:
+        def setattr(self, target, name, value):
+            if target is _pdf_process and name == "_BOOTSTRAP":
+                value = prefix + "\n" + value
+            monkeypatch.setattr(target, name, value)
+
+    test_loaded_renderer_document_can_finish_without_a_second_load_event(
+        tmp_path, WithoutPreloadPageEvents()
+    )
+    observed = json.loads(control.read_text())
+    assert "result" in observed["actual_page_disable_response"]
+    assert observed["load_events_before_renderer_enable"] == []
+    prepared = observed["actual_page_ready_before_disable"]
+    assert prepared["href"] == prepared["expected_href"]
+    assert prepared["state"] == "complete" and prepared["plotly"] and prepared["scopes"]
+    assert (
+        observed["prepared_document_identity_at_fragment_navigation"]
+        == observed["prepared_document_identity"]
+    ), "Preload replaced the already prepared renderer document"
+    assert observed["preload_navigations_before_renderer_enable"] == []
+    document = json.loads((tmp_path / "actual-same-document-navigation.json").read_text())
+    assert observed["initial_targets_retired_before_preload"]
+    assert observed["initial_target_ids"]
+    assert set(observed["initial_target_ids"]) <= set(observed["closed_target_ids"])
+    assert not set(observed["initial_target_ids"]) & set(observed["actual_targets_before_preload"])
+    assert document["preload_navigation_sent"]
+    assert "loaderId" in document["preload_response"]["result"]
+    assert document["preload"]["href"] == document["preload"]["expected_href"]
+    assert document["preload"]["state"] == "complete"
+    assert document["preload"]["plotly"] and document["preload"]["scopes"]
+    assert document["same_document_navigation"]
+
+
+def test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script(
+    tmp_path, monkeypatch
+):
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+
+    plotly = pytest.importorskip("plotly")
+    import plotly.io as pio
+
+    bundle = (Path(plotly.__file__).parent / "package_data/plotly.min.js").read_bytes()
+    delivered = []
+    requested = []
+    request_lock = threading.Lock()
+
+    class SlowScript(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/actual-plotly.js":
+                self.send_error(404)
+                return
+            with request_lock:
+                delayed = not requested
+                requested.append(self.path)
+            started = time.perf_counter_ns()
+            if delayed:
+                time.sleep(16)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", str(len(bundle)))
+            self.end_headers()
+            try:
+                self.wfile.write(bundle)
+                received = True
+            except (BrokenPipeError, ConnectionResetError):
+                received = False
+            elapsed = time.perf_counter_ns() - started
+            delivered.append(
+                {
+                    "delayed": delayed,
+                    "received": received,
+                    "elapsed_nanoseconds": elapsed,
+                    "elapsed_seconds": elapsed / 1e9,
+                    "bytes": len(bundle),
+                }
+            )
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), SlowScript)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(
+        pio.defaults, "plotlyjs", f"http://127.0.0.1:{server.server_port}/actual-plotly.js"
+    )
+    try:
+        test_loaded_renderer_document_setup_does_not_require_a_page_event(tmp_path, monkeypatch)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        (tmp_path / "actual-slow-script.json").write_text(json.dumps(delivered))
+    assert any(row["delayed"] and row["elapsed_nanoseconds"] >= 16_000_000_000 for row in delivered)
+    assert all(row["received"] and row["bytes"] == len(bundle) for row in delivered)
 
 
 def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_path, monkeypatch):
