@@ -1760,13 +1760,11 @@ async def create(self,*args,**kwargs):
     await original_command(tab,'Page.enable')
     marker.write_text(json.dumps({'stage':'page_enabled'}))
     preload_url=str(self._index).split('#',1)[0]
-    navigation=await original_command(tab,'Page.navigate',params={'url':preload_url})
-    assert 'result' in navigation and 'error' not in navigation and not navigation['result'].get('errorText'),navigation
-    marker.write_text(json.dumps({'stage':'preload_navigation_sent','response':navigation}))
     expression=("JSON.stringify({href:location.href,expected_href:new URL("+json.dumps(preload_url)+").href,"
         "state:document.readyState,plotly:typeof Plotly!=='undefined'&&typeof Plotly.newPlot==='function',"
         "scopes:typeof kaleido_scopes!=='undefined'&&typeof kaleido_scopes.plotly==='function'})")
     async def preload_ready():
+        navigation=None
         while True:
             result=await original_command(tab,'Runtime.evaluate',params={'expression':expression,'returnByValue':True})
             value=result.get('result',{}).get('result',{}).get('value')
@@ -1774,10 +1772,15 @@ async def create(self,*args,**kwargs):
                 observed=json.loads(value)
                 marker.write_text(json.dumps({'stage':'preload_readiness','observation':observed,'response':navigation}))
                 if observed['href']==observed['expected_href'] and observed['state']=='complete' and observed['plotly'] and observed['scopes']:
-                    return observed
+                    return observed,navigation
+            if navigation is None:
+                navigation=await original_command(tab,'Page.navigate',params={'url':preload_url})
+                assert 'result' in navigation and 'error' not in navigation and not navigation['result'].get('errorText'),navigation
+                marker.write_text(json.dumps({'stage':'preload_navigation_sent','response':navigation}))
             await asyncio.sleep(.05)
-    observed=await asyncio.wait_for(preload_ready(),10)
-    marker.write_text(json.dumps({'initial_document_loaded':True,'preload':observed,'preload_response':navigation}))
+    observed,navigation=await asyncio.wait_for(preload_ready(),10)
+    marker.write_text(json.dumps({'initial_document_loaded':True,'preload':observed,
+        'preload_response':navigation,'preload_navigation_sent':navigation is not None}))
     return tab
 choreographer.Browser.create_tab=create
 async def command(self,method,*args,**kwargs):
@@ -1817,12 +1820,21 @@ def test_loaded_renderer_document_setup_does_not_require_a_page_event(tmp_path, 
 
     control = tmp_path / "actual-preload-event-control.json"
     prefix = r"""
-import json,choreographer
+import asyncio,json,choreographer
 from pathlib import Path
 _preload_control_path=Path(CONTROL)
 _preload_original_command=choreographer.Tab.send_command
+_preload_original_create=choreographer.Browser.create_tab
 _preload_control={}
 _preload_load_events=[]
+_preload_target_urls={}
+async def _preload_create_at_renderer(self,*args,**kwargs):
+    url=str(self._index).split('#',1)[0]
+    kwargs['url']=url
+    tab=await _preload_original_create(self,*args,**kwargs)
+    _preload_target_urls[tab.target_id]=url
+    return tab
+choreographer.Browser.create_tab=_preload_create_at_renderer
 async def _preload_load_event(message):
     _preload_load_events.append(message)
 async def _preload_without_page_events(self,method,*args,**kwargs):
@@ -1831,11 +1843,40 @@ async def _preload_without_page_events(self,method,*args,**kwargs):
         self.unsubscribe('Page.loadEventFired')
         _preload_control_path.write_text(json.dumps(_preload_control))
     result=await _preload_original_command(self,method,*args,**kwargs)
-    if method=='Page.enable' and not _preload_control:
+    if method=='Page.enable' and not _preload_control and self.target_id in _preload_target_urls:
+        url=_preload_target_urls[self.target_id]
+        expression=("JSON.stringify({href:location.href,expected_href:new URL("+json.dumps(url)+").href,"
+            "state:document.readyState,plotly:typeof Plotly!=='undefined'&&typeof Plotly.newPlot==='function',"
+            "scopes:typeof kaleido_scopes!=='undefined'&&typeof kaleido_scopes.plotly==='function'})")
+        async def actual_document_ready():
+            while True:
+                response=await _preload_original_command(self,'Runtime.evaluate',params={'expression':expression,'returnByValue':True})
+                value=response.get('result',{}).get('result',{}).get('value')
+                if isinstance(value,str):
+                    ready=json.loads(value)
+                    _preload_control_path.write_text(json.dumps({'stage':'preparing_control','observation':ready}))
+                    if ready['href']==ready['expected_href'] and ready['state']=='complete' and ready['plotly'] and ready['scopes']:
+                        return ready
+                await asyncio.sleep(.05)
+        ready=await asyncio.wait_for(actual_document_ready(),10)
+        identity='prepared-renderer-'+self.target_id
+        assigned=await _preload_original_command(self,'Runtime.evaluate',params={
+            'expression':'window.__diagnostic_preload_identity='+json.dumps(identity),'returnByValue':True})
+        assert assigned['result']['result']['value']==identity,assigned
         disabled=await _preload_original_command(self,'Page.disable')
         assert 'result' in disabled and 'error' not in disabled,disabled
-        _preload_control['actual_page_disable_response']=disabled
+        _preload_control.update({'actual_page_disable_response':disabled,
+            'actual_page_ready_before_disable':ready,'prepared_document_identity':identity,
+            'preload_navigations_before_renderer_enable':[]})
         self.subscribe('Page.loadEventFired',_preload_load_event)
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    if method=='Page.navigate' and _preload_control:
+        if 'load_events_before_renderer_enable' not in _preload_control:
+            _preload_control['preload_navigations_before_renderer_enable'].append(result)
+        if '#diagnostic-ready' in kwargs['params']['url']:
+            identity=await _preload_original_command(self,'Runtime.evaluate',params={
+                'expression':'window.__diagnostic_preload_identity','returnByValue':True})
+            _preload_control['prepared_document_identity_at_fragment_navigation']=identity['result']['result'].get('value')
         _preload_control_path.write_text(json.dumps(_preload_control))
     return result
 choreographer.Tab.send_command=_preload_without_page_events
@@ -1853,7 +1894,16 @@ choreographer.Tab.send_command=_preload_without_page_events
     observed = json.loads(control.read_text())
     assert "result" in observed["actual_page_disable_response"]
     assert observed["load_events_before_renderer_enable"] == []
+    prepared = observed["actual_page_ready_before_disable"]
+    assert prepared["href"] == prepared["expected_href"]
+    assert prepared["state"] == "complete" and prepared["plotly"] and prepared["scopes"]
+    assert (
+        observed["prepared_document_identity_at_fragment_navigation"]
+        == observed["prepared_document_identity"]
+    ), "Preload replaced the already prepared renderer document"
+    assert observed["preload_navigations_before_renderer_enable"] == []
     document = json.loads((tmp_path / "actual-same-document-navigation.json").read_text())
+    assert not document["preload_navigation_sent"]
     assert document["preload"]["href"] == document["preload"]["expected_href"]
     assert document["preload"]["state"] == "complete"
     assert document["preload"]["plotly"] and document["preload"]["scopes"]
