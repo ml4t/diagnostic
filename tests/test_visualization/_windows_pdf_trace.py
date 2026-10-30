@@ -206,10 +206,10 @@ def install_parent(module, observed):
 
 def instrument(code):
     assert os.name == "nt"
-    anchor = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
+    anchor = "neighbor=subprocess.Popen([sys.executable,'-c','import time;time.sleep(180)'])"
     assert code.count(anchor) == 1
     setup = (
-        f"\n    import runpy; runpy.run_path({str(Path(__file__).resolve())!r})"
+        f"\nimport runpy; runpy.run_path({str(Path(__file__).resolve())!r})"
         "['install_parent'](_pdf_process,observed)\n"
     )
-    return code.replace(anchor, anchor + setup)
+    return code.replace(anchor, setup + anchor)
