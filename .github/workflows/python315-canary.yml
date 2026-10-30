@@ -50,10 +50,11 @@ jobs:
       - run: uv sync --frozen --python 3.13 --dev --extra viz
       - name: Exercise the actual inherited output endpoint
         shell: bash
-        run: >-
-          uv run --no-sync python -m pytest -o addopts= -n 0 -vv -rA --timeout 120
-          --junitxml=artifacts/native-pipe-probe.xml --basetemp=artifacts/native-pipe-tmp
-          tests/test_visualization/test_pdf_process_ownership.py::test_browser_output_shutdown_does_not_block_a_pending_inherited_write
+        run: |
+          mkdir -p artifacts
+          uv run --no-sync python -m pytest -o addopts= -n 0 -vv -rA --timeout 120 \
+            --junitxml=artifacts/native-pipe-probe.xml --basetemp=artifacts/native-pipe-tmp \
+            tests/test_visualization/test_pdf_process_ownership.py::test_browser_output_shutdown_does_not_block_a_pending_inherited_write
       - name: Retain native evidence regardless of outcome
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
