@@ -476,6 +476,7 @@ jobs:
         with:
           version: "0.10.9"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        id: python
         with:
           python-version: "3.15"
           allow-prereleases: false
@@ -483,7 +484,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install libomp
       - name: Install the frozen native qualification environment
-        run: uv sync --frozen --python 3.15 --dev --extra ml --extra viz --extra perf
+        run: uv sync --frozen --python "${{ steps.python.outputs.python-path }}" --dev --extra ml --extra viz --extra perf
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: python315-canonical-${{ github.sha }}
@@ -519,7 +520,7 @@ jobs:
         run: |
           format="${{ matrix.format }}"
           artifact=$(find artifacts/canonical -name "*.$format" -print -quit)
-          uv run --isolated --no-project --python 3.15 --with "${artifact}[viz]" \
+          uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" --with "${artifact}[viz]" \
             --with ml4t-backtest==0.2.0 \
             --with pytest --with pytest-timeout --with playwright --with lxml \
             python -I .github/qualification/python315_browser.py "$format"
