@@ -8,10 +8,11 @@ import pytest
 from ml4t.diagnostic.visualization.report_generation import combine_figures_to_html
 
 
+@pytest.mark.native_browser
 def test_literal_report_titles_survive_browser_parsing(tmp_path):
     from choreographer.browsers.chromium import Chromium
+    from playwright import sync_api as playwright
 
-    playwright = pytest.importorskip("playwright.sync_api")
     chrome = Chromium.find_browser(skip_local=False) or shutil.which("chromium")
     title = 'Research <b>alpha</b> & "beta"'
     section_title = "Portfolio <small>long & short</small>"

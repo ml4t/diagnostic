@@ -9,13 +9,27 @@ import tempfile
 from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
 import kaleido
 from choreographer import Tab
+from choreographer.channels import Pipe
 from kaleido._kaleido_tab import _KaleidoTab
 
 
+class _RendererPipe(Pipe):
+    def _unblock_fd(self, fd: int) -> None:
+        # Chrome can still be reading this inherited endpoint. Changing its mode can
+        # block Windows shutdown; closing our writer below already delivers EOF.
+        if sys.platform == "win32" and fd == self._read_to_browser:
+            return
+        super()._unblock_fd(fd)
+
+
 class _PageEventsKaleido(kaleido.Kaleido):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, channel_cls=_RendererPipe, **kwargs)
+
     async def _conform_tabs(self, tabs: Iterable[Tab] | None = None) -> None:
         if tabs is None:
             # A startup target can stop answering Page.enable before any navigation.

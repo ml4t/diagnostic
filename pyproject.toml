@@ -253,10 +253,11 @@ addopts = [
     "--benchmark-disable",
     "--strict-markers",
     "--hypothesis-show-statistics",
-    "-m", "not slow",
+    "-m", "not slow and not native_browser",
 ]
 # Coverage: run with --cov=ml4t.diagnostic --cov-report=term-missing --cov-report=html
 markers = [
+    "native_browser: real browser integration qualified serially on every supported platform",
     "slow: marks tests as slow (run with '-m slow' or '--override-ini=addopts=')",
     "integration: marks tests as integration tests",
     "property: marks property-based tests",

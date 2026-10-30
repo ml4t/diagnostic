@@ -74,6 +74,14 @@ if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown
             return [cli[0],'-c',direct,*cli[2:]]
         Chromium.get_cli=direct_browser_cli
 async def command(self,command,*args,**kwargs):
+    if command=='Browser.close' and mode=='acknowledged_native_exit':
+        original_request_write=self._channel.write_json
+        def record_actual_close_request(message):
+            result=original_request_write(message)
+            if message.get('method')=='Browser.close':
+                observed.with_suffix('.graceful-request.json').write_text(json.dumps({'browser_close_sent':True}))
+            return result
+        self._channel.write_json=record_actual_close_request
     if command=='Browser.close' and mode=='close_command_hang_slow_shutdown':
         browser=psutil.Process(self.subprocess.pid)
         browser.suspend()
@@ -96,6 +104,8 @@ async def command(self,command,*args,**kwargs):
             try: await pending
             except (Exception,asyncio.CancelledError): pass
     result=await original_command(self,command,*args,**kwargs)
+    if command=='Browser.close' and mode=='acknowledged_native_exit':
+        await asyncio.sleep(3600)
     if command=='Browser.close':
         observed.with_suffix('.graceful.json').write_text(json.dumps({'browser_close':True}))
         if mode=='close_command_hang': await asyncio.sleep(3600)
@@ -180,7 +190,7 @@ async def closed(self,*args,**kwargs):
         return result
     if mode in ('close_error','close_command_hang','close_command_hang_slow_shutdown','render_hang','pipe_number_reuse'):
         failed_channel=self._channel
-    snapshot(self)
+    if mode!='acknowledged_native_exit': snapshot(self)
     if mode=='pipe_number_reuse':
         await original_close(self,*args,**kwargs)
         old_numbers={getattr(failed_channel,name) for name in ('_write_to_browser','_write_from_browser','_read_from_browser','_read_to_browser')}
@@ -293,6 +303,7 @@ async def closed(self,*args,**kwargs):
                 'worker_pid':os.getpid(),'browser_pid':browser.pid,'helper_pid':helper.pid,
                 'helper_created':psutil.Process(helper.pid).create_time()}))
         await asyncio.sleep(3600)
+    if mode=='acknowledged_native_exit': await asyncio.sleep(3600)
     if mode=='close_hang': await asyncio.sleep(3600)
     raise RuntimeError("Couldn't close or kill browser subprocess")
 kaleido.Kaleido.open=opened
@@ -307,6 +318,61 @@ except ImportError:
     pass
 else:
     _pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP
+    if mode=='acknowledged_native_exit':
+        import ctypes
+        from ctypes import wintypes
+        native=[]
+        external=[]
+        actual_observe=_pdf_process._OwnedProcesses.observe
+        actual_terminate=_pdf_process._OwnedProcesses.terminate
+        def retain_actual_browser_handle(self):
+            actual_observe(self)
+            if native or not observed.exists(): return
+            try: recorded=json.loads(observed.read_text())
+            except (json.JSONDecodeError,PermissionError): return
+            pid=int(next(iter(recorded)))
+            assert psutil.Process(pid).create_time()==recorded[str(pid)]
+            handle=self.job.api.OpenProcess(0x00101000,False,pid)
+            if not handle: raise ctypes.WinError(ctypes.get_last_error())
+            member=wintypes.BOOL()
+            self.job._check(self.job.api.IsProcessInJob(handle,self.job.handle,ctypes.byref(member)))
+            assert member.value, 'The actual browser must belong to the renderer job'
+            native.append((pid,handle))
+            ready=observed.with_suffix('.ack-debugger-ready.json')
+            blocked=observed.with_suffix('.ack-kernel-exit.json')
+            debugger=subprocess.Popen(
+                [sys.executable,sys.argv[5],str(pid),str(ready),str(blocked),'30'],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            external.append(debugger)
+            witness=self.job.api.OpenProcess(0x00101000,False,debugger.pid)
+            if not witness: raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                outside=wintypes.BOOL()
+                self.job._check(self.job.api.IsProcessInJob(witness,self.job.handle,ctypes.byref(outside)))
+                assert not outside.value, 'Native I/O witness must remain outside renderer ownership'
+            finally: self.job.api.CloseHandle(witness)
+            observed.with_suffix('.ack-control.json').write_text(json.dumps({
+                'browser_pid':pid,'debugger_pid':debugger.pid,'outside_renderer_job':True,
+                'release_delay':30}))
+            debugger.stdin.write(b'1')
+            debugger.stdin.close()
+        def record_native_exit_around_forced_cleanup(self):
+            assert native, 'No actual browser handle retained'
+            pid,handle=native[0]
+            returned=False
+            try:
+                result=actual_terminate(self)
+                returned=True
+                return result
+            finally:
+                code=wintypes.DWORD()
+                self.job._check(self.job.api.GetExitCodeProcess(handle,ctypes.byref(code)))
+                observed.with_suffix('.ack-after-cleanup.json').write_text(json.dumps({
+                    'pid':pid,'native_wait_result':self.job.api.WaitForSingleObject(handle,0),
+                    'exit_code':code.value,'cleanup_returned':returned}))
+                self.job.api.CloseHandle(handle)
+        _pdf_process._OwnedProcesses.observe=retain_actual_browser_handle
+        _pdf_process._OwnedProcesses.terminate=record_native_exit_around_forced_cleanup
     if mode=='job_dependency':
         import ctypes
         from ctypes import wintypes
@@ -633,7 +699,7 @@ try:
         expected_render_error={'type':type(error).__name__,'message':str(error),
                                'notes':list(getattr(error,'__notes__',[]))}
         observed.with_suffix('.error.json').write_text(json.dumps(expected_render_error))
-        if mode in ('close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'): raise
+        if mode in ('acknowledged_native_exit','close_error','close_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'): raise
         if mode=='permanent_status': assert isinstance(error,PermissionError),repr(error)
         if mode=='cancel': assert isinstance(error,KeyboardInterrupt),repr(error)
         if mode in ('exit7','profile_readonly','job_dependency'): assert 'code 7' in str(error),repr(error)
@@ -668,7 +734,7 @@ try:
             assert "'phase': 'closed'" in notes and "'completed': 2" in notes,notes
         assert not output.exists(), 'Failed rendering must not publish a partial report'
     else:
-        assert mode in ('close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'), 'Rendering defect was swallowed'
+        assert mode in ('acknowledged_native_exit','close_error','close_hang','close_command_hang','held_status','shared_status','profile_sharing','slow_shutdown','unresponsive_startup','close_command_hang_slow_shutdown','pipe_number_reuse','live_worker_dependency','worker_exit_dependency'), 'Rendering defect was swallowed'
         pages=PdfReader(result).pages
         assert len(pages)==2
         assert all(f'Owned PDF page {i+1}' in page.extract_text() for i,page in enumerate(pages))
@@ -682,6 +748,9 @@ try:
         assert observation['browser_close_sent'],'Graceful fallback did not transmit Browser.close'
         cleanup=json.loads(observed.with_suffix('.slow-termination.json').read_text())
         assert cleanup['owned_cleanup_returned'],'Owned process cleanup did not finish'
+    if mode=='acknowledged_native_exit':
+        assert len(external)==1
+        assert external[0].wait(timeout=5)==0, 'Renderer cleanup killed the external native witness'
     assert originals==[figure.to_json() for figure in figures]
     if mode=='unresponsive_startup':
         assert json.loads(observed.with_suffix('.fault.json').read_text())=={'stage':'initial_page_command_unresponsive'}
@@ -975,6 +1044,184 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
     result = _run_pdf_probe(_PROBE, [mode, str(tmp_path / "report.pdf"), str(startup_delay)])
     assert result["mode"] == mode and result["running"] == [] and result["neighbor_alive"]
     assert result["startup_delay"] == startup_delay
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual inherited Windows pipe I/O required")
+def test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read(tmp_path):
+    import ctypes
+    import threading
+    import time
+    import types
+    from ctypes import wintypes
+
+    pytest.importorskip("kaleido")
+    from choreographer.channels import Pipe
+
+    from ml4t.diagnostic.visualization._pdf_worker import _PageEventsKaleido
+
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    api.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    api.OpenThread.restype = wintypes.HANDLE
+    api.GetThreadIOPendingFlag.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+    api.GetThreadIOPendingFlag.restype = wintypes.BOOL
+    api.CloseHandle.argtypes = [wintypes.HANDLE]
+    api.CloseHandle.restype = wintypes.BOOL
+
+    def exercise(directory, *, restore_vendor_mode_change=False):
+        directory.mkdir()
+        renderer = _PageEventsKaleido(n=1, timeout=90)
+        channel = renderer._channel
+        if restore_vendor_mode_change:
+            channel._unblock_fd = types.MethodType(Pipe._unblock_fd, channel)
+        renderer._browser_impl.pre_open()
+        cli = renderer._browser_impl.get_cli()
+        handles = next(arg for arg in cli if arg.startswith("--remote-debugging-io-pipes="))
+        inherited_read = handles.split("=", 1)[1].split(",", 1)[0]
+        ready = directory / "peer.json"
+        code = """
+import _winapi,ctypes,json,sys,threading,time
+from ctypes import wintypes
+from pathlib import Path
+api=ctypes.WinDLL('kernel32',use_last_error=True)
+api.OpenThread.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.DWORD]
+api.OpenThread.restype=wintypes.HANDLE
+api.GetThreadIOPendingFlag.argtypes=[wintypes.HANDLE,ctypes.POINTER(wintypes.BOOL)]
+api.GetThreadIOPendingFlag.restype=wintypes.BOOL
+api.CloseHandle.argtypes=[wintypes.HANDLE]
+tid=threading.get_native_id()
+def notify_actual_read():
+    handle=api.OpenThread(0x0040,False,tid)
+    if not handle: raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        pending=wintypes.BOOL()
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline:
+            if not api.GetThreadIOPendingFlag(handle,ctypes.byref(pending)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if pending.value:
+                ready=Path(sys.argv[2])
+                temporary=ready.with_suffix('.new')
+                temporary.write_text(json.dumps({'tid':tid,'actual_read_pending':True}))
+                temporary.replace(ready)
+                return
+            time.sleep(.01)
+        raise RuntimeError('Native peer read never became pending')
+    finally:
+        api.CloseHandle(handle)
+threading.Thread(target=notify_actual_read,daemon=True).start()
+try:
+    value,error=_winapi.ReadFile(int(sys.argv[1]),1)
+except OSError as error:
+    result={'read':'','error':error.winerror}
+else:
+    result={'read':value.hex(),'error':error}
+print(json.dumps(result),flush=True)
+"""
+        peer = subprocess.Popen(
+            [sys._base_executable, "-I", "-c", code, inherited_read, str(ready)],
+            close_fds=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        thread_handle = None
+        closer = None
+        errors = []
+        try:
+            deadline = time.monotonic() + 5
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert ready.exists(), "Actual inherited pipe peer never started"
+            tid = json.loads(ready.read_text())["tid"]
+            thread_handle = api.OpenThread(0x0040, False, tid)
+            if not thread_handle:
+                raise ctypes.WinError(ctypes.get_last_error())
+            pending = wintypes.BOOL()
+            while time.monotonic() < deadline:
+                if not api.GetThreadIOPendingFlag(thread_handle, ctypes.byref(pending)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if pending.value:
+                    break
+                time.sleep(0.01)
+            assert pending.value and peer.poll() is None, (
+                "Peer did not enter actual pending ReadFile"
+            )
+            channel.open()
+
+            def close_actual_channel():
+                try:
+                    channel.close()
+                except BaseException as error:
+                    errors.append(repr(error))
+
+            closer = threading.Thread(target=close_actual_channel, daemon=True)
+            closer.start()
+            closer.join(timeout=1)
+            blocked = closer.is_alive()
+            if blocked:
+                if not api.GetThreadIOPendingFlag(thread_handle, ctypes.byref(pending)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                assert pending.value, "Shutdown delay was not the real pending peer read"
+                os.write(channel._write_to_browser, b"x")
+            closer.join(timeout=5)
+            assert not closer.is_alive() and not errors, errors
+            output, stderr = peer.communicate(timeout=5)
+            assert peer.returncode == 0, stderr
+            result = {
+                "blocked_until_peer_input": blocked,
+                "initial_native_io_pending": True,
+                "peer_result": json.loads(output),
+                "restored_vendor_mode": restore_vendor_mode_change,
+            }
+            (directory / "result.json").write_text(json.dumps(result))
+            return result
+        finally:
+            if peer.poll() is None:
+                peer.kill()
+            peer.wait(timeout=5)
+            if closer is not None:
+                closer.join(timeout=5)
+            if thread_handle:
+                api.CloseHandle(thread_handle)
+            channel.close()
+            renderer._browser_impl.clean()
+
+    actual = exercise(tmp_path / "actual")
+    assert not actual["blocked_until_peer_input"], (
+        "Inherited browser pipe mode change blocked shutdown while its actual peer read was pending"
+    )
+    assert actual["peer_result"] == {"read": "", "error": 109}
+    restored = exercise(tmp_path / "restored", restore_vendor_mode_change=True)
+    assert restored["blocked_until_peer_input"]
+    assert restored["peer_result"] == {"read": "78", "error": 0}
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual Windows acknowledged native exit required"
+)
+def test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    target = tmp_path / "report.pdf"
+    previous = b"Existing report must survive externally blocked native exit"
+    target.write_bytes(previous)
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    with pytest.raises(AssertionError, match="not terminal after job termination.*wait result 258"):
+        _run_pdf_probe(_PROBE, ["acknowledged_native_exit", str(target), "0", ".1", debugger])
+    held = json.loads(target.with_suffix(".processes.ack-kernel-exit.json").read_text())
+    terminal = json.loads(target.with_suffix(".processes.ack-after-cleanup.json").read_text())
+    request = json.loads(target.with_suffix(".processes.graceful-request.json").read_text())
+    control = json.loads(target.with_suffix(".processes.ack-control.json").read_text())
+    attachment = json.loads(target.with_suffix(".processes.ack-debugger-ready.json").read_text())
+    assert held["wait_result"] == terminal["native_wait_result"] == 258
+    assert held["pid"] == terminal["pid"] == control["browser_pid"]
+    assert not terminal["cleanup_returned"]
+    assert request == {"browser_close_sent": True}
+    with pytest.raises(FileNotFoundError):
+        target.with_suffix(".processes.graceful.json").read_text()
+    assert control["outside_renderer_job"] and control["release_delay"] == 30
+    assert "error" not in attachment, attachment
+    assert target.read_bytes() == previous
 
 
 @pytest.mark.skipif(
@@ -1506,17 +1753,28 @@ async def populate(self):
     self._index=str(self._index)+'#diagnostic-ready'
     return await original_populate(self)
 kaleido.Kaleido.populate_targets=populate
-original_create=choreographer.Browser.create_tab
-async def create(self,*args,**kwargs):
-    tab=await original_create(self,*args,**kwargs)
-    await original_command(tab,'Page.enable')
-    loaded=tab.subscribe_once('Page.loadEventFired')
-    await original_command(tab,'Page.navigate',params={'url':str(self._index).split('#',1)[0]})
-    await asyncio.wait_for(loaded,10)
-    marker.write_text(json.dumps({'initial_document_loaded':True}))
-    return tab
-choreographer.Browser.create_tab=create
 async def command(self,method,*args,**kwargs):
+    if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
+        preload_url=kwargs['params']['url'].split('#',1)[0]
+        expression=("JSON.stringify({href:location.href,expected_href:new URL("+json.dumps(preload_url)+").href,"
+            "state:document.readyState,plotly:typeof Plotly!=='undefined'&&typeof Plotly.newPlot==='function',"
+            "scopes:typeof kaleido_scopes!=='undefined'&&typeof kaleido_scopes.plotly==='function'})")
+        async def preload_ready():
+            navigation=await original_command(self,'Page.navigate',params={'url':preload_url})
+            assert 'result' in navigation and 'error' not in navigation and not navigation['result'].get('errorText'),navigation
+            marker.write_text(json.dumps({'stage':'preload_navigation_sent','response':navigation}))
+            while True:
+                result=await original_command(self,'Runtime.evaluate',params={'expression':expression,'returnByValue':True})
+                value=result.get('result',{}).get('result',{}).get('value')
+                if isinstance(value,str):
+                    observed=json.loads(value)
+                    marker.write_text(json.dumps({'stage':'preload_readiness','observation':observed,'response':navigation}))
+                    if observed['href']==observed['expected_href'] and observed['state']=='complete' and observed['plotly'] and observed['scopes']:
+                        return observed,navigation
+                await asyncio.sleep(.05)
+        observed,navigation=await preload_ready()
+        marker.write_text(json.dumps({'initial_document_loaded':True,'preload':observed,
+            'preload_response':navigation,'preload_navigation_sent':True}))
     response=await original_command(self,method,*args,**kwargs)
     if method=='Page.navigate' and '#diagnostic-ready' in kwargs['params']['url']:
         observation=json.loads(marker.read_text())
@@ -1526,8 +1784,13 @@ async def command(self,method,*args,**kwargs):
     return response
 choreographer.Tab.send_command=command
 """.replace("MARKER", repr(str(marker)))
-    monkeypatch.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
-    monkeypatch.setattr(_pdf_process, "_RENDER_TIMEOUT", 15)
+    monkeypatch.setattr(
+        _pdf_process,
+        "_BOOTSTRAP",
+        patch
+        + "\n"
+        + _pdf_process._BOOTSTRAP.replace("diagnostic_stop.wait(20)", "diagnostic_stop.wait(5)"),
+    )
     monkeypatch.setattr(pio.defaults, "mathjax", False)
     figure = go.Figure(go.Scatter(x=[1, 2], y=[1, 3]))
     figure.update_layout(title="Loaded renderer without another load event")
@@ -1540,6 +1803,186 @@ choreographer.Tab.send_command=command
         len(pages) == 1 and "Loaded renderer without another load event" in pages[0].extract_text()
     )
     assert figure.to_json() == original
+
+
+def test_loaded_renderer_document_setup_does_not_require_a_page_event(tmp_path, monkeypatch):
+    from ml4t.diagnostic.visualization import _pdf_process
+
+    control = tmp_path / "actual-preload-event-control.json"
+    prefix = r"""
+import asyncio,json,choreographer
+from pathlib import Path
+_preload_control_path=Path(CONTROL)
+_preload_original_command=choreographer.Tab.send_command
+_preload_original_populate=choreographer.Browser.populate_targets
+_preload_original_close=choreographer.Browser.close_tab
+_preload_control={}
+_preload_load_events=[]
+_preload_browser=None
+_preload_initial_targets=[]
+_preload_closed_targets=[]
+async def _preload_populate(self):
+    global _preload_browser,_preload_initial_targets
+    await _preload_original_populate(self)
+    if not self.tabs:
+        await self.create_tab(url='about:blank')
+    _preload_browser=self
+    _preload_initial_targets=list(self.tabs)
+    _preload_control_path.write_text(json.dumps({'stage':'initial_targets','initial_targets':_preload_initial_targets}))
+choreographer.Browser.populate_targets=_preload_populate
+async def _preload_close(self,target_id):
+    result=await _preload_original_close(self,target_id)
+    assert result.get('result',{}).get('success') is True,result
+    _preload_closed_targets.append(target_id)
+    return result
+choreographer.Browser.close_tab=_preload_close
+async def _preload_load_event(message):
+    _preload_load_events.append(message)
+async def _preload_without_page_events(self,method,*args,**kwargs):
+    if method=='Page.navigate' and '#diagnostic-ready' not in kwargs['params']['url']:
+        assert _preload_initial_targets and set(_preload_initial_targets)<=set(_preload_closed_targets), 'Preload started before initial browser targets were retired'
+        while True:
+            targets=await _preload_browser.send_command('Target.getTargets')
+            actual=[item['targetId'] for item in targets['result']['targetInfos']]
+            if not set(_preload_initial_targets)&set(actual):
+                break
+            await asyncio.sleep(.05)
+        _preload_control.update({'initial_targets_retired_before_preload':True,
+            'initial_target_ids':list(_preload_initial_targets),
+            'closed_target_ids':list(_preload_closed_targets),'actual_targets_before_preload':actual})
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    if method=='Page.enable' and 'actual_page_disable_response' in _preload_control and 'load_events_before_renderer_enable' not in _preload_control:
+        _preload_control['load_events_before_renderer_enable']=list(_preload_load_events)
+        self.unsubscribe('Page.loadEventFired')
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    result=await _preload_original_command(self,method,*args,**kwargs)
+    if method=='Runtime.evaluate' and 'actual_page_disable_response' not in _preload_control:
+        value=result.get('result',{}).get('result',{}).get('value')
+        if isinstance(value,str) and kwargs['params']['expression'].startswith('JSON.stringify({href:'):
+            ready=json.loads(value)
+            _preload_control_path.write_text(json.dumps(dict(_preload_control,stage='preparing_control',observation=ready)))
+            if ready['href']==ready['expected_href'] and ready['state']=='complete' and ready['plotly'] and ready['scopes']:
+                identity='prepared-renderer-'+self.target_id
+                assigned=await _preload_original_command(self,'Runtime.evaluate',params={
+                    'expression':'window.__diagnostic_preload_identity='+json.dumps(identity),'returnByValue':True})
+                assert assigned['result']['result']['value']==identity,assigned
+                disabled=await _preload_original_command(self,'Page.disable')
+                assert 'result' in disabled and 'error' not in disabled,disabled
+                _preload_control.update({'actual_page_disable_response':disabled,
+                    'actual_page_ready_before_disable':ready,'prepared_document_identity':identity,
+                    'preload_navigations_before_renderer_enable':[]})
+                self.subscribe('Page.loadEventFired',_preload_load_event)
+                _preload_control_path.write_text(json.dumps(_preload_control))
+    if method=='Page.navigate' and 'actual_page_disable_response' in _preload_control:
+        if '#diagnostic-ready' in kwargs['params']['url']:
+            identity=await _preload_original_command(self,'Runtime.evaluate',params={
+                'expression':'window.__diagnostic_preload_identity','returnByValue':True})
+            _preload_control['prepared_document_identity_at_fragment_navigation']=identity['result']['result'].get('value')
+        elif 'load_events_before_renderer_enable' not in _preload_control:
+            _preload_control['preload_navigations_before_renderer_enable'].append(result)
+        _preload_control_path.write_text(json.dumps(_preload_control))
+    return result
+choreographer.Tab.send_command=_preload_without_page_events
+""".replace("CONTROL", repr(str(control)))
+
+    class WithoutPreloadPageEvents:
+        def setattr(self, target, name, value):
+            if target is _pdf_process and name == "_BOOTSTRAP":
+                value = prefix + "\n" + value
+            monkeypatch.setattr(target, name, value)
+
+    test_loaded_renderer_document_can_finish_without_a_second_load_event(
+        tmp_path, WithoutPreloadPageEvents()
+    )
+    observed = json.loads(control.read_text())
+    assert "result" in observed["actual_page_disable_response"]
+    assert observed["load_events_before_renderer_enable"] == []
+    prepared = observed["actual_page_ready_before_disable"]
+    assert prepared["href"] == prepared["expected_href"]
+    assert prepared["state"] == "complete" and prepared["plotly"] and prepared["scopes"]
+    assert (
+        observed["prepared_document_identity_at_fragment_navigation"]
+        == observed["prepared_document_identity"]
+    ), "Preload replaced the already prepared renderer document"
+    assert observed["preload_navigations_before_renderer_enable"] == []
+    document = json.loads((tmp_path / "actual-same-document-navigation.json").read_text())
+    assert observed["initial_targets_retired_before_preload"]
+    assert observed["initial_target_ids"]
+    assert set(observed["initial_target_ids"]) <= set(observed["closed_target_ids"])
+    assert not set(observed["initial_target_ids"]) & set(observed["actual_targets_before_preload"])
+    assert document["preload_navigation_sent"]
+    assert "loaderId" in document["preload_response"]["result"]
+    assert document["preload"]["href"] == document["preload"]["expected_href"]
+    assert document["preload"]["state"] == "complete"
+    assert document["preload"]["plotly"] and document["preload"]["scopes"]
+    assert document["same_document_navigation"]
+
+
+def test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script(
+    tmp_path, monkeypatch
+):
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+
+    plotly = pytest.importorskip("plotly")
+    import plotly.io as pio
+
+    bundle = (Path(plotly.__file__).parent / "package_data/plotly.min.js").read_bytes()
+    delivered = []
+    requested = []
+    request_lock = threading.Lock()
+
+    class SlowScript(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/actual-plotly.js":
+                self.send_error(404)
+                return
+            with request_lock:
+                delayed = not requested
+                requested.append(self.path)
+            started = time.perf_counter_ns()
+            if delayed:
+                time.sleep(16)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", str(len(bundle)))
+            self.end_headers()
+            try:
+                self.wfile.write(bundle)
+                received = True
+            except (BrokenPipeError, ConnectionResetError):
+                received = False
+            elapsed = time.perf_counter_ns() - started
+            delivered.append(
+                {
+                    "delayed": delayed,
+                    "received": received,
+                    "elapsed_nanoseconds": elapsed,
+                    "elapsed_seconds": elapsed / 1e9,
+                    "bytes": len(bundle),
+                }
+            )
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), SlowScript)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(
+        pio.defaults, "plotlyjs", f"http://127.0.0.1:{server.server_port}/actual-plotly.js"
+    )
+    try:
+        test_loaded_renderer_document_setup_does_not_require_a_page_event(tmp_path, monkeypatch)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        (tmp_path / "actual-slow-script.json").write_text(json.dumps(delivered))
+    assert any(row["delayed"] and row["elapsed_nanoseconds"] >= 16_000_000_000 for row in delivered)
+    assert all(row["received"] and row["bytes"] == len(bundle) for row in delivered)
 
 
 def test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready(tmp_path, monkeypatch):

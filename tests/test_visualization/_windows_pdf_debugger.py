@@ -1,4 +1,4 @@
-"""Keep an owned browser's native exit event pending until its job stops us."""
+"""Hold a real Windows native exit event for renderer regressions."""
 
 import ctypes
 import json
@@ -68,7 +68,7 @@ class DebugEvent(ctypes.Structure):
     ]
 
 
-def hold_exit(pid: int, ready: Path, blocked: Path) -> None:
+def hold_exit(pid: int, ready: Path, blocked: Path, release_delay: float | None = None) -> None:
     api = ctypes.WinDLL("kernel32", use_last_error=True)
     signatures = {
         "DebugActiveProcess": ([wintypes.DWORD], wintypes.BOOL),
@@ -125,9 +125,22 @@ def hold_exit(pid: int, ready: Path, blocked: Path) -> None:
                         "wait_result": api.WaitForSingleObject(process_handle, 0),
                     },
                 )
-                # Keep kernel teardown pending while the late job member remains alive.
-                while True:
-                    time.sleep(0.1)
+                if release_delay is None:
+                    # Keep kernel teardown pending while the late job member remains alive.
+                    while True:
+                        time.sleep(0.1)
+                held_since = time.monotonic()
+                time.sleep(release_delay)
+                record(
+                    blocked.with_suffix(".released.json"),
+                    {"held_seconds": time.monotonic() - held_since},
+                )
+                check(api.ContinueDebugEvent(event.pid, event.tid, status))
+                terminal = api.WaitForSingleObject(process_handle, 2000)
+                check(api.CloseHandle(process_handle))
+                if terminal != 0:
+                    raise RuntimeError("Released browser exit did not become terminal")
+                return
             check(api.ContinueDebugEvent(event.pid, event.tid, status))
     except BaseException as error:
         record(ready, {"error": repr(error), "pid": pid})
@@ -136,8 +149,10 @@ def hold_exit(pid: int, ready: Path, blocked: Path) -> None:
 
 def main() -> None:
     pid, ready, blocked = int(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
-    assert sys.stdin.buffer.read(1) == b"1", "Debugger must join the owned job before attaching"
-    hold_exit(pid, ready, blocked)
+    assert sys.stdin.buffer.read(1) == b"1", (
+        "Debugger must receive the ownership handshake before attaching"
+    )
+    hold_exit(pid, ready, blocked, float(sys.argv[4]) if len(sys.argv) > 4 else None)
 
 
 if __name__ == "__main__":
