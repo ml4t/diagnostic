@@ -122,7 +122,7 @@ jobs:
         run: |
           for variant in base fixed; do
             wheel=$(find "artifacts/native-exit/$variant" -name '*.whl' -print -quit)
-            uv run --isolated --no-project --python "$UV_PYTHON" --with "$wheel[viz]" \
+            uv run --isolated --no-project --python "$UV_PYTHON" --with "${wheel}[viz]" \
               --with choreographer==1.4.0 --with kaleido==1.5.0 \
               --with pytest --with pytest-timeout python -I - "$variant" <<'PYTHON'
           import hashlib, io, json, os, subprocess, sys, tarfile, time
@@ -142,7 +142,7 @@ jobs:
           output = Path("artifacts/native-exit") / variant
           report = output / "regression.xml"
           (output / "identity.json").write_text(json.dumps({"source_revision": revision, "python_version": sys.version, "platform": sys.platform, "module": str(package), "clocks": {name: vars(time.get_clock_info(name)) for name in ["monotonic", "perf_counter"]}, "packages": {name: version(name) for name in ["ml4t-diagnostic", "kaleido", "choreographer", "plotly", "psutil", "pypdf"]}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}, indent=2))
-          code = pytest.main(["--noconftest", "--rootdir", str(Path.cwd()), "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "-s", "--timeout", "120", "--junitxml", str(report), "--basetemp", str(output / "tmp"), "tests/test_visualization/test_pdf_process_ownership.py::test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget", "tests/test_visualization/test_pdf_process_ownership.py::test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read", "tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_setup_does_not_require_a_page_event", "tests/test_visualization/test_pdf_process_ownership.py::test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script"])
+          code = pytest.main(["--noconftest", "--rootdir", str(Path.cwd()), "-c", ".github/qualification/installed.ini", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "-s", "--timeout", "120", "--junitxml", str(report), "--basetemp", str(output / "tmp"), "tests/test_visualization/test_pdf_process_ownership.py::test_external_native_exit_hold_cannot_bypass_kernel_cleanup_budget", "tests/test_visualization/test_pdf_process_ownership.py::test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read", "tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_setup_does_not_require_a_page_event", "tests/test_visualization/test_pdf_process_ownership.py::test_renderer_preload_keeps_the_outer_render_budget_for_a_slow_valid_script"])
           cases = list(ET.parse(report).iter("testcase"))
           assert len(cases) == 4 and all(case.find("skipped") is None for case in cases)
           if variant == "base":
@@ -191,7 +191,7 @@ jobs:
             uv run --isolated --no-project --python 3.12 \
               --with "$(find artifacts/notebooks -name '*.whl' -print -quit)[viz]" \
               --with pytest --with nbclient --with ipykernel "${packages[@]}" \
-              python -I -c "import importlib.util, pytest; assert all(importlib.util.find_spec(n) is None for n in ('pyfolio', 'empyrical', 'alphalens', 'zipline', 'ml4t.data', 'ml4t.engineer', 'ml4t.backtest')); raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/$profile', 'tests/test_compat/test_pyfolio_notebook_migration.py', '-k', 'not portable_original_capture_preserves_actual_producer_output']))"
+              python -I -c "import importlib.util, pytest; assert all(importlib.util.find_spec(n) is None for n in ('pyfolio', 'empyrical', 'alphalens', 'zipline', 'ml4t.data', 'ml4t.engineer', 'ml4t.backtest')); raise SystemExit(pytest.main(['--noconftest', '-c', '.github/qualification/installed.ini', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/$profile', 'tests/test_compat/test_pyfolio_notebook_migration.py', '-k', 'not portable_original_capture_preserves_actual_producer_output']))"
           done
       - name: Compare the portable account with its original producer binary in a reference environment
         shell: bash
@@ -205,7 +205,7 @@ jobs:
             --with "$(find artifacts/notebooks -name '*.whl' -print -quit)[viz]" \
             --with pandas==2.3.3 --with numpy==2.2.6 --with polars==1.36.1 --with plotly==6.1.2 \
             --with zipline-reloaded==3.2.0 --with pyfolio-reloaded==0.10.0 --with empyrical-reloaded==0.7.0 --with pytest \
-            python -I -c "import pytest; raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/reference', 'tests/test_compat/test_pyfolio_notebook_migration.py::test_portable_original_capture_preserves_actual_producer_output']))"
+            python -I -c "import pytest; raise SystemExit(pytest.main(['--noconftest', '-c', '.github/qualification/installed.ini', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--basetemp', 'artifacts/notebooks/reference', 'tests/test_compat/test_pyfolio_notebook_migration.py::test_portable_original_capture_preserves_actual_producer_output']))"
       - name: Retain converted notebooks and installed artifacts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -238,7 +238,7 @@ jobs:
             --with "$(find artifacts/producers -name '*.whl' -print -quit)[viz]" \
             --with ml4t-backtest==0.2.0 --with ml4t-engineer==0.2.0 --with 'ml4t-data[yahoo]==0.3.0' \
             --with pytest --with playwright \
-            python -I -c "from importlib.metadata import version; import pytest; assert version('ml4t-backtest')=='0.2.0' and version('ml4t-engineer')=='0.2.0' and version('ml4t-data')=='0.3.0'; raise SystemExit(pytest.main(['--noconftest', '-c', '/dev/null', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--junitxml=artifacts/producers/results.xml', '--basetemp=artifacts/producers/reports', 'tests/test_integration/test_producer_report_journeys.py', 'tests/test_compat/test_acquisition_recipe.py', '-k', 'not dated_rf_recipe_matches_actual_published_empyrical']))"
+            python -I -c "from importlib.metadata import version; import pytest; assert version('ml4t-backtest')=='0.2.0' and version('ml4t-engineer')=='0.2.0' and version('ml4t-data')=='0.3.0'; raise SystemExit(pytest.main(['--noconftest', '-c', '.github/qualification/installed.ini', '-p', 'no:cacheprovider', '-o', 'addopts=', '-q', '--junitxml=artifacts/producers/results.xml', '--basetemp=artifacts/producers/reports', 'tests/test_integration/test_producer_report_journeys.py', 'tests/test_compat/test_acquisition_recipe.py', '-k', 'not dated_rf_recipe_matches_actual_published_empyrical']))"
       - name: Require every actual producer journey
         run: uv run --no-project --python 3.12 python -c "import xml.etree.ElementTree as E; cases=list(E.parse('artifacts/producers/results.xml').iter('testcase')); assert len(cases)==17 and not any(c.find('skipped') is not None for c in cases)"
       - name: Regenerate elapsed and scheduled outcomes with published Engineer
@@ -249,7 +249,7 @@ jobs:
           uv run --isolated --no-project --python 3.12 \
             --with "$(find artifacts/producers -name '*.whl' -print -quit)" \
             --with ml4t-engineer==0.2.0 --with pytest \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
             -q --junitxml=artifacts/producers/outcomes.xml \
             tests/test_signal/test_signal_outcome_ingestion.py -k published_engineer
           uv run --no-project --python 3.12 python -c "import xml.etree.ElementTree as E; cases=list(E.parse('artifacts/producers/outcomes.xml').iter('testcase')); assert len(cases)==12 and not any(c.find('skipped') is not None for c in cases)"
@@ -262,7 +262,7 @@ jobs:
             --with "$(find artifacts/producers -name '*.whl' -print -quit)[viz]" \
             --with 'ml4t-data[yahoo]==0.3.0' --with empyrical-reloaded==0.7.0 \
             --with pandas==2.3.3 --with pytest \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= -q \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= -q \
             --basetemp=artifacts/producers/reference-reports tests/test_compat/test_acquisition_recipe.py
       - name: Retain actual reports and installed artifacts
         if: always()
@@ -488,7 +488,7 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)"
           --with "polars==1.36.1" --with "pandas==2.3.3"
           --with "empyrical-reloaded==0.5.12" --with "pytz==2026.5" --with pytest
-          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/test_empyrical_scalar_metrics.py
           tests/test_compat/test_empyrical_return_paths.py
           tests/test_evaluation/test_constant_sharpe.py
@@ -500,7 +500,7 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==3.0.5"
           --with "empyrical-reloaded==0.7.0" --with pytest --with lxml
-          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
           tests/test_evaluation/test_sharpe_offset_precision.py
           tests/test_metrics/test_gpd_tail_risk.py tests/test_metrics/test_gpd_helper_shapes.py
@@ -512,7 +512,7 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3"
           --with "empyrical-reloaded==0.7.0" --with "pyfolio-reloaded==0.10.0" --with pytest --with lxml
-          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_compat/
           tests/test_evaluation/test_portfolio_var_definitions.py
           tests/test_metrics/test_gpd_tail_risk.py tests/test_metrics/test_gpd_helper_shapes.py
@@ -521,7 +521,7 @@ jobs:
         run: >-
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]" --with pytest
-          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts=
           -q --tb=short tests/test_visualization/test_gpd_tail_report.py
       - name: Run supplied-holdings attribution workflow from installed wheel
         shell: bash
@@ -530,7 +530,7 @@ jobs:
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
             --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_evaluation/test_holdings_factor_attribution.py \
             tests/test_compat/test_empyrical_holdings_attribution.py \
             tests/test_compat/test_pyfolio_holdings_attribution.py \
@@ -554,7 +554,7 @@ jobs:
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
             --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_evaluation/test_portfolio_fifo.py \
             tests/test_evaluation/test_intraday_estimate.py \
             tests/test_compat/test_pyfolio_round_trips.py \
@@ -593,7 +593,7 @@ jobs:
           unsupported = {dist.metadata["Name"]: dist.metadata["Requires-Python"] for dist in distributions() if dist.metadata.get("Requires-Python") and not SpecifierSet(dist.metadata["Requires-Python"]).contains(platform.python_version(), prereleases=True)}
           assert not unsupported, unsupported
           print("pandas", version("pandas"), "installed", diagnostic.__file__)
-          raise SystemExit(pytest.main(["--noconftest", "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "tests/test_evaluation/test_fifo_trade_consumer.py", "tests/test_evaluation/test_fifo_completed_statistics.py", "tests/test_backtest_contract.py"]))
+          raise SystemExit(pytest.main(["--noconftest", "-c", ".github/qualification/installed.ini", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "tests/test_evaluation/test_fifo_trade_consumer.py", "tests/test_evaluation/test_fifo_completed_statistics.py", "tests/test_backtest_contract.py"]))
           PYTHON
           done
       - name: Run complete capacity workflows from installed wheel
@@ -603,7 +603,7 @@ jobs:
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
             --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_evaluation/test_portfolio_capacity.py \
             tests/test_compat/test_pyfolio_capacity.py tests/test_compat/test_pyfolio_capacity_sheet.py \
             tests/test_visualization/test_capacity_report.py
@@ -618,13 +618,13 @@ jobs:
           uv run --isolated --no-project \
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             --with "ml4t-data==0.2.1" --with pytest \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_integration/test_capacity_data_provider.py
           uv run --isolated --no-project \
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             --with "ml4t-backtest @ git+https://github.com/ml4t/backtest@da223f904cfa03744152311e3c617c15fdc1ddcd" \
             --with pytest \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_integration/test_capacity_backtest.py
       - name: Run complete stress live and cone workflows from installed wheel
         shell: bash
@@ -633,7 +633,7 @@ jobs:
             --with "$(find dist -name '*.whl' -print -quit)[viz]" \
             --with "pandas==2.3.3" --with "empyrical-reloaded==0.7.0" \
             --with "pyfolio-reloaded==0.10.0" --with pytest --with playwright \
-            python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+            python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
             -q --tb=short tests/test_evaluation/test_portfolio_stress_live.py \
             tests/test_evaluation/test_portfolio_wealth_cones.py \
             tests/test_compat/test_pyfolio_wealth_cones.py \
@@ -685,7 +685,7 @@ jobs:
           --with "polars==1.36.1" --with "pandas==2.3.3"
           --with pytest --with pytest-timeout --with pytest-xdist --with lxml
           --with "alphalens-reloaded==0.4.6" --with "empyrical-reloaded==0.7.0" --with playwright
-          pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts=
           -q -n auto --timeout 120 tests/test_signal/
           tests/test_compat/test_alphalens_portfolio.py
           tests/test_compat/test_alphalens_information_sheet.py
@@ -708,7 +708,7 @@ jobs:
           --with "polars==1.36.1" --with "pandas==2.3.3"
           --with "alphalens-reloaded==0.5.0" --with "empyrical-reloaded==0.7.0"
           --with pytest --with pytest-timeout --with playwright --with nbclient --with ipykernel --with lxml
-          python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts=
           -q tests/test_compat/test_alphalens_preparation.py
           tests/test_compat/test_alphalens_time_alignment.py
           tests/test_compat/test_alphalens_bucketing.py
@@ -748,7 +748,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with nbclient --with ipykernel --with pytest
-          pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
+          pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -q -s
           tests/test_evaluation/test_portfolio_notebook_report.py
       - name: Run complete event-returns workflow from installed wheel
         shell: bash
@@ -764,7 +764,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with nbclient --with ipykernel --with pytest
-          pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
+          pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -q -s
           tests/test_signal/test_event_returns_notebook.py
       - name: Run complete information migration from installed wheel
         shell: bash
@@ -797,7 +797,7 @@ jobs:
             ML4T_REQUIRED_ORIGINAL_NOTEBOOKS=1 uv run --isolated --no-project \
               --with "$(find dist -name '*.whl' -print -quit)[viz]" \
               --with "pandas==$pandas_version" --with nbclient --with ipykernel --with pytest \
-              python -I -m pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= \
+              python -I -m pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= \
               -q tests/test_compat/test_alphalens_original_notebooks.py
           done
       - name: Execute complete signal report notebooks from installed wheel
@@ -806,7 +806,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with nbclient --with ipykernel --with pytest
-          pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts= -q -s
+          pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts= -q -s
           tests/test_signal/test_signal_information_notebook.py
           tests/test_signal/test_signal_turnover_notebook.py
           tests/test_signal/test_signal_event_study_notebook.py
@@ -817,7 +817,7 @@ jobs:
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with "polars==1.36.1" --with "pandas==2.3.3" --with "plotly==6.1.2"
           --with pytest --with playwright
-          pytest --noconftest -c /dev/null -p no:cacheprovider -q -s
+          pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -q -s
           tests/test_signal/test_signal_information.py
           tests/test_signal/test_signal_information_browser.py
       - name: Retain complete information report browser evidence
@@ -838,7 +838,7 @@ jobs:
           uv run --isolated --no-project
           --with "$(find dist -name '*.whl' -print -quit)[viz]"
           --with pytest --with pytest-timeout
-          pytest --noconftest -c /dev/null -p no:cacheprovider -o addopts=
+          pytest --noconftest -c .github/qualification/installed.ini -p no:cacheprovider -o addopts=
           -q -s --timeout 120 --tb=short
           tests/test_contract/test_pdf_collection_lifecycle.py
           tests/test_visualization/test_pdf_report_lifecycle.py
