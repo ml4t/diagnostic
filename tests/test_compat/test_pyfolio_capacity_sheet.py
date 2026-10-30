@@ -332,13 +332,13 @@ def test_complete_capacity_report_renders_readable_tables_and_actual_curve_offli
     )
     with browser_api.sync_playwright() as runtime:
         browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
-        context = browser.new_context(viewport={"width": width, "height": 1000})
+        page = browser.new_page(viewport={"width": width, "height": 1000})
+        context = page.context
         tracing = os.environ.get("ML4T_CAPACITY_BROWSER_TRACE") == "1"
         if tracing:
             context.tracing.start(screenshots=True, snapshots=True, sources=True)
         events = []
         try:
-            page = context.new_page()
             page.context.set_offline(True)
             for event in (
                 "request",
