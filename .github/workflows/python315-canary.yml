@@ -54,7 +54,14 @@ jobs:
           mkdir -p artifacts
           uv run --no-sync python -m pytest -o addopts= -n 0 -vv -rA --timeout 120 \
             --junitxml=artifacts/native-pipe-probe.xml --basetemp=artifacts/native-pipe-tmp \
-            tests/test_visualization/test_pdf_process_ownership.py::test_browser_output_shutdown_does_not_block_a_pending_inherited_write
+            tests/test_visualization/test_pdf_process_ownership.py::test_browser_output_shutdown_does_not_block_a_pending_inherited_write \
+            tests/test_visualization/test_pdf_process_ownership.py::test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read \
+            tests/test_visualization/test_pdf_process_ownership.py::test_browser_pipe_close_releases_its_idle_reader_without_peer_output \
+            tests/test_visualization/test_pdf_process_ownership.py::test_browser_partial_utf8_frame_does_not_block_nonblocking_reads \
+            'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[profile_sharing]' \
+            'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[close_error]' \
+            'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[render_error]' \
+            'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[pipe_number_reuse]'
       - name: Retain native evidence regardless of outcome
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

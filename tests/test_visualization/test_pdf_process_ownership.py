@@ -1198,6 +1198,85 @@ print(json.dumps(result),flush=True)
     assert restored["peer_result"] == {"read": "78", "error": 0}
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows pipe reader required")
+def test_browser_pipe_close_releases_its_idle_reader_without_peer_output():
+    import threading
+
+    from choreographer.channels import ChannelClosedError
+
+    from ml4t.diagnostic.visualization._pdf_worker import _RendererPipe
+
+    channel = _RendererPipe()
+    channel.open()
+    started = threading.Event()
+    outcome = []
+
+    def read_actual_pipe():
+        started.set()
+        try:
+            channel.read_jsons()
+        except ChannelClosedError:
+            outcome.append("closed")
+
+    reader = threading.Thread(target=read_actual_pipe, daemon=True)
+    reader.start()
+    try:
+        assert started.wait(timeout=5)
+        channel.close()
+        reader.join(timeout=1)
+        assert not reader.is_alive() and outcome == ["closed"]
+    finally:
+        channel.close()
+        reader.join(timeout=5)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows byte-stream framing required")
+def test_browser_partial_utf8_frame_does_not_block_nonblocking_reads():
+    import threading
+
+    from ml4t.diagnostic.visualization._pdf_worker import _RendererPipe
+
+    channel = _RendererPipe()
+    channel.open()
+    first = {"id": 1, "result": {"value": "\u20ac"}}
+    second = {"id": 2, "result": {"value": "x" * 24000}}
+    encoded = json.dumps(first, ensure_ascii=False).encode("utf-8")
+    split = encoded.index("\u20ac".encode()) + 1
+    observed = []
+    reader = threading.Thread(
+        target=lambda: observed.append(channel.read_jsons(blocking=False)[0]), daemon=True
+    )
+    writer = None
+    try:
+        os.write(channel._write_from_browser, encoded[:split])
+        reader.start()
+        reader.join(timeout=1)
+        blocked = reader.is_alive()
+        os.write(channel._write_from_browser, encoded[split:] + b"\0")
+        reader.join(timeout=5)
+        assert not reader.is_alive()
+        assert not blocked, "A partial browser frame blocked a nonblocking read"
+        assert observed == [[]]
+        assert channel.read_jsons()[0] == [first]
+
+        def write_large_actual_frame():
+            payload = json.dumps(second).encode("utf-8") + b"\0"
+            offset = 0
+            while offset < len(payload):
+                offset += os.write(channel._write_from_browser, payload[offset:])
+
+        writer = threading.Thread(target=write_large_actual_frame, daemon=True)
+        writer.start()
+        assert channel.read_jsons()[0] == [second]
+        writer.join(timeout=5)
+        assert not writer.is_alive()
+    finally:
+        channel.close()
+        reader.join(timeout=5)
+        if writer is not None:
+            writer.join(timeout=5)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Actual inherited Windows pipe write required")
 def test_browser_output_shutdown_does_not_block_a_pending_inherited_write(tmp_path):
     import ctypes
