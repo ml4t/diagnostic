@@ -5,6 +5,10 @@ on:
     - cron: "41 9 1 * *"
   workflow_dispatch:
     inputs:
+      native-cleanup-probe:
+        description: Record native Windows thread states for the actual retained cleanup failures
+        type: boolean
+        default: false
       capacity-browser-probe:
         description: Diagnose Windows sdist capacity loading in the complete browser sequence
         type: boolean
@@ -34,10 +38,49 @@ permissions:
   contents: read
 
 concurrency:
-  group: python315-${{ github.ref }}-${{ inputs.full-qualification && 'full' || inputs.capacity-browser-probe && 'capacity' || inputs.browser-qualification && 'browser' || inputs.canonical-migration && 'migration' || 'source' }}
+  group: python315-${{ github.ref }}-${{ inputs.full-qualification && 'full' || inputs.capacity-browser-probe && 'capacity' || inputs.native-cleanup-probe && 'cleanup' || inputs.browser-qualification && 'browser' || inputs.canonical-migration && 'migration' || 'source' }}
   cancel-in-progress: true
 
 jobs:
+  native-cleanup-probe:
+    name: Windows native cleanup thread-state diagnosis
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.native-cleanup-probe }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      ML4T_PDF_NATIVE_TRACE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.10.9"
+      - run: uv python install 3.13
+      - run: uv sync --frozen --python 3.13 --dev --extra viz
+      - name: Retain every diagnostic attempt with unchanged runtime and deadlines
+        shell: bash
+        run: |
+          mkdir -p artifacts/native-cleanup
+          failures=0
+          for attempt in 1 2; do
+            for case in early_pipe_closure unresponsive_browser_after_closed_channel bounded_shutdown_fault; do
+              uv run --no-sync python -m pytest -o addopts= -n 0 -vv -rA --timeout 120 \
+                --junitxml="artifacts/native-cleanup/$attempt-$case.xml" \
+                --basetemp="artifacts/native-cleanup/$attempt-$case" \
+                tests/test_visualization/test_pdf_process_ownership.py -k "$case" \
+                || failures=$((failures + 1))
+            done
+          done
+          test "$failures" -eq 0
+      - name: Retain native diagnosis regardless of test outcome
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-native-cleanup-${{ github.sha }}
+          path: artifacts/native-cleanup/
+          if-no-files-found: error
+
   native-pipe-probe:
     name: Windows native browser-output pipe probe
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.native-pipe-probe }}
