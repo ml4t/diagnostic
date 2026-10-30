@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.native_browser
+
 _PROBE = r'''
 import json,os,subprocess,sys,time
 from pathlib import Path

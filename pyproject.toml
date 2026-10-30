@@ -214,6 +214,7 @@ Changelog = "https://github.com/ml4t/diagnostic/releases"
 
 [dependency-groups]
 test = [
+    "shap>=0.52.0,<0.53.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
     "lxml>=6.0.0",
     "playwright>=1.64.0",
     "pytest>=9.0.3",
@@ -238,7 +239,6 @@ dev = [
     "pre-commit>=3.3.0",
     "twine>=6.0.0",
     "pip-audit>=2.10.1",
-    "shap>=0.52.0,<0.53.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
     "streamlit>=1.28.0",
 ]
 

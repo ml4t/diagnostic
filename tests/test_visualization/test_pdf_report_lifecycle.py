@@ -10,6 +10,8 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.native_browser
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file mode contract")
 def test_atomic_pdf_replacement_retains_existing_report_permissions(tmp_path, monkeypatch):
