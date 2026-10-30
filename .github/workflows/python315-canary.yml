@@ -87,7 +87,8 @@ jobs:
     name: Full native and installed / ${{ matrix.os }} / Python 3.15
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.full-qualification }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
+    timeout-minutes: 90
+    needs: canonical-artifacts
     strategy:
       fail-fast: false
       matrix:
@@ -101,10 +102,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.10.9"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         id: python
         with:
           python-version: "3.15"
@@ -120,12 +121,36 @@ jobs:
           mkdir -p artifacts/python315
           uv sync --frozen --python "${{ steps.python.outputs.python-path }}" --dev --extra ml --extra viz --extra perf 2>&1 | tee artifacts/python315/native-install.log
           uv run --no-sync python -c 'import sys; assert sys.version_info[:2] == (3, 15) and sys.version_info.releaselevel == "final"; print(sys.executable, sys.version)'
-          uv run --no-sync python -m playwright install --with-deps chromium
-      - name: Build and verify the exact experimental wheel and source archive
+      - name: Make the real browser discoverable before every report run
+        shell: bash
+        run: |
+          uv run --no-sync playwright install --with-deps chromium
+          uv run --no-sync python - <<'PYTHON'
+          import hashlib, os
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as runtime:
+              executable = Path(runtime.chromium.executable_path)
+          assert executable.is_file()
+          alias = executable.with_name("google-chrome.exe" if os.name == "nt" else "google-chrome")
+          if not alias.exists():
+              os.link(executable, alias)
+          digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+          assert hashlib.sha256(alias.read_bytes()).hexdigest() == digest
+          with Path(os.environ["GITHUB_PATH"]).open("a") as stream:
+              stream.write(str(alias.parent) + "\n")
+          with Path(os.environ["GITHUB_ENV"]).open("a") as stream:
+              stream.write("BROWSER_PATH=" + str(alias) + "\n")
+              stream.write("ML4T_BROWSER_SHA256=" + digest + "\n")
+          PYTHON
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: python315-canonical-${{ github.sha }}
+          path: artifacts/python315/dist/
+      - name: Verify the common experimental wheel and source archive
         id: artifacts
         shell: bash
         run: |
-          uv build --out-dir artifacts/python315/dist
           uv run --no-sync python scripts/verify_release_artifacts.py artifacts/python315/dist --expected-version 0.3.0.dev0
           uv export --frozen --dev --extra ml --extra viz --extra perf --no-emit-project --output-file artifacts/python315/requirements.txt
       - name: Record the actual native interpreter and dependency identity
@@ -153,14 +178,24 @@ jobs:
         run: >-
           uv run --no-sync python -m pytest tests/ -q -n 2 --timeout 120
           --junitxml=artifacts/python315/native.xml
+      - name: Run the mandatory native browser and complete PDF contracts serially
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
+        run: >-
+          uv run --no-sync python -m pytest -o addopts= -v -s -n 0 --timeout 120
+          tests/test_contract/test_pdf_collection_lifecycle.py
+          tests/test_visualization/test_pdf_report_lifecycle.py
+          tests/test_visualization/test_pdf_process_ownership.py
+          tests/test_visualization/test_report_generation.py
+          tests/test_visualization/test_report_literal_titles.py
+          --junitxml=artifacts/python315/native-browser.xml
       - name: Run the full isolated installed-wheel suite
         if: ${{ !cancelled() && steps.environment.outcome == 'success' && steps.artifacts.outcome == 'success' }}
         shell: bash
         run: |
           wheel=$(find artifacts/python315/dist -name '*.whl' -print -quit)
           uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
-            --with-requirements artifacts/python315/requirements.txt --with "$wheel[ml,viz,perf]" \
-            python -I -c "import os,sys,json,platform,pytest; from pathlib import Path; from importlib.metadata import distributions; from packaging.specifiers import SpecifierSet; import ml4t.diagnostic as d; unsupported={dist.metadata['Name']:dist.metadata['Requires-Python'] for dist in distributions() if dist.metadata.get('Requires-Python') and not SpecifierSet(dist.metadata['Requires-Python']).contains(platform.python_version(), prereleases=True)}; Path('artifacts/python315/installed-python-bounds.json').write_text(json.dumps(unsupported,indent=2)); assert not unsupported, unsupported; assert sys.version_info[:2]==(3,15) and d.__version__=='0.3.0.dev0'; assert not Path(d.__file__).resolve().is_relative_to(Path(os.environ['GITHUB_WORKSPACE']).resolve()); print('Installed wheel:', d.__version__, d.__file__, sys.version); raise SystemExit(pytest.main(['tests/', '-q', '-n', '2', '--timeout', '120', '--junitxml=artifacts/python315/installed.xml']))"
+            --with-requirements artifacts/python315/requirements.txt --with "${wheel}[ml,viz,perf]" \
+            python -I .github/qualification/python315_installed.py
       - name: Execute all five originals and PDF controls from both installed formats without Reloaded
         if: ${{ !cancelled() && steps.environment.outcome == 'success' && steps.artifacts.outcome == 'success' }}
         shell: bash
@@ -170,7 +205,7 @@ jobs:
           for format in whl tar.gz; do
             artifact=$(find artifacts/python315/dist -name "*.$format" -print -quit)
             uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
-              --with "$artifact[viz,perf]" --with pytest --with pytest-timeout --with nbclient --with ipykernel \
+              --with "${artifact}[viz,perf]" --with pytest --with pytest-timeout --with nbclient --with ipykernel \
               python -I -c "import os,sys,importlib.util,pytest; from pathlib import Path; import ml4t.diagnostic as d; assert sys.version_info[:2]==(3,15) and d.__version__=='0.3.0.dev0'; assert not Path(d.__file__).resolve().is_relative_to(Path(os.environ['GITHUB_WORKSPACE']).resolve()); assert all(importlib.util.find_spec(n) is None for n in ('pyfolio','empyrical','alphalens','zipline','ml4t.data','ml4t.engineer','ml4t.backtest')); print('Installed format:', '$format', d.__file__); raise SystemExit(pytest.main(['--noconftest', '-o', 'addopts=', '-p', 'no:cacheprovider', '-q', '--timeout', '120', '--junitxml=artifacts/python315/originals-$format.xml', 'tests/test_compat/test_pyfolio_notebook_migration.py', 'tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_can_finish_without_a_second_load_event', 'tests/test_visualization/test_pdf_process_ownership.py::test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready', 'tests/test_visualization/test_pdf_process_ownership.py::test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly', '-k', 'not portable_original_capture_preserves_actual_producer_output']))"
           done
       - name: Exercise the installed all-extra package with actual published producers
@@ -182,7 +217,7 @@ jobs:
         run: |
           wheel=$(find artifacts/python315/dist -name '*.whl' -print -quit)
           uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
-            --with "$wheel[all]" --with 'ml4t-data[yahoo]==0.3.0' --with ml4t-engineer==0.2.0 --with ml4t-backtest==0.2.0 \
+            --with "${wheel}[all]" --with 'ml4t-data[yahoo]==0.3.1' --with ml4t-engineer==0.2.1 --with ml4t-backtest==0.2.0 \
             --with pytest --with playwright \
             python -I -c "import sys,json,platform,pytest; from pathlib import Path; from importlib.metadata import metadata; from packaging.specifiers import SpecifierSet; peers=['ml4t-diagnostic','ml4t-data','ml4t-engineer','ml4t-backtest']; bounds={name:metadata(name).get('Requires-Python','') for name in peers}; Path('artifacts/python315/producer-python-bounds.json').write_text(json.dumps(bounds,indent=2)); unsupported={name:value for name,value in bounds.items() if value and not SpecifierSet(value).contains(platform.python_version(),prereleases=True)}; assert not unsupported, unsupported; assert sys.version_info[:2]==(3,15); raise SystemExit(pytest.main(['--noconftest', '-o', 'addopts=', '-p', 'no:cacheprovider', '-q', '--junitxml=artifacts/python315/producers.xml', 'tests/test_integration/test_producer_report_journeys.py', 'tests/test_compat/test_acquisition_recipe.py', '-k', 'not dated_rf_recipe_matches_actual_published_empyrical']))"
       - name: Require the complete native, installed and migration outcomes
@@ -197,7 +232,7 @@ jobs:
           root = Path("artifacts/python315")
           counts = {}
           expected = {"originals-whl": 17, "originals-tar.gz": 17, "producers": 17}
-          for name in ["native", "installed", *expected]:
+          for name in ["native", "native-browser", "installed", "installed-browser", *expected]:
               cases = list(ET.parse(root / (name + ".xml")).iter("testcase"))
               assert cases, name
               assert not any(case.find(tag) is not None for case in cases for tag in ("failure", "error")), name
@@ -226,11 +261,8 @@ jobs:
 
   canonical-artifacts:
     name: Build one immutable Python 3.15 migration candidate
-    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.canonical-migration || inputs.browser-qualification) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.canonical-migration || inputs.browser-qualification || inputs.full-qualification) }}
     runs-on: ubuntu-latest
-    env:
-      QUALIFIED_NATIVE_REVISION: f7859c9ea9be5c4028728795c7bc592cc9b79958
-      QUALIFIED_WHEEL_SHA256: 1652d2d590b04bd02330759781448bfe7b54168d0cfd3a9569bb2819a901b24b
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -239,17 +271,13 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.10.9"
-      - name: Reuse native qualification only for identical runtime, tests and dependencies
-        run: |
-          git merge-base --is-ancestor "$QUALIFIED_NATIVE_REVISION" HEAD
-          git diff --exit-code "$QUALIFIED_NATIVE_REVISION" HEAD -- src tests scripts pyproject.toml uv.lock
       - run: uv build --out-dir artifacts/canonical
       - name: Verify both canonical artifact metadata envelopes
         run: >-
           uv run --isolated --no-project --with packaging
           python scripts/verify_release_artifacts.py artifacts/canonical
           --expected-version 0.3.0.dev0
-      - name: Bind the actual archives to the qualified wheel and Git modules
+      - name: Bind both new canonical archives to their actual current Git modules
         run: |
           uv run --isolated --no-project python - <<'PYTHON'
           import hashlib, io, json, os, subprocess, tarfile, zipfile
@@ -258,13 +286,15 @@ jobs:
           files = sorted([*root.glob("*.whl"), *root.glob("*.tar.gz")])
           assert len(files) == 2
           wheel = next(p for p in files if p.suffix == ".whl")
-          assert hashlib.sha256(wheel.read_bytes()).hexdigest() == os.environ["QUALIFIED_WHEEL_SHA256"]
           with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(["git", "archive", "HEAD", "src/ml4t/diagnostic"]))) as archive:
               modules = {p.name.removeprefix("src/"): archive.extractfile(p).read() for p in archive.getmembers() if p.isfile() and p.name.endswith(".py")}
           assert len(modules) == 358
           with zipfile.ZipFile(wheel) as archive:
               assert all(archive.read(name) == value for name, value in modules.items())
-          manifest = {"source_revision": os.environ["GITHUB_SHA"], "qualified_native_revision": os.environ["QUALIFIED_NATIVE_REVISION"], "archives": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}
+          sdist = next(p for p in files if p.name.endswith(".tar.gz"))
+          with tarfile.open(sdist) as archive:
+              assert all(archive.extractfile("ml4t_diagnostic-0.3.0.dev0/src/" + name).read() == value for name, value in modules.items())
+          manifest = {"source_revision": os.environ["GITHUB_SHA"], "archives": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}
           (root / "manifest.json").write_text(json.dumps(manifest, indent=2))
           print(manifest["archives"])
           PYTHON
@@ -316,7 +346,7 @@ jobs:
           for format in whl tar.gz; do
             artifact=$(find artifacts/canonical -name "*.$format" -print -quit)
             uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
-              --with "$artifact[viz]" --with pytest --with pytest-timeout --with nbclient --with ipykernel \
+              --with "${artifact}[viz]" --with pytest --with pytest-timeout --with nbclient --with ipykernel \
               python -I - "$format" <<'PYTHON'
           import hashlib, importlib.util, json, platform, sys, sysconfig
           import xml.etree.ElementTree as ET
@@ -342,7 +372,7 @@ jobs:
           report = output / (sys.argv[1] + ".xml")
           (output / (sys.argv[1] + "-identity.json")).write_text(json.dumps({"python": sys.version, "module": diagnostic.__file__, "manifest": manifest, "unsupported": unsupported}, indent=2))
           tests = ["tests/test_compat/test_pyfolio_notebook_migration.py", "tests/test_compat/test_alphalens_original_notebooks.py", "tests/test_signal/test_signal_information_notebook.py", "tests/test_signal/test_signal_turnover_notebook.py", "tests/test_signal/test_signal_event_study_notebook.py", "tests/test_visualization/test_pdf_process_ownership.py::test_loaded_renderer_document_can_finish_without_a_second_load_event", "tests/test_visualization/test_pdf_process_ownership.py::test_previous_blank_page_cannot_mark_unloaded_renderer_scripts_as_ready", "tests/test_visualization/test_pdf_process_ownership.py::test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly"]
-          code = pytest.main(["--noconftest", "-c", "/dev/null", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "--timeout", "120", "--basetemp", str(output / sys.argv[1]), "--junitxml", str(report), *tests, "-k", "not portable_original_capture_preserves_actual_producer_output"])
+          code = pytest.main(["--noconftest", "--rootdir", str(Path.cwd()), "-c", ".github/qualification/installed.ini", "-p", "no:cacheprovider", "-o", "addopts=", "-q", "--timeout", "120", "--basetemp", str(output / sys.argv[1]), "--junitxml", str(report), *tests, "-k", "not portable_original_capture_preserves_actual_producer_output"])
           if code:
               raise SystemExit(code)
           cases = list(ET.parse(report).iter("testcase"))
@@ -423,7 +453,7 @@ jobs:
         run: |
           format="${{ matrix.format }}"
           artifact=$(find artifacts/canonical -name "*.$format" -print -quit)
-          uv run --isolated --no-project --python 3.15 --with "$artifact[viz]" \
+          uv run --isolated --no-project --python 3.15 --with "${artifact}[viz]" \
             --with pytest --with pytest-timeout --with playwright --with lxml \
             python -I .github/qualification/python315_browser.py "$format"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

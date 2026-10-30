@@ -57,6 +57,7 @@ pdf_paths = [
     "tests/test_visualization/test_pdf_report_lifecycle.py",
     "tests/test_visualization/test_pdf_process_ownership.py",
     "tests/test_visualization/test_report_generation.py",
+    "tests/test_visualization/test_report_literal_titles.py",
 ]
 output = Path("artifacts/python315-browser")
 output.mkdir(parents=True, exist_ok=True)
@@ -81,7 +82,7 @@ code = pytest.main(
         "--rootdir",
         str(Path.cwd()),
         "-c",
-        "/dev/null",
+        ".github/qualification/installed.ini",
         "-p",
         "no:cacheprovider",
         "-o",
@@ -101,7 +102,7 @@ code = pytest.main(
 if code:
     raise SystemExit(code)
 cases = list(ET.parse(report).iter("testcase"))
-assert len(cases) == 227
+assert len(cases) == 232
 actual = {c.get("classname").replace(".", "/") + ".py::" + c.get("name"): c for c in cases}
 assert expected <= actual.keys(), sorted(expected - actual.keys())
 for name in expected:
@@ -119,7 +120,7 @@ pdf_cases = [
     for case in cases
     if any(case.attrib["classname"].startswith(module) for module in pdf_modules)
 ]
-assert len(pdf_cases) == 100
+assert len(pdf_cases) == 105
 for case in pdf_cases:
     skipped = case.find("skipped")
     if skipped is not None:
@@ -128,4 +129,7 @@ for case in pdf_cases:
             assert "POSIX" in message, (case.get("name"), message)
         else:
             assert "Windows" in message, (case.get("name"), message)
-print("Qualified all127 formerly omitted real browser cases and complete100-case PDF modules", mode)
+print(
+    "Qualified all127 formerly omitted real browser cases and complete105-case PDF/browser modules",
+    mode,
+)
