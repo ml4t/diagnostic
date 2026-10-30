@@ -454,6 +454,7 @@ jobs:
           format="${{ matrix.format }}"
           artifact=$(find artifacts/canonical -name "*.$format" -print -quit)
           uv run --isolated --no-project --python 3.15 --with "${artifact}[viz]" \
+            --with ml4t-backtest==0.2.0 \
             --with pytest --with pytest-timeout --with playwright --with lxml \
             python -I .github/qualification/python315_browser.py "$format"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
