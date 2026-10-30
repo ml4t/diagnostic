@@ -834,7 +834,7 @@ finally:
 
 def _run_pdf_probe(code, arguments):
     psutil = pytest.importorskip("psutil")
-    if sys.platform == "win32" and os.environ.get("ML4T_PDF_NATIVE_TRACE") == "1":
+    if sys.platform == "win32" and os.environ.get("ML4T_PDF_NATIVE_TRACE") in {"1", "timeout"}:
         import runpy
 
         helper = Path(__file__).with_name("_windows_pdf_trace.py")
