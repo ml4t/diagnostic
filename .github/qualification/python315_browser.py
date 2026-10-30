@@ -56,11 +56,7 @@ with sync_playwright() as runtime:
 required = json.loads(Path(".github/qualification/python315-browser-cases.json").read_text())
 expected = set(required["required_cases"])
 assert len(expected) == 127
-capacity_only = len(sys.argv) == 3 and sys.argv[2] == "capacity-only"
-assert len(sys.argv) == 2 or capacity_only
-if capacity_only:
-    expected = {name for name in expected if "test_pyfolio_capacity_sheet.py::" in name}
-    assert len(expected) == 2
+assert len(sys.argv) == 2
 pdf_paths = [
     "tests/test_contract/test_pdf_collection_lifecycle.py",
     "tests/test_visualization/test_pdf_report_lifecycle.py",
@@ -68,14 +64,13 @@ pdf_paths = [
     "tests/test_visualization/test_report_generation.py",
     "tests/test_visualization/test_report_literal_titles.py",
 ]
-if capacity_only:
-    pdf_paths = []
 output = Path("artifacts/python315-browser")
 output.mkdir(parents=True, exist_ok=True)
 report = output / (mode + ".xml")
 identity = {
     "mode": mode,
-    "scope": "capacity loading diagnosis" if capacity_only else "complete browser qualification",
+    "scope": "complete browser qualification",
+    "capacity_tracing": os.environ.get("ML4T_CAPACITY_BROWSER_TRACE") == "1",
     "qualifier_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
     "package_versions": {d.metadata["Name"]: d.version for d in distributions()},
     "python": sys.version,
@@ -114,7 +109,7 @@ code = pytest.main(
 if code:
     raise SystemExit(code)
 cases = list(ET.parse(report).iter("testcase"))
-assert len(cases) == (2 if capacity_only else 235)
+assert len(cases) == 235
 actual = {c.get("classname").replace(".", "/") + ".py::" + c.get("name"): c for c in cases}
 assert expected <= actual.keys(), sorted(expected - actual.keys())
 for name in expected:
@@ -132,7 +127,7 @@ pdf_cases = [
     for case in cases
     if any(case.attrib["classname"].startswith(module) for module in pdf_modules)
 ]
-assert len(pdf_cases) == (0 if capacity_only else 108)
+assert len(pdf_cases) == 108
 for case in pdf_cases:
     skipped = case.find("skipped")
     if skipped is not None:
@@ -141,9 +136,4 @@ for case in pdf_cases:
             assert "POSIX" in message, (case.get("name"), message)
         else:
             assert "Windows" in message, (case.get("name"), message)
-print(
-    "Passed capacity loading probe"
-    if capacity_only
-    else "Qualified all127 formerly omitted real browser cases and complete108-case PDF/browser modules",
-    mode,
-)
+print("Qualified all127 required report cases and complete108-case PDF/browser modules", mode)

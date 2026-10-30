@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       capacity-browser-probe:
-        description: Diagnose actual Windows sdist capacity loading with browser trace capture
+        description: Diagnose Windows sdist capacity loading in the complete browser sequence
         type: boolean
         default: false
       native-pipe-probe:
@@ -523,7 +523,6 @@ jobs:
         shell: bash
         env:
           ML4T_CAPACITY_BROWSER_TRACE: ${{ inputs.capacity-browser-probe && '1' || '0' }}
-          ML4T_CAPACITY_PROBE_ARGUMENT: ${{ inputs.capacity-browser-probe && 'capacity-only' || '' }}
           DEBUG: ${{ inputs.capacity-browser-probe && 'pw:browser' || '' }}
         run: |
           format="${{ matrix.format }}"
@@ -531,7 +530,7 @@ jobs:
           uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" --with "${artifact}[viz]" \
             --with ml4t-backtest==0.2.0 \
             --with pytest --with pytest-timeout --with playwright --with lxml \
-            python -I .github/qualification/python315_browser.py "$format" ${ML4T_CAPACITY_PROBE_ARGUMENT:+"$ML4T_CAPACITY_PROBE_ARGUMENT"}
+            python -I .github/qualification/python315_browser.py "$format"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
