@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: python315-source-canary-${{ github.ref }}
+  group: python315-${{ github.ref }}-${{ inputs.full-qualification && 'full' || inputs.browser-qualification && 'browser' || inputs.canonical-migration && 'migration' || 'source' }}
   cancel-in-progress: true
 
 jobs:
