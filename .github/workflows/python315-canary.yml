@@ -76,6 +76,25 @@ jobs:
           tests/test_evaluation/test_sharpe_offset_precision.py
           tests/test_evaluation/test_risk_adjusted_correctness.py
           --junitxml=python315-canary.xml
+      - name: Audit the locked release and contributor graphs on the actual interpreter
+        shell: bash
+        run: |
+          uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" python - <<'PYTHON'
+          import tomllib
+          from pathlib import Path
+          lock = tomllib.loads(Path("uv.lock").read_text())
+          tools = {p["name"]: p["version"] for p in lock["package"] if p["name"] in {"pip-audit", "pip-api"}}
+          assert set(tools) == {"pip-audit", "pip-api"}, tools
+          Path("python315-audit-tools.txt").write_text("".join(f"{name}=={version}\n" for name, version in sorted(tools.items())))
+          PYTHON
+          uv export --quiet --frozen --all-extras --no-dev --no-emit-project --output-file python315-release-audit.txt
+          uv export --quiet --frozen --all-extras --dev --no-emit-project --output-file python315-contributor-audit.txt
+          for graph in release contributor; do
+            uv run --isolated --no-project --python "${{ steps.python.outputs.python-path }}" \
+              --with-requirements python315-audit-tools.txt pip-audit \
+              --strict --require-hashes --disable-pip --vulnerability-service pypi \
+              -r "python315-${graph}-audit.txt" 2>&1 | tee "python315-${graph}-audit.log"
+          done
       - name: Retain source-canary evidence even when the probe fails
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -85,13 +104,16 @@ jobs:
             python315-core.txt
             python315-environment.json
             python315-canary.xml
+            python315-audit-tools.txt
+            python315-*-audit.txt
+            python315-*-audit.log
           if-no-files-found: warn
 
   full-qualification:
     name: Full native and installed / ${{ matrix.os }} / Python 3.15
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.full-qualification }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     needs: canonical-artifacts
     strategy:
       fail-fast: false
