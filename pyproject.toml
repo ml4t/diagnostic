@@ -130,7 +130,7 @@ viz = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "kaleido>=1.5.0",  # Timestamp-safe PDF export and current Choreographer transport
-    "pypdf>=6.16.1",    # For PDF merging
+    "pypdf>=6.21.3",    # For PDF merging
     "psutil>=7.2.2",   # Owned PDF renderer process cleanup
 ]
 
@@ -193,7 +193,7 @@ all = [
     "seaborn>=0.12.0",
     "kaleido>=1.5.0",
     "psutil>=7.2.2",
-    "pypdf>=6.16.1",
+    "pypdf>=6.21.3",
     "lightgbm>=4.0.0",
     "xgboost>=2.0.0",
     "numba>=0.62.0; python_version < '3.14' or platform_machine != 'x86_64' or sys_platform != 'darwin'",
@@ -225,7 +225,7 @@ test = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "kaleido>=1.5.0",
-    "pypdf>=6.16.1",
+    "pypdf>=6.21.3",
     "ml4t-backtest>=0.2.0",
 ]
 dev = [
