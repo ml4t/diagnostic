@@ -5,6 +5,10 @@ on:
     - cron: "41 9 1 * *"
   workflow_dispatch:
     inputs:
+      native-pipe-probe:
+        description: Diagnose an actual pending Windows browser-output write without full qualification
+        type: boolean
+        default: false
       browser-qualification:
         description: Qualify actual report-browser exclusions and all PDF modules
         type: boolean
@@ -30,6 +34,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-pipe-probe:
+    name: Windows native browser-output pipe probe
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.native-pipe-probe }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.10.9"
+      - run: uv python install 3.13
+      - run: uv sync --frozen --python 3.13 --dev --extra viz
+      - name: Exercise the actual inherited output endpoint
+        shell: bash
+        run: >-
+          uv run --no-sync python -m pytest -o addopts= -n 0 -vv -rA --timeout 120
+          --junitxml=artifacts/native-pipe-probe.xml --basetemp=artifacts/native-pipe-tmp
+          tests/test_visualization/test_pdf_process_ownership.py::test_browser_output_shutdown_does_not_block_a_pending_inherited_write
+      - name: Retain native evidence regardless of outcome
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-native-output-pipe-${{ github.sha }}
+          path: artifacts/native-pipe*
+          if-no-files-found: error
+
   source-canary:
     name: Source probe / ${{ matrix.os }} / Python 3.15
     runs-on: ${{ matrix.os }}

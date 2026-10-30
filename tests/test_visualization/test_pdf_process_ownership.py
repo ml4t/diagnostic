@@ -1198,6 +1198,132 @@ print(json.dumps(result),flush=True)
     assert restored["peer_result"] == {"read": "78", "error": 0}
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual inherited Windows pipe write required")
+def test_browser_output_shutdown_does_not_block_a_pending_inherited_write(tmp_path):
+    import ctypes
+    import threading
+    import time
+    from ctypes import wintypes
+
+    pytest.importorskip("kaleido")
+    from ml4t.diagnostic.visualization._pdf_worker import _PageEventsKaleido
+
+    renderer = _PageEventsKaleido(n=1, timeout=90)
+    channel = renderer._channel
+    renderer._browser_impl.pre_open()
+    cli = renderer._browser_impl.get_cli()
+    handles = next(arg for arg in cli if arg.startswith("--remote-debugging-io-pipes="))
+    inherited_write = handles.split("=", 1)[1].split(",", 1)[1]
+    ready = tmp_path / "writer.json"
+    code = """
+import _winapi,ctypes,json,sys,threading,time
+from ctypes import wintypes
+from pathlib import Path
+api=ctypes.WinDLL('kernel32',use_last_error=True)
+api.OpenThread.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.DWORD]
+api.OpenThread.restype=wintypes.HANDLE
+api.GetThreadIOPendingFlag.argtypes=[wintypes.HANDLE,ctypes.POINTER(wintypes.BOOL)]
+api.GetThreadIOPendingFlag.restype=wintypes.BOOL
+api.CloseHandle.argtypes=[wintypes.HANDLE]
+tid=threading.get_native_id()
+def notify_actual_write():
+    handle=api.OpenThread(0x0040,False,tid)
+    if not handle: raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        pending=wintypes.BOOL()
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline:
+            if not api.GetThreadIOPendingFlag(handle,ctypes.byref(pending)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if pending.value:
+                ready=Path(sys.argv[2])
+                temporary=ready.with_suffix('.new')
+                temporary.write_text(json.dumps({'tid':tid,'actual_write_pending':True}))
+                temporary.replace(ready)
+                return
+            time.sleep(.01)
+        raise RuntimeError('Native peer write never became pending')
+    finally:
+        api.CloseHandle(handle)
+threading.Thread(target=notify_actual_write,daemon=True).start()
+try:
+    count,error=_winapi.WriteFile(int(sys.argv[1]),b'x'*65536)
+except OSError as error:
+    result={'written':0,'error':error.winerror}
+else:
+    result={'written':count,'error':error}
+print(json.dumps(result),flush=True)
+"""
+    peer = subprocess.Popen(
+        [sys._base_executable, "-I", "-c", code, inherited_write, str(ready)],
+        close_fds=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    closer = None
+    errors = []
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists() and peer.poll() is None, "No actual pending inherited pipe write"
+        native = json.loads(ready.read_text())
+        api = ctypes.WinDLL("kernel32", use_last_error=True)
+        api.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        api.OpenThread.restype = wintypes.HANDLE
+        api.GetThreadIOPendingFlag.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+        api.GetThreadIOPendingFlag.restype = wintypes.BOOL
+        api.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = api.OpenThread(0x0040, False, native["tid"])
+        assert handle, "Cannot inspect actual inherited pipe writer"
+        try:
+            pending = wintypes.BOOL()
+            assert api.GetThreadIOPendingFlag(handle, ctypes.byref(pending)) and pending.value
+        finally:
+            api.CloseHandle(handle)
+        channel.open()
+
+        def close_actual_channel():
+            try:
+                channel.close()
+            except BaseException as error:
+                errors.append(repr(error))
+
+        closer = threading.Thread(target=close_actual_channel, daemon=True)
+        closer.start()
+        closer.join(timeout=1)
+        blocked = closer.is_alive()
+        if blocked:
+            # Release the genuine native write so a failing implementation can be reaped.
+            for _ in range(32):
+                try:
+                    os.read(channel._read_from_browser, 4096)
+                except OSError:
+                    break
+                if peer.poll() is not None:
+                    break
+        closer.join(timeout=5)
+        assert not closer.is_alive() and not errors, errors
+        output, stderr = peer.communicate(timeout=5)
+        assert peer.returncode == 0, stderr
+        result = {
+            "blocked_until_peer_output_drained": blocked,
+            "actual_write_pending": native["actual_write_pending"],
+            "peer_result": json.loads(output),
+        }
+        (tmp_path / "result.json").write_text(json.dumps(result))
+        assert not blocked, "PDF pipe shutdown blocked on an actual inherited browser output write"
+    finally:
+        if peer.poll() is None:
+            peer.kill()
+        peer.wait(timeout=5)
+        if closer is not None:
+            closer.join(timeout=5)
+        channel.close()
+        renderer._browser_impl.clean()
+
+
 @pytest.mark.skipif(
     sys.platform != "win32", reason="Actual Windows acknowledged native exit required"
 )
