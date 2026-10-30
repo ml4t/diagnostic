@@ -1,7 +1,9 @@
 """Complete capacity reports must preserve thresholds, samples and model units."""
 
+import json
 import os
 import shutil
+import time
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -330,9 +332,31 @@ def test_complete_capacity_report_renders_readable_tables_and_actual_curve_offli
     )
     with browser_api.sync_playwright() as runtime:
         browser = runtime.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+        context = browser.new_context(viewport={"width": width, "height": 1000})
+        tracing = os.environ.get("ML4T_CAPACITY_BROWSER_TRACE") == "1"
+        if tracing:
+            context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        events = []
         try:
-            page = browser.new_page(viewport={"width": width, "height": 1000})
+            page = context.new_page()
             page.context.set_offline(True)
+            for event in (
+                "request",
+                "requestfinished",
+                "requestfailed",
+                "domcontentloaded",
+                "load",
+            ):
+                page.on(
+                    event,
+                    lambda value=None, event=event: events.append(
+                        {
+                            "event": event,
+                            "at": time.monotonic(),
+                            "url": str(getattr(value, "url", value)),
+                        }
+                    ),
+                )
             errors, failed = [], []
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.on("requestfailed", lambda request: failed.append(request.url))
@@ -378,5 +402,10 @@ def test_complete_capacity_report_renders_readable_tables_and_actual_curve_offli
                 page.screenshot(
                     path=str(directory / f"familiar-capacity-{width}.png"), full_page=True
                 )
+        except Exception as error:
+            error.add_note(json.dumps({"navigation_events": events}))
+            raise
         finally:
+            if tracing:
+                context.tracing.stop(path=tmp_path / "capacity-browser-trace.zip")
             browser.close()
