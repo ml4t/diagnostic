@@ -1375,13 +1375,15 @@ print(json.dumps(result),flush=True)
         blocked = closer.is_alive()
         if blocked:
             # Release the genuine native write so a failing implementation can be reaped.
-            for _ in range(32):
+            remaining = 65536
+            while remaining:
                 try:
-                    os.read(channel._read_from_browser, 4096)
+                    data = os.read(channel._read_from_browser, min(4096, remaining))
                 except OSError:
                     break
-                if peer.poll() is not None:
+                if not data:
                     break
+                remaining -= len(data)
         closer.join(timeout=5)
         assert not closer.is_alive() and not errors, errors
         output, stderr = peer.communicate(timeout=5)
