@@ -62,6 +62,7 @@ jobs:
         batch: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     env:
       UV_PYTHON: "3.13"
+      ML4T_PDF_NATIVE_TRACE: timeout
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
