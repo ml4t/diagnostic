@@ -1571,36 +1571,82 @@ def test_real_early_pipe_closure_is_still_rejected_when_owned_cleanup_succeeds(t
     assert cleanup["owned_cleanup_returned"]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows thread suspend counts required")
+def test_windows_suspension_control_rejects_live_threads_without_releasing_held_peer():
+    import runpy
+
+    psutil = pytest.importorskip("psutil")
+    observe = runpy.run_path(str(Path(__file__).with_name("_pdf_suspension.py")))[
+        "observe_suspended"
+    ]
+    code = "import sys; print('ready',flush=True); print(sys.stdin.readline().strip(),flush=True)"
+    with subprocess.Popen(
+        [sys.executable, "-u", "-c", code],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as child:
+        process = psutil.Process(child.pid)
+        try:
+            assert child.stdout.readline().strip() == "ready"
+            with pytest.raises(AssertionError, match="was not suspended before observation"):
+                observe(process)
+            process.suspend()
+            first, second = observe(process), observe(process)
+            assert first["thread_suspend_counts"] == second["thread_suspend_counts"]
+            assert all(count == 1 for count in first["thread_suspend_counts"].values())
+            child.stdin.write("released\n")
+            child.stdin.flush()
+            with pytest.raises(subprocess.TimeoutExpired):
+                child.wait(timeout=0.1)
+            process.resume()
+            stdout, _ = child.communicate(timeout=5)
+            assert child.returncode == 0 and stdout.strip() == "released"
+            print(json.dumps({"first": first, "second": second, "resumed_exit": child.returncode}))
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
+
+
 def test_unresponsive_browser_after_closed_channel_requires_verified_os_cleanup(tmp_path):
     pytest.importorskip("kaleido")
     pytest.importorskip("pypdf")
-    psutil = pytest.importorskip("psutil")
+    pytest.importorskip("psutil")
     target = tmp_path / "report.pdf"
-    probe = _PROBE.replace(
-        "threading.Timer(1,resume).start()",
-        "observed.with_suffix('.unresponsive-peer.json').write_text(json.dumps({"
-        "'pid':browser.pid,'created':browser.create_time(),'status':browser.status()}))",
-    ).replace(
-        "print('PDF close control: resume timer started',time.monotonic(),file=sys.stderr,flush=True)",
-        "print('PDF close control: browser stays suspended after channel close',file=sys.stderr,flush=True)",
+    helper = str(Path(__file__).with_name("_pdf_suspension.py").resolve())
+    setup = f"import runpy\nobserve_suspended=runpy.run_path({helper!r})['observe_suspended']\n"
+    probe = (
+        _PROBE.replace('patch=r"""\n', 'patch=r"""\n' + setup)
+        .replace(
+            "threading.Timer(1,resume).start()",
+            "observed.with_suffix('.unresponsive-peer.json').write_text("
+            "json.dumps(observe_suspended(browser)))",
+        )
+        .replace(
+            "print('PDF close control: resume timer started',time.monotonic(),file=sys.stderr,flush=True)",
+            "print('PDF close control: browser stays suspended after channel close',file=sys.stderr,flush=True)",
+        )
     )
     original = "_pdf_process._BOOTSTRAP=patch+chr(10)+_pdf_process._BOOTSTRAP"
     observation = r"""
+    import runpy
+    observe_suspended=runpy.run_path(SUSPENSION_HELPER)['observe_suspended']
     actual_termination_for_unresponsive_control=_pdf_process._OwnedProcesses.terminate
     def record_unresponsive_before_cleanup(self):
         browser_pid=int(next(iter(json.loads(observed.read_text()))))
         browser=psutil.Process(browser_pid)
-        observed.with_suffix('.os-cleanup.json').write_text(json.dumps({
-            'pid':browser.pid,'created':browser.create_time(),'status':browser.status()}))
+        observed.with_suffix('.os-cleanup.json').write_text(json.dumps(observe_suspended(browser)))
         return actual_termination_for_unresponsive_control(self)
     _pdf_process._OwnedProcesses.terminate=record_unresponsive_before_cleanup
-"""
+""".replace("SUSPENSION_HELPER", repr(helper))
     probe = probe.replace(original, original + observation)
     result = _run_pdf_probe(probe, ["close_command_hang_slow_shutdown", str(target), "0"])
     fault = json.loads(target.with_suffix(".processes.unresponsive-peer.json").read_text())
     cleanup = json.loads(target.with_suffix(".processes.os-cleanup.json").read_text())
-    assert fault == cleanup
-    assert fault["status"] == psutil.STATUS_STOPPED
+    assert {key: value for key, value in fault.items() if key != "status"} == {
+        key: value for key, value in cleanup.items() if key != "status"
+    }
     assert result["running"] == [] and result["neighbor_alive"]
 
 

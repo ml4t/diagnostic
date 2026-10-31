@@ -102,7 +102,9 @@ jobs:
             'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[profile_sharing]' \
             'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[close_error-0]' \
             'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[render_error-0]' \
-            'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[pipe_number_reuse-0]'
+            'tests/test_visualization/test_pdf_process_ownership.py::test_real_pdf_cleanup_owns_browser_without_hiding_render_failures[pipe_number_reuse-0]' \
+            tests/test_visualization/test_pdf_process_ownership.py::test_windows_suspension_control_rejects_live_threads_without_releasing_held_peer \
+            tests/test_visualization/test_pdf_process_ownership.py::test_unresponsive_browser_after_closed_channel_requires_verified_os_cleanup
       - name: Retain native evidence regardless of outcome
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
