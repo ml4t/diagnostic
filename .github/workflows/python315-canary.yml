@@ -89,6 +89,8 @@ jobs:
           version: "0.10.9"
       - run: uv python install 3.13
       - run: uv sync --frozen --python 3.13 --dev --extra viz
+      - name: Test suspended pending native I/O without a debugger
+        run: uv run --no-sync python scripts/probe_windows_pdf_native_io.py
       - name: Exercise the actual inherited output endpoint
         shell: bash
         run: |
