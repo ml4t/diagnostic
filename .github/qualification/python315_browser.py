@@ -109,7 +109,7 @@ code = pytest.main(
 if code:
     raise SystemExit(code)
 cases = list(ET.parse(report).iter("testcase"))
-assert len(cases) == 235
+assert len(cases) == 236
 actual = {c.get("classname").replace(".", "/") + ".py::" + c.get("name"): c for c in cases}
 assert expected <= actual.keys(), sorted(expected - actual.keys())
 for name in expected:
@@ -127,7 +127,7 @@ pdf_cases = [
     for case in cases
     if any(case.attrib["classname"].startswith(module) for module in pdf_modules)
 ]
-assert len(pdf_cases) == 108
+assert len(pdf_cases) == 109
 for case in pdf_cases:
     skipped = case.find("skipped")
     if skipped is not None:
@@ -136,4 +136,4 @@ for case in pdf_cases:
             assert "POSIX" in message, (case.get("name"), message)
         else:
             assert "Windows" in message, (case.get("name"), message)
-print("Qualified all127 required report cases and complete108-case PDF/browser modules", mode)
+print("Qualified all127 required report cases and complete109-case PDF/browser modules", mode)

@@ -511,6 +511,8 @@ jobs:
     env:
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
+      ML4T_CAPACITY_BROWSER_TRACE: "1"
+      ML4T_PDF_NATIVE_TRACE: "timeout"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -561,7 +563,6 @@ jobs:
         if: matrix.format != 'native'
         shell: bash
         env:
-          ML4T_CAPACITY_BROWSER_TRACE: ${{ inputs.capacity-browser-probe && '1' || '0' }}
           DEBUG: ${{ inputs.capacity-browser-probe && 'pw:browser' || '' }}
         run: |
           format="${{ matrix.format }}"
@@ -579,11 +580,13 @@ jobs:
             artifacts/python315-browser/*-identity.json
           if-no-files-found: error
       - name: Retain the actual capacity document and browser trace
-        if: ${{ always() && inputs.capacity-browser-probe }}
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: python315-capacity-diagnostic-${{ github.sha }}
+          name: python315-capacity-diagnostic-${{ matrix.os }}-${{ matrix.format }}-${{ github.sha }}
           path: |
             artifacts/python315-browser/**/capacity.html
             artifacts/python315-browser/**/capacity-browser-trace.zip
+            artifacts/python315-browser/**/*.native-parent.jsonl
+            artifacts/python315-browser/**/*.native-worker.jsonl
           if-no-files-found: error
