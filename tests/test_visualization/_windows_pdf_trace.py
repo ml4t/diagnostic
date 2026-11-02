@@ -84,7 +84,8 @@ def _pending_io(pid):
     api.CloseHandle.argtypes = [wintypes.HANDLE]
     rows = []
     for thread in _threads({pid}).get(pid, []):
-        handle = api.OpenThread(0x0040, False, thread["tid"])
+        access = 0x0048 if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1" else 0x0040
+        handle = api.OpenThread(access, False, thread["tid"])
         row = dict(thread)
         if not handle:
             row["open_error"] = ctypes.get_last_error()
@@ -95,13 +96,86 @@ def _pending_io(pid):
                     row["io_pending"] = bool(pending.value)
                 else:
                     row["query_error"] = ctypes.get_last_error()
+                if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1":
+                    row["last_syscall"] = _last_syscall(handle)
             finally:
                 api.CloseHandle(handle)
         rows.append(row)
     return rows
 
 
+def _last_syscall(thread):
+    # Diagnostic-only Windows x64 layout from winsiderss/phnt ntpsapi.h.
+    class LastCall(ctypes.Structure):
+        _fields_ = [
+            ("first_argument", ctypes.c_void_p),
+            ("number", wintypes.USHORT),
+            ("wait_time", ctypes.c_uint64),
+        ]
+
+    ntdll = ctypes.WinDLL("ntdll")
+    query = ntdll.NtQueryInformationThread
+    query.argtypes = [
+        wintypes.HANDLE,
+        wintypes.ULONG,
+        ctypes.c_void_p,
+        wintypes.ULONG,
+        ctypes.c_void_p,
+    ]
+    query.restype = wintypes.LONG
+    value = LastCall()
+    status = query(thread, 21, ctypes.byref(value), ctypes.sizeof(value), None)
+    result = {
+        "status": status,
+        "first_argument": value.first_argument,
+        "number": value.number,
+        "wait_time": value.wait_time,
+        "matching_exports": [],
+    }
+    for name in (
+        "NtReadFile",
+        "NtWriteFile",
+        "NtFsControlFile",
+        "NtDeviceIoControlFile",
+        "NtClose",
+        "NtSetInformationFile",
+        "NtWaitForSingleObject",
+        "NtTerminateProcess",
+    ):
+        stub = ctypes.string_at(ctypes.cast(getattr(ntdll, name), ctypes.c_void_p), 8)
+        if stub[:4] == bytes.fromhex("4c8bd1b8"):
+            number = int.from_bytes(stub[4:8], "little")
+            if number == value.number:
+                result["matching_exports"].append(name)
+    return result
+
+
 def install_worker(observed):
+    if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1":
+        import _winapi
+
+        path = Path(observed).with_suffix(".native-handles.json")
+        actual = _winapi.CreateProcess
+
+        def create(*args, **kwargs):
+            if "--remote-debugging-pipe" not in str(args[1]):
+                return actual(*args, **kwargs)
+            startup = args[8]
+            row = {
+                "worker_pid": os.getpid(),
+                "command": args[1],
+                "inherit_handles": args[4],
+                "stdin": startup.hStdInput,
+                "stdout": startup.hStdOutput,
+                "stderr": startup.hStdError,
+            }
+            path.write_text(json.dumps(row))
+            result = actual(*args, **kwargs)
+            row.update(browser_pid=result[2], browser_main_thread=result[3])
+            path.write_text(json.dumps(row))
+            return result
+
+        _winapi.CreateProcess = create
     if os.environ.get("ML4T_PDF_NATIVE_TRACE") == "timeout":
         return
     observed = Path(observed)

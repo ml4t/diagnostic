@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "41 9 1 * *"
   workflow_dispatch:
+    inputs:
+      native-io-diagnosis:
+        description: Observe the actual supported Windows PDF close failure without full qualification
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,7 +18,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-io-diagnosis:
+    name: Windows owned Chrome pending I/O diagnosis
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.native-io-diagnosis }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      UV_PYTHON: "3.13"
+      ML4T_PDF_NATIVE_TRACE: timeout
+      ML4T_PDF_NATIVE_HANDLE_TRACE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.9"
+      - run: uv python install 3.13
+      - run: uv sync --frozen --dev --extra viz
+      - run: uv run --no-sync python scripts/diagnose_windows_pdf_io.py
+      - name: Retain every native observation and public PDF outcome
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-owned-io-${{ github.sha }}
+          path: artifacts/native-io-diagnosis/
+          if-no-files-found: error
+
   source-canary:
+    if: ${{ !inputs.native-io-diagnosis }}
     name: Source probe / ${{ matrix.os }} / Python 3.15
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
