@@ -78,10 +78,13 @@ def main() -> None:
 
 def focused_kernel_trace(output: Path) -> None:
     runner = runpy.run_path("scripts/check_windows_pdf_lifecycle.py")
-    node = (
-        "tests/test_visualization/test_pdf_process_ownership.py::"
-        "test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callback"
-    )
+    nodes = [
+        "tests/test_visualization/test_pdf_process_ownership.py::" + name
+        for name in [
+            "test_real_early_pipe_closure_is_still_rejected_when_owned_cleanup_succeeds",
+            "test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callback",
+        ]
+    ]
     commands = []
 
     def record(command: list[str], timeout: int = 60) -> None:
@@ -100,14 +103,18 @@ def focused_kernel_trace(output: Path) -> None:
         assert result.returncode == 0, commands[-1]
 
     record(["wpr", "-profiles"])
-    # The built-in memory profile bounds storage; retain its loss counters before interpretation.
-    record(["wpr", "-start", "FileIO"])
+    buffers = output / "kernel-buffers"
+    buffers.mkdir()
+    profile = str(Path("scripts/windows_pdf_io.wprp").resolve()) + "!OwnedPdfIO"
+    record(["wpr", "-start", profile, "-filemode", "-recordtempto", str(buffers)])
     results = []
     try:
         directory = output / "focused-close"
         directory.mkdir()
         for attempt in range(1, 25):
-            check = runner["_run_case"](Path.cwd(), node, directory / f"case-{attempt:02}")
+            check = runner["_run_case"](
+                Path.cwd(), nodes[(attempt - 1) % len(nodes)], directory / f"case-{attempt:02}"
+            )
             results.append(check)
             (output / "focused-results.json").write_text(
                 json.dumps(
@@ -115,14 +122,26 @@ def focused_kernel_trace(output: Path) -> None:
                         "source_revision": os.environ.get("GITHUB_SHA"),
                         "python": sys.version,
                         "results": results,
-                        "scope": "Diagnostic observation only; stop on first failure. Passing attempts do not clear retained main failure or qualify a runtime repair.",
+                        "scope": "Diagnostic observation only; stop on first failure. Alternate the two retained early-close workflows; passing attempts do not clear retained main failure or qualify a runtime repair.",
                     },
                     indent=2,
                 )
                 + "\n"
             )
             print(json.dumps(check), flush=True)
-            if not check["passed"]:
+            trace_bytes = sum(path.stat().st_size for path in buffers.rglob("*") if path.is_file())
+            (output / "kernel-storage.json").write_text(
+                json.dumps(
+                    {
+                        "temporary_bytes": trace_bytes,
+                        "stop_budget_bytes": 512 * 1024 * 1024,
+                        "scope": "Check storage after each bounded case; stop on first failure or budget. Raw trace is retained.",
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            if not check["passed"] or trace_bytes >= 512 * 1024 * 1024:
                 break
     finally:
         trace = str(output / "owned-close.etl")

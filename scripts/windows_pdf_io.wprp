@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder Version="1.0" Author="ML4T">
+  <Profiles>
+    <SystemCollector Id="OwnedPdfCollector" Name="Owned PDF file I/O">
+      <BufferSize Value="256" />
+      <Buffers Value="128" />
+    </SystemCollector>
+    <SystemProvider Id="OwnedPdfProvider">
+      <Keywords>
+        <Keyword Value="ProcessThread" />
+        <Keyword Value="Loader" />
+        <Keyword Value="FileIO" />
+        <Keyword Value="FileIOInit" />
+        <Keyword Value="Filename" />
+      </Keywords>
+    </SystemProvider>
+    <Profile Id="OwnedPdfIO.Verbose.File" Name="OwnedPdfIO" Description="Owned Chrome file operations and process lifetimes" LoggingMode="File" DetailLevel="Verbose">
+      <Collectors>
+        <SystemCollectorId Value="OwnedPdfCollector">
+          <SystemProviderId Value="OwnedPdfProvider" />
+        </SystemCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>
