@@ -197,6 +197,19 @@ process cleanup and preserves the rendering error. An incomplete export does
 not publish a partial PDF. A failed or hung browser close still requires verified
 termination of the owned process tree before temporary profiles can be removed.
 
+### Known Windows PDF cleanup limitation
+
+Intermittent Windows browser shutdown failures remain under investigation in
+[issue 112](https://github.com/ml4t/diagnostic/issues/112), including in the 0.2
+release series. The exporter can report that an owned browser process did not
+reach terminal state within its cleanup deadline, and temporary browser/profile
+resources may remain. It reports an error instead of publishing a partial PDF.
+HTML reports remain an alternative when PDF export fails.
+
+Version 0.2.1 repairs a separate Windows pipe shutdown defect and requires patched
+pypdf versions. Those fixes do not establish a cause or repair for the intermittent
+native cleanup failure. Python support remains 3.12 through 3.14.
+
 See the [visualization API](../api/index.md#visualization) and the book's
 [performance reporting notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/16_strategy_simulation/09_performance_reporting.ipynb),
 which directly calls Diagnostic in a longer backtest workflow. For Pyfolio
