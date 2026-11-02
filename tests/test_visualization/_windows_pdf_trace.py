@@ -139,6 +139,7 @@ def _last_syscall(thread):
         "NtDeviceIoControlFile",
         "NtClose",
         "NtSetInformationFile",
+        "NtFlushBuffersFile",
         "NtWaitForSingleObject",
         "NtTerminateProcess",
     ):
@@ -221,7 +222,26 @@ def install_parent(module, observed):
                     return self.terminate_job
                 if name == "WaitForSingleObject":
                     return self.wait
+                if (
+                    name == "TerminateProcess"
+                    and os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1"
+                ):
+                    return self.terminate_process
                 return getattr(native, name)
+
+            def terminate_process(self, handle, code):
+                pid = native.GetProcessId(handle)
+                try:
+                    launch = json.loads(observed.with_suffix(".native-handles.json").read_text())
+                    if pid == launch["browser_pid"]:
+                        _record(
+                            path, "before_browser_termination", [pid], thread_io=_pending_io(pid)
+                        )
+                except Exception as error:
+                    _record(
+                        path, "before_browser_termination_observer_error", [pid], error=repr(error)
+                    )
+                return native.TerminateProcess(handle, code)
 
             def terminate_job(self, handle, code):
                 if not timeout_only:
