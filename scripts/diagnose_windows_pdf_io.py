@@ -33,7 +33,7 @@ assert os.read(0,1)==b'x'
             time.sleep(0.01)
         identity = json.loads(ready.read_text())
         while True:
-            rows = trace["_pending_io"](process.pid)
+            rows = trace["_pending_io"](identity["pid"])
             selected = [row for row in rows if row["tid"] == identity["thread"]]
             if selected and selected[0].get("io_pending"):
                 break
@@ -50,11 +50,22 @@ assert os.read(0,1)==b'x'
         process.stdin.close()
         assert process.wait(timeout=5) == 0
     finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
         if process.stdin is not None and not process.stdin.closed:
             process.stdin.close()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            import psutil
+
+            children = psutil.Process(process.pid).children(recursive=True)
+            for child in reversed(children):
+                try:
+                    child.kill()
+                except psutil.NoSuchProcess:
+                    pass
+            process.kill()
+            process.wait(timeout=5)
+            psutil.wait_procs(children, timeout=5)
 
 
 def main() -> None:
