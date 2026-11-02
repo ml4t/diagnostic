@@ -401,22 +401,32 @@ else:
             finally: self.job.api.CloseHandle(handle)
             debugger.stdin.write(b'1')
             debugger.stdin.close()
+            termination_started=False
             try:
                 deadline=time.monotonic()+10
-                while not ready.exists() and debugger.poll() is None and time.monotonic()<deadline:
+                attachment=None
+                while debugger.poll() is None and time.monotonic()<deadline:
+                    try:
+                        if ready.exists():
+                            attachment=json.loads(ready.read_text())
+                            break
+                    except PermissionError:
+                        pass
                     time.sleep(.01)
-                assert ready.exists(), 'Owned debugger never attached'
-                attachment=json.loads(ready.read_text())
+                assert attachment is not None, 'Owned debugger readiness was not readable before its deadline'
                 assert 'error' not in attachment,attachment
                 earlier=self.observed.get(debugger.pid)
                 assert earlier is None or not earlier.is_running(), 'Control must reproduce a late job member'
                 observed.with_suffix('.late-job.json').write_text(json.dumps({
                     'worker_exit':self.process.returncode,'browser_pid':browser_pid,
                     'debugger_pid':debugger.pid,'job_member':True,'in_snapshot':False}))
+                termination_started=True
                 result=original_terminate(self)
                 assert debugger.poll() is not None, 'Cleanup returned before the late job member was terminal'
                 return result
             finally:
+                if not termination_started:
+                    original_terminate(self)
                 debugger.wait(timeout=5)
         _pdf_process._OwnedProcesses.terminate=add_unobserved_job_dependency
     if mode=='worker_exit_dependency':
@@ -1056,6 +1066,7 @@ def test_real_pdf_cleanup_owns_browser_without_hiding_render_failures(
 @pytest.mark.skipif(sys.platform != "win32", reason="Actual inherited Windows pipe I/O required")
 def test_browser_pipe_shutdown_does_not_change_a_pending_inherited_read(tmp_path):
     import ctypes
+    import runpy
     import threading
     import time
     import types
@@ -1153,6 +1164,13 @@ print(json.dumps(result),flush=True)
             assert pending.value and peer.poll() is None, (
                 "Peer did not enter actual pending ReadFile"
             )
+            trace = runpy.run_path(str(Path(__file__).with_name("_windows_pdf_trace.py")))
+            native_threads = trace["_pending_io"](peer.pid, inspect_native=True)
+            native_read = next(row for row in native_threads if row["tid"] == tid)
+            assert native_read["io_pending"]
+            call = native_read["last_syscall"]
+            assert call["status"] == 0 and call["matching_exports"] == ["NtReadFile"]
+            assert call["first_argument"] == int(inherited_read)
             channel.open()
 
             def close_actual_channel():
@@ -1178,6 +1196,7 @@ print(json.dumps(result),flush=True)
                 "blocked_until_peer_input": blocked,
                 "initial_native_io_pending": True,
                 "peer_result": json.loads(output),
+                "native_pending_read": native_read,
                 "restored_vendor_mode": restore_vendor_mode_change,
             }
             (directory / "result.json").write_text(json.dumps(result))
@@ -2404,3 +2423,66 @@ sys.addaudithook(observe_import)
     assert figure.to_json() == original
     assert imports_path.is_file()
     assert imports_path.read_text(encoding="utf-8").splitlines() == []
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Actual Windows readiness-file sharing required"
+)
+def test_late_job_members_handshake_survives_real_file_sharing_denial(tmp_path):
+    pytest.importorskip("kaleido")
+    pytest.importorskip("pypdf")
+    anchor = "    if mode=='job_dependency':\n        import ctypes"
+    sharing = r"""
+    if mode=='job_dependency':
+        import ctypes,threading
+        from ctypes import wintypes
+        sharing_api=ctypes.WinDLL('kernel32',use_last_error=True)
+        sharing_api.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+        sharing_api.CreateFileW.restype=wintypes.HANDLE
+        sharing_api.CloseHandle.argtypes=[wintypes.HANDLE]
+        sharing_api.CloseHandle.restype=wintypes.BOOL
+        actual_read_text=Path.read_text
+        sharing_started=[]
+        sharing_denials=[]
+        sharing_mutex=threading.Lock()
+        def locked_readiness_read(self,*args,**kwargs):
+            if self.name.endswith('.debugger-ready.json') and not sharing_started:
+                handle=sharing_api.CreateFileW(str(self),0x80000000,0x00000006,None,3,0x80,None)
+                assert handle != ctypes.c_void_p(-1).value,ctypes.WinError(ctypes.get_last_error())
+                sharing_started.append(str(self))
+                def release():
+                    with sharing_mutex:
+                        assert sharing_api.CloseHandle(handle)
+                timer=threading.Timer(.2,release)
+                timer.daemon=True
+                timer.start()
+            try:
+                return actual_read_text(self,*args,**kwargs)
+            except PermissionError as error:
+                if str(self) in sharing_started:
+                    native=sharing_api.CreateFileW(str(self),0x80000000,0x00000007,None,3,0x80,None)
+                    native_error=ctypes.get_last_error()
+                    if native != ctypes.c_void_p(-1).value:
+                        sharing_api.CloseHandle(native)
+                    sharing_denials.append({'errno':error.errno,'winerror':error.winerror,
+                        'native_read_failed':native==ctypes.c_void_p(-1).value,'native_error':native_error})
+                    observed.with_suffix('.ready-sharing.json').write_text(json.dumps({'denials':sharing_denials}))
+                raise
+        def readiness_read(self,*args,**kwargs):
+            with sharing_mutex:
+                return locked_readiness_read(self,*args,**kwargs)
+        Path.read_text=readiness_read
+"""
+    assert _PROBE.count(anchor) == 1
+    target = tmp_path / "report.pdf"
+    debugger = str(Path(__file__).with_name("_windows_pdf_debugger.py"))
+    result = _run_pdf_probe(
+        _PROBE.replace(anchor, sharing + "\n" + anchor),
+        ["job_dependency", str(target), "0", "0.1", debugger],
+    )
+    denials = json.loads(target.with_suffix(".processes.ready-sharing.json").read_text())["denials"]
+    assert denials and all(
+        row["errno"] == 13 and row["native_read_failed"] and row["native_error"] == 32
+        for row in denials
+    ), "The real readiness read never met a native sharing violation"
+    assert result["running"] == [] and result["neighbor_alive"]

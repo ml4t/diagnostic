@@ -75,7 +75,7 @@ def _record(path, event, pids, **extra):
         stream.write(json.dumps(row) + "\n")
 
 
-def _pending_io(pid):
+def _pending_io(pid, *, inspect_native=False):
     api = ctypes.WinDLL("kernel32", use_last_error=True)
     api.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     api.OpenThread.restype = wintypes.HANDLE
@@ -84,7 +84,8 @@ def _pending_io(pid):
     api.CloseHandle.argtypes = [wintypes.HANDLE]
     rows = []
     for thread in _threads({pid}).get(pid, []):
-        handle = api.OpenThread(0x0040, False, thread["tid"])
+        access = 0x0848 if inspect_native else 0x0040
+        handle = api.OpenThread(access, False, thread["tid"])
         row = dict(thread)
         if not handle:
             row["open_error"] = ctypes.get_last_error()
@@ -95,10 +96,83 @@ def _pending_io(pid):
                     row["io_pending"] = bool(pending.value)
                 else:
                     row["query_error"] = ctypes.get_last_error()
+                if inspect_native:
+                    row["last_syscall"] = _last_syscall(handle)
+                    description = wintypes.LPWSTR()
+                    api.GetThreadDescription.argtypes = [
+                        wintypes.HANDLE,
+                        ctypes.POINTER(wintypes.LPWSTR),
+                    ]
+                    api.GetThreadDescription.restype = wintypes.LONG
+                    status = api.GetThreadDescription(handle, ctypes.byref(description))
+                    row["description_status"] = status
+                    if status >= 0 and description:
+                        try:
+                            row["description"] = description.value
+                        finally:
+                            api.LocalFree.argtypes = [ctypes.c_void_p]
+                            api.LocalFree(ctypes.cast(description, ctypes.c_void_p))
             finally:
                 api.CloseHandle(handle)
         rows.append(row)
     return rows
+
+
+def _last_syscall(thread):
+    # Diagnostic-only Windows x64 layout from winsiderss/phnt ntpsapi.h.
+    class LastCall(ctypes.Structure):
+        _fields_ = [
+            ("first_argument", ctypes.c_void_p),
+            ("number", wintypes.USHORT),
+            ("wait_time", ctypes.c_uint64),
+        ]
+
+    ntdll = ctypes.WinDLL("ntdll")
+    query = ntdll.NtQueryInformationThread
+    query.argtypes = [
+        wintypes.HANDLE,
+        wintypes.ULONG,
+        ctypes.c_void_p,
+        wintypes.ULONG,
+        ctypes.c_void_p,
+    ]
+    query.restype = wintypes.LONG
+    value = LastCall()
+    status = query(thread, 21, ctypes.byref(value), ctypes.sizeof(value), None)
+    result = {
+        "status": status,
+        "first_argument": value.first_argument,
+        "number": value.number,
+        "wait_time": value.wait_time,
+        "matching_exports": [],
+    }
+    for name in (
+        "NtCreateFile",
+        "NtOpenFile",
+        "NtReadFile",
+        "NtWriteFile",
+        "NtFsControlFile",
+        "NtDeviceIoControlFile",
+        "NtClose",
+        "NtSetInformationFile",
+        "NtFlushBuffersFile",
+        "NtWaitForSingleObject",
+        "NtTerminateProcess",
+    ):
+        stub = ctypes.string_at(ctypes.cast(getattr(ntdll, name), ctypes.c_void_p), 8)
+        if stub[:4] == bytes.fromhex("4c8bd1b8"):
+            number = int.from_bytes(stub[4:8], "little")
+            if number == value.number:
+                result["matching_exports"].append(name)
+    win32u = ctypes.WinDLL("win32u")
+    for name in ("NtUserMsgWaitForMultipleObjectsEx", "NtUserGetMessage", "NtUserPeekMessage"):
+        stub = ctypes.string_at(ctypes.cast(getattr(win32u, name), ctypes.c_void_p), 8)
+        if (
+            stub[:4] == bytes.fromhex("4c8bd1b8")
+            and int.from_bytes(stub[4:8], "little") == value.number
+        ):
+            result["matching_exports"].append(name)
+    return result
 
 
 def install_worker(observed):
@@ -174,7 +248,7 @@ def install_parent(module, observed):
                     else:
                         debug_status = {"open_error": ctypes.get_last_error()}
                     try:
-                        pending = _pending_io(pid)
+                        pending = _pending_io(pid, inspect_native=True)
                     except Exception as error:
                         pending = {"query_error": repr(error)}
                     _record(
