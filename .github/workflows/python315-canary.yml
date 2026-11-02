@@ -19,9 +19,13 @@ concurrency:
 
 jobs:
   native-io-diagnosis:
-    name: Windows owned Chrome pending I/O diagnosis
+    name: Windows owned Chrome pending I/O diagnosis / host ${{ matrix.replica }}
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.native-io-diagnosis }}
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [1, 2, 3]
     timeout-minutes: 20
     env:
       UV_PYTHON: "3.13"
@@ -42,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: windows-owned-io-${{ github.sha }}
+          name: windows-owned-io-${{ github.sha }}-host${{ matrix.replica }}
           path: artifacts/native-io-diagnosis/
           if-no-files-found: error
 

@@ -78,13 +78,16 @@ def main() -> None:
 
 def focused_kernel_trace(output: Path) -> None:
     runner = runpy.run_path("scripts/check_windows_pdf_lifecycle.py")
-    nodes = [
-        "tests/test_visualization/test_pdf_process_ownership.py::" + name
-        for name in [
-            "test_real_early_pipe_closure_is_still_rejected_when_owned_cleanup_succeeds",
-            "test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callback",
-        ]
-    ]
+    collection = output / "original-order-collection"
+    collection.mkdir()
+    corpus = runner["_collect_cases"](Path.cwd(), collection)
+    assert corpus[24].endswith(
+        "::test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callback"
+    )
+    assert corpus[22].endswith(
+        "::test_real_early_pipe_closure_is_still_rejected_when_owned_cleanup_succeeds"
+    )
+    nodes = corpus[:25] + [corpus[24]] * 5
     commands = []
 
     def record(command: list[str], timeout: int = 60) -> None:
@@ -108,15 +111,16 @@ def focused_kernel_trace(output: Path) -> None:
     profile_path = str(Path("scripts/windows_pdf_io.wprp").resolve())
     record(["wpr", "-profiles", profile_path])
     profile = profile_path + "!OwnedPdfIO"
-    record(["wpr", "-start", profile, "-filemode", "-recordtempto", str(buffers)])
     results = []
+    recording = False
     try:
         directory = output / "focused-close"
         directory.mkdir()
-        for attempt in range(1, 25):
-            check = runner["_run_case"](
-                Path.cwd(), nodes[(attempt - 1) % len(nodes)], directory / f"case-{attempt:02}"
-            )
+        for attempt, node in enumerate(nodes, 1):
+            if attempt == 23:
+                record(["wpr", "-start", profile, "-filemode", "-recordtempto", str(buffers)])
+                recording = True
+            check = runner["_run_case"](Path.cwd(), node, directory / f"case-{attempt:02}")
             results.append(check)
             (output / "focused-results.json").write_text(
                 json.dumps(
@@ -124,7 +128,7 @@ def focused_kernel_trace(output: Path) -> None:
                         "source_revision": os.environ.get("GITHUB_SHA"),
                         "python": sys.version,
                         "results": results,
-                        "scope": "Diagnostic observation only; stop on first failure. Alternate the two retained early-close workflows; passing attempts do not clear retained main failure or qualify a runtime repair.",
+                        "scope": "Diagnostic observation only; stop on first failure. Preserve the failed job original prefix25cases, then5additional case25attempts on each fresh host; passing attempts do not clear retained main failure or qualify a runtime repair.",
                     },
                     indent=2,
                 )
@@ -147,23 +151,26 @@ def focused_kernel_trace(output: Path) -> None:
                 break
     finally:
         trace = str(output / "owned-close.etl")
+        if recording:
+            record(
+                ["wpr", "-stop", trace, "Actual owned Chrome bounded close", "-skipPdbGen"],
+                timeout=120,
+            )
+    if recording:
         record(
-            ["wpr", "-stop", trace, "Actual owned Chrome bounded close", "-skipPdbGen"], timeout=120
+            [
+                "tracerpt",
+                trace,
+                "-o",
+                str(output / "owned-close.csv"),
+                "-of",
+                "CSV",
+                "-summary",
+                str(output / "owned-close-summary.txt"),
+                "-y",
+            ],
+            timeout=120,
         )
-    record(
-        [
-            "tracerpt",
-            trace,
-            "-o",
-            str(output / "owned-close.csv"),
-            "-of",
-            "CSV",
-            "-summary",
-            str(output / "owned-close-summary.txt"),
-            "-y",
-        ],
-        timeout=120,
-    )
     assert results and all(check["passed"] for check in results), (
         "Native failure retained with kernel trace"
     )

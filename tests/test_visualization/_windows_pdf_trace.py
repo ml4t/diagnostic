@@ -248,7 +248,7 @@ def install_parent(module, observed):
                     return self.wait
                 if (
                     name == "TerminateProcess"
-                    and os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1"
+                    and os.environ.get("ML4T_PDF_NATIVE_PRETERMINATION_TRACE") == "1"
                 ):
                     return self.terminate_process
                 return getattr(native, name)
@@ -268,7 +268,7 @@ def install_parent(module, observed):
                 return native.TerminateProcess(handle, code)
 
             def terminate_job(self, handle, code):
-                if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1":
+                if os.environ.get("ML4T_PDF_NATIVE_PRETERMINATION_TRACE") == "1":
                     try:
                         launch = json.loads(
                             observed.with_suffix(".native-handles.json").read_text()
