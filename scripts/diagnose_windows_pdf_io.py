@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import ast
-import hashlib
 import json
 import os
 import runpy
@@ -75,69 +73,79 @@ def main() -> None:
     output = Path("artifacts/native-io-diagnosis").resolve()
     output.mkdir(parents=True, exist_ok=False)
     validate_observer(output)
-    module_path = "tests/test_visualization/test_pdf_process_ownership.py"
-    current = runpy.run_path(module_path)
-    test = current["test_late_job_members_handshake_survives_real_file_sharing_denial"]
-    revision = "3db007cccc5ccb2ea1e766dbfd7402271dc14166"
-    original = subprocess.check_output(["git", "show", f"{revision}:{module_path}"], text=True)
-    base = next(
-        ast.literal_eval(statement.value)
-        for statement in ast.parse(original).body
-        if isinstance(statement, ast.Assign)
-        and any(
-            isinstance(target, ast.Name) and target.id == "_PROBE" for target in statement.targets
-        )
+    focused_kernel_trace(output)
+
+
+def focused_kernel_trace(output: Path) -> None:
+    runner = runpy.run_path("scripts/check_windows_pdf_lifecycle.py")
+    node = (
+        "tests/test_visualization/test_pdf_process_ownership.py::"
+        "test_bounded_shutdown_fault_is_not_reapplied_by_the_actual_pipe_error_callback"
     )
-    repaired = test.__globals__["_PROBE"]
-    results = []
-    for variant, probe in [("base", base), ("fixed", repaired)]:
-        directory = output / f"readiness-{variant}"
-        directory.mkdir()
-        test.__globals__["_PROBE"] = probe
-        error = None
-        try:
-            test(directory)
-        except AssertionError as failure:
-            error = str(failure)
-        finally:
-            test.__globals__["_PROBE"] = repaired
-        denial = json.loads((directory / "report.processes.ready-sharing.json").read_text())
-        results.append(
+    commands = []
+
+    def record(command: list[str], timeout: int = 60) -> None:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=timeout, check=False
+        )
+        commands.append(
             {
-                "variant": variant,
-                "probe_sha256": hashlib.sha256(probe.encode()).hexdigest(),
-                "actual_denials": denial,
-                "error": error,
+                "command": command,
+                "exit_code": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
             }
         )
-        (output / "readiness-regression.json").write_text(
-            json.dumps(
-                {
-                    "base_source": revision,
-                    "fixed_source": os.environ.get("GITHUB_SHA"),
-                    "results": results,
-                    "scope": "Actual failed-base test producer versus repaired fixture, same public PDF runtime; separate from the unresolved native cleanup recurrence.",
-                },
-                indent=2,
+        (output / "kernel-trace-commands.json").write_text(json.dumps(commands, indent=2) + "\n")
+        assert result.returncode == 0, commands[-1]
+
+    record(["wpr", "-profiles"])
+    # The built-in memory profile bounds storage; retain its loss counters before interpretation.
+    record(["wpr", "-start", "FileIO"])
+    results = []
+    try:
+        directory = output / "focused-close"
+        directory.mkdir()
+        for attempt in range(1, 25):
+            check = runner["_run_case"](Path.cwd(), node, directory / f"case-{attempt:02}")
+            results.append(check)
+            (output / "focused-results.json").write_text(
+                json.dumps(
+                    {
+                        "source_revision": os.environ.get("GITHUB_SHA"),
+                        "python": sys.version,
+                        "results": results,
+                        "scope": "Diagnostic observation only; stop on first failure. Passing attempts do not clear retained main failure or qualify a runtime repair.",
+                    },
+                    indent=2,
+                )
+                + "\n"
             )
-            + "\n"
+            print(json.dumps(check), flush=True)
+            if not check["passed"]:
+                break
+    finally:
+        trace = str(output / "owned-close.etl")
+        record(
+            ["wpr", "-stop", trace, "Actual owned Chrome bounded close", "-skipPdbGen"], timeout=120
         )
-        assert denial["denials"] and all(
-            row["errno"] == 13 and row["native_read_failed"] and row["native_error"] == 32
-            for row in denial["denials"]
-        ), denial
-        if variant == "base":
-            assert error and "Permission denied" in error and "debugger-ready.json" in error, error
-        else:
-            assert error is None, error
-    sys.argv = [
-        "check_windows_pdf_lifecycle.py",
-        "--repetitions",
-        "1",
-        "--output",
-        str(output / "original-order"),
-    ]
-    runpy.run_path("scripts/check_windows_pdf_lifecycle.py", run_name="__main__")
+    record(
+        [
+            "tracerpt",
+            trace,
+            "-o",
+            str(output / "owned-close.csv"),
+            "-of",
+            "CSV",
+            "-summary",
+            str(output / "owned-close-summary.txt"),
+            "-y",
+        ],
+        timeout=120,
+    )
+    assert results and all(check["passed"] for check in results), (
+        "Native failure retained with kernel trace"
+    )
 
 
 if __name__ == "__main__":

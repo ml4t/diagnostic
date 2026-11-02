@@ -84,7 +84,7 @@ def _pending_io(pid):
     api.CloseHandle.argtypes = [wintypes.HANDLE]
     rows = []
     for thread in _threads({pid}).get(pid, []):
-        access = 0x0048 if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1" else 0x0040
+        access = 0x0848 if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1" else 0x0040
         handle = api.OpenThread(access, False, thread["tid"])
         row = dict(thread)
         if not handle:
@@ -98,6 +98,20 @@ def _pending_io(pid):
                     row["query_error"] = ctypes.get_last_error()
                 if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1":
                     row["last_syscall"] = _last_syscall(handle)
+                    description = wintypes.LPWSTR()
+                    api.GetThreadDescription.argtypes = [
+                        wintypes.HANDLE,
+                        ctypes.POINTER(wintypes.LPWSTR),
+                    ]
+                    api.GetThreadDescription.restype = wintypes.LONG
+                    status = api.GetThreadDescription(handle, ctypes.byref(description))
+                    row["description_status"] = status
+                    if status >= 0 and description:
+                        try:
+                            row["description"] = description.value
+                        finally:
+                            api.LocalFree.argtypes = [ctypes.c_void_p]
+                            api.LocalFree(ctypes.cast(description, ctypes.c_void_p))
             finally:
                 api.CloseHandle(handle)
         rows.append(row)
@@ -133,6 +147,8 @@ def _last_syscall(thread):
         "matching_exports": [],
     }
     for name in (
+        "NtCreateFile",
+        "NtOpenFile",
         "NtReadFile",
         "NtWriteFile",
         "NtFsControlFile",
@@ -148,6 +164,14 @@ def _last_syscall(thread):
             number = int.from_bytes(stub[4:8], "little")
             if number == value.number:
                 result["matching_exports"].append(name)
+    win32u = ctypes.WinDLL("win32u")
+    for name in ("NtUserMsgWaitForMultipleObjectsEx", "NtUserGetMessage", "NtUserPeekMessage"):
+        stub = ctypes.string_at(ctypes.cast(getattr(win32u, name), ctypes.c_void_p), 8)
+        if (
+            stub[:4] == bytes.fromhex("4c8bd1b8")
+            and int.from_bytes(stub[4:8], "little") == value.number
+        ):
+            result["matching_exports"].append(name)
     return result
 
 
@@ -244,6 +268,22 @@ def install_parent(module, observed):
                 return native.TerminateProcess(handle, code)
 
             def terminate_job(self, handle, code):
+                if os.environ.get("ML4T_PDF_NATIVE_HANDLE_TRACE") == "1":
+                    try:
+                        launch = json.loads(
+                            observed.with_suffix(".native-handles.json").read_text()
+                        )
+                        pid = launch["browser_pid"]
+                        _record(
+                            path,
+                            "before_browser_job_termination",
+                            [pid],
+                            worker_exited=worker_exited,
+                            thread_io=_pending_io(pid),
+                            launch=launch,
+                        )
+                    except Exception as error:
+                        _record(path, "before_browser_job_observer_error", [], error=repr(error))
                 if not timeout_only:
                     _record(path, "before_job_termination", sorted(pids))
                 return native.TerminateJobObject(handle, code)
