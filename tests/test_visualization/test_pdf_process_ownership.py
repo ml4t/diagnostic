@@ -2451,7 +2451,12 @@ def test_late_job_members_handshake_survives_real_file_sharing_denial(tmp_path):
                 return actual_read_text(self,*args,**kwargs)
             except PermissionError as error:
                 if str(self) in sharing_started:
-                    sharing_denials.append(error.winerror)
+                    native=sharing_api.CreateFileW(str(self),0x80000000,0x00000007,None,3,0x80,None)
+                    native_error=ctypes.get_last_error()
+                    if native != ctypes.c_void_p(-1).value:
+                        sharing_api.CloseHandle(native)
+                    sharing_denials.append({'errno':error.errno,'winerror':error.winerror,
+                        'native_read_failed':native==ctypes.c_void_p(-1).value,'native_error':native_error})
                     observed.with_suffix('.ready-sharing.json').write_text(json.dumps({'denials':sharing_denials}))
                 raise
         Path.read_text=readiness_read
@@ -2464,5 +2469,8 @@ def test_late_job_members_handshake_survives_real_file_sharing_denial(tmp_path):
         ["job_dependency", str(target), "0", "0.1", debugger],
     )
     denials = json.loads(target.with_suffix(".processes.ready-sharing.json").read_text())["denials"]
-    assert denials and set(denials) == {32}, "The real readiness read never met a sharing violation"
+    assert denials and all(
+        row["errno"] == 13 and row["native_read_failed"] and row["native_error"] == 32
+        for row in denials
+    ), "The real readiness read never met a native sharing violation"
     assert result["running"] == [] and result["neighbor_alive"]

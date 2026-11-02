@@ -102,7 +102,6 @@ def main() -> None:
         finally:
             test.__globals__["_PROBE"] = repaired
         denial = json.loads((directory / "report.processes.ready-sharing.json").read_text())
-        assert denial["denials"] and set(denial["denials"]) == {32}, denial
         results.append(
             {
                 "variant": variant,
@@ -123,6 +122,10 @@ def main() -> None:
             )
             + "\n"
         )
+        assert denial["denials"] and all(
+            row["errno"] == 13 and row["native_read_failed"] and row["native_error"] == 32
+            for row in denial["denials"]
+        ), denial
         if variant == "base":
             assert error and "Permission denied" in error and "debugger-ready.json" in error, error
         else:
