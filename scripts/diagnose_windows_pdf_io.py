@@ -105,7 +105,9 @@ def focused_kernel_trace(output: Path) -> None:
     record(["wpr", "-profiles"])
     buffers = output / "kernel-buffers"
     buffers.mkdir()
-    profile = str(Path("scripts/windows_pdf_io.wprp").resolve()) + "!OwnedPdfIO"
+    profile_path = str(Path("scripts/windows_pdf_io.wprp").resolve())
+    record(["wpr", "-profiles", profile_path])
+    profile = profile_path + "!OwnedPdfIO"
     record(["wpr", "-start", profile, "-filemode", "-recordtempto", str(buffers)])
     results = []
     try:

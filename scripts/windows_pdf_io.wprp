@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <WindowsPerformanceRecorder Version="1.0" Author="ML4T">
   <Profiles>
-    <SystemCollector Id="OwnedPdfCollector" Name="Owned PDF file I/O">
+    <SystemCollector Id="OwnedPdfCollector" Name="OwnedPdfFileIO">
       <BufferSize Value="256" />
       <Buffers Value="128" />
     </SystemCollector>
