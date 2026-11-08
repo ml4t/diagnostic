@@ -1,7 +1,7 @@
 """Rademacher Anti-Serum (RAS) for multiple testing correction.
 
-Implements Rademacher complexity-based corrections that account for strategy
-correlation, unlike traditional methods (DSR, Bonferroni) which assume independence.
+Implements Rademacher complexity-based corrections using the joint strategy
+performance matrix to account for strategy correlation.
 
 Identical strategies contribute zero additional complexity. Confidence statements
 require the stated population, sampling and complexity assumptions.
@@ -50,7 +50,8 @@ class RASResult:
     significant_mask : NDArray[np.bool_]
         Boolean mask of significant strategies.
     massart_bound : float
-        Theoretical upper bound √(2 log N / T).
+        Population-range upper bound κ√(2 log N / T) for IC; the unit-scale
+        diagnostic √(2 log N / T) for standardized Sharpe inputs.
     complexity_ratio : float
         R̂ / massart_bound (lower = more correlated strategies).
     """
@@ -76,15 +77,16 @@ def rademacher_complexity(
     Measures a strategy set's capacity to fit random noise, quantifying
     overfitting risk when selecting among multiple candidates.
 
-    **Definition** (Bartlett & Mendelson, 2002):
+    **Convention used here** (non-absolute supremum, 1/T normalization):
 
         R̂_T(F) = E_σ[sup_{n} (1/T) Σᵢ σᵢ xᵢₙ]
 
     where σᵢ ∈ {-1, +1} with P(σᵢ = 1) = 0.5 (Rademacher distribution).
 
     **Interpretation**:
-    - R̂ ≈ 0: Strategies highly correlated (low overfitting risk)
-    - R̂ → √(2 log N / T): Strategies uncorrelated (Massart upper bound)
+    - Identical columns have exact empirical complexity zero.
+    - More distinct strategies can fit more noise; the upper bound also scales
+      with column norms, not just the number of strategies.
 
     Parameters
     ----------
@@ -127,7 +129,8 @@ def rademacher_complexity(
 
     References
     ----------
-    .. [2] Bartlett & Mendelson (2002), JMLR 3:463-482, Definition 2.
+    .. [2] Bartlett & Mendelson (2002), JMLR 3:463-482, Definition 2
+           uses an absolute supremum and a different factor-two convention.
     .. [3] Massart (2000), Lemma 1.
     """
     if not isinstance(X, np.ndarray):

@@ -461,7 +461,7 @@ class RASICResult(BaseResult):
 
     massart_bound: float = Field(
         ...,
-        description="Massart's theoretical upper bound sqrt(2logN/T)",
+        description="Population-range Massart bound kappa*sqrt(2logN/T)",
     )
 
     observed_ic: dict[str, float] = Field(
