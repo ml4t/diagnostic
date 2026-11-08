@@ -3,13 +3,13 @@
 Implements Rademacher complexity-based corrections that account for strategy
 correlation, unlike traditional methods (DSR, Bonferroni) which assume independence.
 
-**Key Advantage**: Zero false positive rate when strategies are correlated.
-Identical strategies contribute zero additional complexity.
+Identical strategies contribute zero additional complexity. Confidence statements
+require the stated population, sampling and complexity assumptions.
 
 References
 ----------
-.. [1] Paleologo, G. (2024). "The Elements of Quantitative Investing",
-       Wiley Finance, Chapter 4.3 / Section 8.3.
+.. [1] Paleologo, G. (2025). "The Elements of Quantitative Investing",
+       Wiley Finance, Rademacher Anti-Serum discussion.
 .. [2] Bartlett, P.L. & Mendelson, S. (2002). "Rademacher and Gaussian
        Complexities: Risk Bounds and Structural Results", JMLR 3:463-482.
 .. [3] Massart, P. (2000). "Some applications of concentration inequalities
@@ -35,7 +35,8 @@ class RASResult:
     Attributes
     ----------
     adjusted_values : NDArray
-        Conservative lower bounds on true performance metrics.
+        Lower bounds conditional on the adjustment's sampling, population and
+        complexity assumptions.
     observed_values : NDArray
         Original observed values before adjustment.
     complexity : float
@@ -92,14 +93,16 @@ def rademacher_complexity(
         Typically contains period-by-period ICs or returns.
     n_simulations : int, default=10000
         Monte Carlo samples. Higher = more accurate but slower.
-        10000 provides ~1% relative error.
+        Accuracy depends on the data; no relative-error guarantee is supplied.
     random_state : int, optional
         Random seed for reproducibility.
 
     Returns
     -------
     float
-        Empirical Rademacher complexity R̂ ∈ [0, √(2 log N / T)].
+        Monte Carlo estimate of empirical Rademacher complexity. Finite draws
+        can underestimate the exact expectation, or even produce a negative
+        estimate for a singleton class.
 
     Notes
     -----
@@ -107,6 +110,10 @@ def rademacher_complexity(
         R̂ ≤ max_n ||xₙ||₂ × √(2 log N) / T
 
     For normalized data (||xₙ||₂ ≈ √T), this simplifies to √(2 log N / T).
+    A Monte Carlo point estimate is not a certified upper bound. For confidence
+    statements, use the exact expectation, a deterministic upper bound (such as
+    Massart's bound above), or a separately justified Monte Carlo upper bound
+    with its failure probability included in the total error budget.
 
     **Computational Complexity**: O(n_simulations × T × N)
 
@@ -157,43 +164,50 @@ def ras_ic_adjustment(
     complexity: float,
     n_samples: int,
     delta: float = 0.05,
-    kappa: float = 0.02,
+    kappa: float = 1.0,
     return_result: bool = False,
+    *,
+    ic_samples: NDArray[Any] | None = None,
 ) -> NDArray[Any] | RASResult:
     """Apply RAS adjustment for Information Coefficients (bounded metrics).
 
     Computes conservative lower bounds on true IC values accounting for
     data snooping and estimation error.
 
-    **Formula** (Hoeffding concentration for |IC| ≤ κ):
+    **Formula** (empirical Rademacher bound for period ICs in [-κ, κ]):
 
-        θₙ ≥ θ̂ₙ - 2R̂ - 2κ√(log(2/δ)/T)
+        θₙ ≥ θ̂ₙ - 2R̂ - 3κ√(2 log(2/δ)/T)
                ───   ─────────────────
                (a)         (b)
 
     where:
         (a) = data snooping penalty from testing N strategies
-        (b) = estimation error for bounded r.v. (Hoeffding's inequality)
+        (b) = bounded-difference error, including estimation of complexity
 
     Parameters
     ----------
     observed_ic : ndarray of shape (N,)
-        Observed Information Coefficients for N strategies.
+        Means of the period-by-period ICs for N strategies, not pooled ICs.
     complexity : float
-        Rademacher complexity R̂ from `rademacher_complexity()`.
+        Exact empirical Rademacher complexity R̂, or a conservative upper bound,
+        for the same period-by-strategy matrix. The Monte Carlo point estimate
+        from `rademacher_complexity()` alone does not certify coverage.
     n_samples : int
         Number of time periods T used to compute ICs.
     delta : float, default=0.05
         Significance level (1 - confidence). Lower = more conservative.
-    kappa : float, default=0.02
-        Bound on |IC|. **Critical parameter**.
-
-        Practical guidance (Paleologo 2024, p.273):
-        - κ=0.02: Typical alpha signals
-        - κ=0.05: High-conviction signals
-        - κ=1.0: Theoretical maximum (usually too conservative)
+    kappa : float, default=1.0
+        A priori population bound: every possible period IC must satisfy
+        |x[t, n]| <= kappa almost surely. Pearson and rank correlations admit
+        the safe bound 1.0. A smaller bound needs an external justification;
+        a typical mean, standard deviation or observed sample maximum is not
+        sufficient. This function never estimates kappa from the sample.
     return_result : bool, default=False
         If True, return RASResult dataclass with full diagnostics.
+    ic_samples : ndarray of shape (n_samples, N), optional
+        Period IC matrix used for the means and complexity. Checks shape,
+        finite values, means and observed violations of kappa. Passing these
+        checks cannot certify a bound on unobserved population outcomes.
 
     Returns
     -------
@@ -204,64 +218,90 @@ def ras_ic_adjustment(
     Raises
     ------
     ValueError
-        If inputs are invalid or observed ICs exceed kappa bound.
+        If inputs are invalid or supplied period ICs exceed kappa.
 
     Warns
     -----
     UserWarning
-        If any |observed_ic| > κ (theoretical guarantee violated).
+        If any mean |observed_ic| > kappa without ic_samples. This detects only
+        an obvious violation; means within kappa do not validate the bound.
 
     Notes
     -----
-    **Derivation**:
-    1. Data snooping: Standard Rademacher generalization bound gives 2R̂.
-    2. Estimation: For bounded r.v. |X| ≤ κ, Hoeffding gives
-       P(|X̂ - X| > t) ≤ 2exp(-Tt²/2κ²). Setting RHS = δ yields
-       t = κ√(2 log(2/δ)/T). Conservative factor 2 for two-sided.
+    For a fixed strategy class and independent identically distributed period
+    vectors, the empirical Rademacher theorem gives a simultaneous one-sided
+    bound for all strategies. Rescaling [-kappa, kappa] to [0, 1] gives the
+    estimation term 3*kappa*sqrt(2*log(2/delta)/T) [3]. The extra concentration
+    accounts for replacing population complexity with empirical complexity;
+    Hoeffding's inequality for a single mean alone does not justify that step.
+    Serially dependent or overlapping periods do not satisfy the IID assumption.
+    No zero-false-positive guarantee is made. Negative lower bounds are retained.
 
-    **Advantages over DSR**:
-    - Accounts for strategy correlation (R̂ ↓ as correlation ↑)
-    - Non-asymptotic (valid for any T)
-    - Zero false positives in Paleologo's simulations
+    The previous default 0.02 and smaller estimation term have been replaced.
+    Explicit kappa and positional return_result calls remain accepted, but
+    lower bounds are more conservative even when kappa is supplied explicitly.
 
     Examples
     --------
     >>> import numpy as np
-    >>> X = np.random.randn(2500, 500) * 0.02
+    >>> X = np.random.default_rng(42).uniform(-0.1, 0.1, (252, 5))
     >>> observed_ic = X.mean(axis=0)
-    >>> R_hat = rademacher_complexity(X)
-    >>> result = ras_ic_adjustment(observed_ic, R_hat, 2500, return_result=True)
+    >>> upper_complexity = np.max(np.linalg.norm(X, axis=0)) * np.sqrt(2*np.log(5)) / 252
+    >>> result = ras_ic_adjustment(
+    ...     observed_ic, upper_complexity, 252, return_result=True, ic_samples=X
+    ... )
     >>> print(f"Significant: {result.n_significant}/{len(observed_ic)}")
 
     References
     ----------
-    .. [1] Paleologo (2024), Section 8.3.2, Procedure 8.1.
+    .. [1] Paleologo (2025), Rademacher Anti-Serum discussion.
     .. [2] Hoeffding (1963), "Probability inequalities for sums of bounded
            random variables", JASA 58:13-30.
+    .. [3] Mohri, Rostamizadeh & Talwalkar (2018), "Foundations of Machine
+           Learning", 2nd ed., Theorem 3.3, empirical-complexity bound.
     """
-    observed_ic = np.asarray(observed_ic)
+    observed_ic = np.asarray(observed_ic, dtype=float)
 
     if observed_ic.ndim != 1:
         raise ValueError(f"observed_ic must be 1D, got shape {observed_ic.shape}")
 
-    if complexity < 0:
-        raise ValueError(f"complexity must be non-negative, got {complexity}")
+    if observed_ic.size == 0 or not np.all(np.isfinite(observed_ic)):
+        raise ValueError("observed_ic must contain finite, nonempty means")
 
-    if n_samples < 1:
-        raise ValueError(f"n_samples must be positive, got {n_samples}")
+    if not np.isfinite(complexity) or complexity < 0:
+        raise ValueError(f"complexity must be finite and non-negative, got {complexity}")
+
+    if (
+        isinstance(n_samples, (bool, np.bool_))
+        or not isinstance(n_samples, (int, np.integer))
+        or n_samples < 1
+    ):
+        raise ValueError(f"n_samples must be a positive integer, got {n_samples}")
 
     if not 0 < delta < 1:
         raise ValueError(f"delta must be in (0, 1), got {delta}")
 
-    if kappa <= 0:
-        raise ValueError(f"kappa must be positive, got {kappa}")
+    if kappa is None or not np.isfinite(kappa) or kappa <= 0:
+        raise ValueError(f"kappa must be positive and finite, got {kappa}")
+
+    if ic_samples is not None:
+        samples = np.asarray(ic_samples, dtype=float)
+        if samples.shape != (n_samples, observed_ic.size):
+            raise ValueError("ic_samples must have shape (n_samples, len(observed_ic))")
+        if not np.all(np.isfinite(samples)):
+            raise ValueError("ic_samples must contain only finite period ICs")
+        if np.max(np.abs(samples)) > kappa:
+            raise ValueError("period ICs in ic_samples exceed kappa; no confidence bound is valid")
+        if not np.allclose(samples.mean(axis=0), observed_ic, rtol=1e-10, atol=1e-12):
+            raise ValueError("observed_ic must equal the column means of ic_samples")
 
     # Warn if ICs exceed the bounded assumption
     max_abs_ic = np.max(np.abs(observed_ic))
-    if max_abs_ic > kappa:
+    if ic_samples is None and max_abs_ic > kappa:
         warnings.warn(
-            f"max(|IC|)={max_abs_ic:.4f} exceeds kappa={kappa}. "
-            "Theoretical guarantees may not hold. Consider increasing kappa.",
+            f"max(|mean IC|)={max_abs_ic:.4f} exceeds kappa={kappa}. "
+            "The population bound on period ICs is violated; no confidence guarantee holds. "
+            "Means within kappa would not certify that bound either.",
             UserWarning,
             stacklevel=2,
         )
@@ -272,8 +312,8 @@ def ras_ic_adjustment(
     # (a) Data snooping penalty: 2R̂
     data_snooping = 2 * complexity
 
-    # (b) Estimation error: 2κ√(log(2/δ)/T) from Hoeffding
-    estimation_error = 2 * kappa * np.sqrt(np.log(2 / delta) / T)
+    # Empirical-complexity concentration, rescaled from [0, 1] to [-kappa, kappa].
+    estimation_error = 3 * kappa * np.sqrt(2 * np.log(2 / delta) / T)
 
     # Conservative lower bound
     adjusted_ic = observed_ic - data_snooping - estimation_error
@@ -282,7 +322,7 @@ def ras_ic_adjustment(
         return adjusted_ic
 
     # Compute diagnostics
-    massart_bound = np.sqrt(2 * np.log(N) / T) if N > 1 else 0.0
+    massart_bound = kappa * np.sqrt(2 * np.log(N) / T) if N > 1 else 0.0
     significant_mask = adjusted_ic > 0
 
     return RASResult(

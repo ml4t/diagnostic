@@ -442,7 +442,7 @@ class RASICResult(BaseResult):
 
     kappa: float = Field(
         ...,
-        description="IC bound used (|IC| <= kappa)",
+        description="A priori population bound on each period IC (|x[t,n]| <= kappa)",
     )
 
     n_simulations: int = Field(
@@ -500,7 +500,7 @@ class RASICResult(BaseResult):
 
     estimation_error_term: float = Field(
         ...,
-        description="Estimation error term (2*kappa*sqrt(log(2/delta)/T))",
+        description="Estimation error term (3*kappa*sqrt(2*log(2/delta)/T))",
     )
 
     # ==========================================================================

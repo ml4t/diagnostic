@@ -398,7 +398,7 @@ def plot_ras_analysis(
     original_ic: float,
     adjusted_ic: float,
     rademacher_complexity: float,
-    kappa: float = 0.02,
+    kappa: float = 1.0,
     n_features: int | None = None,
     n_observations: int | None = None,
     title: str = "Rademacher Anti-Serum Analysis",
@@ -420,7 +420,8 @@ def plot_ras_analysis(
     rademacher_complexity : float
         Estimated Rademacher complexity R̂
     kappa : float
-        The practical bound parameter used (default: 0.02)
+        A priori population bound on each period IC (default: 1.0).
+        Used only for annotation; does not determine the displayed penalty.
     n_features : int, optional
         Number of features/strategies tested
     n_observations : int, optional
@@ -441,11 +442,19 @@ def plot_ras_analysis(
 
     Notes
     -----
-    The RAS adjustment is:
-    IC_adj = max(0, IC_original - 2 * (R̂ + κ))
-
-    where R̂ is the Rademacher complexity and κ is a practical bound.
+    Supply values from the same ``ras_ic_adjustment`` result. The estimation
+    penalty is recovered as original_ic - adjusted_ic - 2*rademacher_complexity;
+    kappa alone is not the penalty. Negative adjusted ICs remain visible.
     """
+    estimation_error = original_ic - adjusted_ic - 2 * rademacher_complexity
+    if (
+        not np.all(np.isfinite([original_ic, adjusted_ic, rademacher_complexity, kappa]))
+        or rademacher_complexity < 0
+        or kappa <= 0
+        or estimation_error < -1e-12
+    ):
+        raise ValueError("RAS values must be finite with non-negative complexity and penalties")
+    estimation_error = max(0.0, estimation_error)
     theme_config = get_theme_config(theme)
     colors = theme_config["colorway"]
 
@@ -455,8 +464,8 @@ def plot_ras_analysis(
     # Create waterfall chart
     fig = go.Figure()
 
-    categories = ["Original IC", "Rademacher (2R̂)", "Practical κ", "Adjusted IC"]
-    values = [original_ic, -2 * rademacher_complexity, -2 * kappa, adjusted_ic]
+    categories = ["Original IC", "Rademacher (2R̂)", "Estimation error", "Adjusted IC"]
+    values = [original_ic, -2 * rademacher_complexity, -estimation_error, adjusted_ic]
     measures = ["absolute", "relative", "relative", "total"]
 
     fig.add_trace(
@@ -499,10 +508,10 @@ def plot_ras_analysis(
 
     # Significance indicator
     if adjusted_ic > 0:
-        sig_text = "Statistically significant after RAS adjustment"
+        sig_text = "Positive RAS lower bound (conditional on sampling and bound assumptions)"
         sig_color = _ML4T_COLORS["positive"]
     else:
-        sig_text = "Not significant after RAS adjustment (IC ≤ 0)"
+        sig_text = "RAS lower bound is non-positive"
         sig_color = _ML4T_COLORS["negative"]
 
     annotations.append(

@@ -110,90 +110,93 @@ print(f"p-value: {result.p_value:.3f}")
 
 ### Rademacher Anti-Serum (RAS)
 
-**Implementation**: `ml4t.diagnostic.evaluation.stats.rademacher_complexity()`, `ras_ic_adjustment()`, `ras_sharpe_adjustment()`
+**Implementation**: `ml4t.diagnostic.evaluation.stats.rademacher_complexity()`,
+`ras_ic_adjustment()`, `ras_sharpe_adjustment()`.
 
-**What it does**: Provides probabilistic lower bounds on true performance metrics (Sharpe ratios or ICs) that account for both data snooping AND strategy correlation.
+RAS uses the joint period-by-strategy matrix to account for selection among correlated
+strategies. Repeating an identical strategy does not add complexity. It does not guarantee
+zero false discoveries.
 
-**Why it matters**: DSR assumes strategies are independent. In practice, strategies are often correlated (e.g., variants of the same signal). RAS correctly handles this through the **Rademacher complexity**, which measures how well strategies can fit random noise *given their correlation structure*.
+#### IC population bound and sampling assumptions
 
-#### Mathematical Foundation
+For `ras_ic_adjustment`, `observed_ic[n]` is the mean of period ICs `x[t, n]`.
+`kappa` bounds **every possible period IC in the population**, almost surely, rather than
+the mean IC. Pearson and rank correlations admit the safe default `kappa=1.0`.
+A smaller bound needs an external justification. A typical alpha mean, a standard deviation,
+and `max(abs(X))` from a finite sample cannot certify that unseen outcomes respect the bound.
 
-The Rademacher complexity measures the expected correlation between a strategy's predictions and random noise:
+The optional keyword-only `ic_samples=X` checks period-level violations, dimensions,
+finite values and agreement with the supplied means. It rejects observed violations.
+Passing these checks still does not prove a population bound. Without the matrix, an
+obviously out-of-bound mean emits the existing warning; absence of that warning proves nothing.
+`kappa=None` does not select an automatic sample-based bound.
 
-```
-R̂ = E_ε[max_n (ε^T x^n / T)]
-```
+For a fixed strategy class and IID period vectors in `[-kappa, kappa]`, the empirical
+Rademacher theorem gives simultaneous one-sided lower bounds:
 
-Where ε is a **Rademacher vector** (random ±1 with probability 0.5).
-
-**Key Insight**: If strategies are highly correlated, they all move together and can't independently fit different noise patterns. This means R̂ is lower, and less adjustment is needed. If strategies are independent, R̂ approaches the **Massart bound** √(2logN/T), requiring maximum adjustment.
-
-#### Two Procedures (Paleologo, 2024)
-
-**Procedure 8.1 - For Information Coefficients** (bounded |IC| ≤ κ):
-```
-θ_n ≥ θ̂_n - 2R̂ - 2κ√(log(2/δ)/T)
-         ────    ─────────────────
-      data snooping  estimation error
-```
-
-**Procedure 8.2 - For Sharpe Ratios** (sub-Gaussian):
-```
-θ_n ≥ θ̂_n - 2R̂ - 3√(2log(2/δ)/T) - √(2log(2N/δ)/T)
-         ────   ────────────────────────────────────
-      data snooping      estimation error
+```text
+R_hat = E_sigma[max_n sum_t sigma[t] * X[t,n] / T]
+lower[n] = mean_IC[n] - 2*R_hat - 3*kappa*sqrt(2*log(2/delta)/T)
 ```
 
-With probability ≥ (1-δ), these bounds hold **simultaneously for ALL N strategies** (not just the selected one).
+The expectation is over independent random signs. The estimation term includes the
+concentration needed to replace population complexity with empirical complexity.
+It follows by rescaling the empirical bound in Theorem 3.3 of
+[Mohri, Rostamizadeh and Talwalkar (2018)](https://cs.nyu.edu/~mohri/mlbook/)
+from `[0,1]` to `[-kappa,kappa]`; the
+[author's lecture, slides 6-9](https://cs.nyu.edu/~mohri/mls/ml_learning_with_infinite_hypothesis_sets.pdf)
+gives the bound and derivation. [Hoeffding (1963), Theorem 1](https://www.cs.rpi.edu/academics/courses/spring06/random/hoefding.pdf)
+requires population ranges for the independent summands. Small observed means do not supply those ranges.
+Serial dependence, overlapping return horizons, and an unaccounted adaptive strategy class
+invalidate the IID/fixed-class argument. This function does not correct those violations.
 
-#### Usage Example
+`complexity` must be the exact empirical expectation or a conservative upper bound for
+the same matrix. `rademacher_complexity()` returns a Monte Carlo point estimate, which can
+underestimate that expectation. Its simulation error is not automatically included in `delta`.
+A certified Monte Carlo upper bound needs its own failure budget; a deterministic Massart
+upper bound avoids that extra uncertainty at the cost of a larger penalty.
+
+#### Runnable IC example with a deterministic complexity bound
 
 ```python
-from ml4t.diagnostic.evaluation.stats import (
-    rademacher_complexity,
-    ras_ic_adjustment,
-    ras_sharpe_adjustment
-)
 import numpy as np
+from ml4t.diagnostic.evaluation.stats import ras_ic_adjustment
 
-# Strategy performance matrix: T periods × N strategies
-X = np.random.randn(2500, 500)  # 2500 days, 500 strategies
-observed_sharpe = X.mean(axis=0)
-
-# Step 1: Compute Rademacher complexity
-R_hat = rademacher_complexity(X, n_simulations=1000, random_state=42)
-print(f"Rademacher complexity: {R_hat:.4f}")
-print(f"Massart bound: {np.sqrt(2 * np.log(500) / 2500):.4f}")
-
-# Step 2: Apply RAS adjustment
-adjusted_sharpe = ras_sharpe_adjustment(
-    observed_sharpe=observed_sharpe,
-    complexity=R_hat,
-    n_samples=2500,
-    n_strategies=500,
-    delta=0.05  # 95% confidence
+# Synthetic IID period IC vectors, T periods by N fixed strategies.
+X = np.random.default_rng(42).uniform(-0.1, 0.1, (252, 5))
+T, N = X.shape
+# Massart's finite-class bound on the exact empirical complexity of this matrix.
+complexity_upper = np.max(np.linalg.norm(X, axis=0)) * np.sqrt(2*np.log(N)) / T
+result = ras_ic_adjustment(
+    X.mean(axis=0), complexity_upper, T,
+    ic_samples=X, return_result=True,
 )
-
-# Count significant strategies
-n_significant = np.sum(adjusted_sharpe > 0)
-print(f"Significant strategies: {n_significant}/500")
+print(result.adjusted_values)
 ```
 
-#### Advantages over DSR
+Negative lower bounds are retained. The default is conservative even when observed ICs
+are small. Set `kappa=0.1` in this synthetic example only because its generator has known
+support `[-0.1,0.1]`, not because the observed sample happens to fit that interval.
+`plot_ras_analysis` displays the actual estimation penalty from the supplied original/adjusted
+values and complexity; it does not subtract `2*kappa` as a separate penalty.
 
-| Property | DSR | RAS |
-|----------|-----|-----|
-| Accounts for correlation | ❌ No | ✅ Yes (via R̂) |
-| Bound type | Asymptotic | Non-asymptotic |
-| Scale | ~1000 strategies | Millions |
-| False discovery rate | ~0.5% | ~0% |
-| Computational cost | O(1) | O(n_sim × T × N) |
+**Compatibility correction**: the previous default `kappa=0.02` described typical means,
+not period bounds. Both the default and the previous smaller estimation coefficient have
+been corrected, so results are more conservative, including calls with explicit `kappa`.
+Existing positional arguments, array returns and `return_result=True` remain supported.
 
-**Reference**:
+The separate Sharpe adjustment uses sub-Gaussian assumptions on standardized period
+performance, not the bounded-IC contract. Raw heavy-tailed returns are not automatically
+covered. Its implementation is unchanged by the IC correction.
 
-- **Paleologo, G. (2024)**. "Elements of Quantitative Investing."
-  Chapter 8: Evaluating Excess Returns. Section 8.3: Rademacher Anti-Serum.
-  - Reference implementation: https://github.com/RSv618/rademacher-anti-serum
+**References**:
+
+- Paleologo, G. (2025), *The Elements of Quantitative Investing*, Wiley,
+  Rademacher Anti-Serum discussion. The IC coefficient above is justified by the
+  explicit empirical-complexity theorem cited above, not an unverified book procedure number.
+- [Bartlett and Mendelson (2002), *Rademacher and Gaussian Complexities*](https://jmlr.org/papers/v3/bartlett02a.html).
+  Their normalization uses an absolute supremum and a factor of two; the displayed
+  `R_hat` definition here follows the non-absolute, `1/T` convention.
 
 ---
 
