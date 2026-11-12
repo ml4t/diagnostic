@@ -176,6 +176,8 @@ def compare_order_traces(
     right = _summarize(live, child_intent_id, currency, decision, terminal)
 
     outcome_keys = ("filled_by_price", "fees", "remaining_quantity")
+    left_statuses = [row.get("status") for row in left["orders"]]
+    right_statuses = [row.get("status") for row in right["orders"]]
     if left["target"] != right["target"]:
         stage = "decision"
     elif left["child"] != right["child"]:
@@ -194,6 +196,13 @@ def compare_order_traces(
         stage = "replacement"
     elif any(left[key] != right[key] for key in outcome_keys):
         stage = "execution_outcome"
+    elif (
+        left_statuses
+        and right_statuses
+        and all(left_statuses + right_statuses)
+        and sorted(left_statuses) != sorted(right_statuses)
+    ):
+        stage = "order_status"
     else:
         stage = None
     left_cost, right_cost = left["total_shortfall"], right["total_shortfall"]
