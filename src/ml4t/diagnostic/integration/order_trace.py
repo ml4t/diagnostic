@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
+from string import hexdigits
 from typing import Any
 
 from ml4t.specs import CanonicalChildOrderIntent, CanonicalTargetIntent
@@ -15,6 +18,23 @@ def _decimal(value: float | int | str) -> Decimal:
     if not result.is_finite():
         raise ValueError("Order trace economics require finite values")
     return result
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ArrivalQuote:
+    """One observed quote on the execution clock, before the order's first fill."""
+
+    asset: str
+    currency: str
+    observed_at: datetime
+    bid: float | str
+    ask: float | str
+
+    def __post_init__(self) -> None:
+        if self.observed_at.utcoffset() is None:
+            raise ValueError("Arrival quote requires a timezone-aware observation time")
+        if _decimal(self.bid) > _decimal(self.ask):
+            raise ValueError("Arrival quote bid exceeds ask")
 
 
 def _one(rows: list[dict[str, Any]], key: str, value: str) -> dict[str, Any]:
@@ -53,6 +73,7 @@ def _summarize(
     currency: str,
     decision_price: Decimal | None,
     terminal_price: Decimal | None,
+    quote: ArrivalQuote | None,
 ) -> dict[str, Any]:
     from ml4t.specs import ExecutionFill
 
@@ -129,6 +150,29 @@ def _summarize(
             )
             if terminal_price is not None and remaining >= 0:
                 opportunity_cost = side * (terminal_price - decision_price) * remaining * multiplier
+    delay = spread = price_vs_touch = None
+    if (
+        quote is not None
+        and quote.asset == child.asset
+        and quote.currency == currency
+        and decision_price is not None
+        and not unresolved
+        and units_known
+        and multiplier is not None
+        and target.decision_time <= quote.observed_at
+        and all(
+            fill.executed_at is not None and quote.observed_at <= fill.executed_at for fill in fills
+        )
+    ):
+        bid, ask = _decimal(quote.bid), _decimal(quote.ask)
+        mid = (bid + ask) / 2
+        touch = ask if side > 0 else bid
+        delay = side * (mid - decision_price) * quantity * multiplier
+        spread = side * (touch - mid) * quantity * multiplier
+        price_vs_touch = sum(
+            (side * (price - touch) * size * multiplier for price, size in by_price.items()),
+            Decimal(0),
+        )
     return {
         "target": target.to_dict(),
         "child": child.to_dict(),
@@ -142,6 +186,20 @@ def _summarize(
         "overfilled_quantity": None if unresolved else str(max(-remaining, Decimal(0))),
         "filled_by_price": {str(price): str(size) for price, size in sorted(by_price.items())},
         "fees": str(fees) if fee_known and not unresolved else None,
+        "arrival_quote": (
+            {
+                "asset": quote.asset,
+                "currency": quote.currency,
+                "observed_at": quote.observed_at.isoformat(),
+                "bid": str(quote.bid),
+                "ask": str(quote.ask),
+            }
+            if quote is not None
+            else None
+        ),
+        "delay_cost": str(delay) if delay is not None else None,
+        "spread_cost": str(spread) if spread is not None else None,
+        "price_vs_touch_cost": str(price_vs_touch) if price_vs_touch is not None else None,
         "execution_cost": str(filled_cost) if filled_cost is not None else None,
         "residual_opportunity_cost": str(opportunity_cost)
         if opportunity_cost is not None
@@ -163,6 +221,8 @@ def compare_order_traces(
     currency: str,
     decision_price: float | str | None = None,
     terminal_price: float | str | None = None,
+    backtest_arrival_quote: ArrivalQuote | None = None,
+    live_arrival_quote: ArrivalQuote | None = None,
 ) -> dict[str, Any]:
     """Compare two traces using shared intent IDs and explicit price references.
 
@@ -172,13 +232,25 @@ def compare_order_traces(
     """
     decision = _decimal(decision_price) if decision_price is not None else None
     terminal = _decimal(terminal_price) if terminal_price is not None else None
-    left = _summarize(backtest, child_intent_id, currency, decision, terminal)
-    right = _summarize(live, child_intent_id, currency, decision, terminal)
+    left = _summarize(
+        backtest, child_intent_id, currency, decision, terminal, backtest_arrival_quote
+    )
+    right = _summarize(live, child_intent_id, currency, decision, terminal, live_arrival_quote)
 
     outcome_keys = ("filled_by_price", "fees", "remaining_quantity")
     left_statuses = [row.get("status") for row in left["orders"]]
     right_statuses = [row.get("status") for row in right["orders"]]
-    if left["target"] != right["target"]:
+    data_identity = [trace.get("market_data_sha256") for trace in (backtest, live)]
+    for identity in data_identity:
+        if identity is not None and (
+            not isinstance(identity, str)
+            or len(identity) != 64
+            or any(character not in hexdigits for character in identity)
+        ):
+            raise ValueError("market_data_sha256 must be a hexadecimal SHA-256 digest")
+    if all(data_identity) and data_identity[0].lower() != data_identity[1].lower():
+        stage = "market_data"
+    elif left["target"] != right["target"]:
         stage = "decision"
     elif left["child"] != right["child"]:
         stage = "child_order"
@@ -206,10 +278,17 @@ def compare_order_traces(
     else:
         stage = None
     left_cost, right_cost = left["total_shortfall"], right["total_shortfall"]
-    comparable = stage not in {"decision", "child_order", "risk_rejection", "rejection"}
+    comparable = stage not in {
+        "market_data",
+        "decision",
+        "child_order",
+        "risk_rejection",
+        "rejection",
+    }
     return {
         "child_intent_id": child_intent_id,
         "currency": currency,
+        "market_data_sha256": dict(zip(("backtest", "live"), data_identity, strict=True)),
         "decision_price": str(decision) if decision is not None else None,
         "terminal_price": str(terminal) if terminal is not None else None,
         "first_differing_stage_compared": stage,

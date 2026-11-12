@@ -228,3 +228,12 @@ incremental execution once. Unlinked executions, missing execution identities,
 and gaps between cumulative state and known fills appear under `unresolved`.
 Missing fees, quote currency, multiplier, or benchmark prices leave the
 affected cost fields unset.
+
+To break execution cost into delay, spread and price versus touch, pass an
+`ArrivalQuote` for each run with an observed bid, ask, currency and timestamp
+on that run's execution clock. The quote must be for the same instrument and
+currency and fall between the decision and every linked execution. Missing
+or incompatible quotes leave those components unset. The trace may also carry
+`market_data_sha256` to identify each run's frozen market input. When both
+identities are present and differ, the report marks the difference before
+comparing execution outcomes.
