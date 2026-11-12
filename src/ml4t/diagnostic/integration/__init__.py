@@ -32,6 +32,7 @@ from ml4t.diagnostic.integration.engineer_contract import (
     PreprocessingRecommendation,
     TransformType,
 )
+from ml4t.diagnostic.integration.order_trace import compare_order_traces
 from ml4t.diagnostic.integration.report_metadata import BacktestReportMetadata
 
 if TYPE_CHECKING:
@@ -201,6 +202,7 @@ __all__ = [
     "ComparisonResult",
     "ComparisonType",
     "analyze_backtest_result",
+    "compare_order_traces",
     "compute_metrics_from_result",
     "EnvironmentType",
     "EvaluationExport",
