@@ -139,7 +139,9 @@ jobs:
           assert not package.is_relative_to(Path.cwd())
           with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(["git", "archive", revision, "src/ml4t/diagnostic"]))) as archive:
               modules = {m.name.removeprefix("src/"): archive.extractfile(m).read() for m in archive.getmembers() if m.isfile() and m.name.endswith(".py")}
-          assert len(modules) == 358 and all((package / name).read_bytes() == value for name, value in modules.items())
+          installed = {path.relative_to(package).as_posix() for path in (package / "ml4t/diagnostic").rglob("*.py")}
+          assert modules and installed == modules.keys(), (sorted(modules.keys() - installed), sorted(installed - modules.keys()))
+          assert all((package / name).read_bytes() == value for name, value in modules.items())
           output = Path("artifacts/native-exit") / variant
           report = output / "regression.xml"
           (output / "identity.json").write_text(json.dumps({"source_revision": revision, "python_version": sys.version, "platform": sys.platform, "module": str(package), "clocks": {name: vars(time.get_clock_info(name)) for name in ["monotonic", "perf_counter"]}, "packages": {name: version(name) for name in ["ml4t-diagnostic", "kaleido", "choreographer", "plotly", "psutil", "pypdf"]}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}, indent=2))
