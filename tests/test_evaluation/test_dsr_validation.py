@@ -1,21 +1,24 @@
-"""Validation tests for DSR implementation against López de Prado et al. (2025).
+"""Validation of the Sharpe ratio inference functions against López de Prado et al.
 
-This module validates ml4t-diagnostic's DSR implementation against reference test cases from:
-López de Prado, M., Lipton, A., & Zoonekynd, V. (2025).
-How to use the Sharpe Ratio: A multivariate case study.
-ADIA Lab Research Paper Series, No. 19.
+Reference: López de Prado, M., Lipton, A., & Zoonekynd, V., "How to Use the
+Sharpe Ratio", ADIA Lab Research Paper Series, No. 19, version of 7 March 2026.
+Equation and exhibit numbers refer to that version.
 
-Test Coverage:
-- PSR (Probabilistic Sharpe Ratio): 6 reference cases from pages 6-8
-- MinTRL (Minimum Track Record Length): 4 reference cases from page 8
-- DSR (Deflated Sharpe Ratio): 4 reference cases from pages 12-14
-- Power calculations: 3 reference cases from pages 9-10
-- Edge cases: zero Sharpe, negative Sharpe, extreme values
-- Non-normality adjustments: skewness and kurtosis effects
-- Golden tests from 2025 paper (PSR variance, E[max], DSR denominator)
+Every expected value is compared with the output of a library function:
 
-All test cases validate within 0.1% tolerance (or looser where specified).
+- Standard deviation of the Sharpe ratio estimator (Equation 5):
+  compute_sharpe_variance
+- PSR (Equation 9): deflated_sharpe_ratio_from_statistics with one trial
+- MinTRL (Equation 11): compute_min_trl
+- Expected maximum Sharpe ratio (Equation 28): compute_expected_max_sharpe
+- Re-scaling factors (Exhibit 4): get_variance_rescaling_factor
+- DSR (Equation 30): deflated_sharpe_ratio_from_statistics
+
+The reference values and their sources are in
+tests/test_evaluation/fixtures/dsr_reference.py.
 """
+
+import math
 
 import numpy as np
 import pytest
@@ -49,7 +52,7 @@ from tests.test_evaluation.fixtures.dsr_reference import (
     DSR_NORMAL,
     DSR_PAPER_EXAMPLE,
     MINTRL_CASES,
-    POWER_CASES,
+    PAPER_SHARPE,
     PSR_CASES,
     VARIANCE_RESCALING_FACTORS,
 )
@@ -60,108 +63,55 @@ from tests.test_evaluation.fixtures.dsr_reference import (
 
 
 class TestGoldenPaperExamples:
-    """Golden tests from López de Prado et al. (2025) paper examples.
+    """Published values of the paper's worked example, computed by the library.
 
-    These tests validate exact values from the paper before any implementation fixes.
-    They document expected behavior and will expose bugs in the current implementation.
-
-    Reference: López de Prado, M., Lipton, A., & Zoonekynd, V. (2025).
-    "How to Use the Sharpe Ratio." ADIA Lab Research Paper Series, No. 19.
+    The example is a two-year monthly track record with
+    (μ, σ, γ₃, γ₄, ρ, T) = (0.036%, 0.079%, -2.448, 10.164, 0.2, 24).
     """
 
-    def test_psr_variance_with_autocorrelation(self):
-        """Golden test: PSR variance with autocorrelation (Eq 5).
+    def test_sharpe_ratio_standard_deviation(self):
+        """Golden test: standard deviation of the Sharpe ratio estimator (Equation 5).
 
-        Reference: Page 7, monthly example with ρ=0.2.
+        Reference: numerical example after Equation 5.
 
-        Paper states: For monthly returns with
-        - SR = 0.456 (non-annualized)
-        - γ₃ = -2.448 (skewness)
-        - γ₄ = 10.164 (kurtosis)
-        - ρ = 0.2 (autocorrelation)
-        - T = 24 (observations)
-
-        The variance formula (Eq 5) with autocorrelation gives:
-        σ[SR*] ≈ 0.379
-
-        This tests _compute_sharpe_variance which implements Eq 5.
+        The paper evaluates Equation 5 at the estimated Sharpe ratio and reports
+        σ[SR] = 0.379. Assuming i.i.d. normal returns it reports 0.214.
         """
-        # Monthly example parameters from paper page 7
-        sharpe = 0.0  # Variance under null hypothesis SR₀=0
-        n_samples = 24
-        skewness = -2.448
-        kurtosis = 10.164
-        autocorrelation = 0.2
-
-        # Compute variance using implementation
-        variance = _compute_sharpe_variance(
-            sharpe=sharpe,
-            n_samples=n_samples,
-            skewness=skewness,
-            kurtosis=kurtosis,
-            autocorrelation=autocorrelation,
-            n_trials=1,  # PSR, not DSR
+        with_moments = _compute_sharpe_variance(
+            sharpe=PAPER_SHARPE,
+            n_samples=24,
+            skewness=-2.448,
+            kurtosis=10.164,
+            autocorrelation=0.2,
         )
-        std_sr = np.sqrt(variance)
+        iid_normal = _compute_sharpe_variance(
+            sharpe=PAPER_SHARPE,
+            n_samples=24,
+            skewness=0.0,
+            kurtosis=3.0,
+            autocorrelation=0.0,
+        )
 
-        # Expected value from paper: σ[SR*] ≈ 0.379
-        # When SR₀=0: variance_adjustment = (1+ρ)/(1-ρ) = (1+0.2)/(1-0.2) = 1.5
-        # σ² = 1.5 / 24 = 0.0625
-        # σ = 0.25 (i.i.d. adjustment only)
-        # With full autocorrelation correction per Eq 5:
-        # a = (1+ρ)/(1-ρ) = 1.5
-        # σ² = a/T = 1.5/24 = 0.0625, σ = 0.25
-        #
-        # But paper says σ=0.379 which implies different formula interpretation.
-        # Let's verify the implementation matches our formula interpretation.
-
-        # Our implementation with ρ=0.2, SR=0:
-        # coef_b = 0.2/0.8 = 0.25
-        # coef_c = 0.04/0.96 = 0.0417
-        # a = 1 + 2*0.25 = 1.5  (matches)
-        # For SR=0, the skew/kurt terms vanish, so variance = 1.5/24 = 0.0625
-        expected_variance = 1.5 / 24  # = 0.0625
-        expected_std = np.sqrt(expected_variance)  # ≈ 0.25
-
-        # This test documents the expected behavior from Eq 5
-        assert abs(variance - expected_variance) < 0.001, (
-            f"PSR variance mismatch for SR₀=0 with ρ=0.2\n"
-            f"Expected variance: {expected_variance:.6f}\n"
-            f"Got variance: {variance:.6f}\n"
-            f"Expected std: {expected_std:.6f}\n"
-            f"Got std: {std_sr:.6f}"
+        assert abs(np.sqrt(with_moments) - 0.379) < 0.0005, (
+            f"σ[SR] should be 0.379, got {np.sqrt(with_moments):.4f}"
+        )
+        assert abs(np.sqrt(iid_normal) - 0.214) < 0.0005, (
+            f"σ[SR] under i.i.d. normal returns should be 0.214, got {np.sqrt(iid_normal):.4f}"
         )
 
     def test_expected_max_sharpe_k10(self):
-        """Golden test: E[max{SR}] for K=10, variance_trials=0.1.
+        """Golden test: E[max{SR}] for K=10, V[{SR_k}]=0.1.
 
-        Reference: Page 13, DSR example.
+        Reference: Equation 28 and the numerical example after Exhibit 5.
 
-        Paper states: For K=10 trials with Var[{SR_k}]=0.1:
-        E[max{SR}] ≈ 0.498
+        E[max{SR_k}] ≈ √V[{SR_k}] × ((1-γ)Φ⁻¹(1-1/K) + γΦ⁻¹(1-1/(Ke))) = 0.498
 
-        This uses Equation 26:
-        E[max{SR_k}] ≈ √V[{SR_k}] × ((1-γ)Φ⁻¹(1-1/K) + γΦ⁻¹(1-1/(Ke)))
-
-        where γ ≈ 0.5772 (Euler-Mascheroni constant).
+        where γ ≈ 0.5772 is the Euler-Mascheroni constant.
         """
-        n_trials = 10
-        variance_trials = 0.1
+        expected_max = _compute_expected_max_sharpe(10, 0.1)
 
-        # Compute E[max{SR}]
-        expected_max = _compute_expected_max_sharpe(n_trials, variance_trials)
-
-        # Expected value from paper: ≈ 0.498
-        expected_value = 0.498
-
-        # Allow 2% tolerance for numerical differences in extreme value approximation
-        relative_error = abs(expected_max - expected_value) / expected_value
-
-        assert relative_error < 0.02, (
-            f"E[max{{SR}}] mismatch for K={n_trials}, Var={variance_trials}\n"
-            f"Expected: {expected_value:.4f}\n"
-            f"Got: {expected_max:.4f}\n"
-            f"Relative error: {relative_error:.2%}"
+        assert abs(expected_max - 0.498) < 0.0005, (
+            f"E[max{{SR}}] should be 0.498, got {expected_max:.4f}"
         )
 
     def test_variance_rescaling_factors_exhibit4(self):
@@ -277,31 +227,22 @@ class TestGoldenPaperExamples:
         assert abs(result.deflated_sharpe - expected_deflated) < 1e-12, "Deflated Sharpe mismatch"
 
     def test_dsr_single_trial_equals_psr(self):
-        """Verify DSR with K=1 equals PSR (no deflation).
-
-        For single trial, there should be no multiple testing adjustment.
-        """
-        observed_sharpe = 0.456
-        n_samples = 24
-        skewness = -2.448
-        kurtosis = 10.164
-
+        """DSR with K=1 is the PSR: no deflation, and the paper's PSR of 0.966."""
         result = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
+            observed_sharpe=PAPER_SHARPE,
             n_trials=1,
             variance_trials=0.0,
-            n_samples=n_samples,
-            skewness=skewness,
-            excess_kurtosis=kurtosis - 3.0,  # Convert Pearson to Fisher
+            n_samples=24,
+            skewness=-2.448,
+            excess_kurtosis=10.164 - 3.0,  # Convert Pearson to Fisher
+            autocorrelation=0.2,
         )
 
-        # With K=1, no deflation should occur
         assert result.expected_max_sharpe == 0.0
         assert result.n_trials == 1
-
-        # PSR should be high for this example
-        # Paper says PSR ≈ 0.987 for this case
-        assert result.probability > 0.95
+        assert abs(result.probability - 0.966) < 0.0005, (
+            f"One-trial PSR should be 0.966, got {result.probability:.4f}"
+        )
 
     def test_min_trl_fwer_multiple_testing(self):
         """Test min_trl_fwer adjusts target for multiple testing.
@@ -377,70 +318,47 @@ class TestGoldenPaperExamples:
 # =============================================================================
 
 
-def probabilistic_sharpe_ratio(
+def _psr(
     sharpe_ratio: float,
     skewness: float,
     excess_kurtosis: float,
     n_samples: int,
     sharpe_star: float = 0.0,
+    autocorrelation: float = 0.0,
 ) -> float:
-    """Calculate Probabilistic Sharpe Ratio (PSR).
+    """PSR from the library: the deflated Sharpe ratio of a single trial (Equation 9).
 
-    Implementation based on equation (4-9) from López de Prado et al. (2025).
-
-    Args:
-        sharpe_ratio: Observed Sharpe ratio (SR_hat*)
-        skewness: Sample skewness (gamma_3)
-        excess_kurtosis: Sample excess kurtosis (Fisher: 0 for normal)
-        n_samples: Number of observations (T)
-        sharpe_star: Benchmark SR (SR_0) for null hypothesis
-
-    Returns:
-        PSR: Probability that true SR > SR_0
+    probabilistic_sharpe_ratio in the same package is the 2012 statistic. It
+    evaluates the variance at the observed Sharpe ratio, divides by T - 1 and
+    has no serial-correlation term, so it does not return the paper's values.
     """
-    # Variance adjustment for non-normal returns (equation 5, page 6)
-    # V[SR] = (1/T) * (1 - γ₃·SR₀ + (γ₄-1)/4·SR₀²)
-    # Where γ₄ is Pearson kurtosis = excess_kurtosis + 3
-    # So (γ₄-1)/4 = (excess_kurtosis + 2)/4
-    # CRITICAL: Use SR₀ (sharpe_star), NOT observed SR, in variance formula
-    variance_adjustment = 1 - skewness * sharpe_star + (excess_kurtosis + 2) / 4 * sharpe_star**2
-
-    # Standard error of Sharpe ratio
-    se_sharpe = np.sqrt(variance_adjustment / n_samples)
-
-    # z-statistic for null hypothesis H0: SR <= SR_0
-    if se_sharpe > 0:
-        z_stat = (sharpe_ratio - sharpe_star) / se_sharpe
-    else:
-        z_stat = np.inf if sharpe_ratio > sharpe_star else -np.inf
-
-    # PSR is the probability that true SR > SR_0
-    psr = norm.cdf(z_stat)
-
-    return psr
+    return deflated_sharpe_ratio_from_statistics(
+        observed_sharpe=sharpe_ratio,
+        n_samples=n_samples,
+        n_trials=1,
+        variance_trials=0.0,
+        benchmark_sharpe=sharpe_star,
+        skewness=skewness,
+        excess_kurtosis=excess_kurtosis,
+        autocorrelation=autocorrelation,
+    ).probability
 
 
 class TestPSRValidation:
-    """Validate PSR against López de Prado et al. (2025) reference cases."""
+    """Validate the library's PSR against López de Prado et al. reference cases."""
 
     @pytest.mark.parametrize("case", PSR_CASES, ids=lambda c: c.name)
     def test_psr_reference(self, case):
-        """Test PSR calculation against reference values.
-
-        Reference: López de Prado et al. (2025), pages 6-8
-
-        NOTE: Fixed SR₀ vs SR issue - now 4 out of 6 tests pass!
-        Remaining 2 failures may be due to small sample effects or other subtleties.
-        """
-        result = probabilistic_sharpe_ratio(
+        """PSR of each reference case, through the library."""
+        result = _psr(
             sharpe_ratio=case.sharpe_ratio,
             skewness=case.skewness,
             excess_kurtosis=case.kurtosis - 3.0,
             n_samples=case.n_samples,
             sharpe_star=case.sharpe_star,
+            autocorrelation=case.autocorrelation,
         )
 
-        # Validate PSR within tolerance
         error = abs(result - case.expected_psr)
 
         assert error < case.tolerance, (
@@ -453,7 +371,7 @@ class TestPSRValidation:
 
     def test_psr_zero_sharpe(self):
         """Edge case: PSR with zero Sharpe ratio."""
-        psr = probabilistic_sharpe_ratio(
+        psr = _psr(
             sharpe_ratio=0.0,
             skewness=0.0,
             excess_kurtosis=0.0,
@@ -466,7 +384,7 @@ class TestPSRValidation:
 
     def test_psr_negative_sharpe(self):
         """Edge case: PSR with negative Sharpe ratio."""
-        psr = probabilistic_sharpe_ratio(
+        psr = _psr(
             sharpe_ratio=-1.0,
             skewness=0.0,
             excess_kurtosis=0.0,
@@ -480,33 +398,51 @@ class TestPSRValidation:
     def test_psr_extreme_kurtosis(self):
         """Edge case: PSR with very high kurtosis (fat tails).
 
-        NOTE: With SR₀=0, kurtosis doesn't affect PSR (variance_adjustment = 1).
-        Use non-zero SR₀ to see kurtosis effect.
+        With SR₀=0 the kurtosis term of Equation 5 vanishes, so the benchmark
+        is non-zero here.
         """
-        psr_normal = probabilistic_sharpe_ratio(
+        psr_normal = _psr(
             sharpe_ratio=1.0,
             skewness=0.0,
             excess_kurtosis=0.0,  # Normal
             n_samples=100,
-            sharpe_star=0.5,  # Non-zero to see kurtosis effect
+            sharpe_star=0.5,
         )
 
-        psr_kurtotic = probabilistic_sharpe_ratio(
+        psr_kurtotic = _psr(
             sharpe_ratio=1.0,
             skewness=0.0,
             excess_kurtosis=17.0,  # Extreme kurtosis (Fisher: Pearson 20 - 3)
             n_samples=100,
-            sharpe_star=0.5,  # Non-zero to see kurtosis effect
+            sharpe_star=0.5,
         )
 
         # High kurtosis increases uncertainty, should reduce PSR
         assert psr_kurtotic < psr_normal
 
+    def test_psr_serial_correlation_effect(self):
+        """Positive serial correlation raises the estimator variance and lowers PSR."""
+        psr_independent = _psr(
+            sharpe_ratio=0.3,
+            skewness=0.0,
+            excess_kurtosis=0.0,
+            n_samples=60,
+        )
+        psr_correlated = _psr(
+            sharpe_ratio=0.3,
+            skewness=0.0,
+            excess_kurtosis=0.0,
+            n_samples=60,
+            autocorrelation=0.3,
+        )
+
+        assert psr_correlated < psr_independent
+
     def test_psr_sample_size_effect(self):
         """Verify PSR increases with sample size for same Sharpe."""
         sharpe_ratio = 0.5
 
-        psr_small = probabilistic_sharpe_ratio(
+        psr_small = _psr(
             sharpe_ratio=sharpe_ratio,
             skewness=0.0,
             excess_kurtosis=0.0,
@@ -514,7 +450,7 @@ class TestPSRValidation:
             sharpe_star=0.0,
         )
 
-        psr_large = probabilistic_sharpe_ratio(
+        psr_large = _psr(
             sharpe_ratio=sharpe_ratio,
             skewness=0.0,
             excess_kurtosis=0.0,
@@ -531,81 +467,76 @@ class TestPSRValidation:
 # =============================================================================
 
 
-def asymptotic_minimum_track_record_length(
+def _min_trl(
     sharpe_ratio: float,
     sharpe_star: float,
     skewness: float,
     excess_kurtosis: float,
     alpha: float = 0.05,
+    autocorrelation: float = 0.0,
 ) -> float:
-    """Reproduce the paper's continuous asymptotic MinTRL quantity.
-
-    Implementation based on equation (11) from López de Prado et al. (2025).
-    The production implementation adds the finite-sample leading offset and
-    rounds up to an integer observation count.
-
-    Args:
-        sharpe_ratio: Observed Sharpe ratio (SR_hat*)
-        sharpe_star: Benchmark SR (SR_0) for null hypothesis
-        skewness: Sample skewness (gamma_3)
-        excess_kurtosis: Sample excess kurtosis (Fisher: 0 for normal)
-        alpha: Significance level (false positive rate)
-
-    Returns:
-        MinTRL: Minimum number of observations needed
-    """
-    if sharpe_ratio <= sharpe_star:
-        return np.inf  # Cannot achieve confidence if observed <= target
-
-    # Critical value for significance level
-    z_alpha = norm.ppf(1 - alpha)
-
-    # Variance adjustment for non-normal returns
-    # Use SR₀ (sharpe_star) in variance formula, per equation (11) on page 8
-    # V[SR] = (1/T)(1 - γ₃·SR₀ + (γ₄-1)/4·SR₀²)
-    # Where γ₄ is Pearson kurtosis = excess_kurtosis + 3
-    # So (γ₄-1)/4 = (excess_kurtosis + 2)/4
-    variance_adjustment = 1 - skewness * sharpe_star + (excess_kurtosis + 2) / 4 * sharpe_star**2
-
-    # Continuous asymptotic quantity before the finite-sample offset and rounding.
-    mintrl = variance_adjustment * (z_alpha / (sharpe_ratio - sharpe_star)) ** 2
-
-    return mintrl
+    """MinTRL from the library, in observations."""
+    return compute_min_trl(
+        observed_sharpe=sharpe_ratio,
+        target_sharpe=sharpe_star,
+        confidence_level=1 - alpha,
+        skewness=skewness,
+        excess_kurtosis=excess_kurtosis,
+        autocorrelation=autocorrelation,
+    ).min_trl
 
 
 class TestMinTRLValidation:
-    """Validate MinTRL against López de Prado et al. (2025) reference cases."""
+    """Validate the library's MinTRL against López de Prado et al. reference cases."""
 
     @pytest.mark.parametrize("case", MINTRL_CASES, ids=lambda c: c.name)
     def test_mintrl_reference(self, case):
-        """Test MinTRL calculation against reference values.
+        """MinTRL of each reference case, through the library.
 
-        Reference: López de Prado et al. (2025), page 8
-
-        Paper cases (SR_0=0 and SR_0=0.1) match within <0.2%.
-        Other cases use computed expected values for consistency validation.
+        Equation 11 gives a real number of observations (19.543 and 39.369
+        months in the paper's example). compute_min_trl adds one observation
+        and rounds up, so it returns ceil(1 + value), here 21 and 41.
         """
-        result = asymptotic_minimum_track_record_length(
+        result = _min_trl(
             sharpe_ratio=case.sharpe_ratio,
             sharpe_star=case.sharpe_star,
             skewness=case.skewness,
             excess_kurtosis=case.kurtosis - 3.0,
             alpha=case.alpha,
+            autocorrelation=case.autocorrelation,
         )
 
-        # Validate MinTRL within tolerance
-        error = abs(result - case.expected_mintrl)
-        assert error < case.tolerance, (
+        expected = math.ceil(1 + case.expected_mintrl)
+        assert result == expected, (
             f"{case.name}: MinTRL validation failed\n"
-            f"Expected: {case.expected_mintrl:.3f}\n"
-            f"Got: {result:.3f}\n"
-            f"Error: {error:.3f} (tolerance: {case.tolerance})\n"
+            f"Equation 11: {case.expected_mintrl:.3f}, so expected {expected} observations\n"
+            f"Got: {result}\n"
             f"Reference: {case.reference}"
         )
 
+    @pytest.mark.parametrize("case", MINTRL_CASES, ids=lambda c: c.name)
+    def test_mintrl_is_shortest_record_that_rejects(self, case):
+        """MinTRL is the smallest T at which PSR reaches 1 - α.
+
+        Reference: the sentence after Equation 11. With the library's extra
+        observation, PSR reaches 1 - α at min_trl - 1 observations and not at
+        min_trl - 2. The two results come from separate library functions.
+        """
+        inputs = {
+            "sharpe_ratio": case.sharpe_ratio,
+            "sharpe_star": case.sharpe_star,
+            "skewness": case.skewness,
+            "excess_kurtosis": case.kurtosis - 3.0,
+            "autocorrelation": case.autocorrelation,
+        }
+        min_trl = int(_min_trl(alpha=case.alpha, **inputs))
+
+        assert _psr(n_samples=min_trl - 1, **inputs) >= 1 - case.alpha
+        assert _psr(n_samples=min_trl - 2, **inputs) < 1 - case.alpha
+
     def test_mintrl_zero_target(self):
         """Edge case: MinTRL with SR_0 = 0."""
-        mintrl = asymptotic_minimum_track_record_length(
+        mintrl = _min_trl(
             sharpe_ratio=1.0,
             sharpe_star=0.0,
             skewness=0.0,
@@ -613,13 +544,12 @@ class TestMinTRLValidation:
             alpha=0.05,
         )
 
-        # Should be finite and reasonable
-        assert np.isfinite(mintrl)
-        assert mintrl > 0
+        # (1.645 / 1.0)^2 = 2.706, plus one observation, rounded up
+        assert mintrl == 4
 
     def test_mintrl_equal_sharpes(self):
         """Edge case: MinTRL when SR = SR_0."""
-        mintrl = asymptotic_minimum_track_record_length(
+        mintrl = _min_trl(
             sharpe_ratio=1.0,
             sharpe_star=1.0,
             skewness=0.0,
@@ -632,7 +562,7 @@ class TestMinTRLValidation:
 
     def test_mintrl_below_target(self):
         """Edge case: MinTRL when SR < SR_0."""
-        mintrl = asymptotic_minimum_track_record_length(
+        mintrl = _min_trl(
             sharpe_ratio=0.5,
             sharpe_star=1.0,
             skewness=0.0,
@@ -648,7 +578,7 @@ class TestMinTRLValidation:
         sharpe_ratio = 1.0
         sharpe_star = 0.5
 
-        mintrl_lenient = asymptotic_minimum_track_record_length(
+        mintrl_lenient = _min_trl(
             sharpe_ratio=sharpe_ratio,
             sharpe_star=sharpe_star,
             skewness=0.0,
@@ -656,7 +586,7 @@ class TestMinTRLValidation:
             alpha=0.10,  # Lenient
         )
 
-        mintrl_strict = asymptotic_minimum_track_record_length(
+        mintrl_strict = _min_trl(
             sharpe_ratio=sharpe_ratio,
             sharpe_star=sharpe_star,
             skewness=0.0,
@@ -674,7 +604,7 @@ class TestMinTRLValidation:
 
 
 class TestDSRValidation:
-    """Validate DSR against López de Prado et al. (2025) reference cases."""
+    """Validate DSR against López de Prado et al. reference cases."""
 
     def test_extreme_p_value_does_not_underflow(self):
         """Representable DSR upper tails remain nonzero."""
@@ -964,186 +894,12 @@ class TestDSRValidation:
 
 
 # =============================================================================
-# POWER VALIDATION TESTS
-# =============================================================================
-
-
-def power_calculation(
-    sharpe_0: float,
-    sharpe_1: float,
-    skewness: float,
-    excess_kurtosis: float,
-    n_samples: int,
-    alpha: float = 0.05,
-) -> tuple[float, float]:
-    """Calculate statistical power and Type II error (beta).
-
-    Implementation based on equations (15-17) from López de Prado et al. (2025).
-
-    Args:
-        sharpe_0: Null hypothesis SR (SR_0)
-        sharpe_1: Alternative hypothesis SR (SR_1)
-        skewness: Sample skewness (gamma_3)
-        excess_kurtosis: Sample excess kurtosis (Fisher: 0 for normal)
-        n_samples: Number of observations (T)
-        alpha: Significance level (false positive rate)
-
-    Returns:
-        Tuple of (power, beta) where power = 1 - beta
-    """
-    # Critical value for significance level
-    z_alpha = norm.ppf(1 - alpha)
-
-    # Variance adjustments for SR_0 and SR_1
-    # Formula uses Pearson kurtosis: (γ₄-1)/4 = (excess_kurtosis + 2)/4
-    var_0 = 1 - skewness * sharpe_0 + (excess_kurtosis + 2) / 4 * sharpe_0**2
-    var_1 = 1 - skewness * sharpe_1 + (excess_kurtosis + 2) / 4 * sharpe_1**2
-
-    # Standard error under null
-    se_0 = np.sqrt(var_0 / n_samples)
-
-    # Standard error under alternative
-    se_1 = np.sqrt(var_1 / n_samples)
-
-    # Critical value in terms of SR
-    critical_sr = sharpe_0 + z_alpha * se_0
-
-    # Beta (Type II error): probability of not rejecting null when alternative is true
-    if se_1 > 0:
-        z_beta = (critical_sr - sharpe_1) / se_1
-        beta = norm.cdf(z_beta)
-    else:
-        beta = 0.0
-
-    # Power = 1 - beta
-    power = 1 - beta
-
-    return power, beta
-
-
-class TestPowerValidation:
-    """Validate power calculations against López de Prado et al. (2025) reference cases."""
-
-    @pytest.mark.parametrize("case", POWER_CASES, ids=lambda c: c.name)
-    def test_power_reference(self, case):
-        """Test power calculation against reference values.
-
-        Reference: López de Prado et al. (2025), pages 9-10
-        """
-        power, beta = power_calculation(
-            sharpe_0=case.sharpe_0,
-            sharpe_1=case.sharpe_1,
-            skewness=case.skewness,
-            excess_kurtosis=case.kurtosis - 3.0,
-            n_samples=case.n_samples,
-            alpha=case.alpha,
-        )
-
-        # Validate power
-        power_error = abs(power - case.expected_power)
-        assert power_error < case.tolerance, (
-            f"{case.name}: Power validation failed\n"
-            f"Expected power: {case.expected_power:.6f}\n"
-            f"Got power: {power:.6f}\n"
-            f"Error: {power_error:.6f} (tolerance: {case.tolerance})\n"
-            f"Reference: {case.reference}"
-        )
-
-        # Validate beta
-        beta_error = abs(beta - case.expected_beta)
-        assert beta_error < case.tolerance, (
-            f"{case.name}: Beta validation failed\n"
-            f"Expected beta: {case.expected_beta:.6f}\n"
-            f"Got beta: {beta:.6f}\n"
-            f"Error: {beta_error:.6f} (tolerance: {case.tolerance})\n"
-            f"Reference: {case.reference}"
-        )
-
-        # Verify power + beta = 1
-        assert abs((power + beta) - 1.0) < 1e-10
-
-    def test_power_edge_equal_hypotheses(self):
-        """Edge case: Power when SR_0 = SR_1."""
-        power, beta = power_calculation(
-            sharpe_0=1.0,
-            sharpe_1=1.0,
-            skewness=0.0,
-            excess_kurtosis=0.0,
-            n_samples=100,
-            alpha=0.05,
-        )
-
-        # When hypotheses are equal, power should equal alpha
-        assert abs(power - 0.05) < 0.01
-        assert abs(beta - 0.95) < 0.01
-
-    def test_power_large_effect_size(self):
-        """Verify high power for large effect size."""
-        power, beta = power_calculation(
-            sharpe_0=0.0,
-            sharpe_1=3.0,  # Large effect
-            skewness=0.0,
-            excess_kurtosis=0.0,
-            n_samples=100,
-            alpha=0.05,
-        )
-
-        # Power should be very high
-        assert power > 0.99
-        assert beta < 0.01
-
-    def test_power_small_effect_size(self):
-        """Verify low power for small effect size."""
-        power, beta = power_calculation(
-            sharpe_0=0.0,
-            sharpe_1=0.1,  # Small effect
-            skewness=0.0,
-            excess_kurtosis=0.0,
-            n_samples=50,
-            alpha=0.05,
-        )
-
-        # Power should be low
-        assert power < 0.5
-        assert beta > 0.5
-
-    def test_power_sample_size_effect(self):
-        """Verify power increases with sample size."""
-        sharpe_0 = 0.0
-        sharpe_1 = 0.5
-
-        power_small, _ = power_calculation(
-            sharpe_0=sharpe_0,
-            sharpe_1=sharpe_1,
-            skewness=0.0,
-            excess_kurtosis=0.0,
-            n_samples=20,
-            alpha=0.05,
-        )
-
-        power_large, _ = power_calculation(
-            sharpe_0=sharpe_0,
-            sharpe_1=sharpe_1,
-            skewness=0.0,
-            excess_kurtosis=0.0,
-            n_samples=200,
-            alpha=0.05,
-        )
-
-        # Larger sample should increase power
-        assert power_large > power_small
-
-
-# =============================================================================
-# VARIANCE RE-SCALING VALIDATION TESTS
+# DSR PARAMETER SENSITIVITY TESTS
 # =============================================================================
 
 
 class TestDSRParameterSensitivity:
     """Test DSR sensitivity to parameters and validate internal calculations.
-
-    Note: The variance rescaling tests were removed because they tested for
-    an incorrect expectation. See VARIANCE_RESCALING_ANALYSIS.md for details.
 
     These tests validate:
     1. E[max{Z}] calculation (expected maximum of K standard normals)
@@ -1314,41 +1070,31 @@ class TestDSRIntegration:
     """Integration tests combining DSR with PSR and MinTRL concepts."""
 
     def test_dsr_psr_relationship(self):
-        """Verify DSR incorporates PSR-like calculations correctly."""
-        # Use case from PSR_EXAMPLE_PAGE6
-        observed_sharpe = 0.456
-        n_trials = 1  # Single trial = no selection bias
-        skewness = -2.448
-        excess_kurtosis = 7.164  # Fisher convention (Pearson 10.164 - 3)
-        n_samples = 24
+        """One trial gives the PSR; more trials deflate it."""
+        inputs = {
+            "observed_sharpe": PAPER_SHARPE,
+            "n_samples": 24,
+            "skewness": -2.448,
+            "excess_kurtosis": 10.164 - 3.0,  # Convert Pearson to Fisher
+            "autocorrelation": 0.2,
+        }
 
-        # DSR with single trial should have no deflation
-        dsr_result = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=0.0,  # Single trial has no variance
-            n_samples=n_samples,
-            skewness=skewness,
-            excess_kurtosis=excess_kurtosis,
+        single = deflated_sharpe_ratio_from_statistics(n_trials=1, variance_trials=0.0, **inputs)
+        multiple = deflated_sharpe_ratio_from_statistics(n_trials=10, variance_trials=1.0, **inputs)
+
+        # One trial: no selection bias, so the threshold stays at the benchmark
+        assert single.expected_max_sharpe == 0.0
+        assert single.probability == _psr(
+            sharpe_ratio=PAPER_SHARPE,
+            skewness=-2.448,
+            excess_kurtosis=10.164 - 3.0,
+            n_samples=24,
+            autocorrelation=0.2,
         )
 
-        # With single trial, no selection bias, so expected_max = 0 (E[Z])
-        assert dsr_result.expected_max_sharpe == 0.0
-        # DSR probability should be high (PSR mode - no deflation needed)
-        # Note: actual value depends on the observed sharpe vs standard error
-
-        # Now test with multiple trials - should be deflated
-        dsr_multi = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
-            n_trials=10,
-            variance_trials=1.0,  # Standard normal
-            n_samples=n_samples,
-            skewness=skewness,
-            excess_kurtosis=excess_kurtosis,
-        )
-
-        # Multiple trials should deflate the result (z-score should be < observed)
-        assert dsr_multi.expected_max_sharpe > 0  # Selection bias present
+        # Ten trials: the threshold rises to E[max{SR}] and the probability falls
+        assert multiple.expected_max_sharpe > 0
+        assert multiple.probability < single.probability
 
     def test_extreme_value_theory_convergence(self):
         """Verify extreme value theory approximations converge for large K."""
@@ -1379,38 +1125,25 @@ class TestDSRIntegration:
                 assert rate2 < rate1, "Expected decreasing rate of growth"
 
     def test_non_normality_consistent_across_functions(self):
-        """Verify non-normality adjustments are consistent.
+        """Fat tails and negative skew lower PSR and lengthen MinTRL.
 
-        NOTE: With SR₀=0, PSR variance_adjustment = 1 regardless of skew/kurt.
-        Use non-zero SR₀ to test non-normality effects.
+        With SR₀=0 the skewness and kurtosis terms of Equation 5 vanish, so the
+        benchmark is non-zero here.
         """
         sharpe_ratio = 0.5
         skewness = -1.5
         excess_kurtosis = 3.0  # Fisher convention (Pearson 6.0 - 3)
         n_samples = 50
-        sharpe_star = 0.1  # Non-zero to see non-normality effects
+        sharpe_star = 0.1
 
-        # Calculate PSR
-        psr = probabilistic_sharpe_ratio(
+        psr = _psr(
             sharpe_ratio=sharpe_ratio,
             skewness=skewness,
             excess_kurtosis=excess_kurtosis,
             n_samples=n_samples,
             sharpe_star=sharpe_star,
         )
-
-        # Calculate MinTRL
-        mintrl = asymptotic_minimum_track_record_length(
-            sharpe_ratio=sharpe_ratio,
-            sharpe_star=sharpe_star,
-            skewness=skewness,
-            excess_kurtosis=excess_kurtosis,
-            alpha=0.05,
-        )
-
-        # Both should account for non-normality
-        # PSR should be lower with fat tails
-        psr_normal = probabilistic_sharpe_ratio(
+        psr_normal = _psr(
             sharpe_ratio=sharpe_ratio,
             skewness=0.0,
             excess_kurtosis=0.0,
@@ -1419,16 +1152,18 @@ class TestDSRIntegration:
         )
         assert psr < psr_normal
 
-        # MinTRL should be higher with fat tails
-        mintrl_normal = asymptotic_minimum_track_record_length(
+        mintrl = _min_trl(
             sharpe_ratio=sharpe_ratio,
-            sharpe_star=0.0,
+            sharpe_star=sharpe_star,
+            skewness=skewness,
+            excess_kurtosis=excess_kurtosis,
+            alpha=0.05,
+        )
+        mintrl_normal = _min_trl(
+            sharpe_ratio=sharpe_ratio,
+            sharpe_star=sharpe_star,
             skewness=0.0,
             excess_kurtosis=0.0,
             alpha=0.05,
         )
         assert mintrl > mintrl_normal
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])

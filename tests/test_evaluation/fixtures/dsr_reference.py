@@ -1,23 +1,29 @@
-"""Reference test fixtures from López de Prado et al. (2025).
+"""Reference values for the Sharpe ratio inference tests.
 
-All test cases derived from "How to use the Sharpe Ratio: A multivariate case study"
-providing ground truth for validating ml4t-diagnostic's DSR, PSR, and MinTRL implementations.
+Published values come from López de Prado, M., Lipton, A., & Zoonekynd, V.,
+"How to Use the Sharpe Ratio", ADIA Lab Research Paper Series, No. 19, version
+of 7 March 2026. Equation and exhibit numbers refer to that version.
 
-Reference: López de Prado, M., Lipton, A., & Zoonekynd, V. (2025).
-How to use the Sharpe Ratio: A multivariate case study.
-ADIA Lab Research Paper Series, No. 19.
+The paper's worked example is a two-year track record of monthly returns with
+(mu, sigma, gamma_3, gamma_4, rho, T) = (0.036%, 0.079%, -2.448, 10.164, 0.2, 24).
+The paper prints the Sharpe ratio as 0.456; its results follow from the
+unrounded 0.036/0.079.
 
-Note: All Sharpe ratios in this file are NON-ANNUALIZED (computed in the frequency
-of observations) as specified in the paper (page 6).
+Cases marked "computed" are not in the paper. Their expected values were
+computed from the cited equations outside the library.
+
+Sharpe ratios are not annualized. Kurtosis is Pearson kurtosis (3 for normal
+returns).
 """
 
 from typing import NamedTuple
 
-import numpy as np
+# Sharpe ratio of the paper's worked example
+PAPER_SHARPE = 0.036 / 0.079
 
 
 class PSRTestCase(NamedTuple):
-    """Test case for Probabilistic Sharpe Ratio.
+    """Test case for the Probabilistic Sharpe Ratio.
 
     Attributes:
         name: Descriptive name of test case
@@ -26,9 +32,10 @@ class PSRTestCase(NamedTuple):
         kurtosis: Sample kurtosis (gamma_4, 3.0 for normal)
         n_samples: Number of observations (T)
         sharpe_star: Benchmark SR (SR_0) for null hypothesis H0: SR <= SR_0
-        expected_psr: Expected PSR value (probability that SR > SR_0)
-        reference: Citation to paper location (page, equation, exhibit)
+        expected_psr: Expected PSR value
+        reference: Where the expected value comes from
         tolerance: Acceptable numerical error for validation
+        autocorrelation: First-order autocorrelation of returns (rho)
     """
 
     name: str
@@ -39,7 +46,8 @@ class PSRTestCase(NamedTuple):
     sharpe_star: float
     expected_psr: float
     reference: str
-    tolerance: float = 0.001
+    tolerance: float = 0.0005
+    autocorrelation: float = 0.0
 
 
 class DSRTestCase(NamedTuple):
@@ -75,7 +83,7 @@ class DSRTestCase(NamedTuple):
 
 
 class MinTRLTestCase(NamedTuple):
-    """Test case for Minimum Track Record Length.
+    """Test case for the Minimum Track Record Length.
 
     Attributes:
         name: Descriptive name of test case
@@ -84,9 +92,11 @@ class MinTRLTestCase(NamedTuple):
         skewness: Sample skewness (gamma_3)
         kurtosis: Sample kurtosis (gamma_4)
         alpha: Significance level (false positive rate)
-        expected_mintrl: Expected minimum track record length
-        reference: Citation to paper location
-        tolerance: Acceptable numerical error for validation
+        expected_mintrl: Value of Equation 11, a real number of observations.
+            compute_min_trl adds one observation and rounds up, so it returns
+            ceil(1 + expected_mintrl).
+        reference: Where the expected value comes from
+        autocorrelation: First-order autocorrelation of returns (rho)
     """
 
     name: str
@@ -97,68 +107,61 @@ class MinTRLTestCase(NamedTuple):
     alpha: float
     expected_mintrl: float
     reference: str
-    tolerance: float = 0.01  # 0.01 observations tolerance
-
-
-class PowerTestCase(NamedTuple):
-    """Test case for Power (True Positive Rate).
-
-    Attributes:
-        name: Descriptive name of test case
-        sharpe_0: Null hypothesis SR (SR_0)
-        sharpe_1: Alternative hypothesis SR (SR_1)
-        skewness: Sample skewness (gamma_3)
-        kurtosis: Sample kurtosis (gamma_4)
-        n_samples: Number of observations (T)
-        alpha: Significance level (false positive rate)
-        expected_power: Expected power (1 - beta)
-        expected_beta: Expected false negative rate (beta)
-        reference: Citation to paper location
-        tolerance: Acceptable numerical error for validation
-    """
-
-    name: str
-    sharpe_0: float
-    sharpe_1: float
-    skewness: float
-    kurtosis: float
-    n_samples: int
-    alpha: float
-    expected_power: float
-    expected_beta: float
-    reference: str
-    tolerance: float = 0.001
+    autocorrelation: float = 0.0
 
 
 # =============================================================================
-# PSR TEST CASES (from Page 6-7)
+# PSR TEST CASES
 # =============================================================================
 
-# Example from page 6: Portfolio manager with 2-year track record of monthly returns
-PSR_EXAMPLE_PAGE6 = PSRTestCase(
-    name="Portfolio manager 2-year monthly track (page 6)",
-    sharpe_ratio=0.456,  # Non-annualized monthly SR
+PSR_PAPER_EXAMPLE = PSRTestCase(
+    name="Paper example, SR_0=0",
+    sharpe_ratio=PAPER_SHARPE,
     skewness=-2.448,
     kurtosis=10.164,
     n_samples=24,
     sharpe_star=0.0,
-    expected_psr=0.987,
-    reference="Page 6, equation (9): PSR = Z[z*(0)] = 0.987",
+    expected_psr=0.966,
+    reference="Numerical example after Equation 9: PSR = 0.966 under SR_0 = 0",
+    autocorrelation=0.2,
 )
 
-# Example with SR_0 = 0.1 from page 7
-PSR_EXAMPLE_PAGE7 = PSRTestCase(
-    name="Portfolio manager with SR_0=0.1 (page 7)",
-    sharpe_ratio=0.456,
+PSR_PAPER_EXAMPLE_BENCHMARK = PSRTestCase(
+    name="Paper example, SR_0=0.1",
+    sharpe_ratio=PAPER_SHARPE,
     skewness=-2.448,
     kurtosis=10.164,
     n_samples=24,
     sharpe_star=0.1,
-    expected_psr=0.939,
-    reference="Page 7: under H0 where SR_0 = 0.1, then PSR = 0.939",
+    expected_psr=0.900,
+    reference="Numerical example after Equation 9: PSR = 0.900 under SR_0 = 0.1",
+    autocorrelation=0.2,
 )
 
-# Normal returns case (skew=0, kurt=3)
+# The paper's example before serial correlation was added to it. The authors'
+# companion code (github.com/zoonek/2025-sharpe-ratio) asserts 0.987 and 0.939.
+PSR_NO_SERIAL_CORRELATION = PSRTestCase(
+    name="Example without serial correlation, SR_0=0",
+    sharpe_ratio=PAPER_SHARPE,
+    skewness=-2.448,
+    kurtosis=10.164,
+    n_samples=24,
+    sharpe_star=0.0,
+    expected_psr=0.9872,
+    reference="Computed from Equations 5 and 9 with rho = 0",
+)
+
+PSR_NO_SERIAL_CORRELATION_BENCHMARK = PSRTestCase(
+    name="Example without serial correlation, SR_0=0.1",
+    sharpe_ratio=PAPER_SHARPE,
+    skewness=-2.448,
+    kurtosis=10.164,
+    n_samples=24,
+    sharpe_star=0.1,
+    expected_psr=0.9391,
+    reference="Computed from Equations 5 and 9 with rho = 0",
+)
+
 PSR_NORMAL_CASE = PSRTestCase(
     name="Normal returns (skew=0, kurt=3)",
     sharpe_ratio=1.0,
@@ -166,12 +169,10 @@ PSR_NORMAL_CASE = PSRTestCase(
     kurtosis=3.0,
     n_samples=100,
     sharpe_star=0.0,
-    expected_psr=1.0 - 1.0e-23,  # Z[SR*sqrt(T)] ≈ 1.0 for large z
-    reference="Page 7: under Normal returns, z*(0) = SR*sqrt(T)",
-    tolerance=0.01,  # Looser tolerance for extreme probabilities
+    expected_psr=1.0,  # Z[SR * sqrt(T)] = Z[10]
+    reference="Computed from Equations 5 and 9",
 )
 
-# Small sample case
 PSR_SMALL_SAMPLE = PSRTestCase(
     name="Small sample (T=12)",
     sharpe_ratio=0.5,
@@ -179,105 +180,109 @@ PSR_SMALL_SAMPLE = PSRTestCase(
     kurtosis=4.0,
     n_samples=12,
     sharpe_star=0.0,
-    expected_psr=0.958,  # Z[0.5 * sqrt(12)] = Z[1.732] = 0.958 (with SR₀=0, variance_adj=1)
-    reference="Derived from equation (4-5), page 6",
-    tolerance=0.01,
+    expected_psr=0.9584,  # Z[0.5 * sqrt(12)]; the moments drop out at SR_0 = 0
+    reference="Computed from Equations 5 and 9",
 )
 
-# High kurtosis case
-PSR_HIGH_KURTOSIS = PSRTestCase(
-    name="High kurtosis (severe non-normality)",
-    sharpe_ratio=0.456,
-    skewness=-2.4,
-    kurtosis=13.8,
-    n_samples=24,
-    sharpe_star=0.0,
-    expected_psr=0.987,
-    reference="Exhibit 1, page 8: severe non-normality, Annual SR0=0",
-)
-
-# Negative skewness case
 PSR_NEG_SKEW = PSRTestCase(
-    name="Negative skewness (moderate non-normality)",
+    name="Negative skewness with SR_0=0.5",
     sharpe_ratio=0.8,
     skewness=-1.7,
     kurtosis=7.5,
     n_samples=100,
     sharpe_star=0.5,
-    expected_psr=0.977,  # Z[(0.8-0.5)/sqrt(2.256/100)] = Z[2.0] = 0.977
-    reference="Exhibit 1, page 8: moderate non-normality pattern",
-    tolerance=0.01,
+    expected_psr=0.9771,  # Z[(0.8 - 0.5) / sqrt(2.25625 / 100)]
+    reference="Computed from Equations 5 and 9",
 )
 
 PSR_CASES = [
-    PSR_EXAMPLE_PAGE6,
-    PSR_EXAMPLE_PAGE7,
+    PSR_PAPER_EXAMPLE,
+    PSR_PAPER_EXAMPLE_BENCHMARK,
+    PSR_NO_SERIAL_CORRELATION,
+    PSR_NO_SERIAL_CORRELATION_BENCHMARK,
     PSR_NORMAL_CASE,
     PSR_SMALL_SAMPLE,
-    PSR_HIGH_KURTOSIS,
     PSR_NEG_SKEW,
 ]
 
 
 # =============================================================================
-# MinTRL TEST CASES (from Page 8)
+# MinTRL TEST CASES
 # =============================================================================
 
-# Example from page 8: SR_0 = 0
-MINTRL_EXAMPLE_SR0_ZERO = MinTRLTestCase(
-    name="MinTRL with SR_0=0 (page 8)",
-    sharpe_ratio=0.456,
+MINTRL_PAPER_EXAMPLE = MinTRLTestCase(
+    name="Paper example, SR_0=0",
+    sharpe_ratio=PAPER_SHARPE,
     sharpe_star=0.0,
     skewness=-2.448,
     kurtosis=10.164,
     alpha=0.05,
-    expected_mintrl=13.029,  # months
-    reference="Page 8: for α=0.05 and SR_0=0, MinTRL=13.029 months",
-    tolerance=0.02,  # Our calculation gives 13.011, paper says 13.029 (0.14% diff)
+    expected_mintrl=19.543,  # months
+    reference="Numerical example after Equation 11: MinTRL = 19.543 months",
+    autocorrelation=0.2,
 )
 
-# Example from page 8: SR_0 = 0.1
-MINTRL_EXAMPLE_SR0_POINT1 = MinTRLTestCase(
-    name="MinTRL with SR_0=0.1 (page 8)",
-    sharpe_ratio=0.456,
+MINTRL_PAPER_EXAMPLE_BENCHMARK = MinTRLTestCase(
+    name="Paper example, SR_0=0.1",
+    sharpe_ratio=PAPER_SHARPE,
     sharpe_star=0.1,
     skewness=-2.448,
     kurtosis=10.164,
     alpha=0.05,
-    expected_mintrl=27.109,  # months (more than doubles!)
-    reference="Page 8: for α=0.05 and SR_0=0.1, MinTRL=27.109 months",
-    tolerance=0.05,  # Our calculation gives 27.063, paper says 27.109 (0.17% diff)
+    expected_mintrl=39.369,  # months
+    reference="Numerical example after Equation 11: MinTRL = 39.369 months",
+    autocorrelation=0.2,
 )
 
-# Normal returns case - continuous asymptotic reference before finite-sample adjustment
+MINTRL_NO_SERIAL_CORRELATION = MinTRLTestCase(
+    name="Example without serial correlation, SR_0=0",
+    sharpe_ratio=PAPER_SHARPE,
+    sharpe_star=0.0,
+    skewness=-2.448,
+    kurtosis=10.164,
+    alpha=0.05,
+    expected_mintrl=13.029,
+    reference="Computed from Equation 11 with rho = 0",
+)
+
+MINTRL_NO_SERIAL_CORRELATION_BENCHMARK = MinTRLTestCase(
+    name="Example without serial correlation, SR_0=0.1",
+    sharpe_ratio=PAPER_SHARPE,
+    sharpe_star=0.1,
+    skewness=-2.448,
+    kurtosis=10.164,
+    alpha=0.05,
+    expected_mintrl=27.109,
+    reference="Computed from Equation 11 with rho = 0",
+)
+
 MINTRL_NORMAL = MinTRLTestCase(
-    name="MinTRL with normal returns",
+    name="Normal returns",
     sharpe_ratio=1.0,
     sharpe_star=0.5,
     skewness=0.0,
     kurtosis=3.0,
     alpha=0.05,
-    expected_mintrl=12.175,  # (1.645/(1.0-0.5))^2 = 10.824, with variance_adj=1 for SR₀=0.5
-    reference="Equation (11), page 8: simplified formula for normal returns",
-    tolerance=0.02,
+    expected_mintrl=12.175,  # (1 + 0.5 * 0.5**2) * (1.645 / 0.5)**2
+    reference="Computed from Equation 11",
 )
 
-# High target SR - continuous asymptotic reference before finite-sample adjustment
 MINTRL_HIGH_TARGET = MinTRLTestCase(
-    name="MinTRL with high target SR",
+    name="High target SR",
     sharpe_ratio=1.5,
     sharpe_star=1.0,
     skewness=-1.0,
     kurtosis=5.0,
     alpha=0.05,
-    expected_mintrl=32.467,  # Computed: variance_adj * (z_alpha / (SR - SR₀))²
-    reference="Equation (11), page 8",
-    tolerance=0.02,
+    expected_mintrl=32.467,
+    reference="Computed from Equation 11",
 )
 
 MINTRL_CASES = [
-    MINTRL_EXAMPLE_SR0_ZERO,
-    MINTRL_EXAMPLE_SR0_POINT1,
+    MINTRL_PAPER_EXAMPLE,
+    MINTRL_PAPER_EXAMPLE_BENCHMARK,
+    MINTRL_NO_SERIAL_CORRELATION,
+    MINTRL_NO_SERIAL_CORRELATION_BENCHMARK,
     MINTRL_NORMAL,
     MINTRL_HIGH_TARGET,
 ]
@@ -291,7 +296,7 @@ MINTRL_CASES = [
 # The Sharpe ratio is the unrounded 0.036/0.079; the paper prints it as 0.456.
 DSR_PAPER_EXAMPLE = DSRTestCase(
     name="DSR with K=10 trials (paper example)",
-    observed_sharpe=0.036 / 0.079,
+    observed_sharpe=PAPER_SHARPE,
     n_trials=10,
     variance_trials=0.1,
     skewness=-2.448,
@@ -365,61 +370,6 @@ DSR_CASES = [
 
 
 # =============================================================================
-# POWER TEST CASES (from Pages 9-10)
-# =============================================================================
-
-# Example from page 10
-POWER_EXAMPLE_PAGE10 = PowerTestCase(
-    name="Power calculation (page 10)",
-    sharpe_0=0.0,
-    sharpe_1=0.5,
-    skewness=-2.448,
-    kurtosis=10.164,
-    n_samples=24,
-    alpha=0.05,
-    expected_power=0.685,  # 1 - beta
-    expected_beta=0.315,
-    reference="Page 10: for α=0.05 and SR_1=0.5, β=0.315",
-)
-
-# Normal returns power
-POWER_NORMAL = PowerTestCase(
-    name="Power with normal returns",
-    sharpe_0=0.0,
-    sharpe_1=1.0,
-    skewness=0.0,
-    kurtosis=3.0,
-    n_samples=100,
-    alpha=0.05,
-    expected_power=1.0,  # Very high power
-    expected_beta=0.0,
-    reference="Equation (17), page 9: simplified for normal",
-    tolerance=0.01,
-)
-
-# Low power case
-POWER_LOW = PowerTestCase(
-    name="Low power (small effect size)",
-    sharpe_0=0.0,
-    sharpe_1=0.2,
-    skewness=-1.0,
-    kurtosis=5.0,
-    n_samples=30,
-    alpha=0.05,
-    expected_power=0.30,  # Approximate
-    expected_beta=0.70,
-    reference="Equation (15-17), pages 9-10",
-    tolerance=0.05,
-)
-
-POWER_CASES = [
-    POWER_EXAMPLE_PAGE10,
-    POWER_NORMAL,
-    POWER_LOW,
-]
-
-
-# =============================================================================
 # STANDARD DEVIATION RE-SCALING FACTORS (Exhibit 4)
 # =============================================================================
 
@@ -448,110 +398,3 @@ VARIANCE_RESCALING_FACTORS = {
     91: 0.43376, 92: 0.43325, 93: 0.43275, 94: 0.43226, 95: 0.43177,
     96: 0.43129, 97: 0.43081, 98: 0.43034, 99: 0.42988, 100: 0.42942,
 }  # fmt: skip
-
-
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
-
-def get_variance_rescaling_factor(k: int) -> float:
-    """Get variance re-scaling factor for K trials.
-
-    Args:
-        k: Number of independent trials
-
-    Returns:
-        Re-scaling factor sqrt(V[max{X_k}]) from Exhibit 3
-
-    Reference:
-        Page 13, Exhibit 3: Standard deviation re-scaling factors
-    """
-    if k in VARIANCE_RESCALING_FACTORS:
-        return VARIANCE_RESCALING_FACTORS[k]
-
-    # Interpolate for values not in table
-    keys = sorted(VARIANCE_RESCALING_FACTORS.keys())
-    if k < keys[0]:
-        return VARIANCE_RESCALING_FACTORS[keys[0]]
-    if k > keys[-1]:
-        return VARIANCE_RESCALING_FACTORS[keys[-1]]
-
-    # Linear interpolation
-    for i in range(len(keys) - 1):
-        if keys[i] <= k <= keys[i + 1]:
-            k1, k2 = keys[i], keys[i + 1]
-            v1, v2 = VARIANCE_RESCALING_FACTORS[k1], VARIANCE_RESCALING_FACTORS[k2]
-            return v1 + (v2 - v1) * (k - k1) / (k2 - k1)
-
-    return VARIANCE_RESCALING_FACTORS[keys[-1]]
-
-
-def expected_max_sharpe(variance_trials: float, n_trials: int) -> float:
-    """Calculate E[max{SR_k}] using False Strategy Theorem.
-
-    Args:
-        variance_trials: Variance of Sharpe ratios across trials V[{SR_k*}]
-        n_trials: Number of independent trials K
-
-    Returns:
-        Expected maximum Sharpe ratio
-
-    Reference:
-        Equation (26), page 12: False Strategy Theorem
-    """
-    gamma = 0.5772156649  # Euler-Mascheroni constant
-    e = np.e
-
-    std_dev = np.sqrt(variance_trials)
-
-    z1 = np.percentile(np.random.randn(100000), (1 - 1 / n_trials) * 100)  # Z^-1[1 - 1/K]
-    z2 = np.percentile(np.random.randn(100000), (1 - 1 / (n_trials * e)) * 100)  # Z^-1[1 - 1/Ke]
-
-    return std_dev * ((1 - gamma) * z1 + gamma * z2)
-
-
-# =============================================================================
-# SUMMARY STATISTICS
-# =============================================================================
-
-
-def get_summary():
-    """Get summary of all test cases."""
-    return {
-        "psr_cases": len(PSR_CASES),
-        "mintrl_cases": len(MINTRL_CASES),
-        "dsr_cases": len(DSR_CASES),
-        "power_cases": len(POWER_CASES),
-        "total_cases": len(PSR_CASES) + len(MINTRL_CASES) + len(DSR_CASES) + len(POWER_CASES),
-        "variance_rescaling_points": len(VARIANCE_RESCALING_FACTORS),
-    }
-
-
-if __name__ == "__main__":
-    # Print summary when run as script
-    summary = get_summary()
-    print("DSR Reference Test Fixtures Summary")
-    print("=" * 50)
-    print(f"PSR test cases: {summary['psr_cases']}")
-    print(f"MinTRL test cases: {summary['mintrl_cases']}")
-    print(f"DSR test cases: {summary['dsr_cases']}")
-    print(f"Power test cases: {summary['power_cases']}")
-    print(f"Variance re-scaling factors: {summary['variance_rescaling_points']}")
-    print(f"Total test cases: {summary['total_cases']}")
-    print("=" * 50)
-
-    # Show example cases
-    print("\nExample PSR Case:")
-    print(f"  {PSR_EXAMPLE_PAGE6.name}")
-    print(f"  SR={PSR_EXAMPLE_PAGE6.sharpe_ratio}, PSR={PSR_EXAMPLE_PAGE6.expected_psr}")
-
-    print("\nExample DSR Case:")
-    print(f"  {DSR_PAPER_EXAMPLE.name}")
-    print(f"  SR={DSR_PAPER_EXAMPLE.observed_sharpe}, DSR={DSR_PAPER_EXAMPLE.expected_dsr}")
-
-    print("\nExample MinTRL Case:")
-    print(f"  {MINTRL_EXAMPLE_SR0_ZERO.name}")
-    print(
-        f"  SR={MINTRL_EXAMPLE_SR0_ZERO.sharpe_ratio}, MinTRL={MINTRL_EXAMPLE_SR0_ZERO.expected_mintrl}"
-    )
