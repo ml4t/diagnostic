@@ -18,17 +18,22 @@ López de Prado, M., Lipton, A., & Zoonekynd, V. (2025).
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Literal, overload
 
 import numpy as np
+from numpy.typing import NDArray
+from scipy.special import log_ndtr, ndtri
 from scipy.stats import norm
 
 # Euler-Mascheroni constant for E[max{Z}] calculation
 EULER_GAMMA = 0.5772156649015329
 
-# Standard deviation rescaling factors for maximum of K standard normals
-# Source: López de Prado et al. (2025), Exhibit 4
-# These are √V[max{X_k}] values, the factor in Equation 30
+# Published values of √V[max{X_k}], the factor in Equation 30, for selected K.
+# Source: López de Prado et al. (2025), Exhibit 4. The exhibit lists K = 1 to
+# 100 in rows of ten, so K = 20 is the last entry of the second row.
+# get_variance_rescaling_factor computes the factor for any K and reproduces
+# these values to five decimals.
 VARIANCE_RESCALING_FACTORS: dict[int, float] = {
     1: 1.00000,
     2: 0.82565,
@@ -40,16 +45,26 @@ VARIANCE_RESCALING_FACTORS: dict[int, float] = {
     8: 0.61065,
     9: 0.59779,
     10: 0.58681,
-    20: 0.52131,
-    30: 0.49364,
-    40: 0.47599,
-    50: 0.46334,
-    60: 0.45361,
-    70: 0.44579,
-    80: 0.43929,
-    90: 0.43376,
+    20: 0.52507,
+    30: 0.49582,
+    40: 0.47748,
+    50: 0.46445,
+    60: 0.45448,
+    70: 0.44650,
+    80: 0.43989,
+    90: 0.43428,
     100: 0.42942,
 }
+
+# Probability mass left outside the integration range of the maximum's density.
+_MAX_DENSITY_TAIL = 1e-18
+
+
+@lru_cache(maxsize=1)
+def _gauss_legendre_rule() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Nodes and weights on [-1, 1]; 200 nodes give 8 decimals for K up to 1e9."""
+    nodes, weights = np.polynomial.legendre.leggauss(200)
+    return nodes, weights
 
 
 @overload
@@ -114,41 +129,45 @@ def probabilistic_sharpe_ratio(
 
 
 def get_variance_rescaling_factor(k: float) -> float:
-    """Get the standard deviation rescaling factor √V[max{X_k}] for K trials.
+    """Standard deviation of the maximum of K independent standard normals.
 
-    Source: López de Prado et al. (2025), Exhibit 4.
+    This is √V[max_k{X_k}], the factor in Equation 30. The maximum has density
+    K φ(m) Z(m)^(K-1) (López de Prado et al. (2025), Appendix 4), whose first
+    two moments are integrated numerically. The result reproduces Exhibit 4 to
+    five decimals for K = 1 to 100, and it is defined for any K >= 1, including
+    a non-integer effective number of trials and K above 100.
 
     Parameters
     ----------
-    k : int
+    k : float
         Number of independent trials
 
     Returns
     -------
     float
-        Rescaling factor (uses linear interpolation for unlisted values)
+        Rescaling factor; 1.0 for K <= 1
     """
     if k <= 1:
-        return VARIANCE_RESCALING_FACTORS[1]
+        return 1.0
 
-    k_int = int(round(k))
-    if abs(k - k_int) < 1e-12 and k_int in VARIANCE_RESCALING_FACTORS:
-        return VARIANCE_RESCALING_FACTORS[k_int]
+    # Integration range that leaves _MAX_DENSITY_TAIL of probability on each
+    # side: P[max <= lower] = Z(lower)^K and P[max > upper] <= K (1 - Z(upper)).
+    lower_cdf = _MAX_DENSITY_TAIL ** (1.0 / k)
+    if lower_cdf < 0.5:
+        lower = float(ndtri(lower_cdf))
+    else:
+        lower = float(norm.isf(-np.expm1(np.log(_MAX_DENSITY_TAIL) / k)))
+    upper = float(norm.isf(_MAX_DENSITY_TAIL / k))
 
-    keys = sorted(VARIANCE_RESCALING_FACTORS.keys())
-    if k < keys[0]:
-        return VARIANCE_RESCALING_FACTORS[keys[0]]
-    if k > keys[-1]:
-        return VARIANCE_RESCALING_FACTORS[keys[-1]]
+    nodes, weights = _gauss_legendre_rule()
+    half_width = 0.5 * (upper - lower)
+    m = half_width * nodes + 0.5 * (upper + lower)
+    density = k * np.exp((k - 1) * log_ndtr(m) + norm.logpdf(m))
+    mass = half_width * weights * density
 
-    # Linear interpolation
-    for i in range(len(keys) - 1):
-        if keys[i] <= k <= keys[i + 1]:
-            k1, k2 = keys[i], keys[i + 1]
-            v1, v2 = VARIANCE_RESCALING_FACTORS[k1], VARIANCE_RESCALING_FACTORS[k2]
-            return v1 + (v2 - v1) * (k - k1) / (k2 - k1)
-
-    return VARIANCE_RESCALING_FACTORS[keys[-1]]
+    mean = float(np.sum(m * mass))
+    second_moment = float(np.sum(m * m * mass))
+    return float(np.sqrt(second_moment - mean**2))
 
 
 def compute_sharpe_variance(

@@ -29,6 +29,9 @@ from ml4t.diagnostic.evaluation.stats import (
     min_trl_fwer,
 )
 from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
+    VARIANCE_RESCALING_FACTORS as LIBRARY_RESCALING_FACTORS,
+)
+from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
     compute_deflated_sharpe_std,
 )
 from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
@@ -161,22 +164,30 @@ class TestGoldenPaperExamples:
             f"Relative error: {relative_error:.2%}"
         )
 
-    def test_variance_rescaling_factors_exhibit3(self):
-        """Golden test: Variance rescaling factors from Exhibit 3.
+    def test_variance_rescaling_factors_exhibit4(self):
+        """Golden test: re-scaling factors √V[max{X_k}] for K = 1 to 100.
 
-        Reference: Page 13, Exhibit 3.
-
-        These are √V[max{X_k}] values for K standard normals.
+        Reference: Exhibit 4, which prints five decimals.
         """
+        assert sorted(VARIANCE_RESCALING_FACTORS) == list(range(1, 101))
+
         for k, expected_factor in VARIANCE_RESCALING_FACTORS.items():
             actual_factor = _get_variance_rescaling_factor(k)
 
-            # Should match exactly for tabulated values
-            assert abs(actual_factor - expected_factor) < 0.0001, (
+            assert abs(actual_factor - expected_factor) < 0.6e-5, (
                 f"Rescaling factor mismatch for K={k}\n"
                 f"Expected: {expected_factor:.5f}\n"
                 f"Got: {actual_factor:.5f}"
             )
+
+    def test_library_rescaling_table_matches_exhibit4(self):
+        """The values the library exports are the exhibit's values for the same K.
+
+        Exhibit 4 has ten values per row. Reading its first column as K = 20,
+        30, ... assigns each of those K the value of K + 1.
+        """
+        for k, factor in LIBRARY_RESCALING_FACTORS.items():
+            assert factor == VARIANCE_RESCALING_FACTORS[k], f"K={k}"
 
     def test_dsr_denominator_uses_cross_sectional_variance(self):
         """Golden test: with K>1 the DSR denominator is the dispersion across trials.
@@ -867,7 +878,8 @@ class TestDSRValidation:
         expected_z = (observed_sharpe - result_normal.expected_max_sharpe) / (
             1.0 * VARIANCE_RESCALING_FACTORS[n_trials]
         )
-        assert result_normal.z_score == pytest.approx(expected_z, rel=1e-12)
+        # The exhibit prints five decimals
+        assert result_normal.z_score == pytest.approx(expected_z, rel=2e-5)
 
         for moments in (
             {"skewness": -2.0},
