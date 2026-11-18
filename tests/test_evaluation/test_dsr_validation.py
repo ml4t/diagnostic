@@ -24,8 +24,12 @@ from scipy.stats import norm
 from ml4t.diagnostic.evaluation.stats import (
     DSRResult,
     compute_min_trl,
+    deflated_sharpe_ratio,
     deflated_sharpe_ratio_from_statistics,
     min_trl_fwer,
+)
+from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
+    compute_deflated_sharpe_std,
 )
 from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
     compute_expected_max_sharpe as _compute_expected_max_sharpe,
@@ -37,10 +41,10 @@ from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
     get_variance_rescaling_factor as _get_variance_rescaling_factor,
 )
 from tests.test_evaluation.fixtures.dsr_reference import (
-    DSR_EXAMPLE_PAGE13,
     DSR_FEW_TRIALS,
     DSR_MANY_TRIALS,
     DSR_NORMAL,
+    DSR_PAPER_EXAMPLE,
     MINTRL_CASES,
     POWER_CASES,
     PSR_CASES,
@@ -175,123 +179,91 @@ class TestGoldenPaperExamples:
             )
 
     def test_dsr_denominator_uses_cross_sectional_variance(self):
-        """Golden test: DSR denominator for K>1 should use cross-sectional variance.
+        """Golden test: with K>1 the DSR denominator is the dispersion across trials.
 
-        Reference: Page 13, Equation 29.
+        Reference: Equation 30 and the numerical example after Exhibit 5.
 
-        The 2025 paper states (Eq 29):
-        σ[SR₀|K] = √Var({SR_k*}) × √Var(max_k X_k)
+        σ[SR₀,K] = √V[{SR_k}] × √V[max_k{X_k}]
 
-        This means for DSR with K>1, the standard error should be:
-        std_sr = sqrt(variance_trials) * rescaling_factor
-
-        The current implementation uses:
-        std_sr = sqrt(time_series_variance(SR₀|K) * rescaling_factor²)
-
-        For the paper example (K=10, variance_trials=0.1):
-        - Eq 29 std_sr = sqrt(0.1) * 0.58681 = 0.1856 → DSR = 0.4106
-        - Current implementation std_sr = 0.1999 → DSR = 0.4170
-        - Paper value: DSR = 0.416
-
-        The current implementation (0.4170) is closer to the paper (0.416) than
-        strict Eq 29 interpretation (0.4106). This may indicate the paper uses
-        additional adjustments or the external review's interpretation differs.
+        The paper rescales √V[{SR_k}] = 0.316 to σ[SR₀,K] = 0.186 and reports
+        DSR = 0.410. Rescaling the standard deviation of the Sharpe ratio
+        estimator instead gives 0.230 and DSR = 0.427 for the same inputs.
         """
-        # Parameters from page 13 example
-        observed_sharpe = 0.456
-        n_trials = 10
-        variance_trials = 0.1
-        n_samples = 24
-        skewness = -2.448
-        kurtosis = 10.164
+        case = DSR_PAPER_EXAMPLE
 
-        # Compute E[max{SR}] - this part is already correct
-        expected_max = _compute_expected_max_sharpe(n_trials, variance_trials)
-        assert abs(expected_max - 0.498) < 0.01  # Sanity check
-
-        # Adjusted threshold per Eq 27
-        adjusted_threshold = 0.0 + expected_max  # SR₀ = 0
-
-        # Test the actual implementation
         result = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=variance_trials,
-            n_samples=n_samples,
-            skewness=skewness,
-            excess_kurtosis=kurtosis - 3.0,  # Convert Pearson to Fisher
+            observed_sharpe=case.observed_sharpe,
+            n_trials=case.n_trials,
+            variance_trials=case.variance_trials,
+            n_samples=case.n_samples,
+            skewness=case.skewness,
+            excess_kurtosis=case.kurtosis - 3.0,  # Convert Pearson to Fisher
+            autocorrelation=case.autocorrelation,
         )
 
-        # Paper says DSR ≈ 0.416 for this example
-        expected_dsr = 0.416
-        implementation_dsr = result.probability
+        assert abs(np.sqrt(case.variance_trials) - 0.316) < 0.0005
 
-        # Implementation should match paper value within 1%
-        # Current implementation gives 0.4170, paper says 0.416 (0.2% error)
-        assert abs(implementation_dsr - expected_dsr) < 0.01, (
+        std_sr = compute_deflated_sharpe_std(
+            threshold_sharpe=result.expected_max_sharpe,
+            n_samples=case.n_samples,
+            skewness=case.skewness,
+            kurtosis=case.kurtosis,
+            autocorrelation=case.autocorrelation,
+            n_trials=case.n_trials,
+            variance_trials=case.variance_trials,
+        )
+        assert abs(std_sr - 0.186) < 0.0005, f"σ[SR₀,K] should be 0.186, got {std_sr:.4f}"
+
+        # The z-score the function reports uses the same standard deviation
+        implied_std = (case.observed_sharpe - result.expected_max_sharpe) / result.z_score
+        assert abs(implied_std - 0.186) < 0.0005, (
+            f"DSR z-score implies σ = {implied_std:.4f}, paper says 0.186"
+        )
+
+        assert abs(result.probability - 0.410) < 0.0005, (
             f"Implementation DSR does not match paper value\n"
-            f"Paper says: {expected_dsr:.4f}\n"
-            f"Implementation gives: {implementation_dsr:.4f}\n"
-            f"Error: {abs(implementation_dsr - expected_dsr):.4f}"
+            f"Paper says: 0.410\n"
+            f"Implementation gives: {result.probability:.4f}"
         )
 
-        # Also document what Eq 29 strict interpretation gives
-        rescaling_factor = _get_variance_rescaling_factor(n_trials)
-        std_sr_eq29 = np.sqrt(variance_trials) * rescaling_factor
-        z_score_eq29 = (observed_sharpe - adjusted_threshold) / std_sr_eq29
-        dsr_eq29 = norm.cdf(z_score_eq29)
+    def test_dsr_full_example(self):
+        """Full validation of the paper's DSR example with all components.
 
-        # Document: Eq 29 strict interpretation gives different result
-        # This is informational - not a failure condition
-        assert abs(dsr_eq29 - 0.41) < 0.01, (
-            f"Eq 29 strict interpretation sanity check\nExpected ~0.41, got {dsr_eq29:.4f}"
-        )
+        Reference: numerical example after Exhibit 5.
 
-    def test_dsr_page13_full_example(self):
-        """Full validation of DSR page 13 example with all components.
-
-        Reference: López de Prado et al. (2025), Page 13.
-
-        This test validates all components of the DSR calculation:
-        1. E[max{SR}] ≈ 0.498
-        2. Adjusted threshold = SR₀ + E[max{SR}] = 0 + 0.498 = 0.498
-        3. z-score calculation
-        4. DSR ≈ 0.416
+        1. E[max{SR}] = 0.498
+        2. Adjusted threshold = SR₀ + E[max{SR}] = 0 + 0.498
+        3. DSR = 0.410, against a one-trial PSR of 0.966
         """
-        # Parameters from paper
-        observed_sharpe = 0.456
-        n_trials = 10
-        variance_trials = 0.1
-        n_samples = 24
-        skewness = -2.448
-        kurtosis = 10.164
+        case = DSR_PAPER_EXAMPLE
+        inputs = {
+            "observed_sharpe": case.observed_sharpe,
+            "n_samples": case.n_samples,
+            "skewness": case.skewness,
+            "excess_kurtosis": case.kurtosis - 3.0,  # Convert Pearson to Fisher
+            "autocorrelation": case.autocorrelation,
+        }
 
         result = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=variance_trials,
-            n_samples=n_samples,
-            skewness=skewness,
-            excess_kurtosis=kurtosis - 3.0,  # Convert Pearson to Fisher
+            n_trials=case.n_trials, variance_trials=case.variance_trials, **inputs
+        )
+        single_trial = deflated_sharpe_ratio_from_statistics(
+            n_trials=1, variance_trials=0.0, **inputs
         )
 
-        # Validate E[max{SR}] (paper says ≈ 0.498)
-        assert abs(result.expected_max_sharpe - 0.498) < 0.005, (
-            f"E[max{{SR}}] should be ~0.498, got {result.expected_max_sharpe:.4f}"
+        assert abs(result.expected_max_sharpe - 0.498) < 0.0005, (
+            f"E[max{{SR}}] should be 0.498, got {result.expected_max_sharpe:.4f}"
         )
-
-        # Validate DSR (paper says ≈ 0.416)
-        assert abs(result.probability - 0.416) < 0.01, (
-            f"DSR should be ~0.416, got {result.probability:.4f}"
+        assert abs(result.probability - 0.410) < 0.0005, (
+            f"DSR should be 0.410, got {result.probability:.4f}"
+        )
+        assert abs(single_trial.probability - 0.966) < 0.0005, (
+            f"One-trial PSR should be 0.966, got {single_trial.probability:.4f}"
         )
 
         # Deflated Sharpe should be observed - E[max]
-        expected_deflated = observed_sharpe - result.expected_max_sharpe
-        assert abs(result.deflated_sharpe - expected_deflated) < 0.001, "Deflated Sharpe mismatch"
-
-        # Verify it's significantly below the single-trial PSR
-        # Single-trial PSR ≈ 0.987, DSR ≈ 0.416 (significant deflation)
-        assert result.probability < 0.5, "DSR should be deflated below 50%"
+        expected_deflated = case.observed_sharpe - result.expected_max_sharpe
+        assert abs(result.deflated_sharpe - expected_deflated) < 1e-12, "Deflated Sharpe mismatch"
 
     def test_dsr_single_trial_equals_psr(self):
         """Verify DSR with K=1 equals PSR (no deflation).
@@ -709,14 +681,12 @@ class TestDSRValidation:
         assert result.p_value > 0.0
         assert result.p_value == pytest.approx(expected, rel=1e-12)
 
-    @pytest.mark.parametrize("case", [DSR_EXAMPLE_PAGE13], ids=lambda c: c.name)
+    @pytest.mark.parametrize("case", [DSR_PAPER_EXAMPLE], ids=lambda c: c.name)
     def test_dsr_paper_reference(self, case):
-        """Test DSR calculation against ACTUAL paper values.
+        """Test DSR calculation against the value the paper publishes.
 
-        Reference: López de Prado et al. (2025), page 13
-
-        This test uses the ONLY example explicitly stated in the paper.
-        Our implementation matches the reference code from github.com/zoonek/2025-sharpe-ratio
+        Reference: numerical example after Exhibit 5 (version of 7 March 2026).
+        This is the only DSR value the paper states.
         """
         result = deflated_sharpe_ratio_from_statistics(
             observed_sharpe=case.observed_sharpe,
@@ -725,6 +695,7 @@ class TestDSRValidation:
             n_samples=case.n_samples,
             skewness=case.skewness,
             excess_kurtosis=case.kurtosis - 3.0,
+            autocorrelation=case.autocorrelation,
         )
 
         # Validate DSR (probability)
@@ -738,9 +709,9 @@ class TestDSRValidation:
             f"Reference: {case.reference}"
         )
 
-        # Validate E[max] - should be nearly perfect
+        # Validate E[max]
         max_sharpe_error = abs(result.expected_max_sharpe - case.expected_max_sharpe)
-        assert max_sharpe_error < 0.01, (
+        assert max_sharpe_error < case.tolerance, (
             f"{case.name}: Expected max Sharpe validation failed\n"
             f"Expected: {case.expected_max_sharpe:.6f}\n"
             f"Got: {result.expected_max_sharpe:.6f}\n"
@@ -752,10 +723,9 @@ class TestDSRValidation:
         "case", [DSR_FEW_TRIALS, DSR_MANY_TRIALS, DSR_NORMAL], ids=lambda c: c.name
     )
     def test_dsr_computed_cases(self, case):
-        """Test DSR with additional validation cases.
+        """Test DSR on cases the paper does not state.
 
-        These test cases validate DSR behavior across different parameter combinations.
-        Expected values computed via deflated_sharpe_ratio() for consistency validation.
+        Expected values come from Equations 28 and 30, evaluated outside the library.
         """
         result = deflated_sharpe_ratio_from_statistics(
             observed_sharpe=case.observed_sharpe,
@@ -764,31 +734,26 @@ class TestDSRValidation:
             n_samples=case.n_samples,
             skewness=case.skewness,
             excess_kurtosis=case.kurtosis - 3.0,
+            autocorrelation=case.autocorrelation,
         )
 
-        # Validate DSR (probability format from 2025 paper)
         dsr_error = abs(result.probability - case.expected_dsr)
-        # Use relaxed tolerance for test cases with "approximate" expected values
-        dsr_tolerance = case.tolerance if case.tolerance < 0.01 else case.tolerance * 2
-        assert dsr_error < dsr_tolerance, (
+        assert dsr_error < case.tolerance, (
             f"{case.name}: DSR validation failed\n"
             f"Expected DSR: {case.expected_dsr:.6f}\n"
             f"Got DSR: {result.probability:.6f}\n"
             f"Error: {dsr_error:.6f} ({dsr_error / case.expected_dsr * 100:.2f}%)\n"
-            f"Tolerance: {dsr_tolerance}\n"
+            f"Tolerance: {case.tolerance}\n"
             f"Reference: {case.reference}"
         )
 
-        # Validate expected max Sharpe
         max_sharpe_error = abs(result.expected_max_sharpe - case.expected_max_sharpe)
-        # Use relaxed tolerance for E[max] (within 5% is acceptable for approximations)
-        max_tolerance = max(case.tolerance * 5, 0.05)
-        assert max_sharpe_error < max_tolerance, (
+        assert max_sharpe_error < case.tolerance, (
             f"{case.name}: Expected max Sharpe validation failed\n"
             f"Expected: {case.expected_max_sharpe:.6f}\n"
             f"Got: {result.expected_max_sharpe:.6f}\n"
             f"Error: {max_sharpe_error:.6f} ({max_sharpe_error / case.expected_max_sharpe * 100:.2f}%)\n"
-            f"Tolerance: {max_tolerance}\n"
+            f"Tolerance: {case.tolerance}\n"
             f"Reference: {case.reference}"
         )
 
@@ -878,66 +843,79 @@ class TestDSRValidation:
         # z-score should be less than observed Sharpe (deflation)
         assert result.z_score < 2.0
 
-    def test_dsr_non_normality_with_sr0_zero(self):
-        """Verify skew/kurt AFFECT DSR variance in 2025 formula.
+    def test_dsr_multiple_trials_ignores_selected_strategy_moments(self):
+        """With K>1, skewness, kurtosis and autocorrelation do not enter the z-score.
 
-        Per López de Prado et al. (2025), the variance formula is:
-        V[SR] = (1/T) * (a - b·γ₃·SR + c·(γ₄-1)/4·SR²)
-
-        Where SR is the OBSERVED Sharpe ratio, not SR₀. This means skewness
-        and kurtosis affect the variance calculation even when benchmarking
-        against SR₀=0.
-
-        Note: This differs from the 2014 formula where the variance only
-        depended on the benchmark SR₀.
+        Equation 30 gives the standard deviation of the maximum Sharpe ratio as
+        √V[{SR_k}] × √V[max_k{X_k}]. Neither factor depends on the moments of
+        the selected strategy's returns, so the DSR for given K and V[{SR_k}]
+        is the same for normal and non-normal returns.
         """
         observed_sharpe = 1.5
         n_trials = 50
 
-        # Normal case
-        result_normal = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=1.0,
+        def dsr(**moments):
+            return deflated_sharpe_ratio_from_statistics(
+                observed_sharpe=observed_sharpe,
+                n_trials=n_trials,
+                variance_trials=1.0,
+                n_samples=252,
+                **moments,
+            )
+
+        result_normal = dsr(skewness=0.0, excess_kurtosis=0.0)
+        expected_z = (observed_sharpe - result_normal.expected_max_sharpe) / (
+            1.0 * VARIANCE_RESCALING_FACTORS[n_trials]
+        )
+        assert result_normal.z_score == pytest.approx(expected_z, rel=1e-12)
+
+        for moments in (
+            {"skewness": -2.0},
+            {"excess_kurtosis": 7.0},  # Pearson 10.0 → Fisher 7.0
+            {"autocorrelation": 0.3},
+        ):
+            result = dsr(**moments)
+            assert result.expected_max_sharpe == result_normal.expected_max_sharpe, moments
+            assert result.z_score == result_normal.z_score, moments
+
+    def test_identical_trials_reduce_to_single_strategy(self):
+        """Trials with equal Sharpe ratios leave nothing to deflate.
+
+        Their dispersion is zero, so Equation 30 alone would give a zero standard
+        deviation and a probability of exactly 0 or 1. The result must equal the
+        single-strategy PSR of the same returns.
+        """
+        returns = np.random.default_rng(0).normal(0.001, 0.01, 500)
+
+        single = deflated_sharpe_ratio(returns)
+        repeated = deflated_sharpe_ratio([returns, returns.copy(), returns.copy()])
+
+        assert repeated.n_trials_raw == 3
+        assert repeated.variance_trials == 0.0
+        assert repeated.expected_max_sharpe == 0.0
+        assert repeated.z_score == pytest.approx(single.z_score, rel=1e-12)
+        assert repeated.probability == pytest.approx(single.probability, rel=1e-12)
+
+    def test_rounding_noise_in_trial_variance_is_not_dispersion(self):
+        """Equal Sharpe ratios whose variance is not exactly zero still give the PSR.
+
+        np.var([0.1, 0.1, 0.1], ddof=1) is about 3e-34, because the mean of the
+        three values is not 0.1. Used in Equation 30, that variance gives a
+        standard deviation of 1e-17 and a probability of exactly 0 or 1.
+        """
+        variance_trials = float(np.var([0.1, 0.1, 0.1], ddof=1))
+        assert 0.0 < variance_trials < 1e-30
+
+        single = deflated_sharpe_ratio_from_statistics(observed_sharpe=0.1, n_samples=252)
+        repeated = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=0.1,
             n_samples=252,
-            skewness=0.0,
-            excess_kurtosis=0.0,
+            n_trials=3,
+            variance_trials=variance_trials,
         )
 
-        # Negative skewness case
-        result_skewed = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=1.0,
-            n_samples=252,
-            skewness=-2.0,
-            excess_kurtosis=0.0,
-        )
-
-        # High kurtosis case
-        result_kurtotic = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=1.0,
-            n_samples=252,
-            skewness=0.0,
-            excess_kurtosis=7.0,  # Pearson 10.0 → Fisher 7.0
-        )
-
-        # Expected max should be the same (depends only on n_trials and variance_trials)
-        assert abs(result_skewed.expected_max_sharpe - result_normal.expected_max_sharpe) < 1e-10
-        assert abs(result_kurtotic.expected_max_sharpe - result_normal.expected_max_sharpe) < 1e-10
-
-        # In 2025 formula, skew/kurt DO affect z-score through variance
-        # The z-scores will differ based on these adjustments
-        assert result_skewed.z_score != result_normal.z_score  # Different variance
-        assert result_kurtotic.z_score != result_normal.z_score  # Different variance
-
-        # Higher kurtosis INCREASES variance
-        # When z-score is negative (deflated_sharpe < 0), larger variance makes z-score
-        # closer to 0 (less negative), which is mathematically higher
-        # This represents more uncertainty -> less confident rejection
-        assert abs(result_kurtotic.z_score) < abs(result_normal.z_score)  # Less extreme z
+        assert 0.9 < single.probability < 0.99
+        assert repeated.probability == pytest.approx(single.probability, rel=1e-12)
 
     def test_dsr_increasing_trials(self):
         """Verify DSR decreases as number of trials increases."""
@@ -1185,35 +1163,45 @@ class TestDSRParameterSensitivity:
                 f"K={test_points[i + 1]} E[max]={expected_max_values[i + 1]:.5f}"
             )
 
-    def test_z_score_magnitude_increases_with_sample_size(self):
-        """Z-score magnitude should increase with more observations.
+    def test_sample_size_changes_z_score_for_one_trial_only(self):
+        """Sample size enters the z-score through the estimator variance (K=1).
 
-        Larger sample size reduces the variance of the Sharpe ratio estimator,
-        leading to more extreme z-scores (higher magnitude) as the signal-to-noise
-        ratio improves.
+        For one trial the denominator is the standard deviation of the Sharpe
+        ratio estimator, which falls as 1/√T, so |z| grows with T. For K>1 the
+        denominator is √V[{SR_k}] × √V[max_k{X_k}] (Equation 30); with
+        V[{SR_k}] held fixed, T does not change the z-score.
         """
         test_sample_sizes = [50, 100, 252, 500, 1000]
-        n_trials = 10
-        variance_trials = 1.0
         observed_sharpe = 1.5  # Use positive Sharpe
 
-        z_score_magnitudes = []
-        for n_samples in test_sample_sizes:
-            result = deflated_sharpe_ratio_from_statistics(
-                observed_sharpe=observed_sharpe,
-                n_trials=n_trials,
-                variance_trials=variance_trials,
-                n_samples=n_samples,
+        single_trial = [
+            abs(
+                deflated_sharpe_ratio_from_statistics(
+                    observed_sharpe=observed_sharpe,
+                    n_trials=1,
+                    variance_trials=0.0,
+                    n_samples=n_samples,
+                ).z_score
             )
-            z_score_magnitudes.append(abs(result.z_score))
+            for n_samples in test_sample_sizes
+        ]
+        for i in range(len(single_trial) - 1):
+            assert single_trial[i] < single_trial[i + 1], (
+                f"|z-score| should increase with more samples for one trial: "
+                f"T={test_sample_sizes[i]} |z|={single_trial[i]:.5f}, "
+                f"T={test_sample_sizes[i + 1]} |z|={single_trial[i + 1]:.5f}"
+            )
 
-        # Verify increasing magnitude pattern (more data = less uncertainty = more extreme z)
-        for i in range(len(z_score_magnitudes) - 1):
-            assert z_score_magnitudes[i] < z_score_magnitudes[i + 1], (
-                f"|z-score| should increase with more samples (less uncertainty): "
-                f"T={test_sample_sizes[i]} |z|={z_score_magnitudes[i]:.5f}, "
-                f"T={test_sample_sizes[i + 1]} |z|={z_score_magnitudes[i + 1]:.5f}"
-            )
+        ten_trials = {
+            deflated_sharpe_ratio_from_statistics(
+                observed_sharpe=observed_sharpe,
+                n_trials=10,
+                variance_trials=1.0,
+                n_samples=n_samples,
+            ).z_score
+            for n_samples in test_sample_sizes
+        }
+        assert len(ten_trials) == 1, f"z-score should not depend on T for K=10: {ten_trials}"
 
     def test_expected_max_formula_accuracy(self):
         """Validate E[max{Z}] against known values from extreme value theory."""
@@ -1257,25 +1245,26 @@ class TestDSRParameterSensitivity:
         ],
     )
     def test_non_normality_affects_uncertainty(self, skewness, kurtosis, expected_effect):
-        """Non-normal returns affect variance and z-score via 2025 formula.
+        """Non-normal returns change the one-trial z-score through Equation 5.
 
-        Per López de Prado et al. (2025), the variance formula is:
-        V[SR] = (1/T) * (a - b·γ₃·SR + c·(γ₄-1)/4·SR²)
+        V[SR] = (1/T) * (a - b·γ₃·SR₀ + c·(γ₄-1)/4·SR₀²)
 
-        Higher kurtosis (γ₄) increases variance when SR ≠ 0, leading to
-        less extreme z-scores (closer to 0) as uncertainty increases.
+        Higher kurtosis (γ₄) increases the variance when SR₀ ≠ 0, which moves the
+        z-score towards 0. The benchmark is therefore non-zero here. With more
+        than one trial these moments do not enter the denominator; see
+        TestDSRValidation.test_dsr_multiple_trials_ignores_selected_strategy_moments.
         """
-        n_trials = 10
         n_samples = 252
-        variance_trials = 1.0
-        observed_sharpe = 1.0  # Non-zero to see skew/kurt effects
+        observed_sharpe = 1.0
+        benchmark_sharpe = 0.5  # Non-zero to see skew/kurt effects
 
         # Normal case (baseline)
         result_normal = deflated_sharpe_ratio_from_statistics(
             observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=variance_trials,
+            n_trials=1,
+            variance_trials=0.0,
             n_samples=n_samples,
+            benchmark_sharpe=benchmark_sharpe,
             skewness=0.0,
             excess_kurtosis=0.0,
         )
@@ -1283,9 +1272,10 @@ class TestDSRParameterSensitivity:
         # Non-normal case
         result_nonnormal = deflated_sharpe_ratio_from_statistics(
             observed_sharpe=observed_sharpe,
-            n_trials=n_trials,
-            variance_trials=variance_trials,
+            n_trials=1,
+            variance_trials=0.0,
             n_samples=n_samples,
+            benchmark_sharpe=benchmark_sharpe,
             skewness=skewness,
             excess_kurtosis=kurtosis - 3.0,  # Convert Pearson to Fisher
         )

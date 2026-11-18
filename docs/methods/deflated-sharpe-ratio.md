@@ -57,22 +57,55 @@ $$
 SR_0 = \sqrt{\text{Var}[\{SR_1, \ldots, SR_K\}]} \cdot E[\max\{Z\}]
 $$
 
-### Step 3: Variance of Sharpe Ratio Estimator
+### Step 3: Standard Deviation of the Maximum Sharpe Ratio
 
-Accounting for non-normality (skewness $\gamma_3$, Pearson kurtosis $\gamma_4$):
+Rescale the same cross-sectional standard deviation by the standard deviation
+of the maximum of K independent standard normals, which the paper tabulates
+for K = 1 to 100:
 
 $$
-V[\hat{SR}] = \frac{1}{T}\left(1 - \gamma_3 \cdot SR_0 + \frac{\gamma_4 - 1}{4} \cdot SR_0^2\right)
+\sigma[SR_0] = \sqrt{\text{Var}[\{SR_1, \ldots, SR_K\}]} \cdot \sqrt{V[\max\{Z_1, \ldots, Z_K\}]}
 $$
+
+The sample length and the skewness, kurtosis and autocorrelation of the
+selected strategy do not appear in this expression. They affect DSR only
+through the dispersion of the trial Sharpe ratios.
 
 ### Step 4: Deflated Test Statistic
 
 $$
-DSR = \Phi\left(\frac{\hat{SR} - SR_0}{\sqrt{V[\hat{SR}]}}\right)
+DSR = \Phi\left(\frac{\hat{SR} - SR_0}{\sigma[SR_0]}\right)
 $$
 
 The output is a probability in [0, 1]. Values above 0.95 indicate the strategy
 survives multiple testing correction at the 5% level.
+
+### Single Strategy (PSR)
+
+With one strategy there is no maximum over trials. The threshold is the
+benchmark Sharpe ratio $SR_0$ (zero by default) and the denominator is the
+standard deviation of the Sharpe ratio estimator at that benchmark, which
+accounts for skewness $\gamma_3$, Pearson kurtosis $\gamma_4$ and first-order
+autocorrelation $\rho$:
+
+$$
+V[\hat{SR}] = \frac{1}{T}\left(\frac{1+\rho}{1-\rho}
+- \left(1 + \frac{\rho}{1-\rho} + \frac{\rho^2}{1-\rho^2}\right)\gamma_3 \cdot SR_0
++ \frac{1+\rho^2}{1-\rho^2} \cdot \frac{\gamma_4 - 1}{4} \cdot SR_0^2\right)
+$$
+
+The library also uses this denominator when every trial has the same Sharpe
+ratio, because the trials then do not differ.
+
+### Worked Example From the Paper
+
+A two-year track record of monthly returns has a Sharpe ratio of 0.456
+(0.036 / 0.079), skewness -2.448, Pearson kurtosis 10.164 and autocorrelation
+0.2. As a single strategy its PSR against a zero benchmark is 0.966. If it is
+the best of K = 10 trials whose Sharpe ratios have variance 0.1, the expected
+maximum is 0.498, the standard deviation of the maximum is
+$\sqrt{0.1} \cdot 0.587 = 0.186$, and the DSR is 0.410.
+`deflated_sharpe_ratio_from_statistics()` returns these values.
 
 ## Minimal Working Example
 
@@ -197,8 +230,11 @@ and realistic transaction cost modeling.
 5. **Ignoring non-normality**
 
     Strategies with negative skewness and fat tails (common in trend-following)
-    have higher Sharpe ratio estimation variance. Always provide `skewness` and
-    `excess_kurtosis` from your actual returns.
+    have higher Sharpe ratio estimation variance. `skewness`, `excess_kurtosis`
+    and `autocorrelation` enter PSR and the minimum track record length
+    directly. With more than one trial they do not change the DSR probability
+    for a given `variance_trials`, so compute that variance from the actual
+    trial returns.
 
 6. **Using DSR without enough data**
 
@@ -218,8 +254,9 @@ Use the [Book Guide](../book-guide/index.md) for exact notebook and case-study p
 ## References
 
 - **Lopez de Prado, M., Lipton, A., & Zoonekynd, V. (2025)**.
-  "How to use the Sharpe Ratio: A multivariate case study."
-  *ADIA Lab Research Paper Series*, No. 19.
+  "How to Use the Sharpe Ratio."
+  *ADIA Lab Research Paper Series*, No. 19. The formulas and the worked example
+  on this page follow the version dated 7 March 2026.
   Reference implementation: [github.com/zoonek/2025-sharpe-ratio](https://github.com/zoonek/2025-sharpe-ratio)
 
 - **Bailey, D. H., & Lopez de Prado, M. (2014)**.

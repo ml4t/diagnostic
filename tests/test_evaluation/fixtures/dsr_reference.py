@@ -57,6 +57,7 @@ class DSRTestCase(NamedTuple):
         expected_max_sharpe: Expected maximum Sharpe ratio E[max{SR_k}]
         reference: Citation to paper location
         tolerance: Acceptable numerical error for validation
+        autocorrelation: First-order autocorrelation of returns (rho)
     """
 
     name: str
@@ -70,6 +71,7 @@ class DSRTestCase(NamedTuple):
     expected_max_sharpe: float
     reference: str
     tolerance: float = 0.001
+    autocorrelation: float = 0.0
 
 
 class MinTRLTestCase(NamedTuple):
@@ -282,23 +284,32 @@ MINTRL_CASES = [
 
 
 # =============================================================================
-# DSR TEST CASES (from Pages 12-14)
+# DSR TEST CASES
 # =============================================================================
 
-# Main example from page 13: K=10 trials
-DSR_EXAMPLE_PAGE13 = DSRTestCase(
-    name="DSR with K=10 trials (page 13)",
-    observed_sharpe=0.456,
+# Worked example of the paper (version of 7 March 2026): K=10 trials, V[{SR_k}]=0.1.
+# The Sharpe ratio is the unrounded 0.036/0.079; the paper prints it as 0.456.
+DSR_PAPER_EXAMPLE = DSRTestCase(
+    name="DSR with K=10 trials (paper example)",
+    observed_sharpe=0.036 / 0.079,
     n_trials=10,
     variance_trials=0.1,
     skewness=-2.448,
     kurtosis=10.164,
     n_samples=24,
-    expected_dsr=0.416,
+    expected_dsr=0.410,
     expected_max_sharpe=0.498,  # E[max{SR_k}]
-    reference="Page 13: DSR = 0.416 (vs one-trial PSR of 0.987)",
-    tolerance=0.05,  # 5% tolerance - paper value may be rounded or use slightly different calculation
+    reference=(
+        "Numerical example after Exhibit 5: SR_0,K = 0.498, sigma[SR_0,K] = 0.186, "
+        "DSR = 0.410 (vs one-trial PSR of 0.966)"
+    ),
+    tolerance=0.0005,  # the paper prints three decimals
+    autocorrelation=0.2,
 )
+
+# The three cases below are not in the paper. Their expected values come from
+# Equations 28 and 30, with V[max{X_k}] obtained by Gauss-Hermite quadrature
+# outside the library.
 
 # Small number of trials
 DSR_FEW_TRIALS = DSRTestCase(
@@ -309,10 +320,10 @@ DSR_FEW_TRIALS = DSRTestCase(
     skewness=-0.5,
     kurtosis=4.0,
     n_samples=50,
-    expected_dsr=0.986,  # Computed via deflated_sharpe_ratio()
-    expected_max_sharpe=0.191,  # sqrt(0.05) * E[max{Z}] for K=3
-    reference="Equation (26), page 12: E[max{SR_k}]",
-    tolerance=0.02,
+    expected_dsr=0.9678,
+    expected_max_sharpe=0.1907,  # sqrt(0.05) * E[max{Z}] for K=3
+    reference="Computed from Equations 28 and 30",
+    tolerance=0.0005,
 )
 
 # Many trials
@@ -324,10 +335,10 @@ DSR_MANY_TRIALS = DSRTestCase(
     skewness=-1.0,
     kurtosis=6.0,
     n_samples=100,
-    expected_dsr=0.094,  # Computed - heavily deflated due to high trial count
-    expected_max_sharpe=1.132,  # sqrt(0.2) * E[max{Z}] for K=100
-    reference="Equation (26), page 12",
-    tolerance=0.02,
+    expected_dsr=0.2464,  # the observed Sharpe ratio is below the expected maximum
+    expected_max_sharpe=1.1317,  # sqrt(0.2) * E[max{Z}] for K=100
+    reference="Computed from Equations 28 and 30",
+    tolerance=0.0005,
 )
 
 # Normal returns with multiple trials
@@ -339,14 +350,14 @@ DSR_NORMAL = DSRTestCase(
     skewness=0.0,
     kurtosis=3.0,
     n_samples=50,
-    expected_dsr=0.984,  # Computed via deflated_sharpe_ratio()
-    expected_max_sharpe=0.498,  # sqrt(0.1) * E[max{Z}] for K=10 ≈ 0.498
-    reference="Page 13: Normal returns simplification",
-    tolerance=0.02,
+    expected_dsr=0.9482,
+    expected_max_sharpe=0.4979,  # sqrt(0.1) * E[max{Z}] for K=10
+    reference="Computed from Equations 28 and 30",
+    tolerance=0.0005,
 )
 
 DSR_CASES = [
-    DSR_EXAMPLE_PAGE13,
+    DSR_PAPER_EXAMPLE,
     DSR_FEW_TRIALS,
     DSR_MANY_TRIALS,
     DSR_NORMAL,
@@ -534,8 +545,8 @@ if __name__ == "__main__":
     print(f"  SR={PSR_EXAMPLE_PAGE6.sharpe_ratio}, PSR={PSR_EXAMPLE_PAGE6.expected_psr}")
 
     print("\nExample DSR Case:")
-    print(f"  {DSR_EXAMPLE_PAGE13.name}")
-    print(f"  SR={DSR_EXAMPLE_PAGE13.observed_sharpe}, DSR={DSR_EXAMPLE_PAGE13.expected_dsr}")
+    print(f"  {DSR_PAPER_EXAMPLE.name}")
+    print(f"  SR={DSR_PAPER_EXAMPLE.observed_sharpe}, DSR={DSR_PAPER_EXAMPLE.expected_dsr}")
 
     print("\nExample MinTRL Case:")
     print(f"  {MINTRL_EXAMPLE_SR0_ZERO.name}")

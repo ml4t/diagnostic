@@ -4,7 +4,11 @@ This module implements the statistical inference framework for Sharpe ratios:
 
 - Variance of Sharpe ratio estimator (2025 formula with autocorrelation)
 - Expected maximum Sharpe under null (for multiple testing)
-- Variance rescaling factors for selection bias
+- Standard deviation of the maximum Sharpe ratio across trials
+
+Equation and exhibit numbers refer to the version of the paper dated
+7 March 2026. Earlier versions number the multiple-testing equations and the
+re-scaling exhibit one lower.
 
 References
 ----------
@@ -23,8 +27,8 @@ from scipy.stats import norm
 EULER_GAMMA = 0.5772156649015329
 
 # Standard deviation rescaling factors for maximum of K standard normals
-# Source: López de Prado et al. (2025), Exhibit 3, page 13
-# These are √V[max{X_k}] values for DSR variance adjustment
+# Source: López de Prado et al. (2025), Exhibit 4
+# These are √V[max{X_k}] values, the factor in Equation 30
 VARIANCE_RESCALING_FACTORS: dict[int, float] = {
     1: 1.00000,
     2: 0.82565,
@@ -110,9 +114,9 @@ def probabilistic_sharpe_ratio(
 
 
 def get_variance_rescaling_factor(k: float) -> float:
-    """Get variance rescaling factor √V[max{X_k}] for K trials.
+    """Get the standard deviation rescaling factor √V[max{X_k}] for K trials.
 
-    Source: López de Prado et al. (2025), Exhibit 3, page 13.
+    Source: López de Prado et al. (2025), Exhibit 4.
 
     Parameters
     ----------
@@ -165,7 +169,7 @@ def compute_sharpe_variance(
             \\frac{1+\\rho}{1-\\rho}
             - \\left(1 + \\frac{\\rho}{1-\\rho} + \\frac{\\rho^2}{1-\\rho^2}\\right) \\gamma_3 SR
             + \\frac{1+\\rho^2}{1-\\rho^2} \\frac{\\gamma_4 - 1}{4} SR^2
-        \\right] \\times V[\\max_k\\{X_k\\}]
+        \\right]
 
     When ρ=0 (i.i.d. assumption), this reduces to the 2014 formula:
 
@@ -187,8 +191,12 @@ def compute_sharpe_variance(
         Return kurtosis (γ₄), Pearson convention (normal = 3)
     autocorrelation : float
         First-order autocorrelation (ρ), must be in (-1, 1)
-    n_trials : int, default 1
-        Number of strategies (K) for variance rescaling
+    n_trials : float, default 1
+        When greater than 1, the estimator variance is multiplied by
+        V[max_k{X_k}] for K = ``n_trials``. The paper has no equation for this
+        product: its Equation 30 rescales the dispersion of Sharpe ratios
+        across trials, which :func:`compute_deflated_sharpe_std` implements.
+        The deflated Sharpe ratio does not use this argument. Leave it at 1.
 
     Returns
     -------
@@ -202,7 +210,7 @@ def compute_sharpe_variance(
 
     References
     ----------
-    López de Prado et al. (2025), Equations 2-5, pages 5-7.
+    López de Prado et al. (2025), Equations 2-5.
     """
     rho = autocorrelation
 
@@ -227,7 +235,8 @@ def compute_sharpe_variance(
     # Variance formula (Equation 5)
     variance = (a - b * skewness * sharpe + c * (kurtosis - 1) / 4 * sharpe**2) / n_samples
 
-    # Apply variance rescaling for multiple testing (Equation 29)
+    # Not Equation 30, which rescales the dispersion across trials. See the
+    # n_trials entry in the docstring.
     if n_trials > 1:
         rescaling_factor = get_variance_rescaling_factor(n_trials)
         variance *= rescaling_factor**2
@@ -259,7 +268,7 @@ def compute_expected_max_sharpe(n_trials: float, variance_trials: float) -> floa
 
     References
     ----------
-    López de Prado et al. (2025), Equation 26, page 13.
+    López de Prado et al. (2025), Equation 28.
     Bailey & López de Prado (2014), Appendix A.1, Equation 6.
     """
     if n_trials <= 1:
@@ -268,7 +277,7 @@ def compute_expected_max_sharpe(n_trials: float, variance_trials: float) -> floa
     if variance_trials <= 0:
         return 0.0
 
-    # E[max{Z}] for K i.i.d. standard normals (Equation 26)
+    # E[max{Z}] for K i.i.d. standard normals (Equation 28)
     quantile_1 = norm.ppf(1 - 1 / n_trials)
     quantile_2 = norm.ppf(1 - 1 / (n_trials * np.e))
     e_max_z = (1 - EULER_GAMMA) * quantile_1 + EULER_GAMMA * quantile_2
@@ -277,10 +286,96 @@ def compute_expected_max_sharpe(n_trials: float, variance_trials: float) -> floa
     return float(np.sqrt(variance_trials) * e_max_z)
 
 
+# np.var of equal floats can return a value of order 1e-34 instead of zero,
+# because their mean is not always representable. A standard deviation across
+# trials below this fraction of the estimator's standard deviation is treated
+# as no dispersion.
+_NEGLIGIBLE_TRIAL_DISPERSION = 1e-8
+
+
+def compute_deflated_sharpe_std(
+    threshold_sharpe: float,
+    n_samples: int,
+    skewness: float,
+    kurtosis: float,
+    autocorrelation: float,
+    n_trials: float,
+    variance_trials: float,
+) -> float:
+    """Standard deviation in the denominator of the deflated Sharpe ratio.
+
+    With more than one trial and a positive variance of Sharpe ratios across
+    trials, this is the standard deviation of the maximum Sharpe ratio:
+
+    .. math::
+
+        \\sigma[SR_{0,K}] = \\sqrt{V[\\{\\widehat{SR}_k\\}]}
+        \\sqrt{V[\\max_k\\{X_k\\}]}
+
+    where the X_k are K independent standard normal variables. This value does
+    not depend on the sample length or on the skewness, kurtosis and
+    autocorrelation of the selected strategy's returns. Those properties enter
+    only through the variance of Sharpe ratios across trials.
+
+    With one trial, or when the Sharpe ratios of the trials do not differ, no
+    maximum over distinct trials exists. The result is then the standard
+    deviation of the Sharpe ratio estimator at ``threshold_sharpe``, as in the
+    probabilistic Sharpe ratio. Trials count as not differing when the standard
+    deviation of their Sharpe ratios is below 1e-8 of the estimator's standard
+    deviation: the variance of equal floating-point values is not always
+    exactly zero.
+
+    Parameters
+    ----------
+    threshold_sharpe : float
+        Sharpe ratio under the null hypothesis (benchmark plus expected maximum)
+    n_samples : int
+        Number of observations (T)
+    skewness : float
+        Return skewness (γ₃)
+    kurtosis : float
+        Return kurtosis (γ₄), Pearson convention (normal = 3)
+    autocorrelation : float
+        First-order autocorrelation (ρ), must be in (-1, 1)
+    n_trials : float
+        Number of strategies tested (K or K_eff)
+    variance_trials : float
+        Cross-sectional variance of Sharpe ratios: Var[{SR_1, ..., SR_K}]
+
+    Returns
+    -------
+    float
+        Standard deviation for the deflated Sharpe ratio test statistic
+
+    References
+    ----------
+    López de Prado et al. (2025), Equation 30 (more than one trial) and
+    Equation 5 (one trial).
+    """
+    estimator_std = float(
+        np.sqrt(
+            compute_sharpe_variance(
+                sharpe=threshold_sharpe,
+                n_samples=n_samples,
+                skewness=skewness,
+                kurtosis=kurtosis,
+                autocorrelation=autocorrelation,
+            )
+        )
+    )
+    if n_trials > 1 and variance_trials > 0:
+        trials_std = float(np.sqrt(variance_trials))
+        if trials_std > _NEGLIGIBLE_TRIAL_DISPERSION * estimator_std:
+            return trials_std * get_variance_rescaling_factor(n_trials)
+
+    return estimator_std
+
+
 __all__ = [
     "EULER_GAMMA",
     "VARIANCE_RESCALING_FACTORS",
     "get_variance_rescaling_factor",
     "compute_sharpe_variance",
     "compute_expected_max_sharpe",
+    "compute_deflated_sharpe_std",
 ]

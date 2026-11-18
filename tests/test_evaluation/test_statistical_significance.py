@@ -160,16 +160,16 @@ class TestDeflatedSharpeRatio:
 
     def test_known_high_sharpe_case(self):
         """Test with high Sharpe that should have high probability."""
-        # High observed Sharpe with many samples - should be significant
+        # The expected maximum of 10 trials with unit variance is 1.57 and its
+        # standard deviation is 0.59, so 3.0 lies 2.4 standard deviations above it.
         result = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=2.0,
+            observed_sharpe=3.0,
             n_samples=252,
             n_trials=10,
             variance_trials=1.0,
         )
 
-        # High Sharpe with good sample size should have high probability
-        assert result.probability > 0.5
+        assert result.probability > 0.99
         assert result.is_significant
         assert np.isfinite(result.z_score)
 
@@ -254,37 +254,28 @@ class TestDeflatedSharpeRatio:
         assert result.n_trials == 1
 
     def test_non_normal_adjustments(self):
-        """Test DSR with non-normal return distribution."""
-        # Test with skewed returns
-        result_skewed = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=1.2,
-            n_samples=252,
-            n_trials=50,
-            variance_trials=1.0,
-            skewness=1.0,
-        )
-        result_normal = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=1.2,
-            n_samples=252,
-            n_trials=50,
-            variance_trials=1.0,
-            skewness=0.0,
-        )
+        """Skewness and kurtosis change PSR; with many trials they do not enter DSR."""
 
-        # Skewness should affect the result
-        assert result_skewed.probability != result_normal.probability
+        def probability(n_trials, variance_trials, **moments):
+            return deflated_sharpe_ratio_from_statistics(
+                observed_sharpe=1.2,
+                n_samples=252,
+                n_trials=n_trials,
+                variance_trials=variance_trials,
+                benchmark_sharpe=1.0,
+                **moments,
+            ).probability
 
-        # Test with high kurtosis
-        result_kurtotic = deflated_sharpe_ratio_from_statistics(
-            observed_sharpe=1.2,
-            n_samples=252,
-            n_trials=50,
-            variance_trials=1.0,
-            excess_kurtosis=3.0,  # Pearson kurtosis=6.0 -> excess kurtosis=3.0
-        )
+        # One trial: the estimator variance at the benchmark depends on both moments
+        psr_normal = probability(1, 0.0)
+        assert probability(1, 0.0, skewness=1.0) != psr_normal
+        # Pearson kurtosis=6.0 -> excess kurtosis=3.0
+        assert probability(1, 0.0, excess_kurtosis=3.0) != psr_normal
 
-        # High kurtosis should affect the result
-        assert result_kurtotic.probability != result_normal.probability
+        # 50 trials: the denominator is the dispersion of Sharpe ratios across trials
+        dsr_normal = probability(50, 1.0)
+        assert probability(50, 1.0, skewness=1.0) == dsr_normal
+        assert probability(50, 1.0, excess_kurtosis=3.0) == dsr_normal
 
 
 class TestHACAdjustedIC:

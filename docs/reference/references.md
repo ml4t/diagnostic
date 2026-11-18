@@ -58,15 +58,17 @@ The DSR extends the Probabilistic Sharpe Ratio (PSR) to account for multiple tes
 **Formula** (López de Prado et al., 2025):
 
 ```
-DSR = Φ((SR̂ - E[max{SR}]) / σ[SR̂])
+DSR = Φ((SR̂ - E[max{SR}]) / σ[max{SR}])
 ```
 
 Where:
 - `SR̂` = observed (best) Sharpe ratio
 - `E[max{SR}] = √Var[{SR_k}] × E[max{Z}]` = expected maximum under null
 - `E[max{Z}] ≈ (1-γ)Φ⁻¹(1-1/K) + γΦ⁻¹(1-1/(Ke))` (Euler-Mascheroni approximation)
-- `σ[SR̂] = √((1 - γ₃SR₀ + (γ₄-1)/4 × SR₀²) / T)` = standard error accounting for skewness/kurtosis
+- `σ[max{SR}] = √Var[{SR_k}] × √V[max{Z}]` = standard deviation of the maximum under null, with `√V[max{Z}]` tabulated in the paper for K = 1 to 100
 - `γ ≈ 0.5772` = Euler-Mascheroni constant
+
+For a single strategy (K = 1) the threshold is the benchmark `SR₀` and the denominator is the standard error of the Sharpe ratio estimator, `√((1 - γ₃SR₀ + (γ₄-1)/4 × SR₀²) / T)` for uncorrelated returns.
 
 #### Usage Example
 
@@ -98,7 +100,7 @@ print(f"p-value: {result.p_value:.3f}")
 **Primary References**:
 
 1. **López de Prado, M., Lipton, A., & Zoonekynd, V. (2025)**
-   "How to use the Sharpe Ratio: A multivariate case study."
+   "How to Use the Sharpe Ratio."
    *ADIA Lab Research Paper Series*, No. 19.
    - Reference implementation: https://github.com/zoonek/2025-sharpe-ratio
 
