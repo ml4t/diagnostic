@@ -169,7 +169,7 @@ class TestRASSimulationsNullCase:
         # Should also be near 0%
         assert pct_rad_positive <= 2.0, f"Rad positive rate {pct_rad_positive:.1f}% > 2%"
 
-    def test_null_ic_gaussian(self):
+    def test_null_ic_bounded_uniform(self):
         """Test null IC case (all strategies have IC=0)."""
         np.random.seed(42)
         N, T = 200, 1000  # Reduced from (500, 2500) for faster tests
@@ -178,7 +178,6 @@ class TestRASSimulationsNullCase:
 
         # Generate null ICs (bounded to [-kappa, +kappa])
         X = np.random.uniform(-kappa, kappa, size=(T, N))
-        X = X - X.mean(axis=0)  # Center to have mean ≈ 0
 
         # Compute observed IC and RAS adjustment
         observed_ic = X.mean(axis=0)
@@ -293,17 +292,17 @@ class TestRASSimulationsAlternative:
         assert pct_high >= pct_low * 0.5  # At least 50% as many
 
 
-class TestRASICPracticalKappa:
-    """Test RAS for IC with practical kappa values."""
+class TestRASICPopulationKappa:
+    """Test RAS for IC with externally bounded period values."""
 
-    def test_practical_kappa_tighter_bounds(self):
-        """Test that practical κ=0.02 gives much tighter bounds than κ=1.0."""
+    def test_known_smaller_population_support_tightens_bounds(self):
+        """A known bounded generator permits a smaller population bound."""
         np.random.seed(42)
         N, T = 200, 1000  # Reduced from (500, 2500) for faster tests
         delta = 0.01
 
-        # Generate realistic ICs (bounded to ≈0.02)
-        X = np.random.randn(T, N) * 0.02
+        # Generate period ICs with known support [-0.02, 0.02].
+        X = np.random.uniform(-0.02, 0.02, (T, N))
         observed_ic = X.mean(axis=0)
         R_hat = rademacher_complexity(X, n_simulations=100, random_state=42)
 
@@ -312,9 +311,9 @@ class TestRASICPracticalKappa:
             observed_ic, R_hat, n_samples=T, delta=delta, kappa=1.0
         )
 
-        # Practical bound (κ=0.02)
+        # Known population bound (κ=0.02)
         adjusted_practical = ras_ic_adjustment(
-            observed_ic, R_hat, n_samples=T, delta=delta, kappa=0.02
+            observed_ic, R_hat, n_samples=T, delta=delta, kappa=0.02, ic_samples=X
         )
 
         # Practical should be much less conservative
@@ -423,13 +422,13 @@ class TestRASComponentBreakdown:
         delta = 0.05
         kappa = 0.02
 
-        X = np.random.randn(T, N) * kappa
+        X = np.random.uniform(-kappa, kappa, (T, N))
         observed_ic = X.mean(axis=0)
         R_hat = rademacher_complexity(X, n_simulations=100, random_state=42)
 
         # Manual calculation
         data_snooping = 2 * R_hat
-        estimation_error = 2 * kappa * np.sqrt(np.log(2 / delta) / T)
+        estimation_error = 3 * kappa * np.sqrt(2 * np.log(2 / delta) / T)
 
         # Verify against function
         adjusted = ras_ic_adjustment(observed_ic, R_hat, T, delta, kappa)

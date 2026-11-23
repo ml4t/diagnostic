@@ -88,7 +88,12 @@ class RASSettings(BaseConfig):
 
     enabled: bool = Field(default=True, description="Apply RAS adjustment")
     delta: float = Field(default=0.05, ge=0.001, le=0.20, description="Significance level")
-    kappa: float = Field(default=0.02, ge=0.001, le=1.0, description="IC bound")
+    kappa: float = Field(
+        default=1.0,
+        ge=0.001,
+        le=1.0,
+        description="A priori absolute population bound on every period IC, not its mean",
+    )
     n_simulations: int = Field(
         default=10000, ge=1000, le=100000, description="Monte Carlo simulations"
     )
