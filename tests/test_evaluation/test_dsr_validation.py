@@ -820,6 +820,25 @@ class TestDSRValidation:
             assert result.expected_max_sharpe == result_normal.expected_max_sharpe, moments
             assert result.z_score == result_normal.z_score, moments
 
+    def test_raw_trial_returns_use_cross_sectional_dispersion(self):
+        """Selecting from actual returns must use Equation 30, not estimator noise."""
+        residuals = np.array([-3.0, -1.0, 0.0, 1.0, 2.0, 4.0])
+        residuals = (residuals - residuals.mean()) / residuals.std(ddof=1)
+        returns = np.column_stack(
+            [residuals + 0.05, residuals[::-1] + 0.15, np.roll(residuals, 2) + 0.25]
+        )
+
+        result = deflated_sharpe_ratio(
+            returns, skewness=0.0, excess_kurtosis=0.0, autocorrelation=0.0
+        )
+
+        assert result.sharpe_ratio == pytest.approx(0.25)
+        assert result.variance_trials == pytest.approx(0.01)
+        # Independent adaptive integration of 3 phi(x) Phi(x)^2 gives
+        # sd(max) = 0.747975538402600; Equation 28 gives E[max SR] = 0.08528...
+        # The old estimator-based denominator gives 0.7048655983337132.
+        assert result.probability == pytest.approx(0.9861746001050543, abs=1e-12)
+
     def test_identical_trials_reduce_to_single_strategy(self):
         """Trials with equal Sharpe ratios leave nothing to deflate.
 

@@ -80,6 +80,28 @@ $$
 The output is a probability in [0, 1]. Values above 0.95 indicate the strategy
 survives multiple testing correction at the 5% level.
 
+This is a Normal approximation using the location and scale of the selected
+maximum, not its exact distribution or a Bayesian probability of skill. The
+scaling formula assumes independent, identically distributed Normal trial
+Sharpe ratios. Estimated effective trial counts adapt that assumption to a
+correlated cohort. Severe non-Normality and small samples can distort the
+false-positive rate; the paper's Exhibit 5 reports those limitations.
+
+### Numerical Compatibility
+
+The Equation 30 correction changes multi-trial probabilities and z-scores from
+the earlier implementation, which combined the selected strategy's estimator
+variance with the maximum's scaling factor. Single-trial probabilities retain
+their previous definition. Public signatures and result fields are unchanged.
+The scaling factor is now integrated rather than interpolated, and continues
+to decrease beyond 100 trials instead of being capped at the value for 100.
+
+The paper's formula and its worked example are authoritative for this method.
+The authors' linked code at revision
+[`6199ecb`](https://github.com/zoonek/2025-sharpe-ratio/blob/6199ecb1c84da7eee7bd81d9a017cf12b8ff0e0d/functions.py)
+uses a different estimator-based denominator; numerical parity with that code
+is not claimed. The two definitions must not be mixed when comparing results.
+
 ### Single Strategy (PSR)
 
 With one strategy there is no maximum over trials. The threshold is the
