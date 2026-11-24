@@ -18,6 +18,7 @@ López de Prado, M., Lipton, A., & Zoonekynd, V. (2025).
 
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from typing import Literal, overload
 
@@ -271,7 +272,11 @@ def compute_expected_max_sharpe(n_trials: float, variance_trials: float) -> floa
         E[\\max_k\\{\\widehat{SR}_k\\}] \\approx \\sqrt{V[\\{\\widehat{SR}_k\\}]}
         \\left((1-\\gamma) \\Phi^{-1}(1-1/K) + \\gamma \\Phi^{-1}(1-1/(Ke))\\right)
 
-    where γ is the Euler-Mascheroni constant ≈ 0.5772.
+    where γ is the Euler-Mascheroni constant ≈ 0.5772. This approximation
+    is unreliable for fractional effective counts between 1 and 2. In that
+    range a RuntimeWarning is emitted. Its value is constrained to be
+    nonnegative: a maximum of centered Normal variables cannot have a
+    negative mean. This is not an exact fractional-maximum expectation.
 
     Parameters
     ----------
@@ -296,13 +301,23 @@ def compute_expected_max_sharpe(n_trials: float, variance_trials: float) -> floa
     if variance_trials <= 0:
         return 0.0
 
+    if n_trials < 2:
+        warnings.warn(
+            "The expected-maximum Normal approximation is unreliable for "
+            "1 < n_trials < 2 and is constrained to be nonnegative. "
+            "For correlation-adjusted DSR, report this limitation or supply "
+            "an explicitly justified min_k_eff >= 2.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
     # E[max{Z}] for K i.i.d. standard normals (Equation 28)
     quantile_1 = norm.ppf(1 - 1 / n_trials)
     quantile_2 = norm.ppf(1 - 1 / (n_trials * np.e))
     e_max_z = (1 - EULER_GAMMA) * quantile_1 + EULER_GAMMA * quantile_2
 
     # Scale by standard deviation of Sharpe ratios across trials
-    return float(np.sqrt(variance_trials) * e_max_z)
+    return float(np.sqrt(variance_trials) * max(e_max_z, 0.0))
 
 
 # np.var of equal floats can return a value of order 1e-34 instead of zero,

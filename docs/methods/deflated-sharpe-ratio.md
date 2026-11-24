@@ -48,6 +48,14 @@ $$
 
 where $\gamma \approx 0.5772$ is the Euler-Mascheroni constant.
 
+This is an approximation, not the exact Normal-maximum mean. For fractional
+`K_eff` between 1 and 2 it is unreliable and can become negative near one.
+The library emits a `RuntimeWarning` in that range and constrains the estimate
+to be nonnegative: the maximum of centered Normal variables cannot have a
+negative mean. This constraint does not make the approximation exact. An
+explicitly justified `min_k_eff=2.0` avoids that small-count range; the default
+remains 1.0.
+
 ### Step 2: Expected Maximum Sharpe Ratio
 
 Scale by the empirical standard deviation of Sharpe ratios across strategies:
@@ -83,8 +91,8 @@ at the nominal 5% level under the model's assumptions.
 This is a Normal approximation using the location and scale of the selected
 maximum, not its exact distribution or a Bayesian probability of skill. The
 scaling formula assumes independent, identically distributed Normal trial
-Sharpe ratios. Estimated effective trial counts adapt that assumption to a
-correlated cohort. Severe non-Normality and small samples can distort the
+Sharpe ratios. Estimated effective trial counts are a heuristic for a
+correlated cohort; they do not establish the same null distribution. Severe non-Normality and small samples can distort the
 false-positive rate; the paper's Exhibit 5 reports those limitations.
 
 ### Numerical Compatibility

@@ -19,6 +19,7 @@ tests/test_evaluation/fixtures/dsr_reference.py.
 """
 
 import math
+import warnings
 
 import numpy as np
 import pytest
@@ -1186,3 +1187,21 @@ class TestDSRIntegration:
             alpha=0.05,
         )
         assert mintrl > mintrl_normal
+
+
+def test_correlated_public_cohort_cannot_lower_the_selection_null_below_zero():
+    """Nearly duplicate real returns must not create a negative null maximum."""
+    rng = np.random.default_rng(831)
+    shared = rng.normal(-0.005, 0.01, 252)
+    cohort = np.column_stack([shared, shared + rng.normal(0.0, 0.0001, 252)])
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        result = deflated_sharpe_ratio(cohort, correlation_method="effective_rank")
+
+    assert 1 < result.n_trials_effective < 1.1
+    # The maximum-model CDF Phi(x)**K <= Phi(x) for every real K >= 1.
+    assert result.expected_max_sharpe >= 0
+    assert any(
+        issubclass(item.category, RuntimeWarning) and "approximation" in str(item.message)
+        for item in seen
+    )
