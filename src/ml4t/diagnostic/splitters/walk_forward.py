@@ -59,15 +59,22 @@ class WalkForwardCV(BaseSplitter):
         - If int: number of samples (e.g., 1000)
         - If float: proportion of dataset (e.g., 0.1)
         - If str: time period using pandas offset aliases (e.g., "4W", "30D", "3M")
-        - If None: uses 1 / (n_splits + 1)
+        - If None: uses 1 / (n_splits + 1); with ``train_size`` and
+          ``consecutive=False``, the data after the first training window
+          divided equally among the folds
         Time-based specifications require X to have a DatetimeIndex.
 
     train_size : int, float, str, or None, optional
-        Size of each training set:
+        Size of the training window, before purging:
         - If int: number of samples (e.g., 10000)
         - If float: proportion of dataset (e.g., 0.5)
         - If str: time period using pandas offset aliases (e.g., "78W", "6M", "2Y")
         - If None: uses all available data before test set
+        The first test fold starts after ``train_size + gap``. With
+        ``expanding=False`` every fold trains on ``train_size``; with
+        ``expanding=True`` it is the first fold's window, which then grows.
+        Raises ValueError when ``train_size + gap + n_splits * test_size``
+        exceeds the data.
         Time-based specifications require X to have a DatetimeIndex.
 
     gap : int, default=0
@@ -774,6 +781,58 @@ class WalkForwardCV(BaseSplitter):
             calendar=self.calendar,
         )
 
+    def _fold_layout(
+        self,
+        n_units: int,
+        test_size: int | None,
+        train_size: int | None,
+        *,
+        unit: str,
+    ) -> tuple[int, int, int]:
+        """Place the forward folds in rows or sessions.
+
+        ``train_size`` is the training window that precedes the first test fold,
+        so the first test fold starts at ``train_size + gap``. Without
+        ``train_size`` the first test fold starts after one test-sized block.
+        Consecutive folds step by ``test_size``; otherwise the folds are spread
+        evenly over the data after the first training window.
+
+        Returns
+        -------
+        tuple[int, int, int]
+            ``(test_size, first_test_start, step_size)`` in the units of ``n_units``.
+        """
+        if test_size is None:
+            if train_size is None or self.consecutive:
+                test_size = n_units // (self.n_splits + 1)
+            else:
+                # Divide the data after the first training window among the folds.
+                test_size = (n_units - train_size - self.gap) // self.n_splits
+
+        first_test_start = test_size if train_size is None else train_size + self.gap
+
+        if self.consecutive or train_size is not None:
+            total_required = first_test_start + self.n_splits * test_size
+            if test_size < 1 or total_required > n_units:
+                train_part = (
+                    f"{first_test_start:,}"
+                    if train_size is None
+                    else f"train_size {train_size:,} + gap {self.gap:,}"
+                )
+                raise ValueError(
+                    f"Insufficient data for n_splits={self.n_splits} "
+                    f"(consecutive={self.consecutive}): need {total_required:,} {unit} "
+                    f"({train_part} + {self.n_splits} x test_size {test_size:,}), "
+                    f"but only have {n_units:,}"
+                )
+
+        if self.consecutive:
+            step_size = test_size
+        else:
+            step_size = (n_units - first_test_start) // self.n_splits
+
+        return test_size, first_test_start, step_size
+
     def _split_by_samples(
         self,
         X: pl.DataFrame | pd.DataFrame | NDArray[Any],
@@ -785,50 +844,19 @@ class WalkForwardCV(BaseSplitter):
         # Extract timestamps if available (supports both Polars and pandas)
         timestamps = self._extract_timestamps(X, self.timestamp_col)
 
-        # Calculate test size
-        if self.test_size is None:
-            test_size = n_samples // (self.n_splits + 1)
-        else:
-            test_size = self._parse_time_size(self.test_size, timestamps, n_samples)
-
-        # Calculate train size if specified
-        if self.train_size is not None:
-            train_size = self._parse_time_size(self.train_size, timestamps, n_samples)
-        else:
-            train_size = None
-
-        # Calculate split points
-        if self.consecutive:
-            # Consecutive walk-forward: back-to-back test periods with no gaps
-            # Useful for realistic trading simulation where test periods are sequential
-            step_size = test_size
-
-            # Determine where first test period starts
-            if train_size is not None and not self.expanding:
-                # Rolling window: first test comes after initial training window
-                first_test_start = train_size
-            elif self.expanding:
-                # Expanding window: ensure we have enough data for minimum train_size
-                # or default to test_size if train_size not specified
-                first_test_start = train_size if train_size is not None else test_size
-            else:
-                # No train_size specified and not expanding: start after first test-sized chunk
-                first_test_start = test_size
-
-            # Validate we have enough data for all consecutive periods
-            total_required = first_test_start + self.n_splits * test_size
-            if total_required > n_samples:
-                raise ValueError(
-                    f"Insufficient data for consecutive={self.consecutive}: "
-                    f"need {total_required:,} samples (first_test at {first_test_start:,} "
-                    f"+ {self.n_splits} × {test_size:,}), but only have {n_samples:,}"
-                )
-        else:
-            # Spread folds across available data to sample different time periods
-            # Useful for testing robustness across different market regimes
-            available_for_splits = n_samples - test_size
-            step_size = available_for_splits // self.n_splits
-            first_test_start = test_size
+        test_size = (
+            None
+            if self.test_size is None
+            else self._parse_time_size(self.test_size, timestamps, n_samples)
+        )
+        train_size = (
+            None
+            if self.train_size is None
+            else self._parse_time_size(self.train_size, timestamps, n_samples)
+        )
+        test_size, first_test_start, step_size = self._fold_layout(
+            n_samples, test_size, train_size, unit="samples"
+        )
 
         for i in range(self.n_splits):
             # Calculate test indices
@@ -888,8 +916,9 @@ class WalkForwardCV(BaseSplitter):
         timestamps = self._extract_timestamps(X, self.timestamp_col)
 
         # Calculate test size in sessions
+        test_size_sessions: int | None
         if self.test_size is None:
-            test_size_sessions = n_sessions // (self.n_splits + 1)
+            test_size_sessions = None
         elif isinstance(self.test_size, int):
             # Integer test_size: interpret as number of sessions
             test_size_sessions = self.test_size
@@ -917,30 +946,9 @@ class WalkForwardCV(BaseSplitter):
         else:
             train_size_sessions = None
 
-        # Calculate split points in session space
-        if self.consecutive:
-            step_size_sessions = test_size_sessions
-
-            if train_size_sessions is not None and not self.expanding:
-                first_test_start_session = train_size_sessions
-            elif self.expanding:
-                first_test_start_session = (
-                    train_size_sessions if train_size_sessions is not None else test_size_sessions
-                )
-            else:
-                first_test_start_session = test_size_sessions
-
-            total_required_sessions = first_test_start_session + self.n_splits * test_size_sessions
-            if total_required_sessions > n_sessions:
-                raise ValueError(
-                    f"Insufficient sessions for consecutive={self.consecutive}: "
-                    f"need {total_required_sessions:,} sessions (first_test at {first_test_start_session:,} "
-                    f"+ {self.n_splits} × {test_size_sessions:,}), but only have {n_sessions:,}"
-                )
-        else:
-            available_for_splits_sessions = n_sessions - test_size_sessions
-            step_size_sessions = available_for_splits_sessions // self.n_splits
-            first_test_start_session = test_size_sessions
+        test_size_sessions, first_test_start_session, step_size_sessions = self._fold_layout(
+            n_sessions, test_size_sessions, train_size_sessions, unit="sessions"
+        )
 
         # Generate splits by mapping session ranges to row indices
         for i in range(self.n_splits):
@@ -1138,41 +1146,19 @@ class WalkForwardCV(BaseSplitter):
         ]
 
         # Convert size specs to session counts
-        if self.test_size is None:
-            test_size_sessions = n_sessions // (self.n_splits + 1)
-        else:
-            test_size_sessions = self._size_to_sessions(self.test_size, n_sessions)
+        test_size_sessions = (
+            None if self.test_size is None else self._size_to_sessions(self.test_size, n_sessions)
+        )
+        train_size_sessions = (
+            None if self.train_size is None else self._size_to_sessions(self.train_size, n_sessions)
+        )
 
-        if self.train_size is not None:
-            train_size_sessions = self._size_to_sessions(self.train_size, n_sessions)
-        else:
-            train_size_sessions = None
-
-        # Calculate split points in session space
-        if self.consecutive:
-            step_size_sessions = test_size_sessions
-            if train_size_sessions is not None and not self.expanding:
-                first_test_start_session = train_size_sessions
-            elif self.expanding:
-                first_test_start_session = (
-                    train_size_sessions if train_size_sessions is not None else test_size_sessions
-                )
-            else:
-                first_test_start_session = test_size_sessions
-
-            total_required = first_test_start_session + self.n_splits * test_size_sessions
-            if total_required > n_sessions:
-                raise ValueError(
-                    f"Insufficient trading sessions for consecutive splits: "
-                    f"need {total_required} sessions "
-                    f"({first_test_start_session} + {self.n_splits} x {test_size_sessions}), "
-                    f"but only have {n_sessions} sessions in calendar "
-                    f"'{self.calendar.config.exchange}'."
-                )
-        else:
-            available = n_sessions - test_size_sessions
-            step_size_sessions = available // self.n_splits
-            first_test_start_session = test_size_sessions
+        test_size_sessions, first_test_start_session, step_size_sessions = self._fold_layout(
+            n_sessions,
+            test_size_sessions,
+            train_size_sessions,
+            unit=f"trading sessions in calendar '{self.calendar.config.exchange}'",
+        )
 
         # Generate splits
         for i in range(self.n_splits):
@@ -1444,17 +1430,23 @@ class WalkForwardCV(BaseSplitter):
         # Available data for validation (before held-out test)
         available_samples = test_start_idx
 
-        # Calculate validation fold size
-        if self.test_size is None:
-            val_size = available_samples // (self.n_splits + 1)
-        else:
-            val_size = self._parse_time_size(self.test_size, timestamps, available_samples)
-
         # Calculate train size if specified
         if self.train_size is not None:
             train_size = self._parse_time_size(self.train_size, timestamps, available_samples)
         else:
             train_size = None
+
+        # Calculate validation fold size
+        if self.test_size is not None:
+            val_size = self._parse_time_size(self.test_size, timestamps, available_samples)
+        elif train_size is None or self.consecutive:
+            val_size = available_samples // (self.n_splits + 1)
+        else:
+            # Divide the data after the first training window among the folds.
+            val_size = (available_samples - train_size - self.gap) // self.n_splits
+
+        # The first validation fold follows the initial training window.
+        first_val_start = val_size if train_size is None else train_size + self.gap
 
         # Calculate step size
         if self.config.step_size is not None:
@@ -1462,20 +1454,8 @@ class WalkForwardCV(BaseSplitter):
         elif self.consecutive:
             step_size = val_size  # Consecutive: back-to-back folds
         else:
-            # Spread folds across available data
-            available_for_splits = available_samples - val_size
-            step_size = available_for_splits // self.n_splits
-
-        # Determine where first validation fold starts
-        if self.consecutive:
-            if train_size is not None and not self.expanding:
-                first_val_start = train_size
-            elif self.expanding:
-                first_val_start = train_size if train_size is not None else val_size
-            else:
-                first_val_start = val_size
-        else:
-            first_val_start = val_size
+            # Spread folds across the data after the first training window
+            step_size = (available_samples - first_val_start) // self.n_splits
 
         # Generate forward-stepping splits
         for i in range(self.n_splits):
