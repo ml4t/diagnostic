@@ -696,7 +696,7 @@ class TestTearsheetGeneration:
         single_trial = deflated_sharpe_ratio(returns)
         with pytest.warns(RuntimeWarning, match="cross-trial dispersion"):
             html = generate_backtest_tearsheet(
-                returns=returns, n_trials=25, template="quant_trader", include_plotlyjs=False
+                returns=returns, n_trials=25, template="full", include_plotlyjs=False
             )
         assert f"{single_trial.probability:.1%}" in html
 
@@ -710,7 +710,7 @@ class TestTearsheetGeneration:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             html = generate_backtest_tearsheet(
-                returns=returns, n_trials=n_trials, template="quant_trader", include_plotlyjs=False
+                returns=returns, n_trials=n_trials, template="full", include_plotlyjs=False
             )
         assert not any("cross-trial dispersion" in str(w.message) for w in caught)
         assert f"{single_trial.probability:.1%}" in html
@@ -720,7 +720,7 @@ class TestTearsheetGeneration:
         from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
         trials = np.random.default_rng(17).normal(0.001, 0.01, (3, 60))
-        result = deflated_sharpe_ratio(trials)
+        result = deflated_sharpe_ratio(list(trials))
         selected = int(np.argmax(trials.mean(axis=1) / trials.std(axis=1, ddof=1)))
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -728,7 +728,7 @@ class TestTearsheetGeneration:
                 returns=trials[selected],
                 n_trials=3,
                 metrics={"dsr_probability": result.probability},
-                template="quant_trader",
+                template="full",
                 include_plotlyjs=False,
             )
         assert not any("cross-trial dispersion" in str(w.message) for w in caught)
