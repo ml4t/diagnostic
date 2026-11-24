@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +19,7 @@ from ml4t.diagnostic.integration.backtest_analytics import (
     compute_edge_metrics,
     compute_occupancy_metrics,
     compute_performance_metrics,
+    prepare_activity_fills,
 )
 
 if TYPE_CHECKING:
@@ -248,9 +249,27 @@ class BacktestProfile:
     @property
     def daily_returns(self) -> pl.Series:
         """Return producer observations with None, otherwise calendar-aggregated returns."""
-        if self.resolved_calendar is None:
-            return self.result.to_returns_series().alias("daily_return")
-        return self.result.to_daily_returns(calendar=self.resolved_calendar)
+        return _period_returns(self.result, self.resolved_calendar)
+
+    @property
+    def cost_returns(self) -> pl.Series | None:
+        """Return realized transaction cost per ``daily_returns`` period, as a return.
+
+        Commission and slippage of every fill are charged to the first equity
+        observation at or after the fill, as a fraction of the equity before that
+        observation. The resulting gross observation returns are aggregated to the
+        periods of ``daily_returns`` by the same calendar, so ``daily_returns +
+        cost_returns`` is the return before transaction costs. Gross returns do not
+        compound the costs saved. Returns ``None`` when the equity surface cannot
+        support the reconstruction.
+        """
+        return _realized_cost_returns(
+            self.result,
+            self.daily_returns,
+            self.fills_df,
+            self.trades_df,
+            self.resolved_calendar,
+        )
 
     @property
     def performance(self) -> dict[str, Any]:
@@ -395,6 +414,65 @@ class BacktestProfile:
             summary.update(self.drawdown["metrics"])
             self._summary_cache = summary
         return self._summary_cache
+
+
+def _period_returns(result: BacktestResult, calendar: str | None) -> pl.Series:
+    if calendar is None:
+        return result.to_returns_series().alias("daily_return")
+    return result.to_daily_returns(calendar=calendar)
+
+
+def _realized_cost_returns(
+    result: BacktestResult,
+    net_returns: pl.Series,
+    fills_df: pl.DataFrame,
+    trades_df: pl.DataFrame,
+    calendar: str | None,
+) -> pl.Series | None:
+    equity = result.to_equity_dataframe()
+    if equity.is_empty() or net_returns.is_empty() or not is_dataclass(result):
+        return None
+    if fills_df.is_empty():
+        return pl.Series("cost_return", [0.0] * net_returns.len(), dtype=pl.Float64)
+    fills = prepare_activity_fills(fills_df, trades=trades_df)
+    bars = equity.select("timestamp", "equity", "return").with_row_index("bar")
+    charged = (
+        fills.select(
+            pl.col("timestamp").cast(bars.schema["timestamp"]),
+            pl.col("implementation_cost").alias("cost"),
+        )
+        .sort("timestamp")
+        .join_asof(bars.select("timestamp", "bar"), on="timestamp", strategy="forward")
+        .drop_nulls("bar")
+        .group_by("bar")
+        .agg(pl.col("cost").sum())
+    )
+    initial = (
+        float(result.initial_capital)
+        if result.initial_capital is not None
+        else float(equity["equity"][0])
+    )
+    bars = bars.join(charged, on="bar", how="left").with_columns(
+        pl.col("cost").fill_null(0.0),
+        pl.col("equity").shift(1).fill_null(initial).alias("prior"),
+    )
+    if not (bars["prior"].is_finite().all() and (bars["prior"] > 0).all()):
+        return None
+    gross_bar = bars["return"] + bars["cost"] / bars["prior"]
+    gross_equity = (initial * (gross_bar + 1.0).cum_prod()).to_list()
+    gross_result = replace(
+        result,
+        equity_curve=list(zip(bars["timestamp"].to_list(), gross_equity, strict=True)),
+        capital_changes=[],
+        _equity_df=None,
+    )
+    gross = _period_returns(gross_result, calendar)
+    if gross.len() != net_returns.len():
+        return None
+    costs = (gross - net_returns).alias("cost_return")
+    if not costs.is_finite().all():
+        return None
+    return costs
 
 
 def _build_availability(
