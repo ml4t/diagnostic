@@ -30,7 +30,7 @@ result = deflated_sharpe_ratio(
     min_k_eff=2.0,
 )
 
-print(f"Probability of skill: {result.probability:.3f}")
+print(f"Model confidence score: {result.probability:.3f}")
 print(f"Expected maximum Sharpe from noise: {result.expected_max_sharpe:.3f}")
 print(f"Significant: {result.is_significant}")
 ```

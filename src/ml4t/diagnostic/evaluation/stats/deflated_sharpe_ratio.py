@@ -66,15 +66,14 @@ class DSRResult:
     Attributes
     ----------
     probability : float
-        Probability that the true Sharpe ratio exceeds the benchmark,
-        after correcting for multiple testing (if applicable).
-        Range: [0, 1]. Higher is better.
+        Normal-CDF confidence score against the benchmark or selection-adjusted
+        null. This is not a Bayesian probability of skill. Range: [0, 1].
     is_significant : bool
         Whether the result is significant at the specified confidence level.
     z_score : float
         Test statistic (z-score) for the hypothesis test.
     p_value : float
-        P-value for the null hypothesis that true SR <= benchmark.
+        Upper-tail p-value against the benchmark or selection-adjusted null.
 
     sharpe_ratio : float
         Observed Sharpe ratio at native frequency.
@@ -209,11 +208,11 @@ class DSRResult:
             f"  Benchmark: {self.benchmark_sharpe:.4f}",
             selection_note,
             "",
-            f"  Probability of skill: {self.probability:.1%}",
+            f"  Model confidence score: {self.probability:.1%}",
             f"  Significant at {confidence_pct:.0f}%: {significance}",
             f"  P-value: {self.p_value:.4f}",
             "",
-            "  Statistics used:",
+            "  Selected strategy statistics:",
             f"    Skewness (gamma_3): {self.skewness:.3f}",
             f"    Excess kurtosis (gamma_4-3): {self.excess_kurtosis:.3f}",
             f"    Autocorrelation (rho): {self.autocorrelation:.3f}",
@@ -286,12 +285,12 @@ def deflated_sharpe_ratio(
 ) -> DSRResult:
     """Compute Deflated Sharpe Ratio (DSR) or Probabilistic Sharpe Ratio (PSR).
 
-    This function computes the probability that the true Sharpe ratio exceeds
-    a benchmark threshold, correcting for:
-
-    - **Non-normality**: Skewness and excess kurtosis of returns
-    - **Serial correlation**: First-order autocorrelation of returns
-    - **Multiple testing**: Selection bias when choosing the best of K strategies
+    This function returns a Normal-CDF confidence score against a benchmark
+    or selection-adjusted null. For one strategy, its standard error uses
+    return skewness, excess kurtosis and first-order autocorrelation. For
+    multiple distinct trials, its scale uses the dispersion of their Sharpe
+    ratios and the effective number of trials. It is not a Bayesian
+    probability that the strategy has skill.
 
     **Single strategy (PSR)**: Pass a single returns array.
     **Multiple strategies (DSR)**: Pass a list of returns arrays.
@@ -357,7 +356,7 @@ def deflated_sharpe_ratio(
     Single strategy (PSR):
 
     >>> result = deflated_sharpe_ratio(daily_returns, frequency="daily")
-    >>> print(f"Probability of skill: {result.probability:.1%}")
+    >>> print(f"Model confidence score: {result.probability:.1%}")
 
     Multiple strategies (DSR):
 

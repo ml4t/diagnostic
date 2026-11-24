@@ -2120,7 +2120,8 @@ class TestDeflatedSharpeRatioRawReturns:
         assert isinstance(interpretation, str)
         assert "Probabilistic Sharpe Ratio" in interpretation
         assert "Sharpe ratio:" in interpretation
-        assert "Probability of skill:" in interpretation
+        assert "Model confidence score:" in interpretation
+        assert "Probability of skill" not in interpretation
 
     def test_interpret_method_dsr(self):
         """Test interpret() method output for DSR case."""
