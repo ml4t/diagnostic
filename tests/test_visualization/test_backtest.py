@@ -688,6 +688,52 @@ class TestStatisticalValidity:
 class TestTearsheetGeneration:
     """Tests for tearsheet.py functions."""
 
+    def test_return_only_report_does_not_invent_trials_from_a_search_count(self):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        returns = np.random.default_rng(41).normal(0.001, 0.01, 60)
+        single_trial = deflated_sharpe_ratio(returns)
+        with pytest.warns(RuntimeWarning, match="cross-trial dispersion"):
+            html = generate_backtest_tearsheet(
+                returns=returns, n_trials=25, template="quant_trader", include_plotlyjs=False
+            )
+        assert f"{single_trial.probability:.1%}" in html
+
+    @pytest.mark.parametrize("n_trials", [None, 1])
+    def test_single_trial_report_keeps_its_psr_without_a_missing_cohort_warning(self, n_trials):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        returns = np.random.default_rng(41).normal(0.001, 0.01, 60)
+        single_trial = deflated_sharpe_ratio(returns)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            html = generate_backtest_tearsheet(
+                returns=returns, n_trials=n_trials, template="quant_trader", include_plotlyjs=False
+            )
+        assert not any("cross-trial dispersion" in str(w.message) for w in caught)
+        assert f"{single_trial.probability:.1%}" in html
+
+    def test_report_keeps_the_actual_cohort_dsr_without_a_missing_cohort_warning(self):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        trials = np.random.default_rng(17).normal(0.001, 0.01, (3, 60))
+        result = deflated_sharpe_ratio(trials)
+        selected = int(np.argmax(trials.mean(axis=1) / trials.std(axis=1, ddof=1)))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            html = generate_backtest_tearsheet(
+                returns=trials[selected],
+                n_trials=3,
+                metrics={"dsr_probability": result.probability},
+                template="quant_trader",
+                include_plotlyjs=False,
+            )
+        assert not any("cross-trial dispersion" in str(w.message) for w in caught)
+        assert f"{result.probability:.1%}" in html
+
     def test_generate_backtest_tearsheet_full(self, sample_metrics, sample_trades, sample_returns):
         """Test full tearsheet generation."""
         from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
