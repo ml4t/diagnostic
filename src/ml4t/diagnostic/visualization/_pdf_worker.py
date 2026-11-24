@@ -14,8 +14,28 @@ from typing import Any
 
 import kaleido
 from choreographer import Tab
+from choreographer.browsers.chromium import Chromium
 from choreographer.channels import ChannelClosedError, JSONError, Pipe, _wire
 from kaleido._kaleido_tab import _KaleidoTab
+
+_NATIVE_BROWSER = (
+    "import os,sys;os.dup2(0,3);os.dup2(1,4);"
+    "os.set_inheritable(3,True);os.set_inheritable(4,True);"
+    "os.execv(sys.argv[1],sys.argv[1:])"
+)
+
+
+class _RendererChromium(Chromium):
+    def get_cli(self) -> list[str]:
+        cli = list(super().get_cli())
+        if (
+            sys.platform != "win32"
+            and len(cli) > 2
+            and Path(cli[1]).name == "_unix_pipe_chromium_wrapper.py"
+        ):
+            # Exec after assigning CDP descriptors: the vendor wrapper loses Chrome's exit code.
+            cli = [cli[0], "-c", _NATIVE_BROWSER, *cli[2:]]
+        return cli
 
 
 class _RendererPipe(Pipe):
@@ -72,7 +92,7 @@ class _RendererPipe(Pipe):
 
 class _PageEventsKaleido(kaleido.Kaleido):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, channel_cls=_RendererPipe, **kwargs)
+        super().__init__(*args, channel_cls=_RendererPipe, browser_cls=_RendererChromium, **kwargs)
 
     async def _conform_tabs(self, tabs: Iterable[Tab] | None = None) -> None:
         if tabs is None:
@@ -269,7 +289,12 @@ async def _render(request_path: Path, status_path: Path) -> None:
     if render_error is not None:
         if close_error is not None:
             details["close_error"] = f"{type(close_error).__name__}: {close_error}"
-        status("render_failed", **details)
+        status(
+            "render_failed",
+            browser_pid=getattr(browser, "pid", None),
+            reported_exit_code=getattr(browser, "returncode", None),
+            **details,
+        )
         raise render_error
     if close_error is not None:
         # The parent still owns the OS process tree and must verify its termination.

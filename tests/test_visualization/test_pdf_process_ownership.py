@@ -2366,8 +2366,81 @@ def test_browser_startup_failure_retains_the_actual_process_stderr(tmp_path, mon
     assert "PDF browser:" in str(failed.value)
     assert "unknown option" in str(failed.value).lower()
     assert "--disable-gpu" in str(failed.value)
+    assert "reported_exit_code=2" in str(failed.value)
     assert output.read_bytes() == b"previous verified report"
     assert not getattr(failed.value, "__notes__", [])
+
+
+def test_browser_startup_kill_retains_native_exit_status_and_existing_report(tmp_path, monkeypatch):
+    """A real Chrome killed before its first target query must retain its exit reason."""
+    pytest.importorskip("kaleido")
+    psutil = pytest.importorskip("psutil")
+    import signal
+
+    import plotly.graph_objects as go
+    from pypdf import PdfReader
+
+    from ml4t.diagnostic.visualization import _pdf_process, export_figures_to_pdf
+
+    figure = go.Figure(go.Bar(x=[1, 2], y=[1, 3]))
+    output = tmp_path / "previous.pdf"
+    export_figures_to_pdf([figure], output, scale=1)
+    original = output.read_bytes()
+    assert len(PdfReader(output).pages) == 1
+    observation = tmp_path / "killed-browser.json"
+    patch = r"""
+import asyncio,json,psutil,time
+from pathlib import Path
+import kaleido
+original_populate=kaleido.Kaleido.populate_targets
+async def kill_before_first_targets(self):
+    deadline=time.monotonic()+5
+    while time.monotonic()<deadline:
+        try:
+            wrapper=psutil.Process(self.subprocess.pid)
+            for process in [wrapper,*wrapper.children(recursive=True)]:
+                try:
+                    command=process.cmdline()
+                    if (
+                        '--remote-debugging-pipe' in command
+                        and not any(arg.startswith('--type=') for arg in command)
+                        and any(name in process.name().lower() for name in ('chrome','chromium','msedge','brave'))
+                    ):
+                        profile=next(arg.split('=',1)[1] for arg in command if arg.startswith('--user-data-dir='))
+                        Path(OBSERVATION).write_text(json.dumps({
+                            'pid':process.pid,'created':process.create_time(),
+                            'executable':process.exe(),'profile':profile,
+                        }))
+                        process.kill()
+                        return await original_populate(self)
+                except psutil.NoSuchProcess:
+                    continue
+        except psutil.NoSuchProcess:
+            pass
+        await asyncio.sleep(.01)
+    raise AssertionError('The real browser never reached its startup kill point')
+kaleido.Kaleido.populate_targets=kill_before_first_targets
+""".replace("OBSERVATION", repr(str(observation)))
+    neighbor = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        with monkeypatch.context() as scoped:
+            scoped.setattr(_pdf_process, "_BOOTSTRAP", patch + "\n" + _pdf_process._BOOTSTRAP)
+            with pytest.raises(RuntimeError) as failed:
+                export_figures_to_pdf([figure], output, scale=1)
+        killed = json.loads(observation.read_text())
+        expected = signal.SIGTERM if sys.platform == "win32" else -signal.SIGKILL
+        assert f"reported_exit_code={expected}" in str(failed.value)
+        assert output.read_bytes() == original
+        assert not Path(killed["profile"]).exists()
+        assert not psutil.pid_exists(killed["pid"]) or (
+            psutil.Process(killed["pid"]).create_time() != killed["created"]
+        )
+        assert neighbor.poll() is None
+        assert len(PdfReader(export_figures_to_pdf([figure], tmp_path / "after.pdf")).pages) == 1
+    finally:
+        if neighbor.poll() is None:
+            neighbor.terminate()
+        neighbor.wait(timeout=5)
 
 
 def test_readiness_timeout_identifies_the_loaded_document_and_missing_plotly(tmp_path, monkeypatch):

@@ -548,6 +548,11 @@ def render_pdf_pages(figures: list[Any], paths: list[Path], **options: Any) -> N
                 time.sleep(0.05)
             if status.get("completed") != len(paths) or status.get("phase") == "render_failed":
                 failure = failure or f"PDF rendering failed: {status.get('error', status)}"
+                if "reported_exit_code" in status:
+                    failure += (
+                        f"; browser_pid={status.get('browser_pid')}, "
+                        f"reported_exit_code={status['reported_exit_code']}"
+                    )
             if failure:
                 raise RuntimeError(failure)
         except BaseException as error:
