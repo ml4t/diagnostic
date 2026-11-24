@@ -2320,6 +2320,7 @@ def test_browser_startup_failure_retains_the_actual_process_stderr(tmp_path, mon
     assert "PDF browser:" in str(failed.value)
     assert "unknown option" in str(failed.value).lower()
     assert "--disable-gpu" in str(failed.value)
+    assert "reported_exit_code=2" in str(failed.value)
     assert output.read_bytes() == b"previous verified report"
     assert not getattr(failed.value, "__notes__", [])
 
