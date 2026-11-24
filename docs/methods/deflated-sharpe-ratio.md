@@ -11,15 +11,15 @@ inevitable result of picking the maximum from 50 random draws?
 
 Even if every strategy has **zero** expected return, the best one will show a
 positive Sharpe ratio simply due to chance. The expected "spurious" Sharpe ratio
-grows logarithmically with the number of strategies tested:
+grows approximately with the square root of the logarithm of the trial count:
 
 $$
 E[\max\{SR\}] \approx \sqrt{\text{Var}[\{SR_k\}]} \cdot \sqrt{2 \log K}
 $$
 
-For K=50 strategies with typical variance, this spurious maximum is around
-0.4-0.8 -- enough to look like a tradeable signal. This is **selection bias**,
-and it is the most common source of backtest overfitting.
+The size also depends on the dispersion of the trial Sharpe ratios. Selecting
+the maximum creates **selection bias**, which must be accounted for when
+interpreting the selected result.
 
 When the trial cohort is highly correlated, raw K can be too conservative.
 `ml4t-diagnostic` therefore also supports correlation-adjusted
@@ -92,8 +92,9 @@ This is a Normal approximation using the location and scale of the selected
 maximum, not its exact distribution or a Bayesian probability of skill. The
 scaling formula assumes independent, identically distributed Normal trial
 Sharpe ratios. Estimated effective trial counts are a heuristic for a
-correlated cohort; they do not establish the same null distribution. Severe non-Normality and small samples can distort the
-false-positive rate; the paper's Exhibit 5 reports those limitations.
+correlated cohort; they do not establish the same null distribution. Severe
+non-Normality and small samples can distort the false-positive rate; the paper's
+Exhibit 5 reports those limitations.
 
 ### Numerical Compatibility
 
@@ -141,6 +142,11 @@ the best of K = 10 trials whose Sharpe ratios have variance 0.1, the expected
 maximum is 0.498, the standard deviation of the maximum is
 $\sqrt{0.1} \cdot 0.587 = 0.186$, and the DSR is 0.410.
 `deflated_sharpe_ratio_from_statistics()` returns these values.
+
+Keep the observed, benchmark and trial Sharpe ratios at the same native return
+cadence. `variance_trials` is their cross-sectional variance in squared Sharpe
+units. Do not mix an annualized selected Sharpe with a native-frequency trial
+variance.
 
 ## Minimal Working Example
 
@@ -207,7 +213,7 @@ Sharpe moments and trial variance upstream.
 | `correlation_method` | Correlation-aware `K_eff` estimator | Use `"effective_rank"` first; compare against `"marchenko_pastur"` or `"clustering"` when needed |
 | `min_k_eff` | Conservative floor for correlation-adjusted `K_eff` | Leave at `1.0` by default; raise only when you want an explicit residual multiplicity penalty |
 | `variance_trials` | Var[{SR_1, ..., SR_K}] across all strategies | Must be computed, not assumed, when using the statistics-based helper |
-| `n_samples` | Number of return observations | T >= 50 minimum, >= 252 recommended |
+| `n_samples` | Number of return observations | Sample size affects moment estimates; no universal adequacy threshold applies |
 
 ### Correlation-Adjusted Trial Counts
 
@@ -233,9 +239,10 @@ post-floor value actually used in the DSR adjustment.
 | 0.50 - 0.95 | Does not reject the adjusted null at 5% | Gather more data or reduce strategy space |
 | < 0.50 | Observed Sharpe is below the adjusted null location | Investigate selection bias before deployment |
 
-**Critical**: DSR is a necessary but not sufficient condition. A high DSR means the
-strategy *might* be real. You still need out-of-sample testing, walk-forward validation,
-and realistic transaction cost modeling.
+A high DSR does not establish an economic edge. Check out-of-sample performance,
+walk-forward validation and realistic transaction costs. A low DSR means the
+model does not reject its adjusted null at the chosen level; it does not prove
+the strategy has no edge.
 
 ## Common Pitfalls
 
@@ -273,8 +280,10 @@ and realistic transaction cost modeling.
 
 6. **Using DSR without enough data**
 
-    With T < 50 observations, the standard error of the Sharpe ratio estimator
-    is so large that DSR becomes unreliable regardless of the observed value.
+    Estimated moments and cross-trial dispersion can be unstable in short
+    samples. The paper's 24-observation example illustrates its calculation; it
+    does not establish calibration or sample adequacy for another strategy.
+    Equation 30 has no universal 50-observation validity cutoff.
 
 ## See It In The Book
 
