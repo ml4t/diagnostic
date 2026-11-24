@@ -699,6 +699,7 @@ class TestTearsheetGeneration:
                 returns=returns, n_trials=25, template="full", include_plotlyjs=False
             )
         assert f"{single_trial.probability:.1%}" in html
+        assert "Requires n_trials parameter" not in html
 
     @pytest.mark.parametrize("n_trials", [None, 1])
     def test_single_trial_report_keeps_its_psr_without_a_missing_cohort_warning(self, n_trials):

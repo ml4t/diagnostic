@@ -2679,8 +2679,10 @@ _METHODOLOGY_SECTIONS: list[tuple[str, str, str, tuple[str, ...]]] = [
     (
         "Validation",
         "Deflated Sharpe Ratio",
-        "Bailey &amp; L\u00f3pez de Prado (2014). Adjusts observed Sharpe for multiple "
-        "testing. Requires n_trials parameter (number of strategy variations tested).",
+        "L\u00f3pez de Prado, Lipton &amp; Zoonekynd (2026). Multi-trial DSR uses "
+        "cross-trial Sharpe dispersion, not a trial count alone. Supply a score "
+        "computed from the actual trial returns. Return-only reports use "
+        "single-strategy PSR when no cohort score is supplied.",
         (),
     ),
     (
