@@ -158,3 +158,33 @@ def test_ml_workspace_export_renders_supplied_shap_result(run, shap_result):
 
     for section in SHAP_SECTIONS:
         assert f'data-section="{section}"' in html
+
+
+def test_worst_trades_figure_names_each_feature_and_trade(shap_result):
+    """The static image must say which feature each segment is and which trade each row is."""
+    from ml4t.diagnostic.visualization.backtest import plot_shap_worst_trades
+
+    fig = plot_shap_worst_trades(shap_result, n_trades=10, max_features=2)
+
+    assert fig.layout.showlegend is True
+    colors = [trace.marker.color for trace in fig.data]
+    assert all(isinstance(color, str) for color in colors)
+    assert len(set(colors)) == len(colors)
+    shown = shap_result.explanations[:10]
+    weight = np.abs([e.shap_vector for e in shown]).sum(axis=0)
+    assert [trace.name for trace in fig.data] == [FEATURES[i] for i in np.argsort(-weight)[:2]] + [
+        "Other (2 features)"
+    ]
+
+    labels = list(fig.data[0].y)
+    assert len(set(labels)) == len(shown)
+    for label, explanation in zip(reversed(labels), shown, strict=True):
+        assert "T00:00:00" not in label
+        assert label.startswith(f"{explanation.symbol} {explanation.entry_timestamp:%Y-%m-%d} ")
+        assert f"{explanation.timestamp:%Y-%m-%d}" in label
+        assert f"P&L {explanation.pnl:,.0f}" in label
+
+    # Displayed segments plus "Other" add up to each trade's full SHAP vector.
+    totals = np.sum([trace.x for trace in fig.data], axis=0)
+    expected = [float(np.sum(e.shap_vector)) for e in reversed(shown)]
+    np.testing.assert_allclose(totals, expected)
