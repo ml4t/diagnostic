@@ -46,8 +46,8 @@ def _collect_cases(root: Path, output: Path) -> list[str]:
     )
     (output / "collection.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     cases = [line.strip() for line in result.stdout.splitlines() if line.startswith(_MODULE + "::")]
-    if result.returncode or len(cases) != 33 or len(set(cases)) != 33:
-        raise SystemExit("The real Windows lifecycle corpus must collect all 33 distinct cases")
+    if result.returncode or len(cases) != 34 or len(set(cases)) != 34:
+        raise SystemExit("The real Windows lifecycle corpus must collect all 34 distinct cases")
     return cases
 
 

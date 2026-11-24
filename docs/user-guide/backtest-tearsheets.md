@@ -197,7 +197,43 @@ process cleanup and preserves the rendering error. An incomplete export does
 not publish a partial PDF. A failed or hung browser close still requires verified
 termination of the owned process tree before temporary profiles can be removed.
 
+### Known Windows PDF cleanup limitation
+
+Intermittent Windows browser shutdown failures remain under investigation in
+[issue 112](https://github.com/ml4t/diagnostic/issues/112), including in the 0.2
+release series. The exporter can report that an owned browser process did not
+reach terminal state within its cleanup deadline, and temporary browser/profile
+resources may remain. It reports an error instead of publishing a partial PDF.
+HTML reports remain an alternative when PDF export fails.
+
+Version 0.2.1 repairs a separate Windows pipe shutdown defect and requires patched
+pypdf versions. Those fixes do not establish a cause or repair for the intermittent
+native cleanup failure. Python support remains 3.12 through 3.14.
+
 See the [visualization API](../api/index.md#visualization) and the book's
 [performance reporting notebook](https://github.com/stefan-jansen/machine-learning-for-trading/blob/2d6e8f95eeccaee66906245606471f570b5807e5/16_strategy_simulation/09_performance_reporting.ipynb),
 which directly calls Diagnostic in a longer backtest workflow. For Pyfolio
 inputs, use the [migration guide](migration.md#pyfolio-portfolio-and-performance-analysis).
+
+## Compare a simulated order with paper execution
+
+Export the order evidence from Backtest and Live, then pass both exports to
+`ml4t.diagnostic.integration.compare_order_traces`. Select the shared
+`child_intent_id` and supply the reporting currency. To compare implementation
+shortfall, also supply the decision price and a common terminal price.
+
+The report keeps account checkpoints separate from the cost of the selected
+order. It follows explicit replacement links and counts each identified
+incremental execution once. Unlinked executions, missing execution identities,
+and gaps between cumulative state and known fills appear under `unresolved`.
+Missing fees, quote currency, multiplier, or benchmark prices leave the
+affected cost fields unset.
+
+To break execution cost into delay, spread and price versus touch, pass an
+`ArrivalQuote` for each run with an observed bid, ask, currency and timestamp
+on that run's execution clock. The quote must be for the same instrument and
+currency and fall between the decision and every linked execution. Missing
+or incompatible quotes leave those components unset. The trace may also carry
+`market_data_sha256` to identify each run's frozen market input. When both
+identities are present and differ, the report marks the difference before
+comparing execution outcomes.

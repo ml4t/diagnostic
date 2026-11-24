@@ -623,7 +623,7 @@ class TestStatisticalValidity:
 
         fig = plot_ras_analysis(
             original_ic=0.05,
-            adjusted_ic=0.03,
+            adjusted_ic=-0.03,
             rademacher_complexity=0.02,
         )
 
