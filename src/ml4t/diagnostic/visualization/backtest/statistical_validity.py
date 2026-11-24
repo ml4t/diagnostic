@@ -749,8 +749,8 @@ def plot_statistical_summary_card(
     ----------
     metrics : dict[str, Any]
         Dictionary with statistical metrics. Expected keys:
-        - dsr_probability: DSR p-value
-        - dsr_significant: bool
+        - dsr_probability: Normal-CDF confidence score from DSRResult.probability
+        - dsr_significant: bool from DSRResult.is_significant
         - min_trl: minimum track record length
         - current_trl: current track record length
         - trl_sufficient: bool
@@ -786,12 +786,13 @@ def plot_statistical_summary_card(
 
     # DSR check
     if dsr_prob is not None:
+        p_value = 1 - dsr_prob
         if dsr_sig:
-            indicators.append(("DSR", f"p={dsr_prob:.3f}", "green", "Significant"))
-        elif dsr_prob < 0.10:
-            indicators.append(("DSR", f"p={dsr_prob:.3f}", "yellow", "Marginal"))
+            indicators.append(("DSR", f"p={p_value:.3f}", "green", "Significant"))
+        elif p_value < 0.10:
+            indicators.append(("DSR", f"p={p_value:.3f}", "yellow", "Marginal"))
         else:
-            indicators.append(("DSR", f"p={dsr_prob:.3f}", "red", "Not Significant"))
+            indicators.append(("DSR", f"p={p_value:.3f}", "red", "Not Significant"))
 
     # MinTRL check
     if min_trl is not None and current_trl is not None:
