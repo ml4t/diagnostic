@@ -399,11 +399,16 @@ jobs:
           wheel = next(p for p in files if p.suffix == ".whl")
           with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(["git", "archive", "HEAD", "src/ml4t/diagnostic"]))) as archive:
               modules = {p.name.removeprefix("src/"): archive.extractfile(p).read() for p in archive.getmembers() if p.isfile() and p.name.endswith(".py")}
-          assert len(modules) == 358
+          assert modules
           with zipfile.ZipFile(wheel) as archive:
+              installed = {name for name in archive.namelist() if name.startswith("ml4t/diagnostic/") and name.endswith(".py")}
+              assert installed == modules.keys(), (sorted(modules.keys() - installed), sorted(installed - modules.keys()))
               assert all(archive.read(name) == value for name, value in modules.items())
           sdist = next(p for p in files if p.name.endswith(".tar.gz"))
           with tarfile.open(sdist) as archive:
+              prefix = "ml4t_diagnostic-0.3.0.dev0/src/"
+              packaged = {name.removeprefix(prefix) for name in archive.getnames() if name.startswith(prefix + "ml4t/diagnostic/") and name.endswith(".py")}
+              assert packaged == modules.keys(), (sorted(modules.keys() - packaged), sorted(packaged - modules.keys()))
               assert all(archive.extractfile("ml4t_diagnostic-0.3.0.dev0/src/" + name).read() == value for name, value in modules.items())
           manifest = {"source_revision": os.environ["GITHUB_SHA"], "archives": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}, "modules": {name: hashlib.sha256(value).hexdigest() for name, value in modules.items()}}
           (root / "manifest.json").write_text(json.dumps(manifest, indent=2))
