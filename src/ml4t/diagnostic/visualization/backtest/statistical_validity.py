@@ -39,14 +39,14 @@ def plot_dsr_gauge(
     """Create a gauge chart showing DSR probability.
 
     The Deflated Sharpe Ratio corrects for selection bias when choosing
-    the best strategy from multiple tests. The probability represents
-    P(true SR > benchmark) — higher values indicate stronger evidence of skill.
+    the best strategy from multiple tests. The score is the Normal CDF of
+    the selection-adjusted statistic, not a Bayesian probability of skill.
 
     Parameters
     ----------
     dsr_probability : float
-        Probability of skill (0-1). Higher is better.
-        This is P(SR > benchmark), NOT a p-value.
+        Normal-CDF confidence score (0-1) under the supplied trial model.
+        Its nominal upper-tail p-value is one minus this score.
     observed_sharpe : float
         The observed Sharpe ratio being tested
     expected_max_sharpe : float, optional
@@ -80,8 +80,6 @@ def plot_dsr_gauge(
     """
     theme_config = get_theme_config(theme)
 
-    # dsr_probability is P(SR > benchmark) — probability of skill.
-    # High = good (strong evidence), Low = bad (likely noise).
     confidence = dsr_probability * 100
 
     # Color zones: Red (not significant) -> Yellow (marginal) -> Green (significant)

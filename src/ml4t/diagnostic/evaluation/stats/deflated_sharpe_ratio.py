@@ -49,6 +49,7 @@ from ml4t.diagnostic.evaluation.stats.minimum_track_record import (
 from ml4t.diagnostic.evaluation.stats.moments import compute_return_statistics
 from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
     VARIANCE_RESCALING_FACTORS,
+    compute_deflated_sharpe_std,
     compute_expected_max_sharpe,
     compute_sharpe_variance,
     get_variance_rescaling_factor,
@@ -65,15 +66,14 @@ class DSRResult:
     Attributes
     ----------
     probability : float
-        Probability that the true Sharpe ratio exceeds the benchmark,
-        after correcting for multiple testing (if applicable).
-        Range: [0, 1]. Higher is better.
+        Normal-CDF confidence score against the benchmark or selection-adjusted
+        null. This is not a Bayesian probability of skill. Range: [0, 1].
     is_significant : bool
         Whether the result is significant at the specified confidence level.
     z_score : float
         Test statistic (z-score) for the hypothesis test.
     p_value : float
-        P-value for the null hypothesis that true SR <= benchmark.
+        Upper-tail p-value against the benchmark or selection-adjusted null.
 
     sharpe_ratio : float
         Observed Sharpe ratio at native frequency.
@@ -110,7 +110,7 @@ class DSRResult:
 
     expected_max_sharpe : float
         Expected maximum Sharpe from noise under multiple testing.
-        E[max{SR}] from Equation 26. Zero for single strategy (PSR).
+        E[max{SR}] from Equation 28. Zero for single strategy (PSR).
     deflated_sharpe : float
         Observed Sharpe minus expected max: SR - E[max{SR}].
     variance_trials : float
@@ -208,11 +208,11 @@ class DSRResult:
             f"  Benchmark: {self.benchmark_sharpe:.4f}",
             selection_note,
             "",
-            f"  Probability of skill: {self.probability:.1%}",
+            f"  Model confidence score: {self.probability:.1%}",
             f"  Significant at {confidence_pct:.0f}%: {significance}",
             f"  P-value: {self.p_value:.4f}",
             "",
-            "  Statistics used:",
+            "  Selected strategy statistics:",
             f"    Skewness (gamma_3): {self.skewness:.3f}",
             f"    Excess kurtosis (gamma_4-3): {self.excess_kurtosis:.3f}",
             f"    Autocorrelation (rho): {self.autocorrelation:.3f}",
@@ -285,12 +285,12 @@ def deflated_sharpe_ratio(
 ) -> DSRResult:
     """Compute Deflated Sharpe Ratio (DSR) or Probabilistic Sharpe Ratio (PSR).
 
-    This function computes the probability that the true Sharpe ratio exceeds
-    a benchmark threshold, correcting for:
-
-    - **Non-normality**: Skewness and excess kurtosis of returns
-    - **Serial correlation**: First-order autocorrelation of returns
-    - **Multiple testing**: Selection bias when choosing the best of K strategies
+    This function returns a Normal-CDF confidence score against a benchmark
+    or selection-adjusted null. For one strategy, its standard error uses
+    return skewness, excess kurtosis and first-order autocorrelation. For
+    multiple distinct trials, its scale uses the dispersion of their Sharpe
+    ratios and the effective number of trials. It is not a Bayesian
+    probability that the strategy has skill.
 
     **Single strategy (PSR)**: Pass a single returns array.
     **Multiple strategies (DSR)**: Pass a list of returns arrays.
@@ -337,6 +337,15 @@ def deflated_sharpe_ratio(
     from that leader series. The cross-sectional variance and expected-maximum
     correction are computed from the full candidate cohort.
 
+    With more than one trial, the test statistic divides the gap between the
+    observed Sharpe ratio and the expected maximum by the standard deviation of
+    the maximum Sharpe ratio, sqrt(V[{SR_k}]) * sqrt(V[max_k{X_k}]) (Equation 30
+    of the paper). That standard deviation depends on the dispersion of Sharpe
+    ratios across trials and on the number of trials. Sample length, skewness,
+    kurtosis and autocorrelation of the selected strategy do not enter it. With
+    one trial, or when all trials have the same Sharpe ratio, the denominator is
+    the standard deviation of the Sharpe ratio estimator at the benchmark.
+
     Returns
     -------
     DSRResult
@@ -347,7 +356,7 @@ def deflated_sharpe_ratio(
     Single strategy (PSR):
 
     >>> result = deflated_sharpe_ratio(daily_returns, frequency="daily")
-    >>> print(f"Probability of skill: {result.probability:.1%}")
+    >>> print(f"Model confidence score: {result.probability:.1%}")
 
     Multiple strategies (DSR):
 
@@ -476,16 +485,16 @@ def deflated_sharpe_ratio(
     expected_max = compute_expected_max_sharpe(trials_for_adjustment, variance_trials)
     adjusted_threshold = benchmark_sharpe + expected_max
 
-    # Variance of Sharpe estimator
-    variance_sr = compute_sharpe_variance(
-        sharpe=adjusted_threshold,
+    # Standard deviation of the test statistic
+    std_sr = compute_deflated_sharpe_std(
+        threshold_sharpe=adjusted_threshold,
         n_samples=n_samples,
         skewness=skew,
         kurtosis=kurt,
         autocorrelation=rho,
         n_trials=trials_for_adjustment,
+        variance_trials=variance_trials,
     )
-    std_sr = np.sqrt(variance_sr)
 
     # Z-score
     if std_sr > 0:
@@ -603,6 +612,17 @@ def deflated_sharpe_ratio_from_statistics(
     -------
     DSRResult
         Same as `deflated_sharpe_ratio()`.
+
+    Notes
+    -----
+    With more than one trial, the test statistic divides the gap between the
+    observed Sharpe ratio and the expected maximum by the standard deviation of
+    the maximum Sharpe ratio, sqrt(V[{SR_k}]) * sqrt(V[max_k{X_k}]) (Equation 30
+    of the paper). That standard deviation depends on the dispersion of Sharpe
+    ratios across trials and on the number of trials. Sample length, skewness,
+    kurtosis and autocorrelation of the selected strategy do not enter it. With
+    one trial, or when all trials have the same Sharpe ratio, the denominator is
+    the standard deviation of the Sharpe ratio estimator at the benchmark.
     """
     # Validate inputs
     if n_samples < 1:
@@ -635,16 +655,16 @@ def deflated_sharpe_ratio_from_statistics(
     expected_max = compute_expected_max_sharpe(trials_for_adjustment, variance_trials)
     adjusted_threshold = benchmark_sharpe + expected_max
 
-    # Variance
-    variance_sr = compute_sharpe_variance(
-        sharpe=adjusted_threshold,
+    # Standard deviation of the test statistic
+    std_sr = compute_deflated_sharpe_std(
+        threshold_sharpe=adjusted_threshold,
         n_samples=n_samples,
         skewness=skewness,
         kurtosis=kurtosis,
         autocorrelation=autocorrelation,
         n_trials=trials_for_adjustment,
+        variance_trials=variance_trials,
     )
-    std_sr = np.sqrt(variance_sr)
 
     # Z-score
     if std_sr > 0:

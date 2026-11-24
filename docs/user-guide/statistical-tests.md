@@ -41,8 +41,10 @@ print(f"Effective trials: {dsr.n_trials_effective:.2f}")
 
 Include every strategy variant considered during selection. Omitting failed or
 discarded variants understates the multiple-testing penalty.
-`dsr.probability` is the corrected probability under the supplied trial
-model; it is not an estimated future return.
+`dsr.probability` is a Normal-CDF confidence score against the search-adjusted
+null under the supplied trial model. Its upper-tail `p_value` is one minus
+that score. It is not a Bayesian probability of skill or an estimated future
+return. See the [DSR method and assumptions](../methods/deflated-sharpe-ratio.md).
 
 ### Keep trial history across research sessions
 

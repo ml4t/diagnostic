@@ -249,6 +249,19 @@ class TestValidationResult:
 class TestValidatedCrossValidation:
     """Tests for ValidatedCrossValidation class."""
 
+    def test_annualized_fold_sharpes_do_not_inflate_selection_confidence(self):
+        """The public CV consumer must use cohort dispersion on the same SR scale."""
+        sharpes = [0.05, 0.15, 0.25]
+        native = ValidatedCrossValidation().evaluate_sharpes(sharpes)
+        annualized = ValidatedCrossValidation().evaluate_sharpes(
+            [value * np.sqrt(252) for value in sharpes]
+        )
+
+        # Equation 30 with independently integrated sd(max of 3 normals).
+        # Changing every trial's SR unit scales both location and dispersion.
+        assert native.dsr == pytest.approx(0.9861746001050543, abs=1e-12)
+        assert annualized.dsr == pytest.approx(native.dsr, abs=1e-12)
+
     def test_init_default(self):
         """Test initialization with defaults."""
         vcv = ValidatedCrossValidation()

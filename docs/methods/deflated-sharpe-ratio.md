@@ -27,9 +27,8 @@ When the trial cohort is highly correlated, raw K can be too conservative.
 
 ## The Solution
 
-The Deflated Sharpe Ratio adjusts an observed Sharpe ratio downward to account for
-the number of strategies tested. It answers: *"What is the probability that the
-true Sharpe ratio exceeds zero, given that we selected the best of K strategies?"*
+The Deflated Sharpe Ratio accounts for the number of strategies tested when
+assessing whether the selected Sharpe ratio exceeds a search-adjusted null.
 
 Instead of testing $H_0: SR = 0$, DSR tests $H_0: SR = E[\max\{SR\}]$ -- a
 much harder threshold that accounts for the selection process.
@@ -49,6 +48,14 @@ $$
 
 where $\gamma \approx 0.5772$ is the Euler-Mascheroni constant.
 
+This is an approximation, not the exact Normal-maximum mean. For fractional
+`K_eff` between 1 and 2 it is unreliable and can become negative near one.
+The library emits a `RuntimeWarning` in that range and constrains the estimate
+to be nonnegative: the maximum of centered Normal variables cannot have a
+negative mean. This constraint does not make the approximation exact. An
+explicitly justified `min_k_eff=2.0` avoids that small-count range; the default
+remains 1.0.
+
 ### Step 2: Expected Maximum Sharpe Ratio
 
 Scale by the empirical standard deviation of Sharpe ratios across strategies:
@@ -57,22 +64,83 @@ $$
 SR_0 = \sqrt{\text{Var}[\{SR_1, \ldots, SR_K\}]} \cdot E[\max\{Z\}]
 $$
 
-### Step 3: Variance of Sharpe Ratio Estimator
+### Step 3: Standard Deviation of the Maximum Sharpe Ratio
 
-Accounting for non-normality (skewness $\gamma_3$, Pearson kurtosis $\gamma_4$):
+Rescale the same cross-sectional standard deviation by the standard deviation
+of the maximum of K independent standard normals, which the paper tabulates
+for K = 1 to 100:
 
 $$
-V[\hat{SR}] = \frac{1}{T}\left(1 - \gamma_3 \cdot SR_0 + \frac{\gamma_4 - 1}{4} \cdot SR_0^2\right)
+\sigma[SR_0] = \sqrt{\text{Var}[\{SR_1, \ldots, SR_K\}]} \cdot \sqrt{V[\max\{Z_1, \ldots, Z_K\}]}
 $$
+
+The sample length and the skewness, kurtosis and autocorrelation of the
+selected strategy do not appear in this expression. They affect DSR only
+through the dispersion of the trial Sharpe ratios.
 
 ### Step 4: Deflated Test Statistic
 
 $$
-DSR = \Phi\left(\frac{\hat{SR} - SR_0}{\sqrt{V[\hat{SR}]}}\right)
+DSR = \Phi\left(\frac{\hat{SR} - SR_0}{\sigma[SR_0]}\right)
 $$
 
-The output is a probability in [0, 1]. Values above 0.95 indicate the strategy
-survives multiple testing correction at the 5% level.
+The output is a Normal-CDF confidence score in [0, 1]. The reported upper-tail
+`p_value` is one minus this score. Values above 0.95 reject the adjusted null
+at the nominal 5% level under the model's assumptions.
+
+This is a Normal approximation using the location and scale of the selected
+maximum, not its exact distribution or a Bayesian probability of skill. The
+scaling formula assumes independent, identically distributed Normal trial
+Sharpe ratios. Estimated effective trial counts are a heuristic for a
+correlated cohort; they do not establish the same null distribution. Severe non-Normality and small samples can distort the
+false-positive rate; the paper's Exhibit 5 reports those limitations.
+
+### Numerical Compatibility
+
+The Equation 30 correction changes multi-trial probabilities and z-scores from
+the earlier implementation, which combined the selected strategy's estimator
+variance with the maximum's scaling factor. Single-trial probabilities retain
+their previous definition. Public signatures and result fields are unchanged.
+The scaling factor is now integrated rather than interpolated, and continues
+to decrease beyond 100 trials instead of being capped at the value for 100.
+The cross-sectional null and single-strategy PSR use different scales, so DSR
+is not universally less than or equal to PSR. For example, a 60-observation
+cohort with trial Sharpes 0.05, 0.15 and 0.25, Normal moments and no serial
+correlation gives DSR 0.986 versus PSR 0.974 for the selected strategy. These
+are model confidence scores, not measured false-positive coverage.
+
+The paper's formula and its worked example are authoritative for this method.
+The authors' linked code at revision
+[`6199ecb`](https://github.com/zoonek/2025-sharpe-ratio/blob/6199ecb1c84da7eee7bd81d9a017cf12b8ff0e0d/functions.py)
+uses a different estimator-based denominator; numerical parity with that code
+is not claimed. The two definitions must not be mixed when comparing results.
+
+### Single Strategy (PSR)
+
+With one strategy there is no maximum over trials. The threshold is the
+benchmark Sharpe ratio $SR_0$ (zero by default) and the denominator is the
+standard deviation of the Sharpe ratio estimator at that benchmark, which
+accounts for skewness $\gamma_3$, Pearson kurtosis $\gamma_4$ and first-order
+autocorrelation $\rho$:
+
+$$
+V[\hat{SR}] = \frac{1}{T}\left(\frac{1+\rho}{1-\rho}
+- \left(1 + \frac{\rho}{1-\rho} + \frac{\rho^2}{1-\rho^2}\right)\gamma_3 \cdot SR_0
++ \frac{1+\rho^2}{1-\rho^2} \cdot \frac{\gamma_4 - 1}{4} \cdot SR_0^2\right)
+$$
+
+The library also uses this denominator when every trial has the same Sharpe
+ratio, because the trials then do not differ.
+
+### Worked Example From the Paper
+
+A two-year track record of monthly returns has a Sharpe ratio of 0.456
+(0.036 / 0.079), skewness -2.448, Pearson kurtosis 10.164 and autocorrelation
+0.2. As a single strategy its PSR against a zero benchmark is 0.966. If it is
+the best of K = 10 trials whose Sharpe ratios have variance 0.1, the expected
+maximum is 0.498, the standard deviation of the maximum is
+$\sqrt{0.1} \cdot 0.587 = 0.186$, and the DSR is 0.410.
+`deflated_sharpe_ratio_from_statistics()` returns these values.
 
 ## Minimal Working Example
 
@@ -104,7 +172,7 @@ result = deflated_sharpe_ratio(
     min_k_eff=2.0,
 )
 
-print(f"Probability of skill: {result.probability:.3f}")
+print(f"Adjusted confidence: {result.probability:.3f}")
 print(f"P-value: {result.p_value:.3f}")
 print(f"Expected max from noise: {result.expected_max_sharpe:.3f}")
 print(f"Deflated Sharpe: {result.deflated_sharpe:.3f}")
@@ -162,8 +230,8 @@ post-floor value actually used in the DSR adjustment.
 | DSR Value | Interpretation | Action |
 |-----------|---------------|--------|
 | >= 0.95 | Strategy survives multiple testing at 5% level | Proceed to out-of-sample validation |
-| 0.50 - 0.95 | Inconclusive -- may be overfit | Gather more data or reduce strategy space |
-| < 0.50 | Strategy is likely explained by selection bias | Reject -- do not deploy |
+| 0.50 - 0.95 | Does not reject the adjusted null at 5% | Gather more data or reduce strategy space |
+| < 0.50 | Observed Sharpe is below the adjusted null location | Investigate selection bias before deployment |
 
 **Critical**: DSR is a necessary but not sufficient condition. A high DSR means the
 strategy *might* be real. You still need out-of-sample testing, walk-forward validation,
@@ -191,14 +259,17 @@ and realistic transaction cost modeling.
 4. **Misinterpreting the output**
 
     DSR = 0.42 does **not** mean "the strategy has 42% of its claimed Sharpe."
-    It means "there is 42% probability the true Sharpe exceeds zero after
-    accounting for multiple testing."
+    It corresponds to an upper-tail p-value of 0.58 against the adjusted null.
+    It does not give the posterior probability that the strategy has skill.
 
 5. **Ignoring non-normality**
 
     Strategies with negative skewness and fat tails (common in trend-following)
-    have higher Sharpe ratio estimation variance. Always provide `skewness` and
-    `excess_kurtosis` from your actual returns.
+    have higher Sharpe ratio estimation variance. `skewness`, `excess_kurtosis`
+    and `autocorrelation` enter PSR and the minimum track record length
+    directly. With more than one trial they do not change the DSR probability
+    for a given `variance_trials`, so compute that variance from the actual
+    trial returns.
 
 6. **Using DSR without enough data**
 
@@ -218,8 +289,9 @@ Use the [Book Guide](../book-guide/index.md) for exact notebook and case-study p
 ## References
 
 - **Lopez de Prado, M., Lipton, A., & Zoonekynd, V. (2025)**.
-  "How to use the Sharpe Ratio: A multivariate case study."
-  *ADIA Lab Research Paper Series*, No. 19.
+  "How to Use the Sharpe Ratio."
+  *ADIA Lab Research Paper Series*, No. 19. The formulas and the worked example
+  on this page follow the version dated 7 March 2026.
   Reference implementation: [github.com/zoonek/2025-sharpe-ratio](https://github.com/zoonek/2025-sharpe-ratio)
 
 - **Bailey, D. H., & Lopez de Prado, M. (2014)**.

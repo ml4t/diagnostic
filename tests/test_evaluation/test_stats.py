@@ -627,52 +627,60 @@ class TestEdgeCasesAndRobustness:
 
 
 class TestVarianceRescalingFactor:
-    """Tests for _get_variance_rescaling_factor internal function."""
+    """Tests for get_variance_rescaling_factor, √V[max of K standard normals]."""
 
-    def test_exact_values_from_table(self):
-        """Test exact values that exist in the lookup table."""
+    def test_published_values(self):
+        """Values of Exhibit 4 in López de Prado et al., printed to five decimals."""
         from ml4t.diagnostic.evaluation.stats import _get_variance_rescaling_factor
 
-        # Test known values from the table
         assert _get_variance_rescaling_factor(1) == 1.0
-        assert _get_variance_rescaling_factor(2) == pytest.approx(0.82565)
-        assert _get_variance_rescaling_factor(10) == pytest.approx(0.58681)
-        assert _get_variance_rescaling_factor(100) == pytest.approx(0.42942)
+        assert _get_variance_rescaling_factor(2) == pytest.approx(0.82565, abs=0.6e-5)
+        assert _get_variance_rescaling_factor(10) == pytest.approx(0.58681, abs=0.6e-5)
+        assert _get_variance_rescaling_factor(20) == pytest.approx(0.52507, abs=0.6e-5)
+        assert _get_variance_rescaling_factor(21) == pytest.approx(0.52131, abs=0.6e-5)
+        assert _get_variance_rescaling_factor(100) == pytest.approx(0.42942, abs=0.6e-5)
 
-    def test_interpolation_between_values(self):
-        """Test linear interpolation for values not in table."""
+    def test_two_trials_closed_form(self):
+        """The maximum of two standard normals has variance 1 - 1/π."""
         from ml4t.diagnostic.evaluation.stats import _get_variance_rescaling_factor
 
-        # Between 2 and 3: should be between 0.82565 and 0.74798
-        _get_variance_rescaling_factor(2)
-        _get_variance_rescaling_factor(3)
-        _get_variance_rescaling_factor(2)  # Exact, for comparison
+        assert _get_variance_rescaling_factor(2) == pytest.approx(np.sqrt(1 - 1 / np.pi), rel=1e-10)
 
-        # Test a value that requires interpolation (e.g., 15)
-        # Between 10 (0.58681) and 20 (0.52131)
-        factor_15 = _get_variance_rescaling_factor(15)
-        assert 0.52131 < factor_15 < 0.58681
+    def test_non_integer_trials(self):
+        """An effective number of trials need not be an integer."""
+        from ml4t.diagnostic.evaluation.stats import _get_variance_rescaling_factor
+
+        factor = _get_variance_rescaling_factor(2.5)
+        assert _get_variance_rescaling_factor(3) < factor < _get_variance_rescaling_factor(2)
+
+        # Continuous at K = 1, where the factor is 1
+        assert _get_variance_rescaling_factor(1.000001) == pytest.approx(1.0, abs=1e-5)
 
     def test_value_below_minimum(self):
-        """Test value below minimum in table (k < 1)."""
+        """K < 1 returns the factor for one trial."""
         from ml4t.diagnostic.evaluation.stats import _get_variance_rescaling_factor
 
-        # k=0 should return the factor for k=1
-        # Actually k=0 is not in the table, so it returns the minimum key value
-        # k < 1 edge case - returns factor for k=1
-        factor = _get_variance_rescaling_factor(0)
-        assert factor == 1.0  # Returns factor for k=1
+        assert _get_variance_rescaling_factor(0) == 1.0
 
-    def test_value_above_maximum(self):
-        """Test value above maximum in table (k > 100)."""
+    def test_values_above_exhibit_range(self):
+        """The factor keeps falling beyond K = 100, the last entry of Exhibit 4.
+
+        Expected values: adaptive quadrature (scipy.integrate.quad) of the first
+        two moments of the density K φ(m) Φ(m)^(K-1).
+        """
         from ml4t.diagnostic.evaluation.stats import _get_variance_rescaling_factor
 
-        # k > 100 should return factor for k=100
-        factor = _get_variance_rescaling_factor(200)
-        assert factor == pytest.approx(0.42942)
+        assert _get_variance_rescaling_factor(1000) == pytest.approx(0.35136223, abs=1e-7)
+        assert _get_variance_rescaling_factor(1e6) == pytest.approx(0.24800458, abs=1e-7)
 
-        factor = _get_variance_rescaling_factor(1000)
-        assert factor == pytest.approx(0.42942)
+    def test_matches_simulation(self):
+        """Standard deviation of the simulated maximum of K standard normals."""
+        from ml4t.diagnostic.evaluation.stats import _get_variance_rescaling_factor
+
+        rng = np.random.default_rng(0)
+        for k in (5, 37, 150):
+            simulated = rng.standard_normal((100_000, k)).max(axis=1).std(ddof=1)
+            assert _get_variance_rescaling_factor(k) == pytest.approx(simulated, rel=0.01)
 
 
 class TestDSRValidation:
@@ -2099,8 +2107,8 @@ class TestDeflatedSharpeRatioRawReturns:
         assert result.n_trials == 3
         # Should still compute successfully
 
-    def test_interpret_method_psr(self):
-        """Test interpret() method output for PSR case."""
+    def test_psr_interpretation_does_not_claim_a_skill_posterior(self):
+        """The public confidence score must not be labeled as a skill posterior."""
         from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
         np.random.seed(42)
@@ -2112,7 +2120,8 @@ class TestDeflatedSharpeRatioRawReturns:
         assert isinstance(interpretation, str)
         assert "Probabilistic Sharpe Ratio" in interpretation
         assert "Sharpe ratio:" in interpretation
-        assert "Probability of skill:" in interpretation
+        assert "Model confidence score:" in interpretation
+        assert "Probability of skill" not in interpretation
 
     def test_interpret_method_dsr(self):
         """Test interpret() method output for DSR case."""

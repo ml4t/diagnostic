@@ -135,6 +135,7 @@ from ml4t.diagnostic.evaluation.stats.reality_check import (
 from ml4t.diagnostic.evaluation.stats.sharpe_inference import (
     EULER_GAMMA,
     VARIANCE_RESCALING_FACTORS,
+    compute_deflated_sharpe_std,
     compute_expected_max_sharpe,
     compute_sharpe_variance,
     get_variance_rescaling_factor,
@@ -158,6 +159,7 @@ __all__ = [
     # Sharpe inference
     "compute_sharpe_variance",
     "compute_expected_max_sharpe",
+    "compute_deflated_sharpe_std",
     "get_variance_rescaling_factor",
     "probabilistic_sharpe_ratio",
     "EULER_GAMMA",
