@@ -60,6 +60,12 @@ the bar that generated them, or when each feature row is already stamped at the
 time it became usable. A trade whose decision row is missing, or older than the
 longest gap in that asset's feature history, is reported as a failure with its
 reason instead of being explained from another row.
+
+Pass the analyzer's result as `shap_result` to `generate_backtest_tearsheet`,
+`generate_tearsheet_from_result`, `export_workspaces` or
+`BacktestTearsheet.add_shap_result` to add two sections in the ML workspace:
+the SHAP drivers of the worst trades, and the error patterns once enough trades
+have been explained to cluster them.
 The dashboard is optional; the core ranking above runs without SHAP or a
 browser.
 

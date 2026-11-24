@@ -133,6 +133,13 @@ class TearsheetTemplate:
                     enabled=False,
                 ),
                 TearsheetSection(
+                    "shap_worst_trades",
+                    "SHAP Drivers of the Worst Trades",
+                    band="appendix",
+                    priority=16,
+                    enabled=False,
+                ),
+                TearsheetSection(
                     "shap_errors",
                     "SHAP Error Patterns",
                     band="appendix",
@@ -225,7 +232,7 @@ class TearsheetTemplate:
                 TearsheetSection(
                     "trade_waterfall", "Trade Details", band="appendix", priority=23, enabled=False
                 ),
-                # ML (disabled by default, enabled when predictions passed)
+                # ML (disabled by default, enabled when predictions or a SHAP result passed)
                 TearsheetSection(
                     "ml_summary_strip",
                     "ML Summary",
@@ -243,6 +250,20 @@ class TearsheetTemplate:
                 TearsheetSection(
                     "quintile_returns",
                     "Decile Returns",
+                    band="appendix",
+                    priority=21,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "shap_worst_trades",
+                    "SHAP Drivers of the Worst Trades",
+                    band="appendix",
+                    priority=21,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "shap_errors",
+                    "SHAP Error Patterns",
                     band="appendix",
                     priority=21,
                     enabled=False,
@@ -341,7 +362,7 @@ class TearsheetTemplate:
                     priority=14,
                     enabled=False,
                 ),
-                # ML (disabled by default, enabled when predictions passed)
+                # ML (disabled by default, enabled when predictions or a SHAP result passed)
                 TearsheetSection(
                     "ml_summary_strip",
                     "ML Summary",
@@ -359,6 +380,20 @@ class TearsheetTemplate:
                 TearsheetSection(
                     "quintile_returns",
                     "Decile Returns",
+                    band="appendix",
+                    priority=18,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "shap_worst_trades",
+                    "SHAP Drivers of the Worst Trades",
+                    band="appendix",
+                    priority=18,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "shap_errors",
+                    "SHAP Error Patterns",
                     band="appendix",
                     priority=18,
                     enabled=False,
@@ -488,6 +523,13 @@ class TearsheetTemplate:
                     "Prediction vs Outcomes",
                     band="validation",
                     priority=62,
+                    enabled=False,
+                ),
+                TearsheetSection(
+                    "shap_worst_trades",
+                    "SHAP Drivers of the Worst Trades",
+                    band="validation",
+                    priority=64,
                     enabled=False,
                 ),
                 TearsheetSection(

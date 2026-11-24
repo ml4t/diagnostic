@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ml4t.backtest import BacktestResult
 
     from ml4t.diagnostic.evaluation import PortfolioAnalysis
+    from ml4t.diagnostic.evaluation.trade_shap.models import TradeShapResult
 
 
 @lru_cache(maxsize=1)
@@ -101,8 +102,13 @@ def generate_tearsheet_from_result(
     report_metadata: BacktestReportMetadata | None = None,
     *,
     periods_per_year: int | None = None,
+    shap_result: TradeShapResult | None = None,
 ) -> str:
-    """Generate a diagnostic tearsheet from a BacktestResult."""
+    """Generate a diagnostic tearsheet from a BacktestResult.
+
+    Pass ``shap_result`` (from ``TradeShapAnalyzer.explain_worst_trades``) to add the
+    SHAP worst-trade and error-pattern sections.
+    """
     return _load_backtest_bridge().generate_tearsheet_from_result(
         result=result,
         template=template,
@@ -115,6 +121,7 @@ def generate_tearsheet_from_result(
         benchmark_name=benchmark_name,
         report_metadata=report_metadata,
         periods_per_year=periods_per_year,
+        shap_result=shap_result,
     )
 
 

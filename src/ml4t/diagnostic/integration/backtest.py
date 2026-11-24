@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from ml4t.backtest import BacktestConfig, BacktestResult
     from ml4t.backtest.analytics.annualization import get_annualization_factor
     from ml4t.backtest.types import Fill, OrderSide, Trade
+
+    from ml4t.diagnostic.evaluation.trade_shap.models import TradeShapResult
 else:
     try:
         from ml4t.backtest import BacktestConfig, BacktestResult
@@ -602,8 +604,12 @@ def generate_tearsheet_from_result(
     report_metadata: BacktestReportMetadata | None = None,
     *,
     periods_per_year: int | None = None,
+    shap_result: TradeShapResult | None = None,
 ) -> str:
-    """Generate an HTML tearsheet, optionally excluding statistical inference."""
+    """Generate an HTML tearsheet, optionally excluding statistical inference.
+
+    ``shap_result`` adds the SHAP worst-trade and error-pattern sections.
+    """
     from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
 
     profile = analyze_backtest_result(
@@ -648,6 +654,7 @@ def generate_tearsheet_from_result(
         report_metadata=effective_metadata,
         periods_per_year=periods_per_year,
         include_statistical=include_statistical,
+        shap_result=shap_result,
     )
 
     if output_path is not None:
