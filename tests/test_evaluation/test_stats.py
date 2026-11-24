@@ -2107,8 +2107,8 @@ class TestDeflatedSharpeRatioRawReturns:
         assert result.n_trials == 3
         # Should still compute successfully
 
-    def test_interpret_method_psr(self):
-        """Test interpret() method output for PSR case."""
+    def test_psr_interpretation_does_not_claim_a_skill_posterior(self):
+        """The public confidence score must not be labeled as a skill posterior."""
         from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
 
         np.random.seed(42)

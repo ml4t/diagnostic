@@ -93,7 +93,7 @@ print(f"p-value: {result.p_value:.3f}")
 **Critical Requirement**: You must provide the **actual variance** of Sharpe ratios across all K strategies tested. DSR cannot be meaningfully calculated without access to all strategies.
 
 **Interpretation**:
-- DSR = 0.95: nominal upper-tail p-value0.05 against the adjusted null.
+- DSR = 0.95: nominal upper-tail p-value 0.05 against the adjusted null.
 - DSR = 0.50: the observed Sharpe equals the adjusted null threshold.
 - DSR < 0.05: the observed Sharpe lies below that threshold.
 
@@ -106,7 +106,7 @@ not estimate the probability of overfitting or future profitability. See the
 1. **López de Prado, M., Lipton, A., & Zoonekynd, V. (2025)**
    "How to Use the Sharpe Ratio."
    *ADIA Lab Research Paper Series*, No. 19.
-   - [Companion code at6199ecb](https://github.com/zoonek/2025-sharpe-ratio/blob/6199ecb1c84da7eee7bd81d9a017cf12b8ff0e0d/functions.py) uses a different denominator from the March2026 paper; the method guide reconciles this difference.
+   - [Companion code at 6199ecb](https://github.com/zoonek/2025-sharpe-ratio/blob/6199ecb1c84da7eee7bd81d9a017cf12b8ff0e0d/functions.py) uses a different denominator from the March 2026 paper; the method guide reconciles this difference.
 
 2. **Bailey, D. H., & López de Prado, M. (2014)**
    "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting, and Non-Normality."
