@@ -33,7 +33,6 @@ html = generate_backtest_tearsheet(
     template="quant_trader",
     theme="default",
     output_path=output,
-    n_trials=25,
     periods_per_year=252,
 )
 
@@ -45,6 +44,18 @@ print(f"Wrote {output}")
 The file-existence and Plotly assertions check that rendering completed.
 Inspect reported Sharpe, drawdown, and trial count against your source
 backtest; HTML generation does not validate supplied metrics.
+
+Automatic statistical validation from one return series uses the single-strategy
+Probabilistic Sharpe Ratio (PSR). Supplying `n_trials` alone cannot estimate the
+dispersion of Sharpe ratios across a search. Counts above one emit a
+`RuntimeWarning` when no precomputed DSR score is supplied; the report retains
+the PSR fallback instead of inventing repeated trials.
+
+For multiple-trial DSR, use
+[`deflated_sharpe_ratio` on the actual trial returns](../methods/deflated-sharpe-ratio.md)
+and supply its `probability` as `metrics["dsr_probability"]`. The report's return
+series must describe the same selected strategy. A precomputed score is retained;
+the supplied count is not a substitute for the underlying cohort.
 
 Set `periods_per_year` from the cadence of the return observations, not the
 number of observations or the rebalance frequency. Use 12 for monthly returns,

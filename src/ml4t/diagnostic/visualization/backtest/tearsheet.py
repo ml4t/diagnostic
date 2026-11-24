@@ -20,6 +20,7 @@ from __future__ import annotations
 import html as html_mod
 import json
 import logging
+import warnings
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -813,7 +814,9 @@ def generate_backtest_tearsheet(
     benchmark_returns : pl.Series or np.ndarray, optional
         Benchmark returns for comparison
     n_trials : int, optional
-        Number of trials for DSR calculation
+        Declared search count. A count alone cannot supply cross-trial
+        dispersion. Without a precomputed metrics["dsr_probability"], values
+        above one warn and automatic validation uses the single-strategy PSR.
     shap_result : TradeShapResult, optional
         Trade SHAP analysis result for error pattern visualization
     factor_data : FactorData, optional
@@ -853,7 +856,6 @@ def generate_backtest_tearsheet(
     >>> html = generate_backtest_tearsheet(
     ...     returns=daily_returns,
     ...     template="risk_manager",
-    ...     n_trials=100,  # For DSR
     ... )
     """
     from .html_tables import _supplied_holdings_attribution
@@ -883,8 +885,6 @@ def generate_backtest_tearsheet(
         PortfolioAnalysis(returns, benchmark=benchmark_returns, periods_per_year=periods_per_year)
 
     if not interactive:
-        import warnings
-
         warnings.warn(
             "interactive=False has no effect; all output is interactive Plotly HTML. "
             "This parameter will be removed in a future version.",
@@ -1035,17 +1035,21 @@ def _enrich_validation_metrics(
 
     # Compute DSR / PSR
     if not has_dsr:
+        if n_trials is not None and n_trials > 1:
+            warnings.warn(
+                "n_trials alone does not supply cross-trial dispersion. "
+                "Automatic return-only validation uses the single-strategy PSR; "
+                "supply metrics['dsr_probability'] from "
+                "deflated_sharpe_ratio(actual_trial_returns) for multi-trial DSR.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         try:
             from ml4t.diagnostic.evaluation.stats.deflated_sharpe_ratio import (
                 deflated_sharpe_ratio,
             )
 
-            if n_trials is not None and n_trials > 1:
-                dsr_result = deflated_sharpe_ratio(
-                    [ret_arr] * n_trials, periods_per_year=periods_per_year
-                )
-            else:
-                dsr_result = deflated_sharpe_ratio(ret_arr, periods_per_year=periods_per_year)
+            dsr_result = deflated_sharpe_ratio(ret_arr, periods_per_year=periods_per_year)
             metrics["dsr_probability"] = dsr_result.probability
             if metrics.get("sharpe") is None:
                 metrics["sharpe"] = dsr_result.sharpe_ratio_annualized
@@ -3047,7 +3051,7 @@ class BacktestTearsheet:
         return self
 
     def set_n_trials(self, n: int) -> BacktestTearsheet:
-        """Set number of trials for DSR calculation."""
+        """Set the search count; a return-only report still needs a supplied cohort DSR."""
         self.n_trials = n
         return self
 

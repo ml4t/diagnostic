@@ -838,7 +838,10 @@ class TestTearsheetGeneration:
 
         monkeypatch.setattr(dsr_module, "deflated_sharpe_ratio", fail_dsr)
 
-        with pytest.raises(ReportGenerationError, match="DSR metrics") as exc_info:
+        with (
+            pytest.warns(RuntimeWarning, match="cross-trial dispersion"),
+            pytest.raises(ReportGenerationError, match="DSR metrics") as exc_info,
+        ):
             module._enrich_validation_metrics({}, np.ones(100), n_trials=2)
 
         assert exc_info.value.context["metric"] == "dsr"
