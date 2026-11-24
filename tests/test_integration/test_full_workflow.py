@@ -241,10 +241,11 @@ class TestFullWorkflow:
         features_array = np.array(feature_matrix)
         shap_array = np.array(shap_matrix)
 
-        # Create features DataFrame with timestamps
+        # Each trade's feature row is stamped at its decision, a minute before the entry
+        # (TradeRecord.timestamp is the exit).
         features_df = pl.DataFrame(
             {
-                **{"timestamp": [t.timestamp for t in trades]},
+                **{"timestamp": [t.timestamp - t.duration - timedelta(minutes=1) for t in trades]},
                 **{name: features_array[:, i] for i, name in enumerate(feature_names)},
             }
         )
