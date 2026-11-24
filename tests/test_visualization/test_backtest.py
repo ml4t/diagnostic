@@ -557,6 +557,35 @@ class TestCostAttribution:
 class TestStatisticalValidity:
     """Tests for statistical_validity.py functions."""
 
+    @pytest.mark.parametrize(
+        ("observed_sharpe", "expected_status", "p_lower", "p_upper"),
+        [
+            (0.05, "Not Significant", 0.9, 1.0),
+            (0.17, "Marginal", 0.05, 0.1),
+            (0.2, "Significant", 0.0, 0.05),
+        ],
+    )
+    def test_summary_card_does_not_reverse_real_dsr_confidence_and_tail_risk(
+        self, observed_sharpe, expected_status, p_lower, p_upper
+    ):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio_from_statistics
+        from ml4t.diagnostic.visualization.backtest import plot_statistical_summary_card
+
+        result = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=observed_sharpe,
+            n_samples=200,
+            n_trials=10,
+            variance_trials=0.005,
+        )
+        assert p_lower < result.p_value < p_upper
+        figure = plot_statistical_summary_card(
+            {"dsr_probability": result.probability, "dsr_significant": result.is_significant}
+        )
+        labels = [annotation.text for annotation in figure.layout.annotations]
+        assert f"p={result.p_value:.3f}" in labels
+        assert expected_status in labels
+        assert f"p={result.p_value:.3f}" in figure.to_html(full_html=False, include_plotlyjs=False)
+
     def test_plot_dsr_gauge_basic(self):
         """Test DSR gauge chart."""
         from ml4t.diagnostic.visualization.backtest import plot_dsr_gauge
