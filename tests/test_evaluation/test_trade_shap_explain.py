@@ -20,15 +20,18 @@ from ml4t.diagnostic.evaluation.trade_shap.models import (
 
 
 class MockTradeMetrics:
-    """Mock TradeMetrics for testing without full dependency."""
+    """Mock TradeMetrics for a trade decided on a known feature row."""
 
-    def __init__(self, timestamp: datetime, symbol: str = "TEST") -> None:
-        self.timestamp = timestamp
+    def __init__(self, decided_at: datetime, symbol: str = "TEST") -> None:
+        # Opened from the feature row at ``decided_at``, filled a minute later and
+        # held an hour; ``timestamp`` is the exit, as in TradeRecord.
+        self.entry_timestamp = decided_at + timedelta(minutes=1)
+        self.duration = timedelta(hours=1)
+        self.timestamp = self.entry_timestamp + self.duration
         self.symbol = symbol
         self.entry_price = 100.0
         self.exit_price = 95.0
         self.pnl = -5.0
-        self.duration = timedelta(hours=1)
         self.direction = "long"
 
 
@@ -105,7 +108,7 @@ class TestTradeShapExplainerInit:
             )
 
     def test_tolerance_parameter_stored(self, sample_features, sample_shap_values, feature_names):
-        """Tolerance parameter should be passed to aligner."""
+        """Nearest mode keeps the tolerance as the decision row's maximum age."""
         explainer = TradeShapExplainer(
             features_df=sample_features,
             shap_values=sample_shap_values,
@@ -114,10 +117,10 @@ class TestTradeShapExplainerInit:
             alignment_mode="nearest",
         )
 
-        assert explainer.aligner.tolerance_seconds == 120.0
+        assert explainer.tolerance_seconds == 120.0
 
     def test_entry_mode_ignores_tolerance(self, sample_features, sample_shap_values, feature_names):
-        """Alignment mode 'entry' should use tolerance=0 regardless of parameter."""
+        """Entry mode bounds the row's age by the row spacing, not by the tolerance."""
         explainer = TradeShapExplainer(
             features_df=sample_features,
             shap_values=sample_shap_values,
@@ -126,7 +129,7 @@ class TestTradeShapExplainerInit:
             alignment_mode="entry",  # This mode ignores tolerance
         )
 
-        assert explainer.aligner.tolerance_seconds == 0.0
+        assert explainer.tolerance_seconds is None
 
     def test_top_n_features_stored(self, sample_features, sample_shap_values, feature_names):
         """top_n_features parameter should be stored."""
@@ -155,13 +158,15 @@ class TestExplainSingle:
 
         # Trade at row 10's timestamp (exact match)
         trade_time = datetime(2024, 1, 1, 19, 0, 0)  # base + 10 hours
-        trade = MockTradeMetrics(timestamp=trade_time, symbol="BTC")
+        trade = MockTradeMetrics(decided_at=trade_time, symbol="BTC")
 
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)
-        assert result.trade_id == f"BTC_{trade_time.isoformat()}"
-        assert result.timestamp == trade_time
+        assert result.trade_id == f"BTC_{trade.timestamp.isoformat()}"
+        assert result.timestamp == trade.timestamp
+        assert result.feature_timestamp == trade_time
+        np.testing.assert_array_equal(result.shap_vector, sample_shap_values[10])
         assert len(result.top_features) == 3  # All features
         assert len(result.feature_values) == 3
         assert result.shap_vector.shape == (3,)
@@ -179,7 +184,7 @@ class TestExplainSingle:
 
         # Trade at non-matching timestamp
         trade_time = datetime(2024, 6, 1, 12, 0, 0)  # Way outside range
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = explainer.explain(trade)
 
@@ -199,7 +204,7 @@ class TestExplainSingle:
         )
 
         trade_time = datetime(2024, 6, 1, 12, 0, 0)
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         with pytest.raises(ValueError, match="Cannot align SHAP values"):
             explainer.explain(trade)
@@ -216,7 +221,7 @@ class TestExplainSingle:
         )
 
         trade_time = datetime(2024, 6, 1, 12, 0, 0)
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = explainer.explain(trade)
 
@@ -238,7 +243,7 @@ class TestExplainSingle:
 
         # Trade 15 minutes after row 10's timestamp
         trade_time = datetime(2024, 1, 1, 19, 15, 0)  # base + 10h 15min
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = explainer.explain(trade)
 
@@ -254,7 +259,7 @@ class TestExplainSingle:
         )
 
         trade_time = datetime(2024, 1, 1, 19, 0, 0)
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = explainer.explain(trade)
 
@@ -274,7 +279,7 @@ class TestExplainSingle:
         )
 
         trade_time = datetime(2024, 1, 1, 19, 0, 0)  # Row 10
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = explainer.explain(trade)
 
@@ -295,7 +300,7 @@ class TestExplainSingle:
         )
 
         trade_time = datetime(2024, 1, 1, 19, 0, 0)  # Row 10
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = explainer.explain(trade)
 
@@ -335,7 +340,7 @@ class TestExplainMany:
 
         # Create trades that match existing timestamps
         trades = [
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 9 + i, 0, 0), symbol=f"SYM{i}")
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 9 + i, 0, 0), symbol=f"SYM{i}")
             for i in range(5)
         ]
 
@@ -358,7 +363,7 @@ class TestExplainMany:
 
         # Create trades with non-matching timestamps
         trades = [
-            MockTradeMetrics(timestamp=datetime(2025, 1, 1, i, 0, 0), symbol=f"SYM{i}")
+            MockTradeMetrics(decided_at=datetime(2025, 1, 1, i, 0, 0), symbol=f"SYM{i}")
             for i in range(3)
         ]
 
@@ -380,10 +385,10 @@ class TestExplainMany:
         )
 
         trades = [
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0)),  # Match
-            MockTradeMetrics(timestamp=datetime(2025, 6, 1, 0, 0, 0)),  # No match
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 15, 0, 0)),  # Match
-            MockTradeMetrics(timestamp=datetime(2025, 6, 2, 0, 0, 0)),  # No match
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0)),  # Match
+            MockTradeMetrics(decided_at=datetime(2025, 6, 1, 0, 0, 0)),  # No match
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 15, 0, 0)),  # Match
+            MockTradeMetrics(decided_at=datetime(2025, 6, 2, 0, 0, 0)),  # No match
         ]
 
         explanations, failures = explainer.explain_many(trades)
@@ -415,7 +420,7 @@ class TestEdgeCases:
             feature_names=["only_feature"],
         )
 
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0))
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)
@@ -444,7 +449,7 @@ class TestEdgeCases:
             feature_names=feature_names,
         )
 
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0))
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)
@@ -468,7 +473,7 @@ class TestEdgeCases:
             feature_names=["feat_a", "feat_b"],
         )
 
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 1, 12, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 1, 12, 0, 0))
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)
@@ -484,7 +489,7 @@ class TestEdgeCases:
         )
 
         # First row timestamp
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 1, 9, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 1, 9, 0, 0))
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)
@@ -498,7 +503,7 @@ class TestEdgeCases:
         )
 
         # Last row timestamp: base + 99 hours
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 5, 12, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 5, 12, 0, 0))
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)
@@ -512,11 +517,11 @@ class TestEdgeCases:
         )
 
         trade_time = datetime(2024, 1, 1, 10, 0, 0)
-        trade = MockTradeMetrics(timestamp=trade_time, symbol="AAPL")
+        trade = MockTradeMetrics(decided_at=trade_time, symbol="AAPL")
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)
-        assert result.trade_id == f"AAPL_{trade_time.isoformat()}"
+        assert result.trade_id == f"AAPL_{trade.timestamp.isoformat()}"
 
     def test_zero_shap_values(self):
         """Zero SHAP values should be handled correctly."""
@@ -538,7 +543,7 @@ class TestEdgeCases:
             feature_names=["feat"],
         )
 
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 1, 5, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 1, 5, 0, 0))
         result = explainer.explain(trade)
 
         assert isinstance(result, TradeShapExplanation)

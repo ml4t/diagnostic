@@ -28,16 +28,19 @@ class TradeExplainFailure(BaseModel):
 
     Attributes:
         trade_id: Unique trade identifier
-        timestamp: Trade entry timestamp
+        timestamp: Trade exit timestamp (``TradeRecord.timestamp``)
         reason: Machine-readable failure reason code
         details: Additional context about the failure
     """
 
     trade_id: str = Field(..., description="Unique trade identifier")
-    timestamp: datetime = Field(..., description="Trade entry timestamp")
+    timestamp: datetime = Field(..., description="Trade exit timestamp (TradeRecord.timestamp)")
     reason: str = Field(
         ...,
-        description="Failure reason: 'alignment_missing', 'shap_error', 'feature_mismatch'",
+        description=(
+            "Failure reason: 'alignment_missing', 'entry_time_missing', 'shap_error', "
+            "'feature_mismatch'"
+        ),
     )
     details: dict[str, Any] = Field(default_factory=dict, description="Additional failure context")
 
@@ -45,18 +48,22 @@ class TradeExplainFailure(BaseModel):
 class TradeShapExplanation(BaseModel):
     """SHAP explanation for a single trade.
 
-    Contains SHAP attribution details for one trade, including:
+    Contains SHAP attribution details for one trade, taken from the feature row
+    the model saw when it decided to open the trade (the decision row):
         - Top contributing features (sorted by absolute SHAP value)
-        - Feature values at trade entry
+        - Feature values of the decision row
         - Full SHAP vector for all features
-        - Waterfall plot data (future enhancement)
 
     Attributes:
-        trade_id: Unique trade identifier (symbol_timestamp)
-        timestamp: Trade entry timestamp
+        trade_id: Unique trade identifier (``{symbol}_{exit timestamp}``)
+        timestamp: Trade exit timestamp (``TradeRecord.timestamp``)
         top_features: List of (feature_name, shap_value) sorted by |shap_value| descending
-        feature_values: Dictionary of feature values at trade entry
+        feature_values: Dictionary of feature values in the decision row
         shap_vector: Full SHAP vector for all features (numpy array)
+        symbol: Traded symbol
+        entry_timestamp: Trade entry time used to locate the decision row
+        feature_timestamp: Timestamp of the decision row the SHAP values come from
+        pnl: Realized trade PnL, when the trade supplied one
 
     Example:
         >>> explanation.top_features[:3]
@@ -70,16 +77,22 @@ class TradeShapExplanation(BaseModel):
     """
 
     trade_id: str = Field(..., description="Unique trade identifier")
-    timestamp: datetime = Field(..., description="Trade entry timestamp")
+    timestamp: datetime = Field(..., description="Trade exit timestamp (TradeRecord.timestamp)")
     top_features: list[tuple[str, float]] = Field(
         ..., description="Top N features by absolute SHAP value (descending)"
     )
-    feature_values: dict[str, float] = Field(
-        ..., description="Feature values at trade entry timestamp"
-    )
+    feature_values: dict[str, float] = Field(..., description="Feature values in the decision row")
     shap_vector: NDArray[np.floating[Any]] = Field(
         ..., description="Full SHAP vector for all features"
     )
+    symbol: str | None = Field(None, description="Traded symbol")
+    entry_timestamp: datetime | None = Field(
+        None, description="Trade entry time used to locate the decision row"
+    )
+    feature_timestamp: datetime | None = Field(
+        None, description="Timestamp of the feature row the SHAP values come from"
+    )
+    pnl: float | None = Field(None, description="Realized trade PnL, when supplied")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

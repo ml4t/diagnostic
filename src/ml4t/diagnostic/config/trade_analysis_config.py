@@ -110,11 +110,33 @@ class ExtractionSettings(BaseConfig):
 
 
 class AlignmentSettings(BaseConfig):
-    """Settings for aligning SHAP values to trade timestamps."""
+    """Settings for aligning SHAP values to trades.
 
-    mode: Literal["entry", "nearest", "average"] = Field("entry", description="Alignment mode")
+    A trade is explained by the feature row the model saw when it decided to open
+    the position: the row for the trade's symbol (when ``features_df`` has a
+    ``symbol`` column) at its decision time. ``decision_time`` sets which row that
+    is relative to the trade's entry timestamp.
+    """
+
+    mode: Literal["entry", "nearest", "average"] = Field(
+        "entry",
+        description=(
+            "'entry' accepts a decision row no older than the longest gap between "
+            "consecutive feature rows of the trade's symbol; 'nearest' requires it to lie "
+            "within `tolerance` seconds of the entry; 'average' currently behaves like 'entry'"
+        ),
+    )
+    decision_time: Literal["before_entry", "at_or_before_entry"] = Field(
+        "before_entry",
+        description=(
+            "'before_entry' uses the last feature row strictly before the entry "
+            "(next-bar fills, the ml4t-backtest default); 'at_or_before_entry' also "
+            "accepts a row stamped at the entry (same-bar fills, or features already "
+            "stamped at the time they became known)"
+        ),
+    )
     tolerance: PositiveInt = Field(
-        300, description="Max time difference for 'nearest' mode (seconds)"
+        300, description="Max age of the decision row in 'nearest' mode (seconds)"
     )
     missing_strategy: Literal["error", "skip", "zero"] = Field(
         "skip", description="Missing value handling"

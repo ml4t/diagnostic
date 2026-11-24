@@ -303,10 +303,12 @@ class TestBatchProcessing:
         # Create worst trades with timestamp alignment
         worst_trades = []
         for i in range(20):
-            entry_time = datetime(2024, 1, 1, i)
-            exit_time = datetime(2024, 1, 1, i + 1)
+            # Decided on the row at hour i, filled on the next bar.
+            entry_time = datetime(2024, 1, 1, i + 1)
+            exit_time = datetime(2024, 1, 1, i + 2)
             trade = TradeRecord(
                 timestamp=exit_time,
+                entry_timestamp=entry_time,
                 symbol="BTC",
                 entry_price=100.0,
                 exit_price=95.0,  # Losing trades
