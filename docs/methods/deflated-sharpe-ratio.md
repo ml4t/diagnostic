@@ -27,9 +27,8 @@ When the trial cohort is highly correlated, raw K can be too conservative.
 
 ## The Solution
 
-The Deflated Sharpe Ratio adjusts an observed Sharpe ratio downward to account for
-the number of strategies tested. It answers: *"What is the probability that the
-true Sharpe ratio exceeds zero, given that we selected the best of K strategies?"*
+The Deflated Sharpe Ratio accounts for the number of strategies tested when
+assessing whether the selected Sharpe ratio exceeds a search-adjusted null.
 
 Instead of testing $H_0: SR = 0$, DSR tests $H_0: SR = E[\max\{SR\}]$ -- a
 much harder threshold that accounts for the selection process.
@@ -77,8 +76,9 @@ $$
 DSR = \Phi\left(\frac{\hat{SR} - SR_0}{\sigma[SR_0]}\right)
 $$
 
-The output is a probability in [0, 1]. Values above 0.95 indicate the strategy
-survives multiple testing correction at the 5% level.
+The output is a Normal-CDF confidence score in [0, 1]. The reported upper-tail
+`p_value` is one minus this score. Values above 0.95 reject the adjusted null
+at the nominal 5% level under the model's assumptions.
 
 This is a Normal approximation using the location and scale of the selected
 maximum, not its exact distribution or a Bayesian probability of skill. The
@@ -159,7 +159,7 @@ result = deflated_sharpe_ratio(
     min_k_eff=2.0,
 )
 
-print(f"Probability of skill: {result.probability:.3f}")
+print(f"Adjusted confidence: {result.probability:.3f}")
 print(f"P-value: {result.p_value:.3f}")
 print(f"Expected max from noise: {result.expected_max_sharpe:.3f}")
 print(f"Deflated Sharpe: {result.deflated_sharpe:.3f}")
@@ -217,8 +217,8 @@ post-floor value actually used in the DSR adjustment.
 | DSR Value | Interpretation | Action |
 |-----------|---------------|--------|
 | >= 0.95 | Strategy survives multiple testing at 5% level | Proceed to out-of-sample validation |
-| 0.50 - 0.95 | Inconclusive -- may be overfit | Gather more data or reduce strategy space |
-| < 0.50 | Strategy is likely explained by selection bias | Reject -- do not deploy |
+| 0.50 - 0.95 | Does not reject the adjusted null at 5% | Gather more data or reduce strategy space |
+| < 0.50 | Observed Sharpe is below the adjusted null location | Investigate selection bias before deployment |
 
 **Critical**: DSR is a necessary but not sufficient condition. A high DSR means the
 strategy *might* be real. You still need out-of-sample testing, walk-forward validation,
@@ -246,8 +246,8 @@ and realistic transaction cost modeling.
 4. **Misinterpreting the output**
 
     DSR = 0.42 does **not** mean "the strategy has 42% of its claimed Sharpe."
-    It means "there is 42% probability the true Sharpe exceeds zero after
-    accounting for multiple testing."
+    It corresponds to an upper-tail p-value of 0.58 against the adjusted null.
+    It does not give the posterior probability that the strategy has skill.
 
 5. **Ignoring non-normality**
 
