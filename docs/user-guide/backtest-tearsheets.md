@@ -156,6 +156,19 @@ For supplied accounts, the unreleased native
 provides explicit beginning-NAV/average-gross-book turnover and extra-bps scenarios.
 It does not change this profile's matched-observation default.
 
+The Cost Sensitivity panel (`hedge_fund` and `full` templates) scales the
+commission and slippage the backtest actually paid. `BacktestProfile.cost_returns`
+charges each fill's implementation cost to its equity observation and aggregates
+it to the periods of `daily_returns`, so `daily_returns + cost_returns` is the
+return before costs. The panel plots `daily_returns + (1 - k) * cost_returns` for
+cost multiples `k`: zero is the return before costs, "Current" (`k = 1`) reproduces
+the reported Sharpe ratio and CAGR, and the x axis is `k` times the realized cost
+in bps of traded notional. Each point approximates a re-run at that cost; it does
+not compound the cost difference or re-size positions. A report built from returns
+alone omits the panel, because returns do not state their cost content. Direct
+`plot_cost_sensitivity` callers pass either net returns with `realized_costs=`, or
+gross returns with `base_costs_bps=` and `trades_per_year=`.
+
 Saved target weights do not establish executed quantities, prices or account
 cash. Unreleased artifact loading now leaves execution and occupancy panels
 unavailable when `fills.parquet` or `portfolio_state.parquet` is absent, rather

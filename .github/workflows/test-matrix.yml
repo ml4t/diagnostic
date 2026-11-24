@@ -42,4 +42,5 @@ jobs:
           tests/test_visualization/test_pdf_process_ownership.py
           tests/test_visualization/test_report_generation.py
           tests/test_visualization/test_report_literal_titles.py
+          tests/test_integration/test_cost_sensitivity_panel.py
           -v -s -n 0 --timeout 120 --tb=short
