@@ -10,7 +10,7 @@ This module contains the data models used throughout the Trade SHAP analysis:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -362,6 +362,9 @@ class TradeShapResult(BaseModel):
         explanations: List of successful TradeShapExplanation objects
         failed_trades: List of (trade_id, error_message) tuples for failed trades
         error_patterns: Identified error patterns from clustering
+        shap_normalization: How each trade's SHAP vector was scaled before clustering
+            ('l1', 'l2', 'standardize' or 'none'); the scale of ErrorPattern mean SHAP
+            values. None when unknown.
 
     Example:
         >>> result = analyzer.explain_worst_trades(trades, n=20)
@@ -382,6 +385,10 @@ class TradeShapResult(BaseModel):
     error_patterns: list[ErrorPattern] = Field(
         default_factory=list,
         description="Identified error patterns (populated by clustering and characterization)",
+    )
+    shap_normalization: Literal["l1", "l2", "standardize", "none"] | None = Field(
+        default=None,
+        description="Per-trade SHAP scaling before clustering; None when unknown",
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

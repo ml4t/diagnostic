@@ -188,3 +188,48 @@ def test_worst_trades_figure_names_each_feature_and_trade(shap_result):
     totals = np.sum([trace.x for trace in fig.data], axis=0)
     expected = [float(np.sum(e.shap_vector)) for e in reversed(shown)]
     np.testing.assert_allclose(totals, expected)
+
+
+def test_error_pattern_figure_shows_one_row_per_feature_on_a_named_scale(shap_result):
+    """Each feature is one row, clusters are named in a legend, and the axis states the scale."""
+    from ml4t.diagnostic.visualization.backtest import plot_shap_error_patterns
+
+    fig = plot_shap_error_patterns(shap_result)
+
+    bars = [trace for trace in fig.data if trace.type == "bar"]
+    clusters = [bar for bar in bars if bar.name.startswith("Cluster")]
+    rows = {y for bar in bars for y in bar.y}
+    assert rows <= set(FEATURES)
+    for bar in clusters:
+        assert len(bar.y) == len(set(bar.y)) == len(rows)
+    assert fig.layout.showlegend is True
+    assert [bar.name for bar in clusters] == [
+        f"Cluster {p.cluster_id} ({p.n_trades} trades)" for p in shap_result.error_patterns
+    ]
+
+    # The plotted values are signed cluster means on the L2-normalized scale the pipeline used.
+    assert shap_result.shap_normalization == "l2"
+    assert "L2" in fig.layout.xaxis.title.text
+    assert "|" not in fig.layout.xaxis.title.text
+    for bar, pattern in zip(clusters, shap_result.error_patterns, strict=True):
+        means = {name: mean for name, mean, *_ in pattern.top_features}
+        for y, x in zip(bar.y, bar.x, strict=True):
+            assert x == means.get(y)
+    assert any(x is not None and x < 0 for bar in clusters for x in bar.x)
+
+
+def test_error_pattern_table_shows_only_computed_statistics(shap_result):
+    """Template hypotheses and their fixed confidence scores are not data and are not shown."""
+    from ml4t.diagnostic.visualization.backtest import plot_shap_error_patterns
+
+    fig = plot_shap_error_patterns(shap_result)
+
+    (table,) = [trace for trace in fig.data if trace.type == "table"]
+    header = " ".join(table.header.values)
+    assert "Hypothesis" not in header
+    assert "Confidence" not in header
+    cells = " ".join(str(v) for column in table.cells.values for v in column)
+    for pattern in shap_result.error_patterns:
+        if pattern.hypothesis:
+            assert pattern.hypothesis not in cells
+        assert f"{pattern.separation_score:.2f}" in cells

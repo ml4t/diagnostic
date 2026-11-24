@@ -217,6 +217,7 @@ class TradeShapPipeline:
             explanations=explanations,
             failed_trades=[(f.trade_id, f.reason) for f in failures],
             error_patterns=error_patterns,
+            shap_normalization=self.config.clustering.normalization or "none",
         )
 
     def generate_actions(

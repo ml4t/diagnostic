@@ -3,8 +3,8 @@
 Provides two visualizations for understanding why a model's worst trades
 lose money, based on trade-level SHAP analysis:
 
-- plot_shap_error_patterns: Grouped bars showing mean |SHAP| per feature
-  per error cluster, with a summary table.
+- plot_shap_error_patterns: Grouped bars showing the signed mean SHAP per
+  feature per error cluster, with a table of computed cluster statistics.
 - plot_shap_worst_trades: Stacked horizontal bars showing per-trade SHAP
   feature contributions for the worst trades, one colour per feature.
 """
@@ -19,7 +19,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
-from ml4t.diagnostic.visualization.core import get_quantile_colors, get_theme_config
+from ml4t.diagnostic.visualization.core import get_theme_config
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.evaluation.trade_shap.models import (
@@ -39,16 +39,19 @@ def plot_shap_error_patterns(
 ) -> go.Figure:
     """Visualize error patterns identified by SHAP-based clustering.
 
-    Top subplot: grouped horizontal bars showing mean |SHAP| per feature
-    per cluster, colored by cluster. Bottom: summary table with cluster
-    metadata (n_trades, hypothesis, confidence, separation score).
+    Top subplot: one row per feature, one bar per cluster showing the cluster's
+    mean SHAP value for that feature (signed), on the scale the trades were
+    clustered on. Hatched bars are not statistically significant; a cluster
+    whose top features omit a feature has no bar on that row. Bottom: a table of
+    computed cluster statistics. Template hypotheses and their confidence scores
+    are not shown, because they are not derived from the data.
 
     Parameters
     ----------
     shap_result : TradeShapResult
         Result from TradeShapPipeline.analyze_worst_trades().
     top_n_features : int
-        Number of top features to show per cluster (default: 8).
+        Number of features to show (default: 8).
     title : str
         Chart title.
     theme : str, optional
@@ -74,71 +77,83 @@ def plot_shap_error_patterns(
             width,
         )
 
-    n_clusters = len(patterns)
-    cluster_colors = get_quantile_colors(max(n_clusters, 2), theme_config)[:n_clusters]
+    palette = _categorical_palette(theme)
 
-    # Collect the union of top features across all patterns
-    feature_set: dict[str, float] = {}
+    # Rank features by their largest absolute cluster mean
+    feature_weight: dict[str, float] = {}
     for pattern in patterns:
-        for feat_name, mean_shap, *_ in pattern.top_features[:top_n_features]:
-            existing = feature_set.get(feat_name, 0.0)
-            feature_set[feat_name] = max(existing, abs(mean_shap))
+        for feat_name, mean_shap, *_ in pattern.top_features:
+            feature_weight[feat_name] = max(feature_weight.get(feat_name, 0.0), abs(mean_shap))
+    top_features = sorted(feature_weight, key=lambda f: feature_weight[f], reverse=True)
+    top_features = top_features[:top_n_features]
+    rows = list(reversed(top_features))  # most important feature on the top row
 
-    # Sort by max absolute SHAP (most important first)
-    sorted_features = sorted(feature_set.keys(), key=lambda f: feature_set[f], reverse=True)
-    top_features = sorted_features[:top_n_features]
-
-    # Build figure: bar chart (top) + table (bottom)
     fig = make_subplots(
         rows=2,
         cols=1,
         row_heights=[0.65, 0.35],
         specs=[[{"type": "xy"}], [{"type": "table"}]],
-        vertical_spacing=0.12,
+        vertical_spacing=0.1,
     )
 
-    # --- Top panel: grouped horizontal bars ---
     for i, pattern in enumerate(patterns):
-        # Build a lookup from feature name to mean SHAP for this cluster
-        feat_shap = {f[0]: f[1] for f in pattern.top_features}
-
-        y_vals = list(reversed(top_features))  # reversed so top feature is at top
-        x_vals = [abs(feat_shap.get(f, 0.0)) for f in reversed(top_features)]
-
-        # Bold label for significant features
-        significant_set = {f[0] for f in pattern.top_features if f[4]}  # is_significant
-        y_labels = [f"<b>{f}</b>" if f in significant_set else f for f in y_vals]
-
+        stats = {f[0]: f for f in pattern.top_features}
+        x_vals = [stats[f][1] if f in stats else None for f in rows]
+        hatch = ["" if f in stats and stats[f][4] else "/" for f in rows]
+        p_values = [[stats[f][2], stats[f][3]] if f in stats else [None, None] for f in rows]
         fig.add_trace(
             go.Bar(
                 x=x_vals,
-                y=y_labels,
+                y=rows,
                 orientation="h",
                 name=f"Cluster {pattern.cluster_id} ({pattern.n_trades} trades)",
-                marker_color=cluster_colors[i],
-                opacity=0.85,
+                marker={
+                    "color": palette[i % len(palette)],
+                    "pattern": {"shape": hatch, "fillmode": "overlay", "solidity": 0.4},
+                },
+                customdata=p_values,
                 hovertemplate=(
                     "%{y}<br>"
                     f"Cluster {pattern.cluster_id}<br>"
-                    "Mean |SHAP|: %{x:.4f}<extra></extra>"
+                    "Mean SHAP: %{x:+.4f}<br>"
+                    "p (t-test): %{customdata[0]:.3g}<br>"
+                    "p (Mann-Whitney): %{customdata[1]:.3g}<extra></extra>"
                 ),
             ),
             row=1,
             col=1,
         )
+    # Legend key for the hatching
+    fig.add_trace(
+        go.Bar(
+            x=[None],
+            y=[rows[-1]],
+            orientation="h",
+            name="Hatched: not significant",
+            marker={
+                "color": "rgba(0,0,0,0)",
+                "line": {"color": _OTHER_COLOR, "width": 1},
+                "pattern": {"shape": "/", "fgcolor": _OTHER_COLOR},
+            },
+            hoverinfo="skip",
+        ),
+        row=1,
+        col=1,
+    )
 
-    # --- Bottom panel: summary table ---
-    header_vals = ["Cluster", "Trades", "Hypothesis", "Confidence", "Separation"]
+    # --- Bottom panel: computed cluster statistics ---
+    header_vals = ["Cluster", "Trades", "Largest mean SHAP", "Separation", "Distinctiveness"]
     cluster_ids = [str(p.cluster_id) for p in patterns]
     n_trades = [str(p.n_trades) for p in patterns]
-    hypotheses = [
-        (p.hypothesis[:80] + "...")
-        if p.hypothesis and len(p.hypothesis) > 80
-        else (p.hypothesis or "N/A")
+    defining = [
+        ", ".join(
+            f"{name} {mean:+.2f}" + ("" if significant else " (n.s.)")
+            for name, mean, _, _, significant in p.top_features[:3]
+        )
         for p in patterns
     ]
-    confidences = [f"{p.confidence:.0%}" if p.confidence is not None else "N/A" for p in patterns]
     separations = [f"{p.separation_score:.2f}" for p in patterns]
+    distinctiveness = [f"{p.distinctiveness:.2f}" for p in patterns]
 
     table_header_fill = _ML4T_COLORS["slate"]
     table_cell_fill = theme_config["layout"].get("paper_bgcolor", "#FFFFFF")
@@ -146,6 +161,7 @@ def plot_shap_error_patterns(
 
     fig.add_trace(
         go.Table(
+            columnwidth=[0.8, 0.8, 4, 1.2, 1.4],
             header={
                 "values": [f"<b>{h}</b>" for h in header_vals],
                 "fill_color": table_header_fill,
@@ -154,7 +170,7 @@ def plot_shap_error_patterns(
                 "height": 30,
             },
             cells={
-                "values": [cluster_ids, n_trades, hypotheses, confidences, separations],
+                "values": [cluster_ids, n_trades, defining, separations, distinctiveness],
                 "fill_color": table_cell_fill,
                 "font": {"color": table_font_color, "size": 11},
                 "align": ["center", "center", "left", "center", "center"],
@@ -170,9 +186,14 @@ def plot_shap_error_patterns(
         "title": {"text": title, "font": {"size": 18}},
         "height": height,
         "barmode": "group",
-        "xaxis": {"title": "Mean |SHAP Value|"},
-        "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
-        "margin": {"l": 140, "r": 20, "t": 80, "b": 20},
+        "bargap": 0.25,
+        "bargroupgap": 0.1,
+        "hovermode": "closest",
+        "showlegend": True,
+        "xaxis": {"title": _mean_shap_axis_title(shap_result.shap_normalization), "zeroline": True},
+        "yaxis": {"automargin": True},
+        "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
+        "margin": {"l": 20, "r": 20, "t": 150, "b": 20},
     }
     if width:
         layout_updates["width"] = width
@@ -184,6 +205,17 @@ def plot_shap_error_patterns(
     fig.update_layout(**layout_updates)
 
     return fig
+
+
+def _mean_shap_axis_title(normalization: str | None) -> str:
+    """Name the scale of the cluster mean SHAP values."""
+    scale = {
+        "l2": "each trade's SHAP vector scaled to unit L2 norm",
+        "l1": "each trade's SHAP vector scaled to unit L1 norm",
+        "standardize": "each feature's SHAP standardized across trades",
+        "none": "model output units",
+    }.get(normalization or "", "scale used for clustering")
+    return f"Mean SHAP value in cluster ({scale})"
 
 
 def plot_shap_worst_trades(
@@ -299,7 +331,7 @@ def plot_shap_worst_trades(
             "x": 0,
             "title": {"text": "Feature"},
         },
-        "margin": {"l": 20, "r": 20, "t": 120, "b": 60},
+        "margin": {"l": 20, "r": 20, "t": 140, "b": 60},
     }
     if width:
         layout_updates["width"] = width
