@@ -2382,7 +2382,7 @@ kaleido.Kaleido.populate_targets=kill_before_first_targets
             with pytest.raises(RuntimeError) as failed:
                 export_figures_to_pdf([figure], output, scale=1)
         killed = json.loads(observation.read_text())
-        expected = 1 if sys.platform == "win32" else -signal.SIGKILL
+        expected = signal.SIGTERM if sys.platform == "win32" else -signal.SIGKILL
         assert f"reported_exit_code={expected}" in str(failed.value)
         assert output.read_bytes() == original
         assert not Path(killed["profile"]).exists()
