@@ -1,10 +1,10 @@
 """Mathematical property tests for ml4t-diagnostic statistical methods.
 
-This module tests mathematical invariants that must hold regardless of input:
+This module tests mathematical properties and explicit fixed-cohort comparisons:
 - Bounds (e.g., IC ∈ [-1, 1])
 - Monotonicity (e.g., PSR increases with T for positive SR)
 - Limiting behavior (e.g., PSR(SR=0) → 0.5 as T → ∞)
-- Relationships (e.g., DSR ≤ PSR always)
+- Relationships under the stated cohort assumptions
 - Conservation laws (e.g., train ∩ test = ∅)
 
 These tests catch edge cases not covered by reference library comparisons.
@@ -175,11 +175,8 @@ class TestPSRProperties:
 class TestDSRProperties:
     """Test mathematical properties of Deflated Sharpe Ratio."""
 
-    def test_dsr_less_than_or_equal_psr(self):
-        """DSR ≤ PSR always (DSR is more conservative due to multiple testing).
-
-        The deflation for multiple trials can only reduce the probability.
-        """
+    def test_diverse_cohort_dsr_below_psr_for_fixed_parameters(self):
+        """This dispersed cohort has a lower DSR; different null scales need not be ordered."""
         sr = 1.0
         n_obs = 252
         skew = 0.0
@@ -211,11 +208,8 @@ class TestDSRProperties:
                 f"DSR should be ≤ PSR: DSR={dsr:.4f}, PSR={psr:.4f} for n_trials={n_trials}"
             )
 
-    def test_dsr_decreases_with_more_trials(self):
-        """DSR should decrease as number of trials increases.
-
-        More trials = more multiple testing penalty.
-        """
+    def test_fixed_dispersion_cohort_dsr_decreases_over_tested_trial_counts(self):
+        """Increasing the tested counts lowers DSR for this fixed Sharpe and dispersion."""
         sr = 1.5
         n_obs = 500
         skew = 0.0

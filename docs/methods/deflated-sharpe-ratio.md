@@ -103,6 +103,11 @@ variance with the maximum's scaling factor. Single-trial probabilities retain
 their previous definition. Public signatures and result fields are unchanged.
 The scaling factor is now integrated rather than interpolated, and continues
 to decrease beyond 100 trials instead of being capped at the value for 100.
+The cross-sectional null and single-strategy PSR use different scales, so DSR
+is not universally less than or equal to PSR. For example, a 60-observation
+cohort with trial Sharpes 0.05, 0.15 and 0.25, Normal moments and no serial
+correlation gives DSR 0.986 versus PSR 0.974 for the selected strategy. These
+are model confidence scores, not measured false-positive coverage.
 
 The paper's formula and its worked example are authoritative for this method.
 The authors' linked code at revision

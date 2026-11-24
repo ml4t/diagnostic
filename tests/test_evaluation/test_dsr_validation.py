@@ -840,6 +840,21 @@ class TestDSRValidation:
         # The old estimator-based denominator gives 0.7048655983337132.
         assert result.probability == pytest.approx(0.9861746001050543, abs=1e-12)
 
+    def test_cross_sectional_null_does_not_require_dsr_below_single_trial_psr(self):
+        """The paper's different null scales must not inherit a universal DSR <= PSR rule."""
+        residuals = np.tile([-3.0, -1.0, 0.0, 1.0, 2.0, 4.0], 10)
+        residuals = (residuals - residuals.mean()) / residuals.std(ddof=1)
+        returns = 0.01 * np.column_stack(
+            [residuals + 0.05, residuals[::-1] + 0.15, np.roll(residuals, 2) + 0.25]
+        )
+        options = {"skewness": 0.0, "excess_kurtosis": 0.0, "autocorrelation": 0.0}
+        selected = deflated_sharpe_ratio(returns[:, 2], **options)
+        cohort = deflated_sharpe_ratio(returns, **options)
+
+        assert selected.probability == pytest.approx(0.9735962442919431, abs=1e-12)
+        assert cohort.probability == pytest.approx(0.9861746001050543, abs=1e-12)
+        assert cohort.probability > selected.probability
+
     def test_identical_trials_reduce_to_single_strategy(self):
         """Trials with equal Sharpe ratios leave nothing to deflate.
 
