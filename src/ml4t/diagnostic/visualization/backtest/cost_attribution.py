@@ -206,12 +206,12 @@ def plot_cost_sensitivity(
     returns : pl.Series or np.ndarray
         Periodic returns: net of ``realized_costs`` when given, gross otherwise.
     base_costs_bps : float, optional
-        Cost per unit of traded notional at ``k = 1``, in basis points. Required
-        without ``realized_costs``; with them it only scales the x axis.
+        Cost per unit of traded notional at ``k = 1``, in basis points. Defaults to
+        10 for gross returns. With realized costs it only scales the x axis.
     cost_multipliers : list[float], optional
         Non-negative cost multiples to evaluate (default: [0, 0.5, 1, 1.5, 2, 3, 5]).
     trades_per_year : float, optional
-        Times per year the full equity is traded, for gross ``returns`` only.
+        Times per year the full equity is traded, defaulting to 252 for gross returns.
     risk_free_rate : float
         Annual risk-free rate for the Sharpe ratio.
     title : str
@@ -265,12 +265,8 @@ def plot_cost_sensitivity(
             raise ValueError("realized_costs must align with returns")
         before_costs = returns_arr + costs
     else:
-        if base_costs_bps is None or trades_per_year is None:
-            raise ValueError(
-                "plot_cost_sensitivity needs to know what the returns contain: pass "
-                "realized_costs= with net returns, or base_costs_bps= and "
-                "trades_per_year= with gross returns"
-            )
+        base_costs_bps = 10.0 if base_costs_bps is None else base_costs_bps
+        trades_per_year = 252 if trades_per_year is None else trades_per_year
         before_costs = returns_arr
         costs = np.full_like(
             returns_arr, base_costs_bps / 10_000 * trades_per_year / periods_per_year

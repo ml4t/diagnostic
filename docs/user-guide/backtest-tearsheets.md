@@ -167,7 +167,8 @@ in bps of traded notional. Each point approximates a re-run at that cost; it doe
 not compound the cost difference or re-size positions. A report built from returns
 alone omits the panel, because returns do not state their cost content. Direct
 `plot_cost_sensitivity` callers pass either net returns with `realized_costs=`, or
-gross returns with `base_costs_bps=` and `trades_per_year=`.
+gross returns with the published defaults of 10 bps and 252 full-equity trades per year.
+Use `base_costs_bps=` and `trades_per_year=` to override either assumption.
 
 Saved target weights do not establish executed quantities, prices or account
 cash. Unreleased artifact loading now leaves execution and occupancy panels

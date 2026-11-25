@@ -181,15 +181,21 @@ def test_returns_only_tearsheet_omits_the_cost_panel():
     assert not re.search(r'<(?:div|details)\b[^>]*\bdata-section="cost_sensitivity"', html)
 
 
-def test_plot_requires_the_caller_to_state_what_the_returns_contain():
-    """Guards against silently treating any series as gross at 252 trades a year."""
+@pytest.mark.parametrize(
+    ("kwargs", "bps", "turnover"),
+    [({}, 10.0, 252), ({"base_costs_bps": 4.0}, 4.0, 252), ({"trades_per_year": 52}, 10.0, 52)],
+)
+def test_gross_plot_keeps_published_default_cost_assumptions(kwargs, bps, turnover):
+    gross = np.array([0.01, -0.002, 0.005])
+    fig = plot_cost_sensitivity(gross, **kwargs)
+    current = list(fig.data[1].x).index(bps)
+    adjusted = gross - bps / 10_000 * turnover / 252
+    assert fig.data[1].y[current] == pytest.approx((np.prod(1 + adjusted) ** 84 - 1) * 100)
+
+
+def test_net_plot_uses_realized_costs_and_rejects_assumed_turnover():
     profile = analyze_backtest_result(_run("daily"))
     returns = profile.daily_returns
-
-    with pytest.raises(ValueError, match="realized_costs"):
-        plot_cost_sensitivity(returns)
-    with pytest.raises(ValueError, match="trades_per_year"):
-        plot_cost_sensitivity(returns, base_costs_bps=10.0)
     with pytest.raises(ValueError, match="trades_per_year"):
         plot_cost_sensitivity(returns, realized_costs=profile.cost_returns, trades_per_year=12)
 
