@@ -181,11 +181,11 @@ def plot_mfe_mae_scatter(
 
     # Create figure
     if is_dollar:
-        x_title = "MAE (Max Adverse Excursion) — $"
-        y_title = "MFE (Max Favorable Excursion) — $"
+        x_title = "MAE ($ loss from entry)"
+        y_title = "MFE ($ gain from entry)"
     else:
-        x_title = "MAE (Max Adverse Excursion) — % Loss from Entry"
-        y_title = "MFE (Max Favorable Excursion) — % Gain from Entry"
+        x_title = "MAE (% loss from entry)"
+        y_title = "MFE (% gain from entry)"
 
     fig = create_base_figure(
         title="MFE vs MAE Analysis (Exit Efficiency)",
@@ -353,29 +353,41 @@ def plot_mfe_mae_scatter(
                 layer="below",
             )
 
-        # Quadrant labels
+        # Quadrant labels, each anchored in the outer corner of its own quadrant. The
+        # right-hand labels sit one text line further in, so a narrow plot cannot run
+        # a left and a right label into each other.
         annotations = [
             {
-                "x": mae.max() * 0.8,
-                "y": mfe.max() * 0.9,
+                "x": x_max,
+                "y": y_max,
+                "xanchor": "right",
+                "yanchor": "top",
+                "yshift": -14,
                 "text": "Q1: Healthy Winners",
                 "color": _ML4T_COLORS["positive"],
             },
             {
-                "x": mae.max() * 0.2,
-                "y": mfe.max() * 0.9,
+                "x": 0,
+                "y": y_max,
+                "xanchor": "left",
+                "yanchor": "top",
                 "text": "Q2: Lucky Recovery",
                 "color": _ML4T_COLORS["amber"],
             },
             {
-                "x": mae.max() * 0.2,
-                "y": mfe.max() * 0.1,
+                "x": 0,
+                "y": 0,
+                "xanchor": "left",
+                "yanchor": "bottom",
                 "text": "Q3: No Opportunity",
                 "color": _ML4T_COLORS["negative"],
             },
             {
-                "x": mae.max() * 0.8,
-                "y": mfe.max() * 0.1,
+                "x": x_max,
+                "y": 0,
+                "xanchor": "right",
+                "yanchor": "bottom",
+                "yshift": 14,
                 "text": "Q4: Poor Exit",
                 "color": _ML4T_COLORS["negative"],
             },
@@ -385,6 +397,9 @@ def plot_mfe_mae_scatter(
             fig.add_annotation(
                 x=ann["x"],
                 y=ann["y"],
+                xanchor=ann["xanchor"],
+                yanchor=ann["yanchor"],
+                yshift=ann.get("yshift", 0),
                 text=ann["text"],
                 showarrow=False,
                 font={"size": 10, "color": ann["color"]},
@@ -412,20 +427,12 @@ def plot_mfe_mae_scatter(
             np.mean(ret_arr[positive_mask] / mfe[positive_mask]) if positive_mask.sum() > 0 else 0.0
         )
 
-        fig.add_annotation(
-            x=0.02,
-            y=0.98,
-            xref="paper",
-            yref="paper",
-            text=(
-                f"<b>Edge Ratio:</b> {edge_ratio_text}<br><b>Exit Efficiency:</b> {efficiency:.1%}"
-            ),
-            showarrow=False,
-            font={"size": 12},
-            align="left",
-            bgcolor="rgba(255,255,255,0.8)",
-            bordercolor="gray",
-            borderwidth=1,
+        _add_stats_line(
+            fig,
+            [
+                ("Edge ratio", edge_ratio_text, _ML4T_COLORS["neutral"]),
+                ("Exit efficiency", f"{efficiency:.1%}", _ML4T_COLORS["neutral"]),
+            ],
         )
 
     tick_fmt = "$,.0f" if is_dollar else ".0%"
@@ -436,6 +443,29 @@ def plot_mfe_mae_scatter(
     )
 
     return fig
+
+
+def _add_stats_line(fig: go.Figure, items: list[tuple[str, str, str]]) -> None:
+    """Write summary statistics as one line just above the plot area, right-aligned.
+
+    Labels attached to reference lines inside the plot collide with each other when the
+    lines are close, with the bars, and with tick labels; a line above the plot does not.
+    """
+    text = " \u00b7 ".join(
+        f'<span style="color:{color}">{label} <b>{value}</b></span>'
+        for label, value, color in items
+    )
+    fig.add_annotation(
+        text=text,
+        xref="paper",
+        yref="paper",
+        x=1.0,
+        y=1.0,
+        xanchor="right",
+        yanchor="bottom",
+        showarrow=False,
+        font={"size": 11},
+    )
 
 
 def _empty_placeholder(
@@ -972,23 +1002,20 @@ def plot_trade_duration_distribution(
         mean_dur = np.mean(durations)
         median_dur = np.median(durations)
 
-        fig.add_vline(
-            x=mean_dur,
-            line_dash="dash",
-            line_color=_ML4T_COLORS["slate"],
-            annotation_text=f"Mean: {mean_dur:.1f}",
-            annotation_position="top",
-        )
-        fig.add_vline(
-            x=median_dur,
-            line_dash="dot",
-            line_color=_ML4T_COLORS["negative"],
-            annotation_text=f"Median: {median_dur:.1f}",
-            annotation_position="bottom",
+        fig.add_vline(x=mean_dur, line_dash="dash", line_color=_ML4T_COLORS["slate"])
+        fig.add_vline(x=median_dur, line_dash="dot", line_color=_ML4T_COLORS["negative"])
+        _add_stats_line(
+            fig,
+            [
+                ("Mean (dashed)", f"{mean_dur:.1f}", _ML4T_COLORS["slate"]),
+                ("Median (dotted)", f"{median_dur:.1f}", _ML4T_COLORS["negative"]),
+            ],
         )
 
+    # Split histograms need a key; the theme hides legends by default.
     fig.update_layout(
-        legend={"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
+        showlegend=len(fig.data) > 1,
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.0, "xanchor": "left", "x": 0.0},
     )
 
     return fig
@@ -1365,23 +1392,16 @@ def plot_execution_quality(
         )
     )
 
-    # Median line
-    fig.add_vline(
-        x=median_drag,
-        line_dash="dash",
-        line_color=_ML4T_COLORS.get("amber", "#f59e0b"),
-        annotation_text=f"Median: {median_drag:.2%}",
-        annotation_position="right",
-        annotation={"font": {"size": 10}},
-    )
-    # Mean line
-    fig.add_vline(
-        x=mean_drag,
-        line_dash="dot",
-        line_color=_ML4T_COLORS.get("copper", "#c87533"),
-        annotation_text=f"Mean: {mean_drag:.2%}",
-        annotation_position="right",
-        annotation={"font": {"size": 10}, "yshift": -20},
+    median_color = _ML4T_COLORS.get("amber", "#f59e0b")
+    mean_color = _ML4T_COLORS.get("copper", "#c87533")
+    fig.add_vline(x=median_drag, line_dash="dash", line_color=median_color)
+    fig.add_vline(x=mean_drag, line_dash="dot", line_color=mean_color)
+    _add_stats_line(
+        fig,
+        [
+            ("Median (dashed)", f"{median_drag:.2%}", median_color),
+            ("Mean (dotted)", f"{mean_drag:.2%}", mean_color),
+        ],
     )
 
     fig.update_layout(theme_config["layout"])
