@@ -219,7 +219,8 @@ def test_cost_panel_axis_starts_at_zero_and_fits_its_column(tmp_path, viewport):
 
     destination = tmp_path / "tearsheet.html"
     destination.write_text(
-        generate_backtest_tearsheet(profile=analyze_backtest_result(_run("daily")), n_trials=1)
+        generate_backtest_tearsheet(profile=analyze_backtest_result(_run("daily")), n_trials=1),
+        encoding="utf-8",
     )
     local_plotly = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
     chrome = Chromium.find_browser(skip_local=False) or shutil.which("chromium")
