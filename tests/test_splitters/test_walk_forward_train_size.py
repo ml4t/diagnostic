@@ -247,3 +247,47 @@ class TestHeldOutForwardPath:
         ]
         for train, val in splits:
             _assert_contiguous(train, val[0] - 200, val[0])
+
+
+@pytest.mark.parametrize(
+    "n_rows,expanding,windows",
+    [
+        (200, True, [(55, 105, 110), (55, 125, 130), (55, 145, 150)]),
+        (130, True, [(5, 55, 60), (5, 75, 80)]),
+        (130, False, [(5, 55, 60), (25, 75, 80)]),
+    ],
+)
+def test_backward_folds_require_a_full_initial_training_window(n_rows, expanding, windows):
+    cv = WalkForwardCV(
+        n_splits=3,
+        test_period=30,
+        test_size=20,
+        train_size=50,
+        gap=5,
+        fold_direction="backward",
+        calendar=None,
+        expanding=expanding,
+    )
+    splits = list(cv.split(np.zeros((n_rows, 1))))
+    assert len(splits) == len(windows)
+    for (train, validation), (start, stop, val_start) in zip(splits, windows, strict=True):
+        _assert_contiguous(train, start, stop)
+        _assert_contiguous(validation, val_start, val_start + 20)
+    _assert_contiguous(cv.test_indices_, n_rows - 30, n_rows)
+
+
+def test_backward_default_validation_size_reserves_the_requested_training_window():
+    cv = WalkForwardCV(
+        n_splits=3,
+        test_period=30,
+        train_size=50,
+        gap=6,
+        fold_direction="backward",
+        calendar=None,
+    )
+    splits = list(cv.split(np.zeros((200, 1))))
+    # 170 pre-holdout rows minus 50 training rows and 6 gap rows leave 3 x 38.
+    for i, (train, validation) in enumerate(splits):
+        _assert_contiguous(train, 0, 50 + i * 38)
+        _assert_contiguous(validation, 56 + i * 38, 94 + i * 38)
+    assert len(splits) == 3

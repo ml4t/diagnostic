@@ -70,7 +70,9 @@ class WalkForwardCV(BaseSplitter):
         - If float: proportion of dataset (e.g., 0.5)
         - If str: time period using pandas offset aliases (e.g., "78W", "6M", "2Y")
         - If None: uses all available data before test set
-        The first test fold starts after ``train_size + gap``. With
+        In forward layouts the first test fold starts after ``train_size + gap``.
+        Backward folds are anchored at the held-out boundary and omit earlier
+        folds that lack the full training window. With
         ``expanding=False`` every fold trains on ``train_size``; with
         ``expanding=True`` it is the first fold's window, which then grows.
         Raises ValueError when ``train_size + gap + n_splits * test_size``
@@ -1332,53 +1334,35 @@ class WalkForwardCV(BaseSplitter):
         # Available data for validation (before held-out test)
         available_samples = test_start_idx
 
-        # Calculate validation fold size
-        if self.test_size is None:
+        train_size = (
+            None
+            if self.train_size is None
+            else self._parse_time_size(self.train_size, timestamps, available_samples)
+        )
+        if self.test_size is not None:
+            val_size = self._parse_time_size(self.test_size, timestamps, available_samples)
+        elif train_size is None or self.consecutive:
             val_size = available_samples // (self.n_splits + 1)
         else:
-            val_size = self._parse_time_size(self.test_size, timestamps, available_samples)
+            val_size = (available_samples - train_size - self.gap) // self.n_splits
 
-        # Calculate train size if specified
-        if self.train_size is not None:
-            train_size = self._parse_time_size(self.train_size, timestamps, available_samples)
-        else:
-            train_size = None
-
-        # Calculate step size
-        if self.config.step_size is not None:
-            step_size = self.config.step_size
-        else:
-            step_size = val_size  # Non-overlapping validation folds
-
-        # Construct splits backward from test_start_idx, then emit only the
-        # successfully constructed folds in chronological order.
-        backward_folds: list[tuple[NDArray[np.intp], NDArray[np.intp]]] = []
-        for i in range(self.n_splits):
-            # Validation fold boundaries (stepping backward)
+        if val_size <= 0:
+            return
+        step_size = self.config.step_size or val_size
+        expanding_start = None
+        # Locate validations from the held-out boundary, visiting the oldest first.
+        for i in reversed(range(self.n_splits)):
             val_end = test_start_idx - i * step_size
-            val_start = max(0, val_end - val_size)
-
-            if val_start >= val_end:
-                # No more room for validation folds
-                break
-
-            # Training boundaries
-            if self.expanding:
-                # Expanding window: use all data from start up to val_start
-                train_start = 0
-            else:
-                # Rolling window
-                if train_size is not None:
-                    train_start = max(0, val_start - self.gap - train_size)
-                else:
-                    # Use all available data before validation
-                    train_start = 0
-
-            train_end = max(0, val_start - self.gap)
-
-            if train_end <= train_start:
-                # No room for training data
+            val_start = val_end - val_size
+            train_end = val_start - self.gap
+            if train_end < (train_size or 1):
                 continue
+
+            train_start = train_end - train_size if train_size is not None else 0
+            if self.expanding:
+                if expanding_start is None:
+                    expanding_start = train_start
+                train_start = expanding_start
 
             # Create initial indices
             train_indices = np.arange(train_start, train_end, dtype=np.intp)
@@ -1394,9 +1378,7 @@ class WalkForwardCV(BaseSplitter):
                     clean_train_indices, val_indices, groups
                 )
 
-            backward_folds.append((clean_train_indices, val_indices))
-
-        yield from reversed(backward_folds)
+            yield clean_train_indices, val_indices
 
     def _split_forward_with_test(
         self,
