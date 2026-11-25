@@ -474,14 +474,42 @@ def plot_prediction_trade_alignment(
     )
     fig.update_layout(theme_config["layout"])
     pred_label = value_col.replace("entry_", "").replace("_", " ").title()
+    height = 300
+    margin = {"t": 40, "l": 48, "r": 24, "b": 48}
     fig.update_layout(
         title=f"Trade Outcome by Entry {pred_label} Decile",
-        height=300,
-        margin={"t": 40, "l": 48, "r": 24, "b": 48},
+        height=height,
+        margin=margin,
         xaxis={"title": f"Entry {pred_label} Decile (D1=lowest, D{n_bins}=highest)"},
-        yaxis={"title": outcome_label, "tickformat": outcome_fmt},
+        yaxis={
+            "title": outcome_label,
+            "tickformat": outcome_fmt,
+            "range": _outside_label_range(
+                means, label_lines=2, plot_height_px=height - margin["t"] - margin["b"]
+            ),
+        },
     )
     return fig
+
+
+_BAR_LABEL_LINE_PX = 11  # one line of 9 px bar-label text, with leading
+_BAR_LABEL_GAP_PX = 6  # plotly's offset between the bar end and an outside label
+
+
+def _outside_label_range(values: list[float], label_lines: int, plot_height_px: int) -> list[float]:
+    """Y range that keeps outside bar labels inside the plot area.
+
+    Plotly's autorange leaves room for about one line of outside text, so the first line of a
+    two-line label above the tallest bar is clipped and the last line below the most negative bar
+    runs into the tick labels. Each side that has bars gets the label's pixel height.
+    """
+    lo = min(min(values), 0.0)
+    hi = max(max(values), 0.0)
+    frac = (label_lines * _BAR_LABEL_LINE_PX + _BAR_LABEL_GAP_PX) / plot_height_px
+    sides = int(hi > 0) + int(lo < 0)
+    total = ((hi - lo) or 1.0) / (1 - sides * frac)
+    pad = total * frac
+    return [lo - pad if lo < 0 else lo, hi + pad if hi > 0 else hi]
 
 
 def _choose_primary_entry_column(columns: list[str]) -> str:
