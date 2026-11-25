@@ -75,7 +75,8 @@ def _tearsheet(path: Path) -> None:
     path.write_text(
         generate_backtest_tearsheet(
             profile=analyze_backtest_result(result), template="full", n_trials=1
-        )
+        ),
+        encoding="utf-8",
     )
 
 
