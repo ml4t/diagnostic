@@ -180,3 +180,31 @@ def test_trade_without_entry_time_is_reported_not_explained_from_its_exit():
 
     assert isinstance(outcome, TradeExplainFailure)
     assert outcome.reason == "entry_time_missing"
+
+
+def test_explanation_identifies_the_exact_nanosecond_feature_row():
+    import pandas as pd
+
+    base = pd.Timestamp("2024-01-01").value
+    ticks = [base + 101, base + 899, base + 1100]
+    frame = pl.DataFrame(
+        {"timestamp": pl.Series(ticks).cast(pl.Datetime("ns")), "value": [1.0, 2.0, 3.0]}
+    )
+    trade = TradeRecord(
+        timestamp=pd.Timestamp(base + 2000),
+        entry_timestamp=pd.Timestamp(base + 1000),
+        duration=timedelta(microseconds=1),
+        symbol="A",
+        entry_price=1.0,
+        exit_price=2.0,
+        pnl=1.0,
+        direction="long",
+        quantity=1,
+    )
+    analyzer = TradeShapAnalyzer(
+        model=None, features_df=frame, shap_values=np.array([[1.0], [2.0], [3.0]])
+    )
+    result = analyzer.explain_trade(trade)
+    assert isinstance(result, TradeShapExplanation)
+    assert result.feature_values["value"] == 2.0
+    assert result.feature_timestamp == pd.Timestamp(ticks[1])

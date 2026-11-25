@@ -6,7 +6,7 @@ using the SHAP values of the feature row the model saw when it opened the trade.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -151,7 +151,7 @@ class TradeShapExplainer:
             )
 
         self.has_symbol = "symbol" in features_df.columns
-        self._timestamps = features_df["timestamp"].to_list()
+        self._timestamps = pd.DatetimeIndex(features_df["timestamp"].to_pandas())
         self._index = self._build_index(features_df)
 
         # Cache feature data as numpy for fast row extraction
@@ -202,12 +202,6 @@ class TradeShapExplainer:
         if duration is not None:
             return trade.timestamp - duration
         return None
-
-    def _row_timestamp(self, idx: int) -> datetime:
-        value = self._timestamps[idx]
-        if isinstance(value, date) and not isinstance(value, datetime):
-            return datetime(value.year, value.month, value.day)
-        return value
 
     def explain(
         self,
@@ -314,7 +308,7 @@ class TradeShapExplainer:
             shap_vector=shap_vector,
             symbol=str(trade.symbol),
             entry_timestamp=entry,
-            feature_timestamp=self._row_timestamp(idx),
+            feature_timestamp=self._timestamps[idx],
             pnl=getattr(trade, "pnl", None),
         )
 
