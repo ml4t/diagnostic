@@ -67,8 +67,8 @@ def walk_forward_cv() -> WalkForwardCV:
     """Basic WalkForwardCV splitter."""
     return WalkForwardCV(
         n_splits=5,
-        test_size=50,
-        train_size=200,
+        test_size=40,
+        train_size=100,
     )
 
 
@@ -77,8 +77,8 @@ def walk_forward_cv_with_gap() -> WalkForwardCV:
     """WalkForwardCV with label_horizon for purge gap."""
     return WalkForwardCV(
         n_splits=5,
-        test_size=50,
-        train_size=200,
+        test_size=40,
+        train_size=100,
         label_horizon=10,
     )
 
