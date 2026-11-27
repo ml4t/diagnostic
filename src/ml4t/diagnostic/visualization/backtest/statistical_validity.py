@@ -39,14 +39,14 @@ def plot_dsr_gauge(
     """Create a gauge chart showing DSR probability.
 
     The Deflated Sharpe Ratio corrects for selection bias when choosing
-    the best strategy from multiple tests. The probability represents
-    P(true SR > benchmark) — higher values indicate stronger evidence of skill.
+    the best strategy from multiple tests. The score is the Normal CDF of
+    the selection-adjusted statistic, not a Bayesian probability of skill.
 
     Parameters
     ----------
     dsr_probability : float
-        Probability of skill (0-1). Higher is better.
-        This is P(SR > benchmark), NOT a p-value.
+        Normal-CDF confidence score (0-1) under the supplied trial model.
+        Its nominal upper-tail p-value is one minus this score.
     observed_sharpe : float
         The observed Sharpe ratio being tested
     expected_max_sharpe : float, optional
@@ -80,8 +80,6 @@ def plot_dsr_gauge(
     """
     theme_config = get_theme_config(theme)
 
-    # dsr_probability is P(SR > benchmark) — probability of skill.
-    # High = good (strong evidence), Low = bad (likely noise).
     confidence = dsr_probability * 100
 
     # Color zones: Red (not significant) -> Yellow (marginal) -> Green (significant)
@@ -751,8 +749,8 @@ def plot_statistical_summary_card(
     ----------
     metrics : dict[str, Any]
         Dictionary with statistical metrics. Expected keys:
-        - dsr_probability: DSR p-value
-        - dsr_significant: bool
+        - dsr_probability: Normal-CDF confidence score from DSRResult.probability
+        - dsr_significant: bool from DSRResult.is_significant
         - min_trl: minimum track record length
         - current_trl: current track record length
         - trl_sufficient: bool
@@ -788,12 +786,13 @@ def plot_statistical_summary_card(
 
     # DSR check
     if dsr_prob is not None:
+        p_value = 1 - dsr_prob
         if dsr_sig:
-            indicators.append(("DSR", f"p={dsr_prob:.3f}", "green", "Significant"))
-        elif dsr_prob < 0.10:
-            indicators.append(("DSR", f"p={dsr_prob:.3f}", "yellow", "Marginal"))
+            indicators.append(("DSR", f"p={p_value:.3f}", "green", "Significant"))
+        elif p_value < 0.10:
+            indicators.append(("DSR", f"p={p_value:.3f}", "yellow", "Marginal"))
         else:
-            indicators.append(("DSR", f"p={dsr_prob:.3f}", "red", "Not Significant"))
+            indicators.append(("DSR", f"p={p_value:.3f}", "red", "Not Significant"))
 
     # MinTRL check
     if min_trl is not None and current_trl is not None:

@@ -47,7 +47,7 @@ This is the **multiple testing problem**, and it's pervasive in quantitative fin
 
 **Implementation**: `ml4t.diagnostic.evaluation.stats.deflated_sharpe_ratio()`
 
-**What it does**: Adjusts an observed Sharpe ratio downward to account for the number of strategies tested, providing a probability that the true Sharpe ratio exceeds zero after accounting for selection bias.
+**What it does**: Compares an observed Sharpe ratio with a selection-adjusted null using a Normal-CDF confidence score. The score is not a Bayesian probability of skill.
 
 **Why it matters**: A strategy with SR = 2.0 sounds impressive, but if you tested 1000 parameter combinations to find it, that SR may be entirely explained by selection bias.
 
@@ -58,15 +58,17 @@ The DSR extends the Probabilistic Sharpe Ratio (PSR) to account for multiple tes
 **Formula** (López de Prado et al., 2025):
 
 ```
-DSR = Φ((SR̂ - E[max{SR}]) / σ[SR̂])
+DSR = Φ((SR̂ - E[max{SR}]) / σ[max{SR}])
 ```
 
 Where:
 - `SR̂` = observed (best) Sharpe ratio
 - `E[max{SR}] = √Var[{SR_k}] × E[max{Z}]` = expected maximum under null
 - `E[max{Z}] ≈ (1-γ)Φ⁻¹(1-1/K) + γΦ⁻¹(1-1/(Ke))` (Euler-Mascheroni approximation)
-- `σ[SR̂] = √((1 - γ₃SR₀ + (γ₄-1)/4 × SR₀²) / T)` = standard error accounting for skewness/kurtosis
+- `σ[max{SR}] = √Var[{SR_k}] × √V[max{Z}]` = standard deviation of the maximum under null, with `√V[max{Z}]` tabulated in the paper for K = 1 to 100
 - `γ ≈ 0.5772` = Euler-Mascheroni constant
+
+For a single strategy (K = 1) the threshold is the benchmark `SR₀` and the denominator is the standard error of the Sharpe ratio estimator, `√((1 - γ₃SR₀ + (γ₄-1)/4 × SR₀²) / T)` for uncorrelated returns.
 
 #### Usage Example
 
@@ -91,16 +93,20 @@ print(f"p-value: {result.p_value:.3f}")
 **Critical Requirement**: You must provide the **actual variance** of Sharpe ratios across all K strategies tested. DSR cannot be meaningfully calculated without access to all strategies.
 
 **Interpretation**:
-- DSR = 0.95: 95% confidence that true SR > 0 after multiple testing correction
-- DSR = 0.50: Coin flip—strategy is likely explained by selection bias
-- DSR < 0.05: Strategy almost certainly overfit
+- DSR = 0.95: nominal upper-tail p-value 0.05 against the adjusted null.
+- DSR = 0.50: the observed Sharpe equals the adjusted null threshold.
+- DSR < 0.05: the observed Sharpe lies below that threshold.
+
+The Normal, independence and trial-history assumptions matter. These scores do
+not estimate the probability of overfitting or future profitability. See the
+[method assumptions and numerical compatibility](../methods/deflated-sharpe-ratio.md).
 
 **Primary References**:
 
 1. **López de Prado, M., Lipton, A., & Zoonekynd, V. (2025)**
-   "How to use the Sharpe Ratio: A multivariate case study."
+   "How to Use the Sharpe Ratio."
    *ADIA Lab Research Paper Series*, No. 19.
-   - Reference implementation: https://github.com/zoonek/2025-sharpe-ratio
+   - [Companion code at 6199ecb](https://github.com/zoonek/2025-sharpe-ratio/blob/6199ecb1c84da7eee7bd81d9a017cf12b8ff0e0d/functions.py) uses a different denominator from the March 2026 paper; the method guide reconciles this difference.
 
 2. **Bailey, D. H., & López de Prado, M. (2014)**
    "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting, and Non-Normality."

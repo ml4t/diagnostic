@@ -60,7 +60,7 @@ class ValidationResult:
     std_sharpe : float
         Standard deviation of Sharpe ratios
     dsr : float
-        Deflated Sharpe Ratio (probability true SR > 0)
+        Normal-CDF confidence score against the selection-adjusted null
     dsr_zscore : float
         DSR z-score
     expected_max_sharpe : float
@@ -100,7 +100,7 @@ class ValidationResult:
             f"Std Sharpe:      {self.std_sharpe:.4f}",
             "",
             "--- Statistical Significance ---",
-            f"DSR (probability true SR > 0): {self.dsr:.4f}",
+            f"DSR confidence score:          {self.dsr:.4f}",
             f"DSR z-score:                   {self.dsr_zscore:.4f}",
             f"Expected max SR under null:    {self.expected_max_sharpe:.4f}",
             f"Significant at {self.significance_level:.0%}:      {'YES' if self.is_significant else 'NO'}",

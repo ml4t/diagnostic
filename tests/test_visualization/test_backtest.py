@@ -557,6 +557,35 @@ class TestCostAttribution:
 class TestStatisticalValidity:
     """Tests for statistical_validity.py functions."""
 
+    @pytest.mark.parametrize(
+        ("observed_sharpe", "expected_status", "p_lower", "p_upper"),
+        [
+            (0.05, "Not Significant", 0.9, 1.0),
+            (0.17, "Marginal", 0.05, 0.1),
+            (0.2, "Significant", 0.0, 0.05),
+        ],
+    )
+    def test_summary_card_does_not_reverse_real_dsr_confidence_and_tail_risk(
+        self, observed_sharpe, expected_status, p_lower, p_upper
+    ):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio_from_statistics
+        from ml4t.diagnostic.visualization.backtest import plot_statistical_summary_card
+
+        result = deflated_sharpe_ratio_from_statistics(
+            observed_sharpe=observed_sharpe,
+            n_samples=200,
+            n_trials=10,
+            variance_trials=0.005,
+        )
+        assert p_lower < result.p_value < p_upper
+        figure = plot_statistical_summary_card(
+            {"dsr_probability": result.probability, "dsr_significant": result.is_significant}
+        )
+        labels = [annotation.text for annotation in figure.layout.annotations]
+        assert f"p={result.p_value:.3f}" in labels
+        assert expected_status in labels
+        assert f"p={result.p_value:.3f}" in figure.to_html(full_html=False, include_plotlyjs=False)
+
     def test_plot_dsr_gauge_basic(self):
         """Test DSR gauge chart."""
         from ml4t.diagnostic.visualization.backtest import plot_dsr_gauge
@@ -658,6 +687,53 @@ class TestStatisticalValidity:
 
 class TestTearsheetGeneration:
     """Tests for tearsheet.py functions."""
+
+    def test_return_only_report_does_not_invent_trials_from_a_search_count(self):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        returns = np.random.default_rng(41).normal(0.001, 0.01, 60)
+        single_trial = deflated_sharpe_ratio(returns)
+        with pytest.warns(RuntimeWarning, match="cross-trial dispersion"):
+            html = generate_backtest_tearsheet(
+                returns=returns, n_trials=25, template="full", include_plotlyjs=False
+            )
+        assert f"{single_trial.probability:.1%}" in html
+        assert "Requires n_trials parameter" not in html
+
+    @pytest.mark.parametrize("n_trials", [None, 1])
+    def test_single_trial_report_keeps_its_psr_without_a_missing_cohort_warning(self, n_trials):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        returns = np.random.default_rng(41).normal(0.001, 0.01, 60)
+        single_trial = deflated_sharpe_ratio(returns)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            html = generate_backtest_tearsheet(
+                returns=returns, n_trials=n_trials, template="full", include_plotlyjs=False
+            )
+        assert not any("cross-trial dispersion" in str(w.message) for w in caught)
+        assert f"{single_trial.probability:.1%}" in html
+
+    def test_report_keeps_the_actual_cohort_dsr_without_a_missing_cohort_warning(self):
+        from ml4t.diagnostic.evaluation.stats import deflated_sharpe_ratio
+        from ml4t.diagnostic.visualization.backtest import generate_backtest_tearsheet
+
+        trials = np.random.default_rng(17).normal(0.001, 0.01, (3, 60))
+        result = deflated_sharpe_ratio(list(trials))
+        selected = int(np.argmax(trials.mean(axis=1) / trials.std(axis=1, ddof=1)))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            html = generate_backtest_tearsheet(
+                returns=trials[selected],
+                n_trials=3,
+                metrics={"dsr_probability": result.probability},
+                template="full",
+                include_plotlyjs=False,
+            )
+        assert not any("cross-trial dispersion" in str(w.message) for w in caught)
+        assert f"{result.probability:.1%}" in html
 
     def test_generate_backtest_tearsheet_full(self, sample_metrics, sample_trades, sample_returns):
         """Test full tearsheet generation."""
@@ -763,7 +839,10 @@ class TestTearsheetGeneration:
 
         monkeypatch.setattr(dsr_module, "deflated_sharpe_ratio", fail_dsr)
 
-        with pytest.raises(ReportGenerationError, match="DSR metrics") as exc_info:
+        with (
+            pytest.warns(RuntimeWarning, match="cross-trial dispersion"),
+            pytest.raises(ReportGenerationError, match="DSR metrics") as exc_info,
+        ):
             module._enrich_validation_metrics({}, np.ones(100), n_trials=2)
 
         assert exc_info.value.context["metric"] == "dsr"

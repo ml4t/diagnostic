@@ -1,37 +1,28 @@
-"""Test fixtures for DSR validation.
+"""Reference values for the Sharpe ratio inference tests.
 
-Reference test cases from López de Prado et al. (2025).
+See dsr_reference.py for the source of each value.
 """
 
 from .dsr_reference import (
     DSR_CASES,
     MINTRL_CASES,
-    POWER_CASES,
+    PAPER_SHARPE,
     PSR_CASES,
     VARIANCE_RESCALING_FACTORS,
     DSRTestCase,
     MinTRLTestCase,
-    PowerTestCase,
     PSRTestCase,
-    expected_max_sharpe,
-    get_summary,
-    get_variance_rescaling_factor,
 )
 
 __all__ = [
+    "PAPER_SHARPE",
     # Test case lists
     "PSR_CASES",
     "MINTRL_CASES",
     "DSR_CASES",
-    "POWER_CASES",
     "VARIANCE_RESCALING_FACTORS",
     # Test case types
     "PSRTestCase",
     "DSRTestCase",
     "MinTRLTestCase",
-    "PowerTestCase",
-    # Helper functions
-    "get_variance_rescaling_factor",
-    "expected_max_sharpe",
-    "get_summary",
 ]
