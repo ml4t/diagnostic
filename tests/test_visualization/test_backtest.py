@@ -518,6 +518,7 @@ class TestCostAttribution:
         fig = plot_cost_sensitivity(
             returns=sample_returns,
             base_costs_bps=10.0,
+            trades_per_year=52,
         )
 
         assert isinstance(fig, go.Figure)
@@ -531,6 +532,7 @@ class TestCostAttribution:
             returns=sample_returns,
             base_costs_bps=10.0,
             cost_multipliers=[0, 1, 2, 5, 10],
+            trades_per_year=52,
         )
 
         assert isinstance(fig, go.Figure)

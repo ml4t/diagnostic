@@ -360,10 +360,10 @@ _SECTION_FOOTNOTES: dict[str, str] = {
         "clusters far right suggest stops are too loose."
     ),
     "cost_sensitivity": (
-        "<strong>Reading:</strong> The breakeven point shows how much transaction costs "
-        "can increase before the strategy becomes unprofitable. "
-        "A narrow margin suggests fragility to execution costs. "
-        "Scroll this panel horizontally on narrow screens."
+        "<strong>Reading:</strong> Each point scales the commission and slippage the "
+        "backtest paid. Zero is the return before costs; Current is the backtest as run. "
+        "The breakeven point shows how much costs can rise before the Sharpe ratio "
+        "reaches zero; a narrow margin suggests fragility to execution costs."
     ),
     "factor_attribution": (
         "<strong>Reading:</strong> Additive attribution: \u03b2 \u00d7 factor return. "
@@ -1986,12 +1986,28 @@ def _render_cost_waterfall(ctx: _SectionContext) -> str | None:
 
 
 def _render_cost_sensitivity(ctx: _SectionContext) -> go.Figure | None:
-    if ctx.returns is None:
+    # Returns alone do not say whether costs were deducted or what was traded, so
+    # the panel needs the profile's fills to scale the costs the run actually paid.
+    if ctx.profile is None:
         return None
+    costs = ctx.profile.cost_returns
+    if costs is None or not float(costs.abs().sum()) > 0:
+        return None
+    activity = ctx.profile.activity["metrics"]
+    notional = activity.get("total_filled_notional") or 0.0
+    realized_bps = (
+        float(activity.get("total_implementation_cost", 0.0)) / notional * 10_000
+        if notional > 0
+        else None
+    )
     from .cost_attribution import plot_cost_sensitivity
 
     return plot_cost_sensitivity(
-        ctx.returns, theme=ctx.theme, periods_per_year=ctx.periods_per_year
+        ctx.profile.daily_returns,
+        base_costs_bps=realized_bps,
+        realized_costs=costs,
+        theme=ctx.theme,
+        periods_per_year=ctx.periods_per_year,
     )
 
 

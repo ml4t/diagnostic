@@ -109,10 +109,8 @@ def test_declared_scale_reaches_relative_metrics_and_actual_chart_data(scale, ro
         np.isnan(np.asarray(data[2]["y"], dtype=float)), np.arange(300) < 251
     )
 
-    cost_data, _ = chart_payloads(html, "cost_sensitivity")
-    assert cost_data[0]["y"][0] == pytest.approx(
-        returns.mean() / returns.std(ddof=1) * np.sqrt(scale)
-    )
+    # Returns alone carry no cost content to scale; the panel needs a backtest profile.
+    assert not re.search(r'<(?:div|details)\b[^>]*\bdata-section="cost_sensitivity"', html)
 
 
 @pytest.mark.parametrize("scale", [0, -1, float("nan"), float("inf"), True, 12.5])
