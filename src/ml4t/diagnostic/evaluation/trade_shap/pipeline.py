@@ -46,7 +46,7 @@ class TradeShapPipeline:
     interface that uses the refactored components internally.
 
     Attributes:
-        features_df: Polars DataFrame with timestamp and feature columns
+        features_df: Polars DataFrame with timestamp, optional symbol, and feature columns
         shap_values: SHAP values array (n_samples x n_features)
         feature_names: List of feature column names
         config: Pipeline configuration
@@ -73,7 +73,8 @@ class TradeShapPipeline:
         """Initialize pipeline.
 
         Args:
-            features_df: Polars DataFrame with 'timestamp' column and feature columns
+            features_df: Polars DataFrame with a 'timestamp' column, the feature
+                columns and, for a multi-asset panel, a 'symbol' column
             shap_values: SHAP values array (n_samples x n_features)
             feature_names: List of feature column names
             config: Pipeline configuration (uses defaults if None)
@@ -93,6 +94,7 @@ class TradeShapPipeline:
             top_n_features=alignment_cfg.top_n_features,
             alignment_mode=alignment_cfg.mode,
             missing_value_strategy=alignment_cfg.missing_strategy,
+            decision_time=alignment_cfg.decision_time,
         )
 
         # Initialize clusterer
@@ -215,6 +217,7 @@ class TradeShapPipeline:
             explanations=explanations,
             failed_trades=[(f.trade_id, f.reason) for f in failures],
             error_patterns=error_patterns,
+            shap_normalization=self.config.clustering.normalization or "none",
         )
 
     def generate_actions(

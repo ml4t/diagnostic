@@ -4,8 +4,8 @@ Building blocks for explaining losing trades and clustering recurring error patt
 
 ## Main Components
 
-- `explain.py` - per-trade SHAP explanations
-- `alignment.py` - timestamp alignment between trades and feature rows
+- `explain.py` - per-trade SHAP explanations, aligned on (symbol, decision row before entry)
+- `alignment.py` - `TimestampAligner`, a standalone nearest-timestamp helper
 - `fold_shap.py` - fold-aware SHAP extraction
 - `normalize.py` - SHAP vector normalization helpers
 - `cluster.py` - clustering and centroid utilities

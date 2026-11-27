@@ -63,6 +63,7 @@ from ml4t.diagnostic.evaluation.trade_shap import (
     normalize_l2,
     standardize,
 )
+from ml4t.diagnostic.evaluation.trade_shap.explain import KEY_COLUMNS
 
 if TYPE_CHECKING:
     from ml4t.diagnostic.config import TradeConfig
@@ -101,7 +102,11 @@ class TradeShapAnalyzer:
 
         Args:
             model: Trained model for SHAP computation
-            features_df: DataFrame with 'timestamp' column and feature columns
+            features_df: DataFrame with a 'timestamp' column, the feature columns and,
+                for a multi-asset panel, a 'symbol' column. Each row holds the
+                features the model saw at that time for that symbol; trades align
+                to their symbol's last row before entry (see
+                ``AlignmentSettings.decision_time``).
             shap_values: Pre-computed SHAP values (optional, computed if None)
             config: TradeConfig for analysis parameters
             explainer_type: SHAP explainer type ('auto', 'tree', 'kernel', etc.)
@@ -153,8 +158,8 @@ class TradeShapAnalyzer:
         return features_df
 
     def _extract_feature_names(self) -> list[str]:
-        """Extract feature names from DataFrame."""
-        feature_names = [col for col in self.features_df.columns if col != "timestamp"]
+        """Extract feature names from DataFrame (every column except the row keys)."""
+        feature_names = [col for col in self.features_df.columns if col not in KEY_COLUMNS]
         if not feature_names:
             raise ValueError("No feature columns found in features_df.")
         return feature_names
@@ -183,7 +188,7 @@ class TradeShapAnalyzer:
         """Compute SHAP values on-demand if not provided."""
         from ml4t.diagnostic.metrics import compute_shap_importance
 
-        feature_cols = [col for col in self.features_df.columns if col != "timestamp"]
+        feature_cols = self.feature_names
         features_df = self.features_df.select(feature_cols)
 
         result = compute_shap_importance(

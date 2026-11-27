@@ -47,6 +47,25 @@ Use `TradeFilters` to restrict symbols, dates, duration, or PnL before analysis.
 SHAP-based trade diagnostics require model-aligned feature rows and SHAP values.
 Use the executable dashboard script in `examples/trade_shap_dashboard_demo.py`
 as the supported starting point for that workflow.
+
+`TradeShapAnalyzer` explains each trade from the feature row the model saw when
+the position was opened. `TradeRecord.timestamp` is the exit, so the analyzer
+starts from `entry_timestamp` (or `timestamp - duration` when only the duration
+is known) and takes the last row strictly before the entry: with next-bar fills,
+the ml4t-backtest default, that is the bar the order was decided on. Give a
+multi-asset `features_df` a `symbol` column so each trade uses its own asset's
+row; a frame without one must have one row per timestamp. Set
+`TradeAlignmentSettings(decision_time="at_or_before_entry")` when orders fill on
+the bar that generated them, or when each feature row is already stamped at the
+time it became usable. A trade whose decision row is missing, or older than the
+longest gap in that asset's feature history, is reported as a failure with its
+reason instead of being explained from another row.
+
+Pass the analyzer's result as `shap_result` to `generate_backtest_tearsheet`,
+`generate_tearsheet_from_result`, `export_workspaces` or
+`BacktestTearsheet.add_shap_result` to add two sections in the ML workspace:
+the SHAP drivers of the worst trades, and the error patterns once enough trades
+have been explained to cluster them.
 The dashboard is optional; the core ranking above runs without SHAP or a
 browser.
 

@@ -26,15 +26,18 @@ from ml4t.diagnostic.evaluation.trade_shap.pipeline import TradeShapPipeline
 
 
 class MockTradeMetrics:
-    """Mock TradeMetrics for testing without full dependency."""
+    """Mock TradeMetrics for a trade decided on a known feature row."""
 
-    def __init__(self, timestamp: datetime, symbol: str = "TEST", pnl: float = -5.0) -> None:
-        self.timestamp = timestamp
+    def __init__(self, decided_at: datetime, symbol: str = "TEST", pnl: float = -5.0) -> None:
+        # Opened from the feature row at ``decided_at``, filled a minute later and
+        # held an hour; ``timestamp`` is the exit, as in TradeRecord.
+        self.entry_timestamp = decided_at + timedelta(minutes=1)
+        self.duration = timedelta(hours=1)
+        self.timestamp = self.entry_timestamp + self.duration
         self.symbol = symbol
         self.entry_price = 100.0
         self.exit_price = 100.0 + pnl
         self.pnl = pnl
-        self.duration = timedelta(hours=1)
         self.direction = "long"
 
 
@@ -160,17 +163,18 @@ class TestExplainTrade:
     def test_explain_trade_delegates_to_explainer(self, pipeline):
         """explain_trade should delegate to explainer."""
         trade_time = datetime(2024, 1, 1, 19, 0, 0)  # Row 10
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = pipeline.explain_trade(trade)
 
         assert isinstance(result, TradeShapExplanation)
-        assert result.timestamp == trade_time
+        assert result.timestamp == trade.timestamp
+        assert result.feature_timestamp == trade_time
 
     def test_explain_trade_failure_returns_failure(self, pipeline):
         """Non-matching trade should return TradeExplainFailure."""
         trade_time = datetime(2025, 6, 1, 0, 0, 0)  # Outside range
-        trade = MockTradeMetrics(timestamp=trade_time)
+        trade = MockTradeMetrics(decided_at=trade_time)
 
         result = pipeline.explain_trade(trade)
 
@@ -183,8 +187,8 @@ class TestExplainTrades:
     def test_explain_trades_delegates_to_explainer(self, pipeline):
         """explain_trades should delegate to explainer."""
         trades = [
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0)),
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 15, 0, 0)),
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0)),
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 15, 0, 0)),
         ]
 
         explanations, failures = pipeline.explain_trades(trades)
@@ -209,7 +213,7 @@ class TestAnalyzeWorstTrades:
 
     def test_n_zero_returns_empty_result(self, pipeline):
         """n=0 should return empty result."""
-        trades = [MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0))]
+        trades = [MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0))]
 
         result = pipeline.analyze_worst_trades(trades, n=0)
 
@@ -218,7 +222,7 @@ class TestAnalyzeWorstTrades:
 
     def test_all_failures_returns_result_without_patterns(self, pipeline):
         """All alignment failures should return result without patterns."""
-        trades = [MockTradeMetrics(timestamp=datetime(2025, 6, i, 0, 0, 0)) for i in range(1, 6)]
+        trades = [MockTradeMetrics(decided_at=datetime(2025, 6, i, 0, 0, 0)) for i in range(1, 6)]
 
         result = pipeline.analyze_worst_trades(trades)
 
@@ -245,7 +249,7 @@ class TestAnalyzeWorstTrades:
         # Create trades matching timestamps (use timedelta to avoid hour overflow)
         base_time = datetime(2024, 1, 1, 9, 0, 0)
         trades = [
-            MockTradeMetrics(timestamp=base_time + timedelta(hours=i), pnl=-float(i))
+            MockTradeMetrics(decided_at=base_time + timedelta(hours=i), pnl=-float(i))
             for i in range(20)
         ]
 
@@ -260,7 +264,9 @@ class TestAnalyzeWorstTrades:
 
     def test_n_limits_trades_analyzed(self, pipeline):
         """n parameter should limit trades analyzed."""
-        trades = [MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10 + i, 0, 0)) for i in range(10)]
+        trades = [
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10 + i, 0, 0)) for i in range(10)
+        ]
 
         result = pipeline.analyze_worst_trades(trades, n=5)
 
@@ -280,7 +286,7 @@ class TestAnalyzeWorstTrades:
         )
 
         trades = [
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 9 + i, 0, 0))
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 9 + i, 0, 0))
             for i in range(10)  # Less than 50
         ]
 
@@ -302,7 +308,7 @@ class TestAnalyzeWorstTrades:
             config=config,
         )
 
-        trades = [MockTradeMetrics(timestamp=datetime(2024, 1, 1, 9 + i, 0, 0)) for i in range(10)]
+        trades = [MockTradeMetrics(decided_at=datetime(2024, 1, 1, 9 + i, 0, 0)) for i in range(10)]
 
         # Should not raise - normalization is applied internally
         result = pipeline.analyze_worst_trades(trades)
@@ -323,7 +329,7 @@ class TestAnalyzeWorstTrades:
             config=config,
         )
 
-        trades = [MockTradeMetrics(timestamp=datetime(2024, 1, 1, 9 + i, 0, 0)) for i in range(10)]
+        trades = [MockTradeMetrics(decided_at=datetime(2024, 1, 1, 9 + i, 0, 0)) for i in range(10)]
 
         result = pipeline.analyze_worst_trades(trades)
         assert result.n_trades_explained == 10
@@ -331,9 +337,9 @@ class TestAnalyzeWorstTrades:
     def test_mixed_success_and_failure(self, pipeline):
         """Mixed matching/non-matching trades should be handled."""
         trades = [
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0)),  # Match
-            MockTradeMetrics(timestamp=datetime(2025, 6, 1, 0, 0, 0)),  # No match
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 15, 0, 0)),  # Match
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0)),  # Match
+            MockTradeMetrics(decided_at=datetime(2025, 6, 1, 0, 0, 0)),  # No match
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 15, 0, 0)),  # Match
         ]
 
         result = pipeline.analyze_worst_trades(trades)
@@ -357,7 +363,7 @@ class TestEdgeCases:
 
     def test_single_trade_analysis(self, pipeline):
         """Single trade should work correctly."""
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0))
 
         result = pipeline.analyze_worst_trades([trade])
 
@@ -368,8 +374,8 @@ class TestEdgeCases:
     def test_result_contains_trade_ids(self, pipeline):
         """Result should contain correct trade IDs."""
         trades = [
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 0, 0), symbol="BTC"),
-            MockTradeMetrics(timestamp=datetime(2024, 1, 1, 11, 0, 0), symbol="ETH"),
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 0, 0), symbol="BTC"),
+            MockTradeMetrics(decided_at=datetime(2024, 1, 1, 11, 0, 0), symbol="ETH"),
         ]
 
         result = pipeline.analyze_worst_trades(trades)
@@ -381,7 +387,7 @@ class TestEdgeCases:
 
     def test_failed_trades_contains_reason(self, pipeline):
         """Failed trades should contain reason."""
-        trade = MockTradeMetrics(timestamp=datetime(2025, 6, 1, 0, 0, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2025, 6, 1, 0, 0, 0))
 
         result = pipeline.analyze_worst_trades([trade])
 
@@ -406,7 +412,7 @@ class TestEdgeCases:
             )
 
             trades = [
-                MockTradeMetrics(timestamp=datetime(2024, 1, 1, 9 + i, 0, 0)) for i in range(10)
+                MockTradeMetrics(decided_at=datetime(2024, 1, 1, 9 + i, 0, 0)) for i in range(10)
             ]
 
             result = pipeline.analyze_worst_trades(trades)
@@ -430,7 +436,7 @@ class TestEdgeCases:
         )
 
         # Trade 15 minutes after a known timestamp
-        trade = MockTradeMetrics(timestamp=datetime(2024, 1, 1, 10, 15, 0))
+        trade = MockTradeMetrics(decided_at=datetime(2024, 1, 1, 10, 15, 0))
 
         result = pipeline.analyze_worst_trades([trade])
 
@@ -444,10 +450,10 @@ class TestEdgeCases:
             datetime(2024, 1, 1, 10, 0, 0),
             datetime(2024, 1, 1, 15, 0, 0),
         ]
-        trades = [MockTradeMetrics(timestamp=ts) for ts in timestamps]
+        trades = [MockTradeMetrics(decided_at=ts) for ts in timestamps]
 
         result = pipeline.analyze_worst_trades(trades)
 
         # Order should be preserved
         for i, exp in enumerate(result.explanations):
-            assert exp.timestamp == timestamps[i]
+            assert exp.feature_timestamp == timestamps[i]

@@ -1482,10 +1482,14 @@ class TestShapPatterns:
         fig = plot_shap_error_patterns(sample_shap_result)
 
         assert isinstance(fig, go.Figure)
-        # Should have bar traces (one per cluster) + table trace
-        bar_traces = [t for t in fig.data if t.type == "bar"]
+        # One bar trace per cluster, a legend key for the hatching, and a table
+        bar_names = [t.name for t in fig.data if t.type == "bar"]
         table_traces = [t for t in fig.data if t.type == "table"]
-        assert len(bar_traces) == 2  # 2 clusters
+        assert [n for n in bar_names if n.startswith("Cluster")] == [
+            "Cluster 0 (12 trades)",
+            "Cluster 1 (8 trades)",
+        ]
+        assert bar_names[-1] == "Hatched: not significant"
         assert len(table_traces) == 1
 
     def test_plot_shap_error_patterns_themes(self, sample_shap_result):

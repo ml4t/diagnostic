@@ -244,6 +244,7 @@ _SECTION_WORKSPACE_MAP: dict[str, str] = {
     "ic_time_series": "ml",
     "quintile_returns": "ml",
     "prediction_trade_alignment": "ml",
+    "shap_worst_trades": "ml",
     "shap_errors": "ml",
     # Methodology
     "methodology_notes": "methodology",
@@ -305,6 +306,7 @@ _WORKSPACE_SECTION_ORDER: dict[str, tuple[str, ...]] = {
         "ic_time_series",
         "quintile_returns",
         "prediction_trade_alignment",
+        "shap_worst_trades",
         "shap_errors",
     ),
     "methodology": ("methodology_notes",),
@@ -331,6 +333,19 @@ _COLLAPSIBLE_SECTIONS: set[str] = {
     "trade_waterfall",
     "shap_errors",
 }
+
+#: Sections that render a TradeShapResult; enabled whenever one is supplied.
+_SHAP_SECTIONS: tuple[str, ...] = ("shap_worst_trades", "shap_errors")
+
+
+def _enable_shap_sections(tmpl: TearsheetTemplate, shap_result: TradeShapResult | None) -> None:
+    """Enable the template's SHAP sections when a Trade-SHAP result is supplied."""
+    if shap_result is None:
+        return
+    for section in tmpl.sections:
+        if section.name in _SHAP_SECTIONS:
+            section.enabled = True
+
 
 # Interpretive footnotes — brief guidance for complex charts
 _SECTION_FOOTNOTES: dict[str, str] = {
@@ -948,6 +963,8 @@ def generate_backtest_tearsheet(
                 "prediction_trade_alignment",
             ):
                 section.enabled = True
+
+    _enable_shap_sections(tmpl, shap_result)
 
     # Auto-enable factor sections when factor_data is provided
     if supplied_holdings is not None:
@@ -2346,6 +2363,14 @@ def _get_prediction_adapter(ctx: _SectionContext) -> Any:
     return None
 
 
+def _render_shap_worst_trades(ctx: _SectionContext) -> go.Figure | None:
+    if ctx.shap_result is None or not ctx.shap_result.explanations:
+        return None
+    from .shap_patterns import plot_shap_worst_trades
+
+    return plot_shap_worst_trades(ctx.shap_result, theme=ctx.theme)
+
+
 def _render_shap_errors(ctx: _SectionContext) -> go.Figure | None:
     if ctx.shap_result is None or not ctx.shap_result.error_patterns:
         return None
@@ -2858,6 +2883,7 @@ _SECTION_REGISTRY: dict[str, Any] = {
     "ic_time_series": _render_ic_time_series,
     "quintile_returns": _render_quintile_returns,
     "prediction_trade_alignment": _render_prediction_trade_alignment,
+    "shap_worst_trades": _render_shap_worst_trades,
     "shap_errors": _render_shap_errors,
     # Factors
     "holdings_factor_exposures": lambda ctx: _render_holdings_factor_section(
@@ -3031,8 +3057,9 @@ class BacktestTearsheet:
         return self
 
     def add_shap_result(self, shap_result: TradeShapResult) -> BacktestTearsheet:
-        """Add SHAP analysis result for error pattern visualization."""
+        """Add a Trade-SHAP result and enable its worst-trade and error-pattern sections."""
         self.shap_result = shap_result
+        _enable_shap_sections(self.template, shap_result)
         return self
 
     def add_factor_data(self, factor_data: FactorData) -> BacktestTearsheet:

@@ -3,24 +3,29 @@
 Provides two visualizations for understanding why a model's worst trades
 lose money, based on trade-level SHAP analysis:
 
-- plot_shap_error_patterns: Grouped bars showing mean |SHAP| per feature
-  per error cluster, with a summary table.
+- plot_shap_error_patterns: Grouped bars showing the signed mean SHAP per
+  feature per error cluster, with a table of computed cluster statistics.
 - plot_shap_worst_trades: Stacked horizontal bars showing per-trade SHAP
-  feature contributions for the worst trades.
+  feature contributions for the worst trades, one colour per feature.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from ml4t.diagnostic.visualization._colors import COLORS as _ML4T_COLORS
-from ml4t.diagnostic.visualization.core import get_quantile_colors, get_theme_config
+from ml4t.diagnostic.visualization.core import get_theme_config
 
 if TYPE_CHECKING:
-    from ml4t.diagnostic.evaluation.trade_shap.models import TradeShapResult
+    from ml4t.diagnostic.evaluation.trade_shap.models import (
+        TradeShapExplanation,
+        TradeShapResult,
+    )
 
 
 def plot_shap_error_patterns(
@@ -34,16 +39,19 @@ def plot_shap_error_patterns(
 ) -> go.Figure:
     """Visualize error patterns identified by SHAP-based clustering.
 
-    Top subplot: grouped horizontal bars showing mean |SHAP| per feature
-    per cluster, colored by cluster. Bottom: summary table with cluster
-    metadata (n_trades, hypothesis, confidence, separation score).
+    Top subplot: one row per feature, one bar per cluster showing the cluster's
+    mean SHAP value for that feature (signed), on the scale the trades were
+    clustered on. Hatched bars are not statistically significant; a cluster
+    whose top features omit a feature has no bar on that row. Bottom: a table of
+    computed cluster statistics. Template hypotheses and their confidence scores
+    are not shown, because they are not derived from the data.
 
     Parameters
     ----------
     shap_result : TradeShapResult
         Result from TradeShapPipeline.analyze_worst_trades().
     top_n_features : int
-        Number of top features to show per cluster (default: 8).
+        Number of features to show (default: 8).
     title : str
         Chart title.
     theme : str, optional
@@ -69,71 +77,83 @@ def plot_shap_error_patterns(
             width,
         )
 
-    n_clusters = len(patterns)
-    cluster_colors = get_quantile_colors(max(n_clusters, 2), theme_config)[:n_clusters]
+    palette = _categorical_palette(theme)
 
-    # Collect the union of top features across all patterns
-    feature_set: dict[str, float] = {}
+    # Rank features by their largest absolute cluster mean
+    feature_weight: dict[str, float] = {}
     for pattern in patterns:
-        for feat_name, mean_shap, *_ in pattern.top_features[:top_n_features]:
-            existing = feature_set.get(feat_name, 0.0)
-            feature_set[feat_name] = max(existing, abs(mean_shap))
+        for feat_name, mean_shap, *_ in pattern.top_features:
+            feature_weight[feat_name] = max(feature_weight.get(feat_name, 0.0), abs(mean_shap))
+    top_features = sorted(feature_weight, key=lambda f: feature_weight[f], reverse=True)
+    top_features = top_features[:top_n_features]
+    rows = list(reversed(top_features))  # most important feature on the top row
 
-    # Sort by max absolute SHAP (most important first)
-    sorted_features = sorted(feature_set.keys(), key=lambda f: feature_set[f], reverse=True)
-    top_features = sorted_features[:top_n_features]
-
-    # Build figure: bar chart (top) + table (bottom)
     fig = make_subplots(
         rows=2,
         cols=1,
         row_heights=[0.65, 0.35],
         specs=[[{"type": "xy"}], [{"type": "table"}]],
-        vertical_spacing=0.12,
+        vertical_spacing=0.1,
     )
 
-    # --- Top panel: grouped horizontal bars ---
     for i, pattern in enumerate(patterns):
-        # Build a lookup from feature name to mean SHAP for this cluster
-        feat_shap = {f[0]: f[1] for f in pattern.top_features}
-
-        y_vals = list(reversed(top_features))  # reversed so top feature is at top
-        x_vals = [abs(feat_shap.get(f, 0.0)) for f in reversed(top_features)]
-
-        # Bold label for significant features
-        significant_set = {f[0] for f in pattern.top_features if f[4]}  # is_significant
-        y_labels = [f"<b>{f}</b>" if f in significant_set else f for f in y_vals]
-
+        stats = {f[0]: f for f in pattern.top_features}
+        x_vals = [stats[f][1] if f in stats else None for f in rows]
+        hatch = ["" if f in stats and stats[f][4] else "/" for f in rows]
+        p_values = [[stats[f][2], stats[f][3]] if f in stats else [None, None] for f in rows]
         fig.add_trace(
             go.Bar(
                 x=x_vals,
-                y=y_labels,
+                y=rows,
                 orientation="h",
                 name=f"Cluster {pattern.cluster_id} ({pattern.n_trades} trades)",
-                marker_color=cluster_colors[i],
-                opacity=0.85,
+                marker={
+                    "color": palette[i % len(palette)],
+                    "pattern": {"shape": hatch, "fillmode": "overlay", "solidity": 0.4},
+                },
+                customdata=p_values,
                 hovertemplate=(
                     "%{y}<br>"
                     f"Cluster {pattern.cluster_id}<br>"
-                    "Mean |SHAP|: %{x:.4f}<extra></extra>"
+                    "Mean SHAP: %{x:+.4f}<br>"
+                    "p (t-test): %{customdata[0]:.3g}<br>"
+                    "p (Mann-Whitney): %{customdata[1]:.3g}<extra></extra>"
                 ),
             ),
             row=1,
             col=1,
         )
+    # Legend key for the hatching
+    fig.add_trace(
+        go.Bar(
+            x=[None],
+            y=[rows[-1]],
+            orientation="h",
+            name="Hatched: not significant",
+            marker={
+                "color": "rgba(0,0,0,0)",
+                "line": {"color": _OTHER_COLOR, "width": 1},
+                "pattern": {"shape": "/", "fgcolor": _OTHER_COLOR},
+            },
+            hoverinfo="skip",
+        ),
+        row=1,
+        col=1,
+    )
 
-    # --- Bottom panel: summary table ---
-    header_vals = ["Cluster", "Trades", "Hypothesis", "Confidence", "Separation"]
+    # --- Bottom panel: computed cluster statistics ---
+    header_vals = ["Cluster", "Trades", "Largest mean SHAP", "Separation", "Distinctiveness"]
     cluster_ids = [str(p.cluster_id) for p in patterns]
     n_trades = [str(p.n_trades) for p in patterns]
-    hypotheses = [
-        (p.hypothesis[:80] + "...")
-        if p.hypothesis and len(p.hypothesis) > 80
-        else (p.hypothesis or "N/A")
+    defining = [
+        ", ".join(
+            f"{name} {mean:+.2f}" + ("" if significant else " (n.s.)")
+            for name, mean, _, _, significant in p.top_features[:3]
+        )
         for p in patterns
     ]
-    confidences = [f"{p.confidence:.0%}" if p.confidence is not None else "N/A" for p in patterns]
     separations = [f"{p.separation_score:.2f}" for p in patterns]
+    distinctiveness = [f"{p.distinctiveness:.2f}" for p in patterns]
 
     table_header_fill = _ML4T_COLORS["slate"]
     table_cell_fill = theme_config["layout"].get("paper_bgcolor", "#FFFFFF")
@@ -141,6 +161,7 @@ def plot_shap_error_patterns(
 
     fig.add_trace(
         go.Table(
+            columnwidth=[0.8, 0.8, 4, 1.2, 1.4],
             header={
                 "values": [f"<b>{h}</b>" for h in header_vals],
                 "fill_color": table_header_fill,
@@ -149,7 +170,7 @@ def plot_shap_error_patterns(
                 "height": 30,
             },
             cells={
-                "values": [cluster_ids, n_trades, hypotheses, confidences, separations],
+                "values": [cluster_ids, n_trades, defining, separations, distinctiveness],
                 "fill_color": table_cell_fill,
                 "font": {"color": table_font_color, "size": 11},
                 "align": ["center", "center", "left", "center", "center"],
@@ -165,9 +186,14 @@ def plot_shap_error_patterns(
         "title": {"text": title, "font": {"size": 18}},
         "height": height,
         "barmode": "group",
-        "xaxis": {"title": "Mean |SHAP Value|"},
-        "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
-        "margin": {"l": 140, "r": 20, "t": 80, "b": 20},
+        "bargap": 0.25,
+        "bargroupgap": 0.1,
+        "hovermode": "closest",
+        "showlegend": True,
+        "xaxis": {"title": _mean_shap_axis_title(shap_result.shap_normalization), "zeroline": True},
+        "yaxis": {"automargin": True},
+        "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
+        "margin": {"l": 20, "r": 20, "t": 150, "b": 20},
     }
     if width:
         layout_updates["width"] = width
@@ -179,6 +205,17 @@ def plot_shap_error_patterns(
     fig.update_layout(**layout_updates)
 
     return fig
+
+
+def _mean_shap_axis_title(normalization: str | None) -> str:
+    """Name the scale of the cluster mean SHAP values."""
+    scale = {
+        "l2": "each trade's SHAP vector scaled to unit L2 norm",
+        "l1": "each trade's SHAP vector scaled to unit L1 norm",
+        "standardize": "each feature's SHAP standardized across trades",
+        "none": "model output units",
+    }.get(normalization or "", "scale used for clustering")
+    return f"Mean SHAP value in cluster ({scale})"
 
 
 def plot_shap_worst_trades(
@@ -193,8 +230,10 @@ def plot_shap_worst_trades(
 ) -> go.Figure:
     """Stacked horizontal bar chart of SHAP contributions per worst trade.
 
-    Each row is one trade; segments show individual feature SHAP contributions.
-    Positive SHAP in green, negative in red.
+    Each row is one trade, labelled by symbol, entry and exit date and P&L. Each
+    segment is one feature's SHAP contribution to the model output on the feature
+    row the trade was decided on; every feature has its own colour, named in the
+    legend, and the sign shows as the side of zero the segment lies on.
 
     Parameters
     ----------
@@ -203,8 +242,8 @@ def plot_shap_worst_trades(
     n_trades : int
         Number of worst trades to display (default: 10).
     max_features : int
-        Maximum features to show per trade (default: 8). Remaining are
-        aggregated into "Other".
+        Maximum features to show (default: 8). The contributions of the
+        remaining features are summed into one "Other" segment.
     title : str
         Chart title.
     theme : str, optional
@@ -230,62 +269,69 @@ def plot_shap_worst_trades(
             width,
         )
 
-    # Collect all features that appear in top features across trades
-    feature_union: set[str] = set()
-    for exp in explanations:
-        for feat_name, _ in exp.top_features[:max_features]:
-            feature_union.add(feat_name)
+    contributions = [_contributions(exp) for exp in explanations]
 
-    # Sort features by total absolute SHAP across shown trades
-    feature_importance: dict[str, float] = {}
-    for feat_name in feature_union:
-        total = 0.0
-        for exp in explanations:
-            feat_lookup = dict(exp.top_features)
-            total += abs(feat_lookup.get(feat_name, 0.0))
-        feature_importance[feat_name] = total
+    # Rank features by total absolute contribution across the shown trades
+    importance: dict[str, float] = {}
+    for contrib in contributions:
+        for name, value in contrib.items():
+            importance[name] = importance.get(name, 0.0) + abs(value)
+    ranked = sorted(importance, key=lambda f: importance[f], reverse=True)
+    display_features = ranked[:max_features]
+    other_features = set(ranked[max_features:])
 
-    sorted_features = sorted(
-        feature_importance.keys(), key=lambda f: feature_importance[f], reverse=True
-    )
-    display_features = sorted_features[:max_features]
-
-    # Trade labels (y-axis)
-    trade_labels = [
-        f"{exp.trade_id[:25]}" if len(exp.trade_id) > 25 else exp.trade_id
-        for exp in reversed(explanations)
-    ]
+    # Rows bottom to top, so the worst trade is the top row
+    rows = list(reversed(range(len(explanations))))
+    trade_labels = _unique([_trade_label(explanations[i]) for i in rows])
+    palette = _categorical_palette(theme)
+    # A thin surface-coloured edge keeps adjacent segments apart
+    edge = {"color": theme_config["layout"].get("paper_bgcolor", "#FFFFFF"), "width": 1}
 
     fig = go.Figure()
-
-    for feat_name in display_features:
-        values = []
-        for exp in reversed(explanations):
-            feat_lookup = dict(exp.top_features)
-            values.append(feat_lookup.get(feat_name, 0.0))
-
-        # Color by sign: use positive/negative colors
-        colors = [_ML4T_COLORS["positive"] if v >= 0 else _ML4T_COLORS["negative"] for v in values]
-
+    for k, feat_name in enumerate(display_features):
         fig.add_trace(
             go.Bar(
-                x=values,
+                x=[contributions[i].get(feat_name, 0.0) for i in rows],
                 y=trade_labels,
                 orientation="h",
                 name=feat_name,
-                marker_color=colors,
-                hovertemplate=f"{feat_name}<br>SHAP: %{{x:.4f}}<extra></extra>",
+                marker={"color": palette[k % len(palette)], "line": edge},
+                hovertemplate=f"%{{y}}<br>{feat_name}: %{{x:+.4f}}<extra></extra>",
+            )
+        )
+    if other_features:
+        fig.add_trace(
+            go.Bar(
+                x=[sum(contributions[i].get(f, 0.0) for f in other_features) for i in rows],
+                y=trade_labels,
+                orientation="h",
+                name=f"Other ({len(other_features)} features)",
+                marker={"color": _OTHER_COLOR, "line": edge},
+                hovertemplate="%{y}<br>Other features: %{x:+.4f}<extra></extra>",
             )
         )
 
-    # Layout
     layout_updates: dict = {
         "title": {"text": title, "font": {"size": 18}},
-        "height": max(height, len(explanations) * 45 + 120),
+        "height": max(height, len(explanations) * 45 + 180),
         "barmode": "relative",
-        "xaxis": {"title": "SHAP Value", "zeroline": True},
-        "legend": {"yanchor": "top", "y": 0.99, "xanchor": "right", "x": 0.99},
-        "margin": {"l": 180, "r": 20, "t": 80, "b": 60},
+        "bargap": 0.3,
+        "hovermode": "closest",
+        "showlegend": True,
+        "xaxis": {
+            "title": "SHAP contribution to the model output at the decision row",
+            "zeroline": True,
+        },
+        "yaxis": {"automargin": True},
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "left",
+            "x": 0,
+            "title": {"text": "Feature"},
+        },
+        "margin": {"l": 20, "r": 20, "t": 140, "b": 60},
     }
     if width:
         layout_updates["width"] = width
@@ -297,6 +343,74 @@ def plot_shap_worst_trades(
     fig.update_layout(**layout_updates)
 
     return fig
+
+
+# Categorical hues in fixed order (validated light and dark steps of the same hues)
+_CATEGORICAL_LIGHT = (
+    "#2a78d6",
+    "#eb6834",
+    "#1baf7a",
+    "#eda100",
+    "#e87ba4",
+    "#008300",
+    "#6250d6",
+    "#e34948",
+)
+_CATEGORICAL_DARK = (
+    "#3987e5",
+    "#d95926",
+    "#199e70",
+    "#c98500",
+    "#d55181",
+    "#0ca30c",
+    "#9085e9",
+    "#e66767",
+)
+_OTHER_COLOR = "#9ca3af"
+
+
+def _categorical_palette(theme: str | None) -> tuple[str, ...]:
+    """Return the categorical hues stepped for the theme's surface."""
+    return _CATEGORICAL_DARK if theme == "dark" else _CATEGORICAL_LIGHT
+
+
+def _contributions(explanation: TradeShapExplanation) -> dict[str, float]:
+    """Return every feature's SHAP contribution for one trade."""
+    names = list(explanation.feature_values)
+    vector = np.asarray(explanation.shap_vector, dtype=float)
+    if names and len(names) == len(vector):
+        return dict(zip(names, vector.tolist(), strict=True))
+    return {name: float(value) for name, value in explanation.top_features}
+
+
+def _format_time(value: datetime) -> str:
+    if (value.hour, value.minute, value.second, value.microsecond) == (0, 0, 0, 0):
+        return value.strftime("%Y-%m-%d")
+    return value.strftime("%Y-%m-%d %H:%M")
+
+
+def _trade_label(explanation: TradeShapExplanation) -> str:
+    """Label a trade by symbol, holding period and P&L."""
+    symbol = explanation.symbol or explanation.trade_id.rsplit("_", 1)[0]
+    exit_text = _format_time(explanation.timestamp)
+    if explanation.entry_timestamp is not None:
+        period = f"{_format_time(explanation.entry_timestamp)} to {exit_text}"
+    else:
+        period = f"exit {exit_text}"
+    label = f"{symbol} {period}"
+    if explanation.pnl is not None:
+        label += f", P&L {explanation.pnl:,.0f}"
+    return label
+
+
+def _unique(labels: list[str]) -> list[str]:
+    """Keep labels distinct so two trades never share a category row."""
+    seen: dict[str, int] = {}
+    result = []
+    for label in labels:
+        seen[label] = seen.get(label, 0) + 1
+        result.append(label if seen[label] == 1 else f"{label} ({seen[label]})")
+    return result
 
 
 def _empty_placeholder(

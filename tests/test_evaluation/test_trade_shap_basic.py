@@ -28,6 +28,20 @@ from ml4t.diagnostic.evaluation import (
 )
 from ml4t.diagnostic.evaluation.trade_analysis import TradeMetrics
 
+FILL_DELAY = timedelta(minutes=1)
+
+
+def _decided_trade(decided_at: datetime, duration: timedelta, **fields) -> TradeMetrics:
+    """A trade opened from the feature row at ``decided_at`` and filled a minute later.
+
+    ``TradeMetrics.timestamp`` is the exit, so the explainer locates the decision row
+    from the entry, never from the exit.
+    """
+    entry = decided_at + FILL_DELAY
+    return TradeMetrics(
+        timestamp=entry + duration, entry_timestamp=entry, duration=duration, **fields
+    )
+
 
 class TestTradeShapAnalyzerInit:
     """Tests for TradeShapAnalyzer initialization and validation."""
@@ -224,8 +238,8 @@ class TestTradeShapAnalyzerExplainTrade:
         )
 
         # Create trade at exact timestamp
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 5),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 5),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -237,8 +251,11 @@ class TestTradeShapAnalyzerExplainTrade:
         explanation = analyzer.explain_trade(trade)
 
         # Assert
-        assert explanation.trade_id == "TEST_2024-01-05T00:00:00"
-        assert explanation.timestamp == datetime(2024, 1, 5)
+        # The trade is identified by its exit; the explanation comes from the decision row.
+        assert explanation.trade_id == "TEST_2024-01-06T00:01:00"
+        assert explanation.timestamp == datetime(2024, 1, 6, 0, 1)
+        assert explanation.entry_timestamp == datetime(2024, 1, 5, 0, 1)
+        assert explanation.feature_timestamp == datetime(2024, 1, 5)
         assert len(explanation.top_features) == n_features
         assert explanation.shap_vector.shape == (n_features,)
         assert len(explanation.feature_values) == n_features
@@ -272,8 +289,8 @@ class TestTradeShapAnalyzerExplainTrade:
             config=config,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 3),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 3),
             symbol="TEST",
             entry_price=100.0,
             exit_price=105.0,
@@ -314,8 +331,8 @@ class TestTradeShapAnalyzerExplainTrade:
         )
 
         # Trade at timestamp not in features_df
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 15),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 15),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -352,8 +369,8 @@ class TestTradeShapAnalyzerExplainTrade:
             config=config,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 15),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 15),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -396,8 +413,8 @@ class TestTradeShapAnalyzerExplainTrade:
             config=config,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 15),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 15),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -442,8 +459,8 @@ class TestTradeShapAnalyzerExplainTrade:
         )
 
         # Trade at 10:04:30 - should align to 10:05:00 (30s away)
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1, 10, 4, 30),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1, 10, 4, 30),
             symbol="TEST",
             entry_price=100.0,
             exit_price=105.0,
@@ -486,8 +503,8 @@ class TestTradeShapAnalyzerExplainTrade:
 
         # Create 5 trades matching timestamps
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0 + i,
                 exit_price=95.0 + i,
@@ -533,8 +550,8 @@ class TestTradeShapAnalyzerExplainTrade:
 
         # Create 10 trades but only analyze top 3
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -579,40 +596,40 @@ class TestTradeShapAnalyzerExplainTrade:
 
         # Create 5 trades - 2 will match, 3 will be missing
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1),
                 symbol="TEST1",
                 entry_price=100.0,
                 exit_price=95.0,
                 pnl=-500.0,
                 duration=timedelta(days=1),
             ),
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 10),  # Missing
+            _decided_trade(
+                decided_at=datetime(2024, 1, 10),  # Missing
                 symbol="TEST2",
                 entry_price=100.0,
                 exit_price=95.0,
                 pnl=-600.0,
                 duration=timedelta(days=1),
             ),
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 2),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 2),
                 symbol="TEST3",
                 entry_price=100.0,
                 exit_price=95.0,
                 pnl=-700.0,
                 duration=timedelta(days=1),
             ),
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 15),  # Missing
+            _decided_trade(
+                decided_at=datetime(2024, 1, 15),  # Missing
                 symbol="TEST4",
                 entry_price=100.0,
                 exit_price=95.0,
                 pnl=-800.0,
                 duration=timedelta(days=1),
             ),
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 20),  # Missing
+            _decided_trade(
+                decided_at=datetime(2024, 1, 20),  # Missing
                 symbol="TEST5",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -843,8 +860,8 @@ class TestSHAPAlignmentAccuracy:
         )
 
         # Trade at index 5 (timestamp 10:05:00)
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1, 10, 5, 0),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1, 10, 5, 0),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -865,7 +882,7 @@ class TestSHAPAlignmentAccuracy:
         assert explanation.feature_values["trend"] == pytest.approx(15.0)
 
     def test_alignment_nearest_mode_accuracy(self):
-        """Verify nearest mode selects closest timestamp within tolerance."""
+        """Nearest mode uses the last row before entry, and only within tolerance."""
         # Arrange
         model = Mock()
 
@@ -894,20 +911,19 @@ class TestSHAPAlignmentAccuracy:
             config=config,
         )
 
-        # Test cases with different offsets
+        # (entry time, expected row or None when the decision row is older than 3 minutes)
         test_cases = [
-            # (trade_time, expected_index, description)
-            (datetime(2024, 1, 1, 10, 0, 0), 0, "exact match at start"),
-            (datetime(2024, 1, 1, 10, 1, 0), 0, "1 min after start - nearest is 0"),
-            (datetime(2024, 1, 1, 10, 3, 0), 1, "3 min after start - nearest is 5 min (index 1)"),
-            (datetime(2024, 1, 1, 10, 12, 30), 2, "12.5 min - nearest is 10 min (index 2)"),
-            (datetime(2024, 1, 1, 10, 13, 0), 3, "13 min - nearest is 15 min (index 3)"),
+            (datetime(2024, 1, 1, 10, 0, 30), 0, "30s after row 0"),
+            (datetime(2024, 1, 1, 10, 5, 0), None, "row 1 is not before entry; row 0 is 5 min old"),
+            (datetime(2024, 1, 1, 10, 5, 1), 1, "1s after row 1"),
+            (datetime(2024, 1, 1, 10, 12, 30), 2, "2.5 min after row 2"),
+            (datetime(2024, 1, 1, 10, 14, 0), None, "row 2 is 4 min old; row 3 lies ahead"),
         ]
 
-        for trade_time, expected_idx, description in test_cases:
-            # Create trade
+        for entry_time, expected_idx, description in test_cases:
             trade = TradeMetrics(
-                timestamp=trade_time,
+                timestamp=entry_time + timedelta(hours=1),
+                entry_timestamp=entry_time,
                 symbol="TEST",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -915,10 +931,12 @@ class TestSHAPAlignmentAccuracy:
                 duration=timedelta(hours=1),
             )
 
-            # Act
             explanation = analyzer.explain_trade(trade)
 
-            # Assert
+            if expected_idx is None:
+                assert isinstance(explanation, TradeExplainFailure), description
+                assert explanation.reason == "alignment_missing", description
+                continue
             assert explanation.shap_vector[0] == pytest.approx(float(expected_idx)), (
                 f"Failed for {description}: expected index {expected_idx}"
             )
@@ -960,8 +978,8 @@ class TestSHAPAlignmentAccuracy:
         )
 
         # Trade at 10:05 - 5 minutes from nearest - exceeds tolerance
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1, 10, 5, 0),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1, 10, 5, 0),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -995,8 +1013,8 @@ class TestSHAPAlignmentAccuracy:
         )
 
         # Trade at row 50
-        trade = TradeMetrics(
-            timestamp=timestamps[50],
+        trade = _decided_trade(
+            decided_at=timestamps[50],
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1020,7 +1038,7 @@ class TestSHAPAlignmentAccuracy:
         )
 
     def test_alignment_entry_vs_nearest_difference(self):
-        """Verify entry mode requires exact match while nearest finds closest."""
+        """Nearest mode bounds the decision row's age; entry mode bounds it by the row spacing."""
         # Arrange
         model = Mock()
 
@@ -1044,7 +1062,8 @@ class TestSHAPAlignmentAccuracy:
         config_nearest = TradeConfig(
             alignment=TradeAlignmentSettings(
                 mode="nearest",
-                tolerance=300,  # 5 minutes
+                tolerance=60,
+                missing_strategy="error",
             )
         )
 
@@ -1061,40 +1080,34 @@ class TestSHAPAlignmentAccuracy:
             config=config_nearest,
         )
 
-        # Trade at 10:06 - not an exact match, but within 4 minutes of 10:10
-        trade_inexact = TradeMetrics(
-            timestamp=datetime(2024, 1, 1, 10, 6, 0),
-            symbol="TEST",
-            entry_price=100.0,
-            exit_price=95.0,
-            pnl=-500.0,
-            duration=timedelta(hours=1),
-        )
+        def trade_entering(entry: datetime) -> TradeMetrics:
+            return TradeMetrics(
+                timestamp=entry + timedelta(hours=1),
+                entry_timestamp=entry,
+                symbol="TEST",
+                entry_price=100.0,
+                exit_price=95.0,
+                pnl=-500.0,
+                duration=timedelta(hours=1),
+            )
 
-        # Trade at exact timestamp 10:05
-        trade_exact = TradeMetrics(
-            timestamp=datetime(2024, 1, 1, 10, 5, 0),
-            symbol="TEST2",
-            entry_price=100.0,
-            exit_price=95.0,
-            pnl=-500.0,
-            duration=timedelta(hours=1),
-        )
-
-        # Act & Assert - entry mode fails on inexact match
+        # Entry 2 minutes after the 10:05 row: within the 5-minute row spacing, outside
+        # the 60-second tolerance.
+        two_minutes_late = trade_entering(datetime(2024, 1, 1, 10, 7, 0))
+        assert analyzer_entry.explain_trade(two_minutes_late).shap_vector[0] == pytest.approx(0.2)
         with pytest.raises(ValueError, match="Cannot align SHAP values"):
-            analyzer_entry.explain_trade(trade_inexact)
+            analyzer_nearest.explain_trade(two_minutes_late)
 
-        # Nearest mode succeeds - finds closest timestamp (10:05, only 60s away)
-        explanation_nearest = analyzer_nearest.explain_trade(trade_inexact)
-        assert explanation_nearest.shap_vector[0] == pytest.approx(0.2)  # Closest is 10:05
+        # Entry 30 seconds after the 10:05 row: both modes use it.
+        prompt = trade_entering(datetime(2024, 1, 1, 10, 5, 30))
+        assert analyzer_entry.explain_trade(prompt).shap_vector[0] == pytest.approx(0.2)
+        assert analyzer_nearest.explain_trade(prompt).shap_vector[0] == pytest.approx(0.2)
 
-        # Both modes succeed on exact match
-        explanation_entry_exact = analyzer_entry.explain_trade(trade_exact)
-        explanation_nearest_exact = analyzer_nearest.explain_trade(trade_exact)
-
-        assert explanation_entry_exact.shap_vector[0] == pytest.approx(0.2)  # Exact match at 10:05
-        assert explanation_nearest_exact.shap_vector[0] == pytest.approx(0.2)  # Same result
+        # Entry an hour after the last row: older than any gap in the history, so entry
+        # mode refuses the stale row instead of explaining the trade with it.
+        stale = trade_entering(datetime(2024, 1, 1, 11, 10, 0))
+        with pytest.raises(ValueError, match="Cannot align SHAP values"):
+            analyzer_entry.explain_trade(stale)
 
     def test_top_features_sorting_accuracy(self):
         """Verify top features are correctly sorted by absolute SHAP value."""
@@ -1135,8 +1148,8 @@ class TestSHAPAlignmentAccuracy:
             config=config,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1183,8 +1196,8 @@ class TestPerformanceBenchmarks:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=timestamps[5000],
+        trade = _decided_trade(
+            decided_at=timestamps[5000],
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1227,8 +1240,8 @@ class TestPerformanceBenchmarks:
 
         # Create 10 trades - use indices 1000, 2000, ..., 9000 (all within range)
         trades = [
-            TradeMetrics(
-                timestamp=timestamps[i * 1000],
+            _decided_trade(
+                decided_at=timestamps[i * 1000],
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -1286,8 +1299,8 @@ class TestPerformanceBenchmarks:
         assert init_elapsed < 3.0, f"Initialization took {init_elapsed:.3f}s (expected <3s)"
 
         # Test single explanation
-        trade = TradeMetrics(
-            timestamp=timestamps[25000],
+        trade = _decided_trade(
+            decided_at=timestamps[25000],
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1325,8 +1338,8 @@ class TestEdgeCases:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1362,8 +1375,8 @@ class TestEdgeCases:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 5),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 5),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1399,8 +1412,8 @@ class TestEdgeCases:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1450,8 +1463,8 @@ class TestEdgeCases:
             config=config,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1491,8 +1504,8 @@ class TestEdgeCases:
         )
 
         # Trade with timezone-aware timestamp
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1521,15 +1534,13 @@ class TestEdgeCases:
         with pytest.raises(ValueError, match="No feature columns"):
             TradeShapAnalyzer(model=model, features_df=features_df)
 
-    def test_duplicate_timestamps(self):
-        """Test handling of duplicate timestamps in features_df."""
-        # Arrange
-        model = Mock()
+    def test_duplicate_timestamps_without_symbol_raise(self):
+        """A panel with repeated timestamps and no symbol column cannot be aligned per asset."""
         features_df = pl.DataFrame(
             {
                 "timestamp": [
                     datetime(2024, 1, 1, 10, 0, 0),
-                    datetime(2024, 1, 1, 10, 0, 0),  # Duplicate
+                    datetime(2024, 1, 1, 10, 0, 0),
                     datetime(2024, 1, 1, 10, 5, 0),
                 ],
                 "feature1": [1.0, 1.5, 2.0],
@@ -1537,14 +1548,9 @@ class TestEdgeCases:
         )
         shap_values = np.array([[0.1], [0.15], [0.2]])
 
-        analyzer = TradeShapAnalyzer(
-            model=model,
-            features_df=features_df,
-            shap_values=shap_values,
-        )
-
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
+        analyzer = TradeShapAnalyzer(model=Mock(), features_df=features_df, shap_values=shap_values)
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1, 10, 0, 0),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1552,12 +1558,35 @@ class TestEdgeCases:
             duration=timedelta(hours=1),
         )
 
-        # Act - should use first matching timestamp
+        with pytest.raises(ValueError, match="no 'symbol' column"):
+            analyzer.explain_trade(trade)
+
+    def test_duplicate_timestamps_with_symbol_align_per_asset(self):
+        """Rows sharing a timestamp are told apart by the symbol column."""
+        features_df = pl.DataFrame(
+            {
+                "timestamp": [datetime(2024, 1, 1, 10, 0, 0)] * 2
+                + [datetime(2024, 1, 1, 10, 5)] * 2,
+                "symbol": ["AAA", "BBB", "AAA", "BBB"],
+                "feature1": [1.0, 1.5, 2.0, 2.5],
+            }
+        )
+        shap_values = np.array([[0.1], [0.15], [0.2], [0.25]])
+        analyzer = TradeShapAnalyzer(model=Mock(), features_df=features_df, shap_values=shap_values)
+
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1, 10, 0, 0),
+            symbol="BBB",
+            entry_price=100.0,
+            exit_price=95.0,
+            pnl=-500.0,
+            duration=timedelta(hours=1),
+        )
         explanation = analyzer.explain_trade(trade)
 
-        # Assert - should align to first occurrence
-        assert explanation.shap_vector[0] == pytest.approx(0.1)
-        assert explanation.feature_values["feature1"] == pytest.approx(1.0)
+        assert analyzer.feature_names == ["feature1"]
+        assert explanation.shap_vector[0] == pytest.approx(0.15)
+        assert explanation.feature_values["feature1"] == pytest.approx(1.5)
 
 
 class TestExtractShapVectors:
@@ -1584,8 +1613,8 @@ class TestExtractShapVectors:
 
         # Create explanations
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -1627,8 +1656,8 @@ class TestExtractShapVectors:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1667,8 +1696,8 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -1712,8 +1741,8 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -1759,8 +1788,8 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -1822,8 +1851,8 @@ class TestExtractShapVectors:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -1858,16 +1887,16 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1),
                 symbol="TEST1",
                 entry_price=100.0,
                 exit_price=95.0,
                 pnl=-500.0,
                 duration=timedelta(hours=1),
             ),
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 2),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 2),
                 symbol="TEST2",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -1908,16 +1937,16 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1),
                 symbol="TEST1",
                 entry_price=100.0,
                 exit_price=95.0,
                 pnl=-500.0,
                 duration=timedelta(hours=1),
             ),
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 2),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 2),
                 symbol="TEST2",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -1964,8 +1993,8 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2004,8 +2033,8 @@ class TestExtractShapVectors:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -2037,8 +2066,8 @@ class TestExtractShapVectors:
             shap_values=shap_values,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -2076,8 +2105,8 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2120,8 +2149,8 @@ class TestExtractShapVectors:
             config=config,
         )
 
-        trade = TradeMetrics(
-            timestamp=datetime(2024, 1, 1),
+        trade = _decided_trade(
+            decided_at=datetime(2024, 1, 1),
             symbol="TEST",
             entry_price=100.0,
             exit_price=95.0,
@@ -2161,8 +2190,8 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2203,8 +2232,8 @@ class TestExtractShapVectors:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2262,8 +2291,8 @@ class TestClusterPatterns:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2313,8 +2342,8 @@ class TestClusterPatterns:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2381,8 +2410,8 @@ class TestClusterPatterns:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2447,8 +2476,8 @@ class TestClusterPatterns:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2506,8 +2535,8 @@ class TestClusterPatterns:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2564,8 +2593,8 @@ class TestClusterPatterns:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2620,8 +2649,8 @@ class TestClusterPatternsEdgeCases:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2665,8 +2694,8 @@ class TestClusterPatternsEdgeCases:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2751,8 +2780,8 @@ class TestClusterPatternsEdgeCases:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2791,8 +2820,8 @@ class TestClusterPatternsEdgeCases:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2834,8 +2863,8 @@ class TestClusterPatternsEdgeCases:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,
@@ -2882,8 +2911,8 @@ class TestClusterPatternsEdgeCases:
         )
 
         trades = [
-            TradeMetrics(
-                timestamp=datetime(2024, 1, 1) + timedelta(hours=i),
+            _decided_trade(
+                decided_at=datetime(2024, 1, 1) + timedelta(hours=i),
                 symbol=f"TEST{i}",
                 entry_price=100.0,
                 exit_price=95.0,

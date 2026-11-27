@@ -124,6 +124,7 @@ def export_workspaces(
     from .presets import get_dashboard_preset
     from .tearsheet import (
         _compute_portfolio_summary_metrics,
+        _enable_shap_sections,
         _enrich_benchmark_metrics,
         _enrich_from_trades,
         _generate_sections,
@@ -199,6 +200,7 @@ def export_workspaces(
                 "prediction_calibration",
             ):
                 section.enabled = True
+    _enable_shap_sections(tmpl, shap_result)
     if factor_data is not None:
         for section in tmpl.sections:
             if section.name.startswith("factor_"):
