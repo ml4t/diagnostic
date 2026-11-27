@@ -106,9 +106,8 @@ def _legacy_split_by_sessions_indices(
     """Legacy mask-based per-fold row index generation."""
     unique_sessions = df[session_col].drop_duplicates().reset_index(drop=True)
     n_sessions = len(unique_sessions)
-    available_for_splits = n_sessions - test_size_sessions
-    step_size = available_for_splits // n_splits
-    first_test_start = test_size_sessions
+    first_test_start = train_size_sessions + gap
+    step_size = (n_sessions - first_test_start) // n_splits
 
     results = []
     for i in range(n_splits):

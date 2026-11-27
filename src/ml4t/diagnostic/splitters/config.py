@@ -335,6 +335,8 @@ class WalkForwardConfig(SplitterConfig):
         - None: Auto-calculated to maintain equal test set sizes
     train_size : int | float | str | None
         Training set size specification (same format as test_size).
+        The first validation fold starts after ``train_size`` plus the gap; a
+        rolling window keeps this size, an expanding window starts from it.
         If None, uses expanding window (all data before test set).
     step_size : int | None
         Step size between consecutive splits:
